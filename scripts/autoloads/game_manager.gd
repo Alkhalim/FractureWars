@@ -201,6 +201,9 @@ func _init_cities() -> void:
 				city.buildings.append(&"cohort_barracks")
 			city.original_faction_id = faction_id
 			city.loyalty = 50
+			city.class_loyalty = {
+				"peasants": 50, "artisans": 50, "scholars": 50, "nobles": 50, "captives": 0
+			}
 			city.turns_since_capture = -1
 			# Grant player a free settlement founding on turn 1
 			if faction_id == state.player_faction_id and is_first_city:
@@ -434,6 +437,9 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	city.is_capital = false
 	city.original_faction_id = faction_id
 	city.loyalty = 50
+	city.class_loyalty = {
+		"peasants": 50, "artisans": 50, "scholars": 50, "nobles": 50, "captives": 0
+	}
 	city.turns_since_capture = -1
 	state.cities[city.city_id] = city
 

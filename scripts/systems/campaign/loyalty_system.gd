@@ -46,13 +46,13 @@ static func _has_capital_in_province(region_id: StringName, faction_id: StringNa
 			return true
 	return false
 
-# ── Social Class Calculation ─────────────────────────────────
+# ── Social Class Percentages ────────────────────────────────
 
-static func calculate_social_classes(city: CityState, faction_id: StringName) -> Dictionary:
+static func calculate_class_percentages(city: CityState, faction_id: StringName) -> Dictionary:
 	var region_id := city.region_id
 	var province_pop := get_province_population(region_id, faction_id)
 	if province_pop <= 0:
-		return {captives = 0, peasants = 0, artisans = 0, scholars = 0, nobles = 0}
+		return {captives = 0.0, peasants = 1.0, artisans = 0.0, scholars = 0.0, nobles = 0.0}
 
 	var cultural_count := _count_buildings_by_category(region_id, faction_id, &"cultural")
 	var economic_count := _count_buildings_by_category(region_id, faction_id, &"economic")
@@ -74,119 +74,230 @@ static func calculate_social_classes(city: CityState, faction_id: StringName) ->
 	artisan_pct = minf(artisan_pct, 0.30)
 
 	# Captives: faction's total CAPTIVES distributed proportionally by province pop
-	var captive_count := 0
+	var captive_pct := 0.0
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs:
 		var total_captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
 		if total_captives > 0:
-			# Get total faction population across all provinces
 			var total_faction_pop := 0
 			for cid in GameManager.state.cities:
 				var c: CityState = GameManager.state.cities[cid]
 				if c.faction_id == faction_id:
 					total_faction_pop += c.population
 			if total_faction_pop > 0:
-				captive_count = int(float(total_captives) * float(province_pop) / float(total_faction_pop))
+				var captive_count := int(float(total_captives) * float(province_pop) / float(total_faction_pop))
+				captive_pct = float(captive_count) / float(province_pop)
 
-	# Calculate absolute numbers
-	var nobles := int(float(province_pop) * noble_pct)
-	var scholars := int(float(province_pop) * scholar_pct)
-	var artisans := int(float(province_pop) * artisan_pct)
-	var peasants := maxi(0, province_pop - nobles - scholars - artisans - captive_count)
+	# Peasants: remainder
+	var peasant_pct := maxf(0.0, 1.0 - noble_pct - scholar_pct - artisan_pct - captive_pct)
 
 	return {
-		captives = captive_count,
-		peasants = peasants,
-		artisans = artisans,
-		scholars = scholars,
-		nobles = nobles,
+		captives = captive_pct,
+		peasants = peasant_pct,
+		artisans = artisan_pct,
+		scholars = scholar_pct,
+		nobles = noble_pct,
 	}
 
-# ── Loyalty Delta Calculation ────────────────────────────────
+static func get_class_percentage_breakdown(city: CityState, faction_id: StringName, class_key: String) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var region_id := city.region_id
+	var cultural_count := _count_buildings_by_category(region_id, faction_id, &"cultural")
+	var economic_count := _count_buildings_by_category(region_id, faction_id, &"economic")
+	var city_level_sum := _get_province_city_level_sum(region_id, faction_id)
+	var has_capital := _has_capital_in_province(region_id, faction_id)
 
-static func calculate_loyalty_delta(city: CityState, faction_id: StringName) -> int:
-	var breakdown := get_loyalty_breakdown(city, faction_id)
-	var delta := 0
+	match class_key:
+		"nobles":
+			result.append({label = "City levels (x%d)" % city_level_sum, value = "%d%%" % int(float(city_level_sum) * 2.0)})
+			if has_capital:
+				result.append({label = "Capital bonus", value = "+3%"})
+			result.append({label = "Max", value = "25%"})
+		"scholars":
+			result.append({label = "Cultural buildings (x%d)" % cultural_count, value = "%d%%" % int(float(cultural_count) * 3.0)})
+			result.append({label = "Max", value = "20%"})
+		"artisans":
+			result.append({label = "Economic buildings (x%d)" % economic_count, value = "%d%%" % int(float(economic_count) * 4.0)})
+			result.append({label = "Max", value = "30%"})
+		"captives":
+			var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+			var total_captives := 0
+			if fs:
+				total_captives = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+			result.append({label = "Faction captives", value = str(total_captives)})
+			result.append({label = "Distributed by province pop", value = ""})
+		"peasants":
+			result.append({label = "Remainder after other classes", value = ""})
+	return result
+
+# ── Per-Class Loyalty Weight Tables ─────────────────────────
+
+# Each modifier has weights: {peasants, artisans, scholars, nobles, captives}
+const CLASS_NAMES := ["peasants", "artisans", "scholars", "nobles", "captives"]
+
+const W_BASE_STABILITY := {peasants = 2, artisans = 2, scholars = 2, nobles = 2, captives = 1}
+const W_SAME_CULTURE := {peasants = 2, artisans = 1, scholars = 4, nobles = 3, captives = 1}
+const W_CULTURAL_BUILDINGS := {peasants = 1, artisans = 1, scholars = 3, nobles = 2, captives = 0}
+const W_HIGH_POP := {peasants = 1, artisans = 1, scholars = 0, nobles = 0, captives = 0}
+const W_FRIENDLY_NEIGHBORS := {peasants = 1, artisans = 1, scholars = 1, nobles = 2, captives = 0}
+const W_LONG_OWNERSHIP := {peasants = 2, artisans = 1, scholars = 1, nobles = 1, captives = 1}
+const W_CULTURAL_MISMATCH := {peasants = -2, artisans = -1, scholars = -4, nobles = -3, captives = -1}
+const W_CAPTURED_ACUTE := {peasants = -6, artisans = -5, scholars = -8, nobles = -10, captives = -3}
+const W_CAPTURED_LINGER := {peasants = -3, artisans = -2, scholars = -4, nobles = -5, captives = -2}
+const W_CAPTURED_FADING := {peasants = -1, artisans = -1, scholars = -2, nobles = -3, captives = -1}
+const W_WAR_NEIGHBOR := {peasants = -3, artisans = -2, scholars = -1, nobles = -1, captives = 0}
+const W_UNDER_SIEGE := {peasants = -6, artisans = -5, scholars = -5, nobles = -4, captives = -2}
+const W_LOW_POP := {peasants = -2, artisans = -1, scholars = 0, nobles = 0, captives = 0}
+const W_HIGH_CAPTIVE_RATIO := {peasants = 0, artisans = 0, scholars = -1, nobles = -1, captives = 1}
+const W_NO_CULTURAL := {peasants = -1, artisans = 0, scholars = -2, nobles = -1, captives = 0}
+const W_ECONOMIC_BUILDINGS := {peasants = 1, artisans = 3, scholars = 0, nobles = 1, captives = 0}
+const W_NO_ECONOMIC := {peasants = -1, artisans = -3, scholars = 0, nobles = 0, captives = 0}
+
+# ── Per-Class Loyalty Delta ─────────────────────────────────
+
+static func calculate_class_loyalty_deltas(city: CityState, faction_id: StringName) -> Dictionary:
+	var result := {peasants = 0, artisans = 0, scholars = 0, nobles = 0, captives = 0}
+	var breakdown := _get_active_modifiers(city, faction_id)
 	for entry in breakdown:
-		delta += entry.value
-	return delta
+		var weights: Dictionary = entry.weights
+		var multiplier: int = entry.get("multiplier", 1)
+		for cls in CLASS_NAMES:
+			result[cls] += weights[cls] * multiplier
+	return result
 
-static func get_loyalty_breakdown(city: CityState, faction_id: StringName) -> Array[Dictionary]:
+static func get_class_loyalty_breakdown(city: CityState, faction_id: StringName, class_name_str: String) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var breakdown := _get_active_modifiers(city, faction_id)
+	for entry in breakdown:
+		var weights: Dictionary = entry.weights
+		var multiplier: int = entry.get("multiplier", 1)
+		var value: int = weights.get(class_name_str, 0) * multiplier
+		if value != 0:
+			result.append({label = entry.label, value = value})
+	return result
+
+static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var region_id := city.region_id
 	var region: RegionData = DataManager.get_region(region_id)
 	var faction: FactionData = DataManager.get_faction(faction_id)
 	var province_pop := get_province_population(region_id, faction_id)
 	var cultural_count := _count_buildings_by_category(region_id, faction_id, &"cultural")
-	var classes := calculate_social_classes(city, faction_id)
+	var economic_count := _count_buildings_by_category(region_id, faction_id, &"economic")
+	var pcts := calculate_class_percentages(city, faction_id)
 
 	# ── Positive modifiers ──
 
-	# Base stability: +2 always
-	result.append({label = "Base Stability", value = 2})
+	# Base stability: always
+	result.append({label = "Base Stability", weights = W_BASE_STABILITY, multiplier = 1})
 
-	# Same culture: +3 if faction realm_affinity matches region realm_influence
+	# Same culture
 	if faction and region and faction.realm_affinity == region.realm_influence:
-		result.append({label = "Same Realm Culture", value = 3})
+		result.append({label = "Same Realm Culture", weights = W_SAME_CULTURE, multiplier = 1})
 
-	# Cultural buildings: +2 per cultural building
+	# Cultural buildings (per building)
 	if cultural_count > 0:
-		result.append({label = "Cultural Buildings (x%d)" % cultural_count, value = 2 * cultural_count})
+		result.append({label = "Cultural Buildings (x%d)" % cultural_count, weights = W_CULTURAL_BUILDINGS, multiplier = cultural_count})
 
-	# High population: +1 if province pop >= 300
+	# Economic buildings (per building)
+	if economic_count > 0:
+		result.append({label = "Economic Buildings (x%d)" % economic_count, weights = W_ECONOMIC_BUILDINGS, multiplier = economic_count})
+
+	# High population
 	if province_pop >= 300:
-		result.append({label = "High Population", value = 1})
+		result.append({label = "High Population", weights = W_HIGH_POP, multiplier = 1})
 
-	# Friendly/Allied neighbors: +1 per neighboring region that is FRIENDLY or ALLIED
+	# Friendly/Allied neighbors
 	var friendly_neighbor_count := _count_neighbor_relations(region_id, faction_id, [Enums.FactionRelation.FRIENDLY, Enums.FactionRelation.ALLIED])
 	if friendly_neighbor_count > 0:
-		result.append({label = "Friendly Neighbors (x%d)" % friendly_neighbor_count, value = friendly_neighbor_count})
+		result.append({label = "Friendly Neighbors (x%d)" % friendly_neighbor_count, weights = W_FRIENDLY_NEIGHBORS, multiplier = friendly_neighbor_count})
 
-	# Long ownership: +1 if never captured or captured long ago
+	# Long ownership
 	if city.turns_since_capture == -1 or city.turns_since_capture > 10:
-		result.append({label = "Long Ownership", value = 1})
+		result.append({label = "Long Ownership", weights = W_LONG_OWNERSHIP, multiplier = 1})
 
 	# ── Negative modifiers ──
 
-	# Cultural mismatch: -3 if faction realm != region realm
+	# Cultural mismatch
 	if faction and region and faction.realm_affinity != region.realm_influence:
-		result.append({label = "Cultural Mismatch", value = -3})
+		result.append({label = "Cultural Mismatch", weights = W_CULTURAL_MISMATCH, multiplier = 1})
 
 	# Recently captured
 	if city.turns_since_capture >= 0 and city.turns_since_capture <= 3:
-		result.append({label = "Recently Captured", value = -8})
+		result.append({label = "Recently Captured", weights = W_CAPTURED_ACUTE, multiplier = 1})
 	elif city.turns_since_capture >= 4 and city.turns_since_capture <= 8:
-		result.append({label = "Recently Captured (lingering)", value = -4})
+		result.append({label = "Recently Captured (lingering)", weights = W_CAPTURED_LINGER, multiplier = 1})
 	elif city.turns_since_capture >= 9 and city.turns_since_capture <= 15:
-		result.append({label = "Recently Captured (fading)", value = -2})
+		result.append({label = "Recently Captured (fading)", weights = W_CAPTURED_FADING, multiplier = 1})
 
-	# War neighbors: -2 per neighboring region at WAR
+	# War neighbors
 	var war_neighbor_count := _count_neighbor_relations(region_id, faction_id, [Enums.FactionRelation.WAR])
 	if war_neighbor_count > 0:
 		var war_names := _get_neighbor_war_faction_names(region_id, faction_id)
 		var label_text := "At War (%s)" % ", ".join(war_names) if war_names.size() > 0 else "War Neighbors (x%d)" % war_neighbor_count
-		result.append({label = label_text, value = -2 * war_neighbor_count})
+		result.append({label = label_text, weights = W_WAR_NEIGHBOR, multiplier = war_neighbor_count})
 
-	# Under siege: -5
+	# Under siege
 	if city.is_under_siege:
-		result.append({label = "Under Siege", value = -5})
+		result.append({label = "Under Siege", weights = W_UNDER_SIEGE, multiplier = 1})
 
-	# Low population: -2 if province pop < 100
+	# Low population
 	if province_pop < 100:
-		result.append({label = "Low Population", value = -2})
+		result.append({label = "Low Population", weights = W_LOW_POP, multiplier = 1})
 
-	# High captive ratio: -1 per 10% captive ratio
-	if province_pop > 0 and classes.captives > 0:
-		var captive_ratio := float(classes.captives) / float(province_pop)
-		var penalty := int(captive_ratio * 10.0)
-		if penalty > 0:
-			result.append({label = "High Captive Ratio", value = -penalty})
+	# High captive ratio
+	if pcts.captives > 0.05:
+		var captive_mult := int(pcts.captives * 10.0)
+		if captive_mult > 0:
+			result.append({label = "High Captive Ratio", weights = W_HIGH_CAPTIVE_RATIO, multiplier = captive_mult})
 
-	# No cultural buildings: -1
+	# No cultural buildings
 	if cultural_count == 0:
-		result.append({label = "No Cultural Buildings", value = -1})
+		result.append({label = "No Cultural Buildings", weights = W_NO_CULTURAL, multiplier = 1})
+
+	# No economic buildings
+	if economic_count == 0:
+		result.append({label = "No Economic Buildings", weights = W_NO_ECONOMIC, multiplier = 1})
 
 	return result
+
+# ── Province Loyalty (Weighted Average) ─────────────────────
+
+static func calculate_province_loyalty(city: CityState, faction_id: StringName) -> int:
+	var pcts := calculate_class_percentages(city, faction_id)
+	var weighted := 0.0
+	for cls in city.class_loyalty:
+		weighted += float(city.class_loyalty[cls]) * float(pcts.get(cls, 0.0))
+	return int(weighted)
+
+# ── Legacy Compatibility ────────────────────────────────────
+
+static func calculate_loyalty_delta(city: CityState, faction_id: StringName) -> int:
+	# Returns the weighted-average delta across all classes
+	var deltas := calculate_class_loyalty_deltas(city, faction_id)
+	var pcts := calculate_class_percentages(city, faction_id)
+	var weighted := 0.0
+	for cls in deltas:
+		weighted += float(deltas[cls]) * float(pcts.get(cls, 0.0))
+	return int(weighted)
+
+static func get_loyalty_breakdown(city: CityState, faction_id: StringName) -> Array[Dictionary]:
+	# Returns province-level modifier breakdown (weighted averages)
+	var result: Array[Dictionary] = []
+	var pcts := calculate_class_percentages(city, faction_id)
+	var modifiers := _get_active_modifiers(city, faction_id)
+	for entry in modifiers:
+		var weights: Dictionary = entry.weights
+		var multiplier: int = entry.get("multiplier", 1)
+		var weighted_value := 0.0
+		for cls in CLASS_NAMES:
+			weighted_value += float(weights[cls]) * multiplier * float(pcts.get(cls, 0.0))
+		var val := int(weighted_value)
+		if val != 0:
+			result.append({label = entry.label, value = val})
+	return result
+
+# ── Neighbor Helpers ────────────────────────────────────────
 
 static func _count_neighbor_relations(region_id: StringName, faction_id: StringName, relations: Array) -> int:
 	var neighbor_factions := _get_neighbor_region_factions(region_id, faction_id)
@@ -271,15 +382,12 @@ static func get_loyalty_color(loyalty_value: int) -> Color:
 
 # ── Social Class Income Bonuses ──────────────────────────────
 
-static func apply_class_bonuses(income: Dictionary, classes: Dictionary, province_pop: int) -> Dictionary:
-	if province_pop <= 0:
-		return income
-
-	# Calculate percentage points for each class
-	var peasant_pct := float(classes.peasants) / float(province_pop) * 100.0
-	var artisan_pct := float(classes.artisans) / float(province_pop) * 100.0
-	var scholar_pct := float(classes.scholars) / float(province_pop) * 100.0
-	var noble_pct := float(classes.nobles) / float(province_pop) * 100.0
+static func apply_class_bonuses(income: Dictionary, pcts: Dictionary) -> Dictionary:
+	# pcts are 0.0-1.0 floats from calculate_class_percentages()
+	var peasant_pct: float = pcts.get("peasants", 0.0) * 100.0
+	var artisan_pct: float = pcts.get("artisans", 0.0) * 100.0
+	var scholar_pct: float = pcts.get("scholars", 0.0) * 100.0
+	var noble_pct: float = pcts.get("nobles", 0.0) * 100.0
 
 	# Peasants: +0.5% Food per percentage point
 	if income.has(Enums.ResourceType.FOOD):

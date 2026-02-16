@@ -60,6 +60,7 @@ var _unit_card_panel: PanelContainer
 var _pending_level_up_commander: CommanderState
 var _pending_event_data: Dictionary
 var _loyalty_panel: PanelContainer
+var _class_hover_tooltip: PanelContainer
 
 func _ready() -> void:
 	end_turn_button.pressed.connect(_on_end_turn)
@@ -1039,22 +1040,41 @@ func _show_city_panel(city_id: StringName) -> void:
 		pop_text = "Level %d  |  Pop: %d (MAX)" % [city.level, province_pop]
 
 	var pop_label := Label.new()
-	pop_label.text = pop_text + "  |  Loyalty: "
+	pop_label.text = pop_text + "  "
 	pop_label.add_theme_font_size_override("font_size", 13)
 	pop_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 	info_hbox.add_child(pop_label)
 
-	# Loyalty value (clickable, color-coded)
+	# Loyalty button (clickable, color-coded, with border)
 	var loyalty_color := LoyaltySystem.get_loyalty_color(city.loyalty)
 	var delta_sign := "+" if loyalty_delta >= 0 else ""
-	var loyalty_label := Label.new()
-	loyalty_label.text = "%d %s%d" % [city.loyalty, delta_sign, loyalty_delta]
-	loyalty_label.add_theme_font_size_override("font_size", 13)
-	loyalty_label.add_theme_color_override("font_color", loyalty_color)
-	loyalty_label.mouse_filter = Control.MOUSE_FILTER_STOP
-	loyalty_label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	loyalty_label.gui_input.connect(_on_loyalty_clicked.bind(city_id))
-	info_hbox.add_child(loyalty_label)
+	var loyalty_btn := Button.new()
+	loyalty_btn.text = "Loyalty: %d %s%d" % [city.loyalty, delta_sign, loyalty_delta]
+	loyalty_btn.add_theme_font_size_override("font_size", 12)
+	loyalty_btn.add_theme_color_override("font_color", loyalty_color)
+	var lbtn_style := StyleBoxFlat.new()
+	lbtn_style.bg_color = Color(0.08, 0.07, 0.1, 0.8)
+	lbtn_style.border_width_left = 1
+	lbtn_style.border_width_top = 1
+	lbtn_style.border_width_right = 1
+	lbtn_style.border_width_bottom = 1
+	lbtn_style.border_color = loyalty_color * Color(1, 1, 1, 0.6)
+	lbtn_style.corner_radius_top_left = 3
+	lbtn_style.corner_radius_top_right = 3
+	lbtn_style.corner_radius_bottom_right = 3
+	lbtn_style.corner_radius_bottom_left = 3
+	lbtn_style.content_margin_left = 6.0
+	lbtn_style.content_margin_right = 6.0
+	lbtn_style.content_margin_top = 2.0
+	lbtn_style.content_margin_bottom = 2.0
+	loyalty_btn.add_theme_stylebox_override("normal", lbtn_style)
+	var lbtn_hover := lbtn_style.duplicate()
+	lbtn_hover.bg_color = Color(0.12, 0.11, 0.15, 0.9)
+	lbtn_hover.border_color = loyalty_color * Color(1, 1, 1, 0.9)
+	loyalty_btn.add_theme_stylebox_override("hover", lbtn_hover)
+	loyalty_btn.add_theme_stylebox_override("pressed", lbtn_hover)
+	loyalty_btn.pressed.connect(_show_loyalty_panel.bind(city_id))
+	info_hbox.add_child(loyalty_btn)
 
 	vbox.add_child(info_hbox)
 
@@ -1251,10 +1271,6 @@ func _on_city_panel_close() -> void:
 	if campaign and campaign.has_method("_close_city_panel"):
 		campaign._close_city_panel()
 
-func _on_loyalty_clicked(event: InputEvent, city_id: StringName) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_show_loyalty_panel(city_id)
-
 func _show_loyalty_panel(city_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null:
@@ -1309,10 +1325,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	# Header row with close button
 	var header := HBoxContainer.new()
 	var title := Label.new()
-	var malus_text := ""
-	if loyalty_mult < 1.0:
-		malus_text = ", %d%% income malus" % int((1.0 - loyalty_mult) * 100)
-	title.text = "Province Loyalty: %d  (%s%s)" % [city.loyalty, status_text, malus_text]
+	title.text = "Province Loyalty: %d  (%s)" % [city.loyalty, status_text]
 	title.add_theme_font_size_override("font_size", 14)
 	title.add_theme_color_override("font_color", loyalty_color)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1327,7 +1340,111 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 
 	_add_separator(vbox)
 
-	# MODIFIERS section
+	# CLASS LOYALTY section
+	var class_header := Label.new()
+	class_header.text = "CLASS LOYALTY"
+	class_header.add_theme_font_size_override("font_size", 13)
+	class_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(class_header)
+
+	var pcts := LoyaltySystem.calculate_class_percentages(city, faction_id)
+	var deltas := LoyaltySystem.calculate_class_loyalty_deltas(city, faction_id)
+
+	var class_entries := [
+		{key = "peasants", name = "Peasants", color = Color(0.5, 0.8, 0.35)},
+		{key = "artisans", name = "Artisans", color = Color(0.6, 0.6, 0.65)},
+		{key = "scholars", name = "Scholars", color = Color(0.45, 0.55, 0.65)},
+		{key = "nobles", name = "Nobles", color = Color(0.95, 0.85, 0.3)},
+		{key = "captives", name = "Captives", color = Color(0.65, 0.45, 0.35)},
+	]
+
+	for entry in class_entries:
+		var cls_key: String = entry.key
+		var cls_loyalty: int = city.class_loyalty.get(cls_key, 0)
+		var cls_pct := int(float(pcts.get(cls_key, 0.0)) * 100.0)
+		var cls_delta: int = deltas.get(cls_key, 0)
+
+		# Class name
+		var name_label := Label.new()
+		name_label.text = "  %s" % entry.name
+		name_label.add_theme_font_size_override("font_size", 12)
+		name_label.add_theme_color_override("font_color", entry.color)
+		vbox.add_child(name_label)
+
+		# Population percentage with next-turn loyalty delta
+		var pct_hbox := HBoxContainer.new()
+		pct_hbox.add_theme_constant_override("separation", 0)
+		var pct_label := Label.new()
+		pct_label.text = "    %d%% of Population  " % cls_pct
+		pct_label.add_theme_font_size_override("font_size", 11)
+		pct_label.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
+		pct_hbox.add_child(pct_label)
+		if cls_key != "captives":
+			var next_loyalty := clampi(cls_loyalty + cls_delta, -100, 100)
+			var arrow_label := Label.new()
+			arrow_label.text = "(next turn: %d)" % next_loyalty
+			arrow_label.add_theme_font_size_override("font_size", 11)
+			if cls_delta > 0:
+				arrow_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.45, 0.7))
+			elif cls_delta < 0:
+				arrow_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35, 0.7))
+			else:
+				arrow_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48, 0.7))
+			pct_hbox.add_child(arrow_label)
+		pct_hbox.mouse_filter = Control.MOUSE_FILTER_STOP
+		pct_hbox.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		pct_hbox.mouse_entered.connect(_on_class_hover.bind(city_id, cls_key, "population"))
+		pct_hbox.mouse_exited.connect(_on_class_hover_exit)
+		vbox.add_child(pct_hbox)
+
+		# Class loyalty line: "Class Loyalty:" neutral, numbers colored
+		var loyalty_hbox := HBoxContainer.new()
+		loyalty_hbox.add_theme_constant_override("separation", 0)
+		var loyalty_prefix := Label.new()
+		loyalty_prefix.text = "    Class Loyalty: "
+		loyalty_prefix.add_theme_font_size_override("font_size", 11)
+		loyalty_prefix.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
+		loyalty_hbox.add_child(loyalty_prefix)
+		var loyalty_value := Label.new()
+		if cls_key == "captives":
+			loyalty_value.text = "0"
+			loyalty_value.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
+		else:
+			var delta_sign := "+" if cls_delta >= 0 else ""
+			loyalty_value.text = "%d  %s%d" % [cls_loyalty, delta_sign, cls_delta]
+			if cls_delta > 0:
+				loyalty_value.add_theme_color_override("font_color", Color(0.5, 0.8, 0.45))
+			elif cls_delta < 0:
+				loyalty_value.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+			else:
+				loyalty_value.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
+		loyalty_value.add_theme_font_size_override("font_size", 11)
+		loyalty_hbox.add_child(loyalty_value)
+		loyalty_hbox.mouse_filter = Control.MOUSE_FILTER_STOP
+		loyalty_hbox.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		loyalty_hbox.mouse_entered.connect(_on_class_hover.bind(city_id, cls_key, "loyalty"))
+		loyalty_hbox.mouse_exited.connect(_on_class_hover_exit)
+		vbox.add_child(loyalty_hbox)
+
+	_add_separator(vbox)
+
+	# Province loyalty summary
+	var net_label := Label.new()
+	net_label.text = "  Province Loyalty: %d  (%s)" % [city.loyalty, status_text]
+	net_label.add_theme_font_size_override("font_size", 13)
+	net_label.add_theme_color_override("font_color", loyalty_color)
+	vbox.add_child(net_label)
+
+	if loyalty_mult < 1.0:
+		var malus_label := Label.new()
+		malus_label.text = "  Income malus: %d%%" % int((1.0 - loyalty_mult) * 100)
+		malus_label.add_theme_font_size_override("font_size", 12)
+		malus_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+		vbox.add_child(malus_label)
+
+	_add_separator(vbox)
+
+	# MODIFIERS section (province-level weighted breakdown)
 	var mod_header := Label.new()
 	mod_header.text = "MODIFIERS"
 	mod_header.add_theme_font_size_override("font_size", 13)
@@ -1335,7 +1452,6 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	vbox.add_child(mod_header)
 
 	var breakdown := LoyaltySystem.get_loyalty_breakdown(city, faction_id)
-	var net_delta := 0
 	for entry in breakdown:
 		var sign_char := "+" if entry.value >= 0 else ""
 		var prefix := "  + " if entry.value >= 0 else "  - "
@@ -1347,47 +1463,6 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 		else:
 			entry_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
 		vbox.add_child(entry_label)
-		net_delta += entry.value
-
-	_add_separator(vbox)
-
-	var net_label := Label.new()
-	var net_sign := "+" if net_delta >= 0 else ""
-	net_label.text = "  Net Change:  %s%d" % [net_sign, net_delta]
-	net_label.add_theme_font_size_override("font_size", 13)
-	net_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75))
-	vbox.add_child(net_label)
-
-	_add_separator(vbox)
-
-	# SOCIAL CLASSES section
-	var class_header := Label.new()
-	class_header.text = "SOCIAL CLASSES"
-	class_header.add_theme_font_size_override("font_size", 13)
-	class_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-	vbox.add_child(class_header)
-
-	var classes := LoyaltySystem.calculate_social_classes(city, faction_id)
-	var province_pop := LoyaltySystem.get_province_population(city.region_id, faction_id)
-
-	var class_entries := [
-		{name = "Peasants", count = classes.peasants, effect = "+Food", color = Color(0.5, 0.8, 0.35)},
-		{name = "Artisans", count = classes.artisans, effect = "+Iron/Wood", color = Color(0.6, 0.6, 0.65)},
-		{name = "Scholars", count = classes.scholars, effect = "+Tech", color = Color(0.45, 0.55, 0.65)},
-		{name = "Nobles", count = classes.nobles, effect = "+Gold", color = Color(0.95, 0.85, 0.3)},
-		{name = "Captives", count = classes.captives, effect = "-Loyalty", color = Color(0.65, 0.45, 0.35)},
-	]
-
-	for entry in class_entries:
-		var clabel := Label.new()
-		if province_pop > 0 and entry.name != "Captives":
-			var pct := int(float(entry.count) / float(province_pop) * 100.0)
-			clabel.text = "  %s:  %d (%d%%)  -> %s" % [entry.name, entry.count, pct, entry.effect]
-		else:
-			clabel.text = "  %s:  %d  -> %s" % [entry.name, entry.count, entry.effect]
-		clabel.add_theme_font_size_override("font_size", 12)
-		clabel.add_theme_color_override("font_color", entry.color)
-		vbox.add_child(clabel)
 
 	_add_separator(vbox)
 
@@ -1405,9 +1480,74 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	add_child(_loyalty_panel)
 
 func _on_loyalty_panel_close() -> void:
+	_on_class_hover_exit()
 	if _loyalty_panel:
 		_loyalty_panel.queue_free()
 		_loyalty_panel = null
+
+func _on_class_hover(city_id: StringName, cls_key: String, hover_type: String) -> void:
+	_on_class_hover_exit()
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return
+
+	var lines: Array[String] = []
+	if hover_type == "population":
+		var breakdown := LoyaltySystem.get_class_percentage_breakdown(city, city.faction_id, cls_key)
+		lines.append(cls_key.capitalize() + " - Population %")
+		lines.append("")
+		for entry in breakdown:
+			if entry.value != "":
+				lines.append("  %s: %s" % [entry.label, entry.value])
+			else:
+				lines.append("  %s" % entry.label)
+	elif hover_type == "loyalty":
+		var breakdown := LoyaltySystem.get_class_loyalty_breakdown(city, city.faction_id, cls_key)
+		lines.append(cls_key.capitalize() + " - Loyalty Modifiers")
+		lines.append("")
+		if cls_key == "captives":
+			lines.append("  Captives always have 0 loyalty")
+		else:
+			for entry in breakdown:
+				var sign_str := "+" if entry.value >= 0 else ""
+				lines.append("  %s%d  %s" % [sign_str, entry.value, entry.label])
+
+	if lines.is_empty():
+		return
+
+	_class_hover_tooltip = PanelContainer.new()
+	_class_hover_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_class_hover_tooltip.custom_minimum_size = Vector2(220, 0)
+	var tt_style := StyleBoxFlat.new()
+	tt_style.bg_color = Color(0.06, 0.05, 0.08, 0.95)
+	tt_style.border_width_left = 1
+	tt_style.border_width_top = 1
+	tt_style.border_width_right = 1
+	tt_style.border_width_bottom = 1
+	tt_style.border_color = Color(0.55, 0.42, 0.2, 0.7)
+	tt_style.corner_radius_top_left = 4
+	tt_style.corner_radius_top_right = 4
+	tt_style.corner_radius_bottom_right = 4
+	tt_style.corner_radius_bottom_left = 4
+	tt_style.content_margin_left = 8.0
+	tt_style.content_margin_top = 6.0
+	tt_style.content_margin_right = 8.0
+	tt_style.content_margin_bottom = 6.0
+	_class_hover_tooltip.add_theme_stylebox_override("panel", tt_style)
+	var tt_label := Label.new()
+	tt_label.text = "\n".join(lines)
+	tt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tt_label.custom_minimum_size = Vector2(200, 0)
+	tt_label.add_theme_font_size_override("font_size", 11)
+	tt_label.add_theme_color_override("font_color", Color(0.8, 0.76, 0.68))
+	_class_hover_tooltip.add_child(tt_label)
+	_class_hover_tooltip.position = get_global_mouse_position() + Vector2(12, 12)
+	add_child(_class_hover_tooltip)
+
+func _on_class_hover_exit() -> void:
+	if _class_hover_tooltip:
+		_class_hover_tooltip.queue_free()
+		_class_hover_tooltip = null
 
 func _on_build_pressed(city_id: StringName, building_id: StringName) -> void:
 	if GameManager.city_system.start_building(city_id, building_id):
@@ -1421,6 +1561,11 @@ func _on_building_hover(building_id: StringName) -> void:
 
 	var text := building.display_name + "\n"
 	text += building.description + "\n"
+
+	# Terrain requirement
+	if building.required_terrain >= 0:
+		var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+		text += "Requires adjacent: " + terrain_names[building.required_terrain] + "\n"
 
 	# Income bonuses
 	var has_effects := false

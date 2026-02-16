@@ -17,3 +17,4 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
+required_terrain = 2

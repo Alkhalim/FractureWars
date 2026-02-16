@@ -14,4 +14,5 @@ extends Resource
 @export var recruit_speed_bonus: int = 0 # reduces recruit time
 @export var unlocks_units: Array[StringName] = [] # unit_data_ids this building allows recruiting
 @export var required_capital_level: int = 1
+@export var required_terrain: int = -1 # Enums.TerrainType value, -1 = no terrain requirement
 @export var upgrades_from: StringName = &"" # Building ID this upgrades from (empty = base building)

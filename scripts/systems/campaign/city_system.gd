@@ -34,9 +34,8 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 	var income := calculate_city_income(city)
 
 	# Apply social class bonuses
-	var classes := LoyaltySystem.calculate_social_classes(city, faction_id)
-	var province_pop := LoyaltySystem.get_province_population(city.region_id, faction_id)
-	income = LoyaltySystem.apply_class_bonuses(income, classes, province_pop)
+	var pcts := LoyaltySystem.calculate_class_percentages(city, faction_id)
+	income = LoyaltySystem.apply_class_bonuses(income, pcts)
 
 	# Apply loyalty income multiplier
 	var loyalty_mult := LoyaltySystem.get_loyalty_multiplier(city.loyalty)
@@ -205,6 +204,9 @@ func _capture_city(city: CityState) -> void:
 	city.is_capital = false
 	city.can_found_settlement = false
 	city.loyalty = 0
+	city.class_loyalty = {
+		"peasants": 0, "artisans": 0, "scholars": 0, "nobles": 0, "captives": 0
+	}
 	city.turns_since_capture = 0
 
 	# Add to new owner's city list
@@ -264,10 +266,18 @@ func _update_loyalty(city: CityState, faction_id: StringName) -> void:
 	if not city.is_capital:
 		var capital := _find_province_capital(city.region_id, faction_id)
 		if capital:
+			city.class_loyalty = capital.class_loyalty.duplicate()
 			city.loyalty = capital.loyalty
 		return
-	var delta := LoyaltySystem.calculate_loyalty_delta(city, faction_id)
-	city.loyalty = clampi(city.loyalty + delta, -100, 100)
+	# Update each class's loyalty
+	var deltas := LoyaltySystem.calculate_class_loyalty_deltas(city, faction_id)
+	for cls in city.class_loyalty:
+		if cls == "captives":
+			city.class_loyalty[cls] = 0
+		else:
+			city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + deltas.get(cls, 0), -100, 100)
+	# Compute weighted average as the province loyalty
+	city.loyalty = LoyaltySystem.calculate_province_loyalty(city, faction_id)
 
 func _find_province_capital(region_id: StringName, faction_id: StringName) -> CityState:
 	for city_id in GameManager.state.cities:
@@ -307,6 +317,20 @@ func _trigger_revolt(city: CityState, faction_id: StringName) -> void:
 
 	EventBus.revolt_triggered.emit(city.city_id, faction_id)
 
+# ── Terrain helpers ───────────────────────────────────────────
+
+func _has_adjacent_terrain(city: CityState, terrain: int) -> bool:
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return false
+	for neighbor in HexHelper.get_neighbors(city.hex_pos):
+		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			continue
+		var tile := hex_map.get_tile(neighbor)
+		if tile and tile.terrain == terrain:
+			return true
+	return false
+
 # ── Public API ────────────────────────────────────────────────
 
 func get_available_buildings(city: CityState) -> Array[BuildingData]:
@@ -330,6 +354,10 @@ func get_available_buildings(city: CityState) -> Array[BuildingData]:
 		# Skip if city level too low
 		if city.level < building.required_capital_level:
 			continue
+		# Skip if terrain requirement not met
+		if building.required_terrain >= 0:
+			if not _has_adjacent_terrain(city, building.required_terrain):
+				continue
 		if building.upgrades_from == &"":
 			# Base building: city must not already have it
 			result.append(building)
@@ -360,6 +388,9 @@ func start_building(city_id: StringName, building_id: StringName) -> bool:
 			return false
 	if city.level < building.required_capital_level:
 		return false
+	if building.required_terrain >= 0:
+		if not _has_adjacent_terrain(city, building.required_terrain):
+			return false
 	if city.buildings.has(building_id):
 		return false
 	# Check if already in queue

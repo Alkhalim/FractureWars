@@ -907,6 +907,8 @@ const RANDOM_EVENTS := [
 ]
 
 func _check_random_events(faction_id: StringName) -> void:
+	if GameManager.state.current_turn <= 1:
+		return
 	if randf() > 0.05:
 		return # 5% chance
 	var event: Dictionary = RANDOM_EVENTS[randi() % RANDOM_EVENTS.size()].duplicate()
