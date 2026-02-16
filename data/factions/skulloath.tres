@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"skulloath"
+display_name = "The Skulloath"
+description = "A confederation of exiled peoples and fractured traditions, forged together under pressure, loss, and the dark promise of the Pale Waif."
+color = Color(0.35, 0.10, 0.10, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"altaban_barrens", &"tsagan_badlands"])
+realm_affinity = 1
+shard_preferences = {}
+ai_personality = {}

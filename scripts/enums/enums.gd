@@ -1,0 +1,75 @@
+class_name Enums
+
+enum Realm {
+	DIVINE,
+	VOID,
+	ELEMENTAL,
+	NATURE,
+	MORTAL
+}
+
+enum ResourceType {
+	GOLD,
+	IRON,
+	TECHNOLOGY,
+	FOOD,
+	SHARD_ESSENCE,
+	WOOD
+}
+
+enum TerrainType {
+	PLAINS,
+	FOREST,
+	MOUNTAINS,
+	DESERT,
+	SWAMP,
+	COAST,
+	TUNDRA,
+	SHARD_WASTES,
+	WATER,
+	JUNGLE
+}
+
+enum UnitStance {
+	AGGRESSIVE,
+	DEFENSIVE,
+	FLANKING,
+	SUPPORT
+}
+
+enum TargetPriority {
+	CLOSEST,
+	WEAKEST,
+	STRONGEST,
+	RANGED_FIRST,
+	SUPPORT_FIRST
+}
+
+enum FactionRelation {
+	WAR,
+	HOSTILE,
+	NEUTRAL,
+	FRIENDLY,
+	ALLIED
+}
+
+enum GamePhase {
+	MAIN_MENU,
+	CAMPAIGN,
+	BATTLE_SETUP,
+	BATTLE_SIMULATION,
+	BATTLE_RESULT,
+	EVENT
+}
+
+enum BattleTerrain {
+	OPEN,
+	FOREST,
+	ROCK,
+	WATER,
+	SAND,
+	MUD,
+	ICE,
+	CRYSTAL,
+	BRUSH
+}

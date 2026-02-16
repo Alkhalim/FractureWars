@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:youneedawiki.com)",
+      "WebSearch",
+      "Bash(find:*)",
+      "Bash(/tmp/adjacency_check.gd:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(where:*)",
+      "Bash(powershell -Command \"Get-ChildItem -Path ''D:\\\\'' -Filter ''Godot*'' -Recurse -Depth 4 -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty FullName\")",
+      "Bash(reg query:*)",
+      "Bash(reg query \"HKCU\\\\SOFTWARE\\\\Classes\\\\Godot.ProjectFile\\\\shell\\\\open\\\\command\")"
+    ]
+  }
+}

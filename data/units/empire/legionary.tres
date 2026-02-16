@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"legionary"
+display_name = "Legionary"
+description = "The backbone of the Imperial Legion. Disciplined, well-armored, and reliable in formation."
+faction_id = &"empire"
+max_hp = 120
+attack = 12
+defense = 8
+speed = 4
+attack_range = 1
+squad_size = 10
+hp_per_soldier = 12
+movement_points = 3.5
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 30, 1: 15}
+recruit_time = 1
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])

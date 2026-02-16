@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RegionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dragonspire_mountains"
+display_name = "Dragonspire Mountains"
+terrain = 2
+realm_influence = 2
+realm_influence_strength = 0.7
+base_income = {0: 12, 3: 10, 1: 5}
+has_city_slot = false
+max_armies = 2
+strategic_value = 3

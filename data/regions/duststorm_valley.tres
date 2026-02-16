@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RegionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"duststorm_valley"
+display_name = "Duststorm Valley"
+terrain = 3
+realm_influence = 0
+realm_influence_strength = 0.6
+base_income = {0: 12, 3: 10, 1: 5}
+has_city_slot = false
+max_armies = 2
+strategic_value = 3

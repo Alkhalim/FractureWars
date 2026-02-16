@@ -1,0 +1,330 @@
+class_name MapGenerator
+
+# Generates a hex map (HexMapData) with terrain, regions, and realm influence.
+# Grid: 50 columns x 35 rows of hex tiles.
+# Continental layout based on lore document:
+#   Center: Eternal Plains (Imperial Core)
+#   North: Frozen Lands (Northern Highlands)
+#   South: Southern Reach (Jungle Belt)
+#   West: Torgalun Desert (Divine Plateau)
+#   East: Wasteland (Fracture Zone)
+#   Water borders around the continent edges
+
+# Region seed positions (in hex grid coordinates)
+# Spread more evenly for balanced region sizes
+const REGION_SEEDS := {
+	# Eternal Plains (center) - rows ~10-22, cols ~17-30
+	&"metropoleia":          Vector2i(24, 15),
+	&"sainkhu_groves":       Vector2i(18, 18),
+	&"sunburst_valley":      Vector2i(30, 13),
+	&"verdant_glade":        Vector2i(24, 21),
+
+	# Frozen Lands (north) - rows ~2-10, cols ~18-32
+	&"nightfall_sanctum":    Vector2i(20, 5),
+	&"moonspear_citadel":    Vector2i(30, 6),
+	&"thundercrest_peaks":   Vector2i(25, 3),
+
+	# Southern Reach (south) - rows ~24-32, cols ~16-28
+	&"coatlanli_jungle":     Vector2i(18, 28),
+	&"misthaven_refuge":     Vector2i(27, 30),
+	&"xotchis_sanctuary":    Vector2i(22, 25),
+
+	# Torgalun Desert (west) - rows ~8-26, cols ~4-16
+	&"bataarbad_expanse":    Vector2i(8, 14),
+	&"duststorm_valley":     Vector2i(14, 10),
+	&"great_pyramid":        Vector2i(10, 21),
+	&"whispering_dunes":     Vector2i(5, 20),
+
+	# Wasteland (east) - rows ~8-24, cols ~34-46
+	&"altaban_barrens":      Vector2i(39, 15),
+	&"dragonspire_mountains": Vector2i(36, 8),
+	&"tsagan_badlands":      Vector2i(40, 23),
+}
+
+# Continental zone definitions: which regions belong to each zone
+const ZONE_ETERNAL_PLAINS := [&"metropoleia", &"sainkhu_groves", &"sunburst_valley", &"verdant_glade"]
+const ZONE_FROZEN_LANDS := [&"nightfall_sanctum", &"moonspear_citadel", &"thundercrest_peaks"]
+const ZONE_SOUTHERN_REACH := [&"coatlanli_jungle", &"misthaven_refuge", &"xotchis_sanctuary"]
+const ZONE_TORGALUN_DESERT := [&"bataarbad_expanse", &"duststorm_valley", &"great_pyramid", &"whispering_dunes"]
+const ZONE_WASTELAND := [&"altaban_barrens", &"dragonspire_mountains", &"tsagan_badlands"]
+
+static func generate_hex_map(regions: Dictionary) -> HexMapData:
+	var map := HexMapData.new()
+
+	# 1. Create all tiles - water by default (land is carved out)
+	_init_tiles(map)
+
+	# 2. Carve landmass shape
+	_carve_landmass(map)
+
+	# 3. Assign regions via Voronoi from seeds
+	_assign_regions(map, regions)
+
+	# 4. Assign terrain based on continental zone
+	_assign_terrain(map)
+
+	# 5. Set realm influence from region data
+	_assign_realm_influence(map, regions)
+
+	# 6. Fix terrain pockets - ensure all land tiles are reachable
+	_fix_terrain_pockets(map)
+
+	return map
+
+static func _init_tiles(map: HexMapData) -> void:
+	for col in range(HexMapData.MAP_WIDTH):
+		for row in range(HexMapData.MAP_HEIGHT):
+			var tile := HexMapData.TileState.new()
+			tile.terrain = Enums.TerrainType.WATER
+			map.tiles[Vector2i(col, row)] = tile
+
+static func _carve_landmass(map: HexMapData) -> void:
+	# Create a continent shape: oval-ish landmass with irregular edges
+	# Center of the continent
+	var cx := 24.0
+	var cy := 17.0
+
+	for col in range(HexMapData.MAP_WIDTH):
+		for row in range(HexMapData.MAP_HEIGHT):
+			# Normalized distance from center (elliptical)
+			var dx := (float(col) - cx) / 22.0 # horizontal radius ~22
+			var dy := (float(row) - cy) / 15.0 # vertical radius ~15
+
+			# Base ellipse distance
+			var dist := dx * dx + dy * dy
+
+			# Add noise for irregular coastline
+			var noise_val := _hash_coord(col, row) % 100 / 100.0 * 0.25
+			dist += noise_val
+
+			# Extend the continent in certain directions for the lore layout
+			# West extension for Torgalun Desert
+			if col < 16 and row > 8 and row < 26:
+				dist *= 0.75
+			# East extension for Wasteland
+			if col > 32 and row > 6 and row < 26:
+				dist *= 0.7
+			# South extension for Southern Reach
+			if row > 22 and col > 14 and col < 30:
+				dist *= 0.75
+			# North extension for Frozen Lands
+			if row < 12 and col > 16 and col < 34:
+				dist *= 0.8
+
+			# Land threshold
+			if dist < 1.0:
+				var tile := map.get_tile(Vector2i(col, row))
+				if tile:
+					tile.terrain = Enums.TerrainType.PLAINS # Placeholder, overwritten by zone terrain
+
+			# Coast tiles: just outside the landmass
+			if dist >= 1.0 and dist < 1.15:
+				var tile := map.get_tile(Vector2i(col, row))
+				if tile:
+					tile.terrain = Enums.TerrainType.COAST
+
+static func _assign_regions(map: HexMapData, regions: Dictionary) -> void:
+	# Assign each land tile to nearest region seed (Voronoi)
+	for coord in map.tiles:
+		var tile: HexMapData.TileState = map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.WATER:
+			continue # Water tiles don't belong to regions
+
+		var min_dist := 9999
+		var closest_region: StringName = &""
+
+		for region_id in REGION_SEEDS:
+			if not regions.has(region_id):
+				continue
+			var seed_pos: Vector2i = REGION_SEEDS[region_id]
+			var dist := HexHelper.hex_distance(coord, seed_pos)
+			if dist < min_dist:
+				min_dist = dist
+				closest_region = region_id
+
+		tile.region_id = closest_region
+
+static func _assign_terrain(map: HexMapData) -> void:
+	for coord in map.tiles:
+		var tile: HexMapData.TileState = map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.COAST:
+			continue
+		if tile.region_id == &"":
+			continue
+
+		var hash_val := _hash_coord(coord.x, coord.y)
+		tile.terrain = _terrain_for_region(tile.region_id, hash_val)
+
+static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.TerrainType:
+	# Eternal Plains: mostly plains with some forest
+	if region_id in ZONE_ETERNAL_PLAINS:
+		if region_id == &"sainkhu_groves" or region_id == &"verdant_glade":
+			if hash_val % 3 == 0:
+				return Enums.TerrainType.PLAINS
+			return Enums.TerrainType.FOREST
+		# Metropoleia and Sunburst Valley: plains-dominant
+		if hash_val % 5 == 0:
+			return Enums.TerrainType.FOREST
+		return Enums.TerrainType.PLAINS
+
+	# Frozen Lands: tundra and mountains
+	if region_id in ZONE_FROZEN_LANDS:
+		if region_id == &"thundercrest_peaks":
+			if hash_val % 4 == 0:
+				return Enums.TerrainType.TUNDRA
+			return Enums.TerrainType.MOUNTAINS
+		if region_id == &"moonspear_citadel":
+			if hash_val % 3 == 0:
+				return Enums.TerrainType.MOUNTAINS
+			return Enums.TerrainType.TUNDRA
+		# Nightfall Sanctum
+		if hash_val % 4 == 0:
+			return Enums.TerrainType.MOUNTAINS
+		if hash_val % 3 == 0:
+			return Enums.TerrainType.FOREST
+		return Enums.TerrainType.TUNDRA
+
+	# Southern Reach: jungle and swamp
+	if region_id in ZONE_SOUTHERN_REACH:
+		if region_id == &"misthaven_refuge":
+			if hash_val % 3 == 0:
+				return Enums.TerrainType.JUNGLE
+			return Enums.TerrainType.SWAMP
+		if region_id == &"xotchis_sanctuary":
+			if hash_val % 5 == 0:
+				return Enums.TerrainType.SWAMP
+			return Enums.TerrainType.JUNGLE
+		# Coatlanli Jungle
+		if hash_val % 4 == 0:
+			return Enums.TerrainType.SWAMP
+		return Enums.TerrainType.JUNGLE
+
+	# Torgalun Desert: desert with some mountains
+	if region_id in ZONE_TORGALUN_DESERT:
+		if region_id == &"duststorm_valley":
+			if hash_val % 5 == 0:
+				return Enums.TerrainType.MOUNTAINS
+			return Enums.TerrainType.DESERT
+		if region_id == &"great_pyramid":
+			return Enums.TerrainType.DESERT
+		# Bataarbad and Whispering Dunes
+		if hash_val % 6 == 0:
+			return Enums.TerrainType.PLAINS
+		return Enums.TerrainType.DESERT
+
+	# Wasteland: shard wastes and mountains
+	if region_id in ZONE_WASTELAND:
+		if region_id == &"dragonspire_mountains":
+			if hash_val % 3 == 0:
+				return Enums.TerrainType.SHARD_WASTES
+			return Enums.TerrainType.MOUNTAINS
+		if region_id == &"altaban_barrens":
+			if hash_val % 4 == 0:
+				return Enums.TerrainType.MOUNTAINS
+			if hash_val % 3 == 0:
+				return Enums.TerrainType.DESERT
+			return Enums.TerrainType.SHARD_WASTES
+		# Tsagan Badlands
+		if hash_val % 5 == 0:
+			return Enums.TerrainType.MOUNTAINS
+		return Enums.TerrainType.SHARD_WASTES
+
+	return Enums.TerrainType.PLAINS
+
+static func _assign_realm_influence(map: HexMapData, regions: Dictionary) -> void:
+	for coord in map.tiles:
+		var tile: HexMapData.TileState = map.tiles[coord]
+		var region: RegionData = regions.get(tile.region_id)
+		if region:
+			tile.realm_influence = region.realm_influence
+
+static func _hash_coord(col: int, row: int) -> int:
+	var h := col * 374761393 + row * 668265263
+	h = (h ^ (h >> 13)) * 1274126177
+	h = h ^ (h >> 16)
+	return absi(h)
+
+static func _fix_terrain_pockets(map: HexMapData) -> void:
+	# Find all passable land tiles (cost < INF) and flood-fill from the largest
+	# connected component. Any disconnected tiles get their terrain changed to
+	# something passable (Plains) so armies can't get trapped.
+	var passable: Dictionary = {} # coord -> true
+	for coord in map.tiles:
+		var tile: HexMapData.TileState = map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.WATER:
+			continue
+		# Check if this tile is passable (mountains are passable but expensive)
+		passable[coord] = true
+
+	if passable.is_empty():
+		return
+
+	# BFS from the center of the map to find the main connected component
+	var start := Vector2i(24, 15)
+	if not passable.has(start):
+		# Find any passable tile as start
+		for coord in passable:
+			start = coord
+			break
+
+	var visited: Dictionary = {}
+	var queue: Array[Vector2i] = [start]
+	visited[start] = true
+
+	while queue.size() > 0:
+		var current: Vector2i = queue.pop_front()
+		var neighbors := HexHelper.get_neighbors(current)
+		for n in neighbors:
+			if visited.has(n):
+				continue
+			if not passable.has(n):
+				continue
+			visited[n] = true
+			queue.append(n)
+
+	# Any passable tile NOT in visited is in an isolated pocket
+	# Check if it's surrounded by impassable terrain and fix it
+	for coord in passable:
+		if visited.has(coord):
+			continue
+		# This tile is isolated - check neighbors
+		var neighbors := HexHelper.get_neighbors(coord)
+		for n in neighbors:
+			if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var ntile := map.get_tile(n)
+			if ntile == null:
+				continue
+			# If neighbor is impassable mountain, make it passable
+			if ntile.terrain == Enums.TerrainType.MOUNTAINS:
+				# Convert to a passable terrain matching the region's zone
+				ntile.terrain = Enums.TerrainType.PLAINS
+
+	# Re-run BFS to verify - convert remaining isolated tiles to plains
+	visited.clear()
+	queue = [start]
+	visited[start] = true
+	while queue.size() > 0:
+		var current: Vector2i = queue.pop_front()
+		var neighbors := HexHelper.get_neighbors(current)
+		for n in neighbors:
+			if visited.has(n):
+				continue
+			if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var ntile := map.get_tile(n)
+			if ntile == null or ntile.terrain == Enums.TerrainType.WATER:
+				continue
+			visited[n] = true
+			queue.append(n)
+
+	# Force-connect any still-isolated land tiles
+	for coord in passable:
+		if not visited.has(coord):
+			var tile: HexMapData.TileState = map.tiles[coord]
+			# Convert to water if truly unreachable (small isolated islands)
+			tile.terrain = Enums.TerrainType.WATER
+			tile.region_id = &""
+
+static func get_region_center(region_id: StringName) -> Vector2i:
+	return REGION_SEEDS.get(region_id, Vector2i(24, 15))

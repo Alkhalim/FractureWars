@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"skulloath_raider"
+display_name = "Skulloath Raider"
+description = "Swift mounted warriors who raid across the wasteland. Their speed and ferocity make them deadly scouts and flankers."
+faction_id = &"skulloath"
+max_hp = 85
+attack = 13
+defense = 5
+speed = 9
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+movement_points = 5.5
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 35, 1: 15}
+recruit_time = 2
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
