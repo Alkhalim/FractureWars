@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"elite_legionaries"
+display_name = "Elite Legionaries"
+description = "The finest soldiers the Empire can field. Devastating anti-infantry specialists with unbreakable formation discipline."
+faction_id = &"empire"
+max_hp = 2200
+attack = 20
+defense = 15
+speed = 4
+attack_range = 1
+squad_size = 100
+hp_per_soldier = 22
+movement_points = 3.5
+upkeep_cost = {0: 28, 1: 4, 3: 10, 2: 2}
+recruit_cost = {0: 420, 1: 90, 5: 50, 3: 50, 2: 25}
+recruit_time = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 90
+captive_chance = 0.2

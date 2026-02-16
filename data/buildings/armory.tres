@@ -14,5 +14,5 @@ income_bonus = {}
 population_growth_bonus = 0
 defense_bonus = 0
 recruit_speed_bonus = 1
-unlocks_units = Array[StringName]([&"emberlight_auxilia", &"runebound_wyvern", &"bonecaller", &"thornbow_scout", &"coatl_shaman"])
+unlocks_units = Array[StringName]([&"runebound_wyvern", &"bonecaller", &"thornbow_scout", &"coatl_shaman"])
 required_capital_level = 3

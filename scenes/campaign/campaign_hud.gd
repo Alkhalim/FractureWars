@@ -54,8 +54,12 @@ var _building_tooltip: PanelContainer
 var _level_up_dialog: PanelContainer
 var _item_drop_dialog: PanelContainer
 var _event_dialog: PanelContainer
+var _region_overview_panel: PanelContainer
+var _building_detail_panel: PanelContainer
+var _unit_card_panel: PanelContainer
 var _pending_level_up_commander: CommanderState
 var _pending_event_data: Dictionary
+var _loyalty_panel: PanelContainer
 
 func _ready() -> void:
 	end_turn_button.pressed.connect(_on_end_turn)
@@ -70,6 +74,7 @@ func _ready() -> void:
 	EventBus.commander_level_up.connect(_on_commander_level_up)
 	EventBus.commander_item_full.connect(_on_commander_item_full)
 	EventBus.random_event_triggered.connect(_on_random_event_triggered)
+	EventBus.shard_claimed.connect(_on_shard_claimed)
 
 	_create_resource_bar()
 	_create_shard_display()
@@ -358,13 +363,113 @@ func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void
 # ── Resource display ─────────────────────────────────────────
 
 const RESOURCE_ICONS := {
-	0: "●",  # Gold - yellow circle
-	1: "◆",  # Iron - grey diamond
-	2: "✦",  # Technology - blue-grey star
-	3: "●",  # Food - green circle
-	5: "■",  # Wood - brown square
-	6: "⛓",  # Captives - chain
+	0: "●",  # Gold - coin
+	1: "◆",  # Iron - ingot
+	2: "✦",  # Technology - gear
+	3: "●",  # Food - steak
+	5: "■",  # Wood - logs
+	6: "⛓",  # Captives - people
 }
+
+static func _create_resource_icon(res_type: int, icon_size: float = 16.0) -> SubViewportContainer:
+	var container := SubViewportContainer.new()
+	container.custom_minimum_size = Vector2(icon_size, icon_size)
+	container.stretch = true
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(int(icon_size), int(icon_size))
+	viewport.transparent_bg = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	container.add_child(viewport)
+	var root := Node2D.new()
+	root.position = Vector2(icon_size / 2.0, icon_size / 2.0)
+	viewport.add_child(root)
+	var s := icon_size / 16.0  # scale factor
+	match res_type:
+		0:  # Gold - stacked coins
+			for i in 3:
+				var coin := Polygon2D.new()
+				var pts := PackedVector2Array()
+				for j in 8:
+					var angle := TAU * j / 8.0
+					pts.append(Vector2(cos(angle) * 5.0 * s, sin(angle) * 3.5 * s))
+				coin.polygon = pts
+				coin.position = Vector2(float(i - 1) * 2.0 * s, float(1 - i) * 1.5 * s)
+				coin.color = Color(0.95, 0.85, 0.3).darkened(i * 0.08)
+				root.add_child(coin)
+		1:  # Iron - ingot
+			var ingot := Polygon2D.new()
+			ingot.polygon = PackedVector2Array([
+				Vector2(-6 * s, -2 * s), Vector2(6 * s, -2 * s),
+				Vector2(5 * s, 4 * s), Vector2(-5 * s, 4 * s)
+			])
+			ingot.color = Color(0.55, 0.55, 0.6)
+			root.add_child(ingot)
+			var highlight := Polygon2D.new()
+			highlight.polygon = PackedVector2Array([
+				Vector2(-6 * s, -2 * s), Vector2(6 * s, -2 * s),
+				Vector2(4 * s, 0), Vector2(-4 * s, 0)
+			])
+			highlight.color = Color(0.7, 0.7, 0.75, 0.6)
+			root.add_child(highlight)
+		2:  # Technology - gear
+			var gear := Polygon2D.new()
+			var pts := PackedVector2Array()
+			for j in 12:
+				var angle := TAU * j / 12.0
+				var r := 5.0 * s if j % 2 == 0 else 3.5 * s
+				pts.append(Vector2(cos(angle) * r, sin(angle) * r))
+			gear.polygon = pts
+			gear.color = Color(0.45, 0.55, 0.65)
+			root.add_child(gear)
+		3:  # Food - steak shape
+			var steak := Polygon2D.new()
+			steak.polygon = PackedVector2Array([
+				Vector2(-5 * s, -3 * s), Vector2(-2 * s, -5 * s),
+				Vector2(4 * s, -3 * s), Vector2(6 * s, 1 * s),
+				Vector2(3 * s, 5 * s), Vector2(-3 * s, 4 * s),
+				Vector2(-6 * s, 1 * s)
+			])
+			steak.color = Color(0.6, 0.35, 0.25)
+			root.add_child(steak)
+			# Bone notch
+			var bone := Polygon2D.new()
+			bone.polygon = PackedVector2Array([
+				Vector2(-1 * s, -4 * s), Vector2(1 * s, -4 * s),
+				Vector2(2 * s, -2 * s), Vector2(-1 * s, -2 * s)
+			])
+			bone.color = Color(0.85, 0.82, 0.75)
+			root.add_child(bone)
+		5:  # Wood - crossed logs
+			for angle in [0.4, -0.4]:
+				var log := Polygon2D.new()
+				log.polygon = PackedVector2Array([
+					Vector2(-6 * s, -1.5 * s), Vector2(6 * s, -1.5 * s),
+					Vector2(6 * s, 1.5 * s), Vector2(-6 * s, 1.5 * s)
+				])
+				log.color = Color(0.55, 0.38, 0.22)
+				log.rotation = angle
+				root.add_child(log)
+		6:  # Captives - person outlines
+			for i in 3:
+				var x_off := float(i - 1) * 4.5 * s
+				# Head
+				var head := Polygon2D.new()
+				var pts := PackedVector2Array()
+				for j in 6:
+					var angle := TAU * j / 6.0
+					pts.append(Vector2(cos(angle) * 2.0 * s + x_off, sin(angle) * 2.0 * s - 3.5 * s))
+				head.polygon = pts
+				head.color = Color(0.65, 0.45, 0.35)
+				root.add_child(head)
+				# Shoulders
+				var body := Polygon2D.new()
+				body.polygon = PackedVector2Array([
+					Vector2(x_off - 3 * s, 0), Vector2(x_off + 3 * s, 0),
+					Vector2(x_off + 2 * s, 5 * s), Vector2(x_off - 2 * s, 5 * s)
+				])
+				body.color = Color(0.65, 0.45, 0.35)
+				root.add_child(body)
+	return container
 
 func _create_resource_bar() -> void:
 	resource_bar = HBoxContainer.new()
@@ -411,12 +516,9 @@ func _create_resource_bar() -> void:
 		var top_row := HBoxContainer.new()
 		top_row.add_theme_constant_override("separation", 3)
 
-		# Icon label
-		var icon_label := Label.new()
-		icon_label.text = RESOURCE_ICONS.get(res_type, "?")
-		icon_label.add_theme_font_size_override("font_size", 12)
-		icon_label.add_theme_color_override("font_color", RESOURCE_COLORS.get(res_type, Color.WHITE))
-		top_row.add_child(icon_label)
+		# Polygon icon
+		var icon := _create_resource_icon(res_type, 16.0)
+		top_row.add_child(icon)
 
 		# Amount label
 		var amount_label := Label.new()
@@ -920,18 +1022,41 @@ func _show_city_panel(city_id: StringName) -> void:
 
 	_add_separator(vbox)
 
-	# City info: Level, Population, Growth
-	var info_label := Label.new()
-	info_label.add_theme_font_size_override("font_size", 13)
-	info_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	# City info: Level, Population, Loyalty
+	var province_pop := LoyaltySystem.get_province_population(city.region_id, city.faction_id)
+	var growth_per_turn := GameManager.city_system.calculate_growth(city)
 	var threshold := city.get_growth_threshold()
-	var growth_text := ""
+	var loyalty_delta := LoyaltySystem.calculate_loyalty_delta(city, city.faction_id)
+
+	# Level + Population line
+	var info_hbox := HBoxContainer.new()
+	info_hbox.add_theme_constant_override("separation", 0)
+
+	var pop_text := ""
 	if threshold > 0:
-		growth_text = "Growth: %d / %d" % [city.growth_points, threshold]
+		pop_text = "Level %d  |  Pop: %d/%d +%d" % [city.level, province_pop, threshold, growth_per_turn]
 	else:
-		growth_text = "Growth: MAX"
-	info_label.text = "Level %d  |  Pop: %d  |  %s" % [city.level, city.population, growth_text]
-	vbox.add_child(info_label)
+		pop_text = "Level %d  |  Pop: %d (MAX)" % [city.level, province_pop]
+
+	var pop_label := Label.new()
+	pop_label.text = pop_text + "  |  Loyalty: "
+	pop_label.add_theme_font_size_override("font_size", 13)
+	pop_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	info_hbox.add_child(pop_label)
+
+	# Loyalty value (clickable, color-coded)
+	var loyalty_color := LoyaltySystem.get_loyalty_color(city.loyalty)
+	var delta_sign := "+" if loyalty_delta >= 0 else ""
+	var loyalty_label := Label.new()
+	loyalty_label.text = "%d %s%d" % [city.loyalty, delta_sign, loyalty_delta]
+	loyalty_label.add_theme_font_size_override("font_size", 13)
+	loyalty_label.add_theme_color_override("font_color", loyalty_color)
+	loyalty_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	loyalty_label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	loyalty_label.gui_input.connect(_on_loyalty_clicked.bind(city_id))
+	info_hbox.add_child(loyalty_label)
+
+	vbox.add_child(info_hbox)
 
 	# Income preview (player cities only)
 	if is_player_city:
@@ -976,7 +1101,7 @@ func _show_city_panel(city_id: StringName) -> void:
 	buildings_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 	vbox.add_child(buildings_header)
 
-	# Existing buildings
+	# Existing buildings (click to open detail)
 	for building_id in city.buildings:
 		var building: BuildingData = DataManager.get_building(building_id)
 		if building:
@@ -987,6 +1112,7 @@ func _show_city_panel(city_id: StringName) -> void:
 			blabel.mouse_filter = Control.MOUSE_FILTER_STOP
 			blabel.mouse_entered.connect(_on_building_hover.bind(building_id))
 			blabel.mouse_exited.connect(_on_building_hover_exit)
+			blabel.gui_input.connect(_on_building_label_clicked.bind(building_id, city_id))
 			vbox.add_child(blabel)
 
 	# Build queue
@@ -1051,17 +1177,7 @@ func _show_city_panel(city_id: StringName) -> void:
 		recruit_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 		vbox.add_child(recruit_header)
 
-		# Recruit queue
-		for item in city.recruit_queue:
-			var unit_data := DataManager.get_unit(item.unit_data_id)
-			var uname := unit_data.display_name if unit_data else str(item.unit_data_id)
-			var qlabel := Label.new()
-			qlabel.text = "  [Training] " + uname + " (%d turns)" % item.turns_remaining
-			qlabel.add_theme_font_size_override("font_size", 12)
-			qlabel.add_theme_color_override("font_color", Color(0.85, 0.75, 0.4))
-			vbox.add_child(qlabel)
-
-		# Available units to recruit
+		# Available units to recruit (shown first, always in same position)
 		var recruitable := _get_recruitable_units(city)
 		if recruitable.size() > 0:
 			for unit_data_id in recruitable:
@@ -1076,6 +1192,8 @@ func _show_city_panel(city_id: StringName) -> void:
 				recruit_btn.text = unit_data.display_name
 				recruit_btn.custom_minimum_size = Vector2(140, 28)
 				recruit_btn.pressed.connect(_on_recruit_pressed.bind(city_id, unit_data_id))
+				recruit_btn.mouse_entered.connect(_show_unit_card.bind(unit_data_id))
+				recruit_btn.mouse_exited.connect(_hide_unit_card)
 
 				var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 				var can_afford := fs != null and _can_afford_display(fs, unit_data.recruit_cost)
@@ -1103,16 +1221,193 @@ func _show_city_panel(city_id: StringName) -> void:
 			no_units.add_theme_color_override("font_color", Color(0.55, 0.5, 0.45))
 			vbox.add_child(no_units)
 
+		# Training queue (shown below recruit buttons)
+		if city.recruit_queue.size() > 0:
+			_add_separator(vbox)
+			var queue_header := Label.new()
+			queue_header.text = "Training Queue"
+			queue_header.add_theme_font_size_override("font_size", 13)
+			queue_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+			vbox.add_child(queue_header)
+			for item in city.recruit_queue:
+				var unit_data := DataManager.get_unit(item.unit_data_id)
+				var uname := unit_data.display_name if unit_data else str(item.unit_data_id)
+				var qlabel := Label.new()
+				qlabel.text = "  [Training] " + uname + " (%d turns)" % item.turns_remaining
+				qlabel.add_theme_font_size_override("font_size", 12)
+				qlabel.add_theme_color_override("font_color", Color(0.85, 0.75, 0.4))
+				vbox.add_child(qlabel)
+
 func _hide_city_panel() -> void:
 	if city_panel:
 		city_panel.visible = false
+	_on_loyalty_panel_close()
 
 func _on_city_panel_close() -> void:
 	if _building_tooltip:
 		_building_tooltip.visible = false
+	_on_loyalty_panel_close()
 	var campaign: Node2D = get_parent().get_parent()
 	if campaign and campaign.has_method("_close_city_panel"):
 		campaign._close_city_panel()
+
+func _on_loyalty_clicked(event: InputEvent, city_id: StringName) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_show_loyalty_panel(city_id)
+
+func _show_loyalty_panel(city_id: StringName) -> void:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return
+
+	# Remove old panel if exists
+	if _loyalty_panel:
+		_loyalty_panel.queue_free()
+		_loyalty_panel = null
+
+	_loyalty_panel = PanelContainer.new()
+	_loyalty_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_loyalty_panel.custom_minimum_size = Vector2(340, 0)
+	_loyalty_panel.offset_left = -170.0
+	_loyalty_panel.offset_right = 170.0
+	_loyalty_panel.offset_top = -200.0
+	_loyalty_panel.offset_bottom = 200.0
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.05, 0.08, 0.97)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.55, 0.42, 0.2, 0.9)
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_right = 6
+	style.corner_radius_bottom_left = 6
+	style.content_margin_left = 14.0
+	style.content_margin_top = 10.0
+	style.content_margin_right = 14.0
+	style.content_margin_bottom = 10.0
+	_loyalty_panel.add_theme_stylebox_override("panel", style)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(320, 0)
+	_loyalty_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 4)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	var faction_id := city.faction_id
+	var loyalty_mult := LoyaltySystem.get_loyalty_multiplier(city.loyalty)
+	var status_text := LoyaltySystem.get_loyalty_status(city.loyalty)
+	var loyalty_color := LoyaltySystem.get_loyalty_color(city.loyalty)
+
+	# Header row with close button
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	var malus_text := ""
+	if loyalty_mult < 1.0:
+		malus_text = ", %d%% income malus" % int((1.0 - loyalty_mult) * 100)
+	title.text = "Province Loyalty: %d  (%s%s)" % [city.loyalty, status_text, malus_text]
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", loyalty_color)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(28, 28)
+	close_btn.pressed.connect(_on_loyalty_panel_close)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+
+	_add_separator(vbox)
+
+	# MODIFIERS section
+	var mod_header := Label.new()
+	mod_header.text = "MODIFIERS"
+	mod_header.add_theme_font_size_override("font_size", 13)
+	mod_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(mod_header)
+
+	var breakdown := LoyaltySystem.get_loyalty_breakdown(city, faction_id)
+	var net_delta := 0
+	for entry in breakdown:
+		var sign_char := "+" if entry.value >= 0 else ""
+		var prefix := "  + " if entry.value >= 0 else "  - "
+		var entry_label := Label.new()
+		entry_label.text = "%s%-26s %s%d" % [prefix, entry.label, sign_char, entry.value]
+		entry_label.add_theme_font_size_override("font_size", 12)
+		if entry.value >= 0:
+			entry_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.45))
+		else:
+			entry_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+		vbox.add_child(entry_label)
+		net_delta += entry.value
+
+	_add_separator(vbox)
+
+	var net_label := Label.new()
+	var net_sign := "+" if net_delta >= 0 else ""
+	net_label.text = "  Net Change:  %s%d" % [net_sign, net_delta]
+	net_label.add_theme_font_size_override("font_size", 13)
+	net_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.75))
+	vbox.add_child(net_label)
+
+	_add_separator(vbox)
+
+	# SOCIAL CLASSES section
+	var class_header := Label.new()
+	class_header.text = "SOCIAL CLASSES"
+	class_header.add_theme_font_size_override("font_size", 13)
+	class_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(class_header)
+
+	var classes := LoyaltySystem.calculate_social_classes(city, faction_id)
+	var province_pop := LoyaltySystem.get_province_population(city.region_id, faction_id)
+
+	var class_entries := [
+		{name = "Peasants", count = classes.peasants, effect = "+Food", color = Color(0.5, 0.8, 0.35)},
+		{name = "Artisans", count = classes.artisans, effect = "+Iron/Wood", color = Color(0.6, 0.6, 0.65)},
+		{name = "Scholars", count = classes.scholars, effect = "+Tech", color = Color(0.45, 0.55, 0.65)},
+		{name = "Nobles", count = classes.nobles, effect = "+Gold", color = Color(0.95, 0.85, 0.3)},
+		{name = "Captives", count = classes.captives, effect = "-Loyalty", color = Color(0.65, 0.45, 0.35)},
+	]
+
+	for entry in class_entries:
+		var clabel := Label.new()
+		if province_pop > 0 and entry.name != "Captives":
+			var pct := int(float(entry.count) / float(province_pop) * 100.0)
+			clabel.text = "  %s:  %d (%d%%)  -> %s" % [entry.name, entry.count, pct, entry.effect]
+		else:
+			clabel.text = "  %s:  %d  -> %s" % [entry.name, entry.count, entry.effect]
+		clabel.add_theme_font_size_override("font_size", 12)
+		clabel.add_theme_color_override("font_color", entry.color)
+		vbox.add_child(clabel)
+
+	_add_separator(vbox)
+
+	# REVOLT RISK
+	var revolt_chance := LoyaltySystem.get_revolt_chance(city.loyalty)
+	var revolt_label := Label.new()
+	revolt_label.text = "REVOLT RISK: %d%%" % int(revolt_chance * 100.0)
+	revolt_label.add_theme_font_size_override("font_size", 13)
+	if revolt_chance > 0:
+		revolt_label.add_theme_color_override("font_color", Color(0.9, 0.3, 0.2))
+	else:
+		revolt_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.45))
+	vbox.add_child(revolt_label)
+
+	add_child(_loyalty_panel)
+
+func _on_loyalty_panel_close() -> void:
+	if _loyalty_panel:
+		_loyalty_panel.queue_free()
+		_loyalty_panel = null
 
 func _on_build_pressed(city_id: StringName, building_id: StringName) -> void:
 	if GameManager.city_system.start_building(city_id, building_id):
@@ -1170,6 +1465,231 @@ func _find_upgrade_for(building_id: StringName) -> BuildingData:
 		if b.upgrades_from == building_id:
 			return b
 	return null
+
+func _on_building_label_clicked(event: InputEvent, building_id: StringName, city_id: StringName) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_show_building_detail(building_id, city_id)
+
+func _show_building_detail(building_id: StringName, city_id: StringName) -> void:
+	if _building_detail_panel:
+		_building_detail_panel.queue_free()
+
+	var building: BuildingData = DataManager.get_building(building_id)
+	if building == null:
+		return
+
+	_building_detail_panel = _create_centered_dialog(340, 300)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_building_detail_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	# Header with close
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	title.text = building.display_name
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func():
+		if _building_detail_panel:
+			_building_detail_panel.queue_free()
+			_building_detail_panel = null
+	)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+
+	# Description
+	var desc := Label.new()
+	desc.text = building.description
+	desc.add_theme_font_size_override("font_size", 12)
+	desc.add_theme_color_override("font_color", Color(0.8, 0.76, 0.68))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc)
+
+	_add_separator(vbox)
+
+	# Current effects
+	var effects_header := Label.new()
+	effects_header.text = "Effects"
+	effects_header.add_theme_font_size_override("font_size", 13)
+	effects_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(effects_header)
+
+	for res_type in building.income_bonus:
+		if building.income_bonus[res_type] != 0:
+			var eff := Label.new()
+			eff.text = "  +%d %s/turn" % [building.income_bonus[res_type], RESOURCE_NAMES[res_type]]
+			eff.add_theme_font_size_override("font_size", 12)
+			eff.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+			vbox.add_child(eff)
+	if building.population_growth_bonus > 0:
+		var eff := Label.new()
+		eff.text = "  +%d Growth" % building.population_growth_bonus
+		eff.add_theme_font_size_override("font_size", 12)
+		eff.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+		vbox.add_child(eff)
+	if building.defense_bonus > 0:
+		var eff := Label.new()
+		eff.text = "  +%d Defense" % building.defense_bonus
+		eff.add_theme_font_size_override("font_size", 12)
+		eff.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+		vbox.add_child(eff)
+	if building.unlocks_units.size() > 0:
+		var unit_names: Array[String] = []
+		for uid in building.unlocks_units:
+			var ud := DataManager.get_unit(uid)
+			unit_names.append(ud.display_name if ud else str(uid))
+		var eff := Label.new()
+		eff.text = "  Unlocks: " + ", ".join(unit_names)
+		eff.add_theme_font_size_override("font_size", 12)
+		eff.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+		vbox.add_child(eff)
+
+	_add_separator(vbox)
+
+	# Building chain: predecessor -> current -> upgrades
+	var chain_header := Label.new()
+	chain_header.text = "Building Chain"
+	chain_header.add_theme_font_size_override("font_size", 13)
+	chain_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(chain_header)
+
+	var chain_text := ""
+	if building.upgrades_from != &"":
+		var from_b := DataManager.get_building(building.upgrades_from)
+		chain_text += (from_b.display_name if from_b else str(building.upgrades_from)) + " -> "
+	chain_text += "[" + building.display_name + "]"
+	var next := _find_upgrade_for(building_id)
+	if next:
+		chain_text += " -> " + next.display_name
+
+	var chain_label := Label.new()
+	chain_label.text = "  " + chain_text
+	chain_label.add_theme_font_size_override("font_size", 12)
+	chain_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	vbox.add_child(chain_label)
+
+	# Upgrade button if available
+	if next:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city and city.faction_id == GameManager.state.player_faction_id and city.build_queue.is_empty():
+			var available := GameManager.city_system.get_available_buildings(city)
+			for avail_b in available:
+				if avail_b.id == next.id:
+					_add_separator(vbox)
+					var upgrade_btn := Button.new()
+					upgrade_btn.text = "Upgrade to " + next.display_name
+					upgrade_btn.custom_minimum_size = Vector2(240, 32)
+					upgrade_btn.pressed.connect(func():
+						if GameManager.city_system.start_building(city_id, next.id):
+							if _building_detail_panel:
+								_building_detail_panel.queue_free()
+								_building_detail_panel = null
+							_show_city_panel(city_id)
+							_update_resource_display()
+					)
+					var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+					if fs and not _can_afford_display(fs, next.build_cost):
+						upgrade_btn.disabled = true
+					vbox.add_child(upgrade_btn)
+					var cost_label := Label.new()
+					cost_label.text = _format_cost(next.build_cost) + " | " + str(next.build_time) + " turn(s)"
+					cost_label.add_theme_font_size_override("font_size", 11)
+					cost_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
+					vbox.add_child(cost_label)
+					break
+
+	add_child(_building_detail_panel)
+
+func _show_unit_card(unit_data_id: StringName) -> void:
+	_hide_unit_card()
+	var unit_data := DataManager.get_unit(unit_data_id)
+	if unit_data == null:
+		return
+
+	_unit_card_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.05, 0.08, 0.95)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.55, 0.42, 0.2, 0.7)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 8.0
+	style.content_margin_top = 6.0
+	style.content_margin_right = 8.0
+	style.content_margin_bottom = 6.0
+	_unit_card_panel.add_theme_stylebox_override("panel", style)
+	_unit_card_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 3)
+
+	var name_label := Label.new()
+	name_label.text = unit_data.display_name
+	name_label.add_theme_font_size_override("font_size", 14)
+	name_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	vbox.add_child(name_label)
+
+	if unit_data.tags.size() > 0:
+		var tags_label := Label.new()
+		var tag_strs: Array[String] = []
+		for t in unit_data.tags:
+			tag_strs.append(t.capitalize())
+		tags_label.text = ", ".join(tag_strs)
+		tags_label.add_theme_font_size_override("font_size", 10)
+		tags_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
+		vbox.add_child(tags_label)
+
+	var stats := Label.new()
+	stats.text = "HP: %d  ATK: %d  DEF: %d  SPD: %d" % [unit_data.max_hp, unit_data.attack, unit_data.defense, unit_data.speed]
+	stats.add_theme_font_size_override("font_size", 11)
+	stats.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	vbox.add_child(stats)
+
+	if unit_data.attack_range > 1:
+		var range_label := Label.new()
+		range_label.text = "Range: %d" % unit_data.attack_range
+		range_label.add_theme_font_size_override("font_size", 11)
+		range_label.add_theme_color_override("font_color", Color(0.8, 0.7, 0.4))
+		vbox.add_child(range_label)
+
+	var squad_label := Label.new()
+	squad_label.text = "Squad: %d  |  MP: %.1f" % [unit_data.squad_size, unit_data.movement_points]
+	squad_label.add_theme_font_size_override("font_size", 11)
+	squad_label.add_theme_color_override("font_color", Color(0.55, 0.72, 0.55))
+	vbox.add_child(squad_label)
+
+	if unit_data.upkeep_cost.size() > 0:
+		var upkeep_label := Label.new()
+		upkeep_label.text = "Upkeep: " + _format_cost(unit_data.upkeep_cost)
+		upkeep_label.add_theme_font_size_override("font_size", 10)
+		upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
+		vbox.add_child(upkeep_label)
+
+	_unit_card_panel.add_child(vbox)
+	_unit_card_panel.position = get_global_mouse_position() + Vector2(-260, 12)
+	add_child(_unit_card_panel)
+
+func _hide_unit_card() -> void:
+	if _unit_card_panel:
+		_unit_card_panel.queue_free()
+		_unit_card_panel = null
 
 func _on_recruit_pressed(city_id: StringName, unit_data_id: StringName) -> void:
 	if GameManager.city_system.start_recruitment(city_id, unit_data_id):
@@ -1241,10 +1761,7 @@ func _create_shard_display() -> void:
 	style.content_margin_right = 8.0
 	style.content_margin_bottom = 6.0
 	shard_tooltip.add_theme_stylebox_override("panel", style)
-	shard_tooltip.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	shard_tooltip.offset_left = -200.0
-	shard_tooltip.offset_top = 50.0
-	shard_tooltip.offset_right = -10.0
+	shard_tooltip.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	var tooltip_label := Label.new()
 	tooltip_label.name = "TooltipText"
 	tooltip_label.add_theme_font_size_override("font_size", 12)
@@ -1283,11 +1800,18 @@ func _on_shard_label_mouse_entered() -> void:
 
 	var tooltip_label: Label = shard_tooltip.get_node("TooltipText")
 	tooltip_label.text = text
+	# Position tooltip directly below the shard label
+	var label_rect := shard_label.get_global_rect()
+	shard_tooltip.global_position = Vector2(label_rect.position.x, label_rect.end.y + 4)
 	shard_tooltip.visible = true
 
 func _on_shard_label_mouse_exited() -> void:
 	if shard_tooltip:
 		shard_tooltip.visible = false
+
+func _on_shard_claimed(_shard_id: StringName, _faction_id: StringName) -> void:
+	_update_shard_display()
+	_update_resource_display()
 
 # ── Commander Panel ───────────────────────────────────────────
 
@@ -1939,6 +2463,155 @@ func _on_event_choice(choice: String) -> void:
 		var campaign: Node2D = get_parent().get_parent()
 		if campaign and campaign.has_method("_show_notification"):
 			campaign._show_notification(result)
+
+# ── Region Overview Panel ────────────────────────────────────
+
+func _show_region_overview(region_id: StringName) -> void:
+	if _region_overview_panel:
+		_region_overview_panel.queue_free()
+
+	var region: RegionData = DataManager.get_region(region_id)
+	if region == null:
+		return
+
+	_region_overview_panel = _create_centered_dialog(380, 350)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_region_overview_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	# Header with close button
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	title.text = region.display_name
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func():
+		if _region_overview_panel:
+			_region_overview_panel.queue_free()
+			_region_overview_panel = null
+	)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+	_add_separator(vbox)
+
+	# Owner faction
+	var hex_map := GameManager.state.hex_map
+	var owner_faction_id: StringName = &""
+	if hex_map:
+		for coord in hex_map.tiles:
+			var tile: HexMapData.TileState = hex_map.tiles[coord]
+			if tile.region_id == region_id and tile.owner_faction != &"":
+				owner_faction_id = tile.owner_faction
+				break
+	var owner_label := Label.new()
+	if owner_faction_id != &"":
+		var faction := DataManager.get_faction(owner_faction_id)
+		owner_label.text = "Owner: " + (faction.display_name if faction else str(owner_faction_id))
+		owner_label.add_theme_color_override("font_color", faction.color.lightened(0.3) if faction else Color(0.78, 0.75, 0.68))
+	else:
+		owner_label.text = "Owner: Neutral"
+		owner_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+	owner_label.add_theme_font_size_override("font_size", 13)
+	vbox.add_child(owner_label)
+
+	_add_separator(vbox)
+
+	# Cities/settlements in this region
+	var cities_header := Label.new()
+	cities_header.text = "Cities & Settlements"
+	cities_header.add_theme_font_size_override("font_size", 14)
+	cities_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(cities_header)
+
+	var region_cities_found := false
+	var total_income: Dictionary = {}
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.region_id != region_id:
+			continue
+		region_cities_found = true
+		var city_label := Label.new()
+		var suffix := " (Capital)" if city.is_capital else ""
+		city_label.text = "  %s%s - Level %d, Pop: %d" % [city.get_display_name(), suffix, city.level, city.population]
+		city_label.add_theme_font_size_override("font_size", 12)
+		city_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		vbox.add_child(city_label)
+		# Sum income
+		var city_income := GameManager.city_system.calculate_city_income(city)
+		for res in city_income:
+			total_income[res] = total_income.get(res, 0) + city_income[res]
+
+	if not region_cities_found:
+		var no_cities := Label.new()
+		no_cities.text = "  (no cities)"
+		no_cities.add_theme_font_size_override("font_size", 12)
+		no_cities.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+		vbox.add_child(no_cities)
+
+	_add_separator(vbox)
+
+	# Units stationed in region
+	var units_header := Label.new()
+	units_header.text = "Armies in Region"
+	units_header.add_theme_font_size_override("font_size", 14)
+	units_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(units_header)
+
+	var army_found := false
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if not hex_map:
+			continue
+		var tile := hex_map.get_tile(army.hex_pos)
+		if tile == null or tile.region_id != region_id:
+			continue
+		army_found = true
+		var faction := DataManager.get_faction(army.faction_id)
+		var fname := faction.display_name if faction else str(army.faction_id)
+		var army_label := Label.new()
+		army_label.text = "  %s - %d units" % [fname, army.units.size()]
+		army_label.add_theme_font_size_override("font_size", 12)
+		army_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		vbox.add_child(army_label)
+
+	if not army_found:
+		var no_armies := Label.new()
+		no_armies.text = "  (none)"
+		no_armies.add_theme_font_size_override("font_size", 12)
+		no_armies.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+		vbox.add_child(no_armies)
+
+	_add_separator(vbox)
+
+	# Income breakdown
+	if total_income.size() > 0:
+		var income_header := Label.new()
+		income_header.text = "Total Region Income"
+		income_header.add_theme_font_size_override("font_size", 14)
+		income_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(income_header)
+		for res_type in total_income:
+			if total_income[res_type] > 0:
+				var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+				var res_label := Label.new()
+				res_label.text = "  +%d %s" % [total_income[res_type], rname]
+				res_label.add_theme_font_size_override("font_size", 12)
+				res_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+				vbox.add_child(res_label)
+
+	add_child(_region_overview_panel)
 
 # ── Dialog Helper ────────────────────────────────────────────
 

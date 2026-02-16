@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"marching_bastion"
+display_name = "Marching Bastion"
+description = "The pinnacle of Imperial ferromantic engineering. A colossal mobile fortress that projects a powerful defensive aura to nearby allies."
+faction_id = &"empire"
+max_hp = 600
+attack = 30
+defense = 28
+speed = 1
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 600
+tiles_per_entity = 16
+movement_points = 1.5
+upkeep_cost = {0: 50, 1: 15, 2: 10}
+recruit_cost = {0: 900, 1: 300, 5: 150, 2: 100}
+recruit_time = 5
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee"])
+base_morale = 120
+morale_aura = 10
+fear_radius = 5
+captive_chance = 0.0

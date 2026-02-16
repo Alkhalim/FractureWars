@@ -434,8 +434,15 @@ func _create_region_labels() -> void:
 		label.add_theme_constant_override("shadow_offset_y", 1)
 		panel.add_child(label)
 
-		panel.position = pixel_pos - Vector2(50, 12)
+		panel.position = pixel_pos + Vector2(-50, 14)
+		panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		panel.gui_input.connect(_on_region_label_clicked.bind(region_id))
 		region_labels_node.add_child(panel)
+
+func _on_region_label_clicked(event: InputEvent, region_id: StringName) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var hud: Control = $UILayer/HUD
+		hud._show_region_overview(region_id)
 
 func _update_political_overlay() -> void:
 	var hex_map := GameManager.state.hex_map
@@ -610,6 +617,17 @@ func _create_city_marker(city: CityState) -> void:
 	if city.is_under_siege:
 		_animate_siege_ring(siege_ring)
 
+	# Dark outline around castle shape
+	var outline := Line2D.new()
+	outline.width = 1.5
+	outline.default_color = Color(0.0, 0.0, 0.0, 0.8)
+	outline.points = PackedVector2Array([
+		Vector2(-12, -18), Vector2(12, -18), Vector2(12, 8),
+		Vector2(-12, 8), Vector2(-12, -18)
+	])
+	outline.z_index = 1
+	marker.add_child(outline)
+
 	city_markers_node.add_child(marker)
 	_city_markers[city.city_id] = marker
 
@@ -706,6 +724,58 @@ func _animate_siege_ring(ring: Polygon2D) -> void:
 
 func _refresh_city_markers() -> void:
 	_create_city_markers()
+	_update_city_glow_states()
+
+func _update_city_glow_states() -> void:
+	for city_id in _city_markers:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null or city.faction_id != GameManager.state.player_faction_id:
+			continue
+		var marker: Node2D = _city_markers[city_id]
+		var build_glow = marker.get_node_or_null("BuildGlow")
+		var settle_glow = marker.get_node_or_null("SettleGlow")
+		var has_building_action := _city_has_available_action(city)
+		var has_settle_action := city.is_capital and city.can_found_settlement
+
+		# Building/upgrade available glow (green)
+		if has_building_action and build_glow == null:
+			_add_build_glow(marker)
+		elif not has_building_action and build_glow:
+			build_glow.queue_free()
+
+		# Settlement founding glow (gold)
+		if has_settle_action and settle_glow == null:
+			_add_settle_glow(marker)
+		elif not has_settle_action and settle_glow:
+			settle_glow.queue_free()
+
+func _city_has_available_action(city: CityState) -> bool:
+	if not city.build_queue.is_empty():
+		return false
+	var available := GameManager.city_system.get_available_buildings(city)
+	return available.size() > 0
+
+func _add_build_glow(marker: Node2D) -> void:
+	var glow := Polygon2D.new()
+	glow.name = "BuildGlow"
+	glow.polygon = _make_circle(20.0, 12)
+	glow.color = Color(0.2, 0.8, 0.3, 0.25)
+	glow.z_index = -1
+	marker.add_child(glow)
+	var tween := create_tween().set_loops()
+	tween.tween_property(glow, "modulate:a", 0.4, 1.0)
+	tween.tween_property(glow, "modulate:a", 1.0, 1.0)
+
+func _add_settle_glow(marker: Node2D) -> void:
+	var glow := Polygon2D.new()
+	glow.name = "SettleGlow"
+	glow.polygon = _make_circle(22.0, 12)
+	glow.color = Color(0.95, 0.85, 0.2, 0.3)
+	glow.z_index = -1
+	marker.add_child(glow)
+	var tween := create_tween().set_loops()
+	tween.tween_property(glow, "modulate:a", 0.3, 1.5)
+	tween.tween_property(glow, "modulate:a", 1.0, 1.5)
 
 # ── City management panel ────────────────────────────────────
 
@@ -821,6 +891,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	# RIGHT CLICK — move command (on release, only if not consumed by camera drag)
 	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		if camera._did_pan:
+			return  # Camera drag consumed this right-click
 		if selected_army_id != &"":
 			var world_pos := get_global_mouse_position()
 			var hex_coord := _pixel_to_hex(world_pos)
@@ -1592,6 +1664,7 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 	_create_army_markers()
 	_create_elderbeast_markers()
 	_update_fog_of_war()
+	_update_city_glow_states()
 	if selected_army_id != &"":
 		var army: ArmyState = GameManager.state.armies.get(selected_army_id)
 		if army:
@@ -1623,24 +1696,51 @@ func _on_shard_claimed(shard_id: StringName, faction_id: StringName) -> void:
 func _create_shard_marker(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm) -> void:
 	var marker := Node2D.new()
 	marker.position = _hex_to_pixel(hex_pos) + Vector2(0, -12)
+	var base_color := ShardfallSystem.get_realm_color(realm)
 
-	var diamond := ColorRect.new()
-	diamond.size = Vector2(12, 12)
-	diamond.position = Vector2(-6, -6)
-	diamond.color = ShardfallSystem.get_realm_color(realm)
-	diamond.rotation = PI / 4
-
-	var glow := ColorRect.new()
-	glow.size = Vector2(16, 16)
-	glow.position = Vector2(-8, -8)
-	var glow_color := ShardfallSystem.get_realm_color(realm)
-	glow_color.a = 0.3
-	glow.color = glow_color
-	glow.rotation = PI / 4
-
+	# Glow underneath
+	var glow := Polygon2D.new()
+	glow.polygon = _make_circle(10.0, 8)
+	glow.color = Color(base_color.r, base_color.g, base_color.b, 0.25)
 	marker.add_child(glow)
-	marker.add_child(diamond)
 
+	# Main crystal body (hexagonal prism cross-section)
+	var crystal_main := Polygon2D.new()
+	crystal_main.polygon = PackedVector2Array([
+		Vector2(0, -10), Vector2(5, -6), Vector2(5, 2),
+		Vector2(0, 6), Vector2(-5, 2), Vector2(-5, -6)
+	])
+	crystal_main.color = base_color
+	marker.add_child(crystal_main)
+
+	# Left facet (darker)
+	var facet_l := Polygon2D.new()
+	facet_l.polygon = PackedVector2Array([
+		Vector2(0, -10), Vector2(-5, -6), Vector2(-5, 2), Vector2(0, 6)
+	])
+	facet_l.color = base_color.darkened(0.25)
+	marker.add_child(facet_l)
+
+	# Right highlight (lighter)
+	var facet_r := Polygon2D.new()
+	facet_r.polygon = PackedVector2Array([
+		Vector2(0, -10), Vector2(5, -6), Vector2(3, -2), Vector2(0, -4)
+	])
+	facet_r.color = base_color.lightened(0.3)
+	facet_r.color.a = 0.6
+	marker.add_child(facet_r)
+
+	# Small secondary crystal shard (offset)
+	var shard_small := Polygon2D.new()
+	shard_small.polygon = PackedVector2Array([
+		Vector2(0, -6), Vector2(3, -3), Vector2(3, 1), Vector2(0, 3), Vector2(-1, 0), Vector2(-1, -4)
+	])
+	shard_small.color = base_color.lightened(0.1)
+	shard_small.position = Vector2(5, 2)
+	shard_small.scale = Vector2(0.6, 0.6)
+	marker.add_child(shard_small)
+
+	# Pulsing glow animation
 	var tween := create_tween().set_loops()
 	tween.tween_property(glow, "modulate:a", 0.3, 0.8)
 	tween.tween_property(glow, "modulate:a", 1.0, 0.8)
@@ -1683,6 +1783,7 @@ func _on_building_completed(city_id: StringName, building_id: StringName) -> voi
 		var building := DataManager.get_building(building_id)
 		var bname := building.display_name if building else str(building_id)
 		_show_notification(bname + " completed in " + city.get_display_name())
+	_update_city_glow_states()
 
 func _on_unit_recruited(city_id: StringName, unit_data_id: StringName, _army_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
@@ -1887,6 +1988,14 @@ func _is_tile_visible(coord: Vector2i) -> bool:
 		if relation == Enums.FactionRelation.FRIENDLY or relation == Enums.FactionRelation.ALLIED:
 			return true
 
+	# Visible if within scouting radius of any player city/settlement
+	const SETTLEMENT_LOS_BONUS := 2
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id == player_id:
+			if HexHelper.hex_distance(coord, city.hex_pos) <= SETTLEMENT_LOS_BONUS:
+				return true
+
 	# Visible if within scouting radius of any player army (+ commander bonus)
 	for army_id in GameManager.state.armies:
 		var army: ArmyState = GameManager.state.armies[army_id]
@@ -1954,13 +2063,31 @@ func _on_settlement_placement_requested(city_id: StringName) -> void:
 	_settlement_valid_tiles = GameManager.city_system.get_valid_settlement_tiles(
 		city.faction_id, city.region_id)
 
-	# Show overlay on valid tiles
+	# Pre-calculate resource values for color gradient
+	var resource_values: Dictionary = {}
+	var min_val := 999
+	var max_val := 0
+	for coord in _settlement_valid_tiles:
+		var income := GameManager.city_system.calculate_settlement_income_preview(coord)
+		var total := 0
+		for res in income:
+			total += income[res]
+		resource_values[coord] = total
+		min_val = mini(min_val, total)
+		max_val = maxi(max_val, total)
+
+	# Show overlay on valid tiles with resource-based gradient
 	for coord in _settlement_valid_tiles:
 		var pixel_pos := _hex_to_pixel(coord)
 		var polygon := Polygon2D.new()
 		polygon.polygon = _make_hex_polygon(HEX_RADIUS * 0.88)
 		polygon.position = pixel_pos
-		polygon.color = Color(0.4, 0.8, 0.3, 0.3)
+		var val: int = resource_values.get(coord, 0)
+		var t := 0.5
+		if max_val > min_val:
+			t = float(val - min_val) / float(max_val - min_val)
+		# Red (low) -> Green (high)
+		polygon.color = Color(0.8 * (1.0 - t), 0.8 * t, 0.1, 0.35)
 		reachable_overlay.add_child(polygon)
 		_settlement_overlay_nodes.append(polygon)
 

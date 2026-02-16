@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"levy_conscripts"
+display_name = "Levy Conscripts"
+description = "Hastily raised militia from the peasantry. Cheap and numerous but poorly trained and prone to breaking."
+faction_id = &"empire"
+max_hp = 1600
+attack = 6
+defense = 2
+speed = 3
+attack_range = 1
+squad_size = 200
+hp_per_soldier = 8
+movement_points = 3.0
+upkeep_cost = {0: 6, 3: 4}
+recruit_cost = {0: 80, 1: 10, 5: 15, 3: 20}
+recruit_time = 1
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 45
+captive_chance = 0.5

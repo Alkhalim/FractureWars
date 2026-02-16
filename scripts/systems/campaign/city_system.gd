@@ -16,6 +16,13 @@ func process_turn(faction_id: StringName) -> void:
 		_process_build_queue(city)
 		_process_recruit_queue(city, faction_id)
 
+		# Loyalty update (capitals compute; settlements inherit)
+		_update_loyalty(city, faction_id)
+		if city.turns_since_capture >= 0:
+			city.turns_since_capture += 1
+		if LoyaltySystem.check_revolt(city):
+			_trigger_revolt(city, faction_id)
+
 	_process_sieges(faction_id)
 	_deduct_upkeep(faction_id)
 
@@ -25,6 +32,18 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		return
 
 	var income := calculate_city_income(city)
+
+	# Apply social class bonuses
+	var classes := LoyaltySystem.calculate_social_classes(city, faction_id)
+	var province_pop := LoyaltySystem.get_province_population(city.region_id, faction_id)
+	income = LoyaltySystem.apply_class_bonuses(income, classes, province_pop)
+
+	# Apply loyalty income multiplier
+	var loyalty_mult := LoyaltySystem.get_loyalty_multiplier(city.loyalty)
+	if loyalty_mult < 1.0:
+		for res_type in income:
+			income[res_type] = int(float(income[res_type]) * loyalty_mult)
+
 	for res_type in income:
 		if fs.resources.has(res_type):
 			fs.resources[res_type] += income[res_type]
@@ -38,6 +57,9 @@ func calculate_city_income(city: CityState) -> Dictionary:
 
 	# Population multiplier: base_income * (population / 100.0), capped at level * 1.0
 	var pop_mult := minf(float(city.population) / 100.0, float(city.level))
+	# Low population malus: below 50 pop, production suffers
+	if city.population < 50:
+		pop_mult *= maxf(0.1, float(city.population) / 50.0)
 
 	var income: Dictionary = {}
 
@@ -66,7 +88,7 @@ func calculate_city_income(city: CityState) -> Dictionary:
 func _add_growth(city: CityState) -> void:
 	var growth := calculate_growth(city)
 	city.growth_points += growth
-	city.population += growth
+	city.population = maxi(0, city.population + growth)
 
 func calculate_growth(city: CityState) -> int:
 	var base_growth := 5
@@ -88,6 +110,11 @@ func _check_level_up(city: CityState) -> void:
 		# Grant settlement founding ability on capital level-up
 		if city.is_capital:
 			city.can_found_settlement = true
+			# Level up settlements in the same region
+			for cid in GameManager.state.cities:
+				var c: CityState = GameManager.state.cities[cid]
+				if c.region_id == city.region_id and not c.is_capital and c.level < city.level:
+					c.level = city.level
 
 func _process_build_queue(city: CityState) -> void:
 	if city.build_queue.is_empty():
@@ -177,6 +204,8 @@ func _capture_city(city: CityState) -> void:
 	city.siege_turns = 0
 	city.is_capital = false
 	city.can_found_settlement = false
+	city.loyalty = 0
+	city.turns_since_capture = 0
 
 	# Add to new owner's city list
 	var new_fs: FactionState = GameManager.state.faction_states.get(new_owner)
@@ -229,12 +258,64 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= cost
 
+# ── Loyalty helpers ───────────────────────────────────────────
+
+func _update_loyalty(city: CityState, faction_id: StringName) -> void:
+	if not city.is_capital:
+		var capital := _find_province_capital(city.region_id, faction_id)
+		if capital:
+			city.loyalty = capital.loyalty
+		return
+	var delta := LoyaltySystem.calculate_loyalty_delta(city, faction_id)
+	city.loyalty = clampi(city.loyalty + delta, -100, 100)
+
+func _find_province_capital(region_id: StringName, faction_id: StringName) -> CityState:
+	for city_id in GameManager.state.cities:
+		var c: CityState = GameManager.state.cities[city_id]
+		if c.region_id == region_id and c.faction_id == faction_id and c.is_capital:
+			return c
+	return null
+
+func _trigger_revolt(city: CityState, faction_id: StringName) -> void:
+	# Spawn rebel army at city hex
+	var rebel_army := ArmyState.new()
+	rebel_army.army_id = GameManager.state.generate_id()
+	rebel_army.faction_id = &"rebels"
+	rebel_army.hex_pos = city.hex_pos
+
+	# Composition scales with population (1-4 units)
+	var num_units := clampi(city.population / 75, 1, 4)
+	# Use a generic rebel unit - pick the first available unit as a template
+	var rebel_unit_id := &"warband_raider"  # Fallback rebel unit
+	for _i in num_units:
+		var unit_data := DataManager.get_unit(rebel_unit_id)
+		if unit_data:
+			var instance := UnitInstance.new()
+			instance.init_from_data(unit_data, GameManager.state.generate_id())
+			rebel_army.units.append(instance)
+
+	rebel_army.movement_remaining = 0.0
+	GameManager.state.armies[rebel_army.army_id] = rebel_army
+
+	# Put city under siege by rebels
+	city.is_under_siege = true
+	city.siege_faction = &"rebels"
+	city.siege_turns = 0
+
+	# Reduce population by 10%
+	city.population = maxi(10, int(city.population * 0.9))
+
+	EventBus.revolt_triggered.emit(city.city_id, faction_id)
+
 # ── Public API ────────────────────────────────────────────────
 
 func get_available_buildings(city: CityState) -> Array[BuildingData]:
 	var result: Array[BuildingData] = []
 	for building_id in DataManager.buildings:
 		var building: BuildingData = DataManager.buildings[building_id]
+		# Skip faction-specific buildings that don't belong to this city's faction
+		if building.faction_id != &"" and building.faction_id != city.faction_id:
+			continue
 		# Skip buildings already owned
 		if city.buildings.has(building_id):
 			continue

@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dracarii_riders"
+display_name = "Dracarii Riders"
+description = "Elite heavy cavalry mounted on imperial drakes. Devastating charge attacks and strong against ranged units."
+faction_id = &"empire"
+max_hp = 1200
+attack = 22
+defense = 12
+speed = 8
+attack_range = 1
+squad_size = 60
+hp_per_soldier = 20
+tiles_per_entity = 2
+movement_points = 5.0
+upkeep_cost = {0: 30, 1: 5, 3: 9, 2: 1}
+recruit_cost = {0: 450, 1: 110, 5: 60, 3: 55, 2: 15}
+recruit_time = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 85
+captive_chance = 0.15

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"centurion_guard"
+display_name = "Centurion Guard"
+description = "Veteran soldiers led by a seasoned centurion. Highly disciplined with strong anti-infantry capabilities and morale-boosting presence."
+faction_id = &"empire"
+max_hp = 1440
+attack = 14
+defense = 10
+speed = 4
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 18
+movement_points = 3.0
+upkeep_cost = {0: 18, 1: 2, 3: 8, 2: 1}
+recruit_cost = {0: 280, 1: 50, 5: 35, 3: 40, 2: 10}
+recruit_time = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 80
+captive_chance = 0.25

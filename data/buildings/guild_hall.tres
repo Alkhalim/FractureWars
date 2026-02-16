@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"guild_hall"
+display_name = "Guild Hall II"
+description = "A hall for craftsmen and trade guilds. Increases artisan population and boosts production."
+faction_id = &"empire"
+category = &"economic"
+build_cost = {0: 500, 1: 30, 5: 100, 2: 10}
+build_time = 3
+income_bonus = {0: 5, 1: 3, 5: 3}
+population_growth_bonus = 3
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"tavern"

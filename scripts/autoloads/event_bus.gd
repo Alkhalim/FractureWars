@@ -48,5 +48,8 @@ signal elderbeast_moved(beast_id: StringName, from_hex: Vector2i, to_hex: Vector
 # Army retreat signal
 signal army_retreated(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i, losses: int)
 
+# Revolt signals
+signal revolt_triggered(city_id: StringName, faction_id: StringName)
+
 # UI signals
 signal end_turn_pressed()

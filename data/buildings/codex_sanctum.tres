@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"codex_sanctum"
+display_name = "Codex Sanctum III"
+description = "A grand repository of imperial knowledge and arcane theory. Massive tech output and improves magical suppression."
+faction_id = &"empire"
+category = &"cultural"
+build_cost = {0: 1200, 1: 80, 5: 120, 2: 60}
+build_time = 4
+income_bonus = {2: 50}
+population_growth_bonus = 5
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+upgrades_from = &"academy"

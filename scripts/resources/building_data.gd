@@ -4,6 +4,7 @@ extends Resource
 @export var id: StringName
 @export var display_name: String
 @export var description: String
+@export var faction_id: StringName = &"" # empty = available to all factions
 @export var category: StringName # "economic", "military", "defensive", "cultural"
 @export var build_cost: Dictionary = {} # ResourceType -> amount
 @export var build_time: int = 1 # turns

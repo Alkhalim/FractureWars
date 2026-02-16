@@ -31,6 +31,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				_is_panning = false
 			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				_is_panning = true
+				_did_pan = false
+				_pan_start = event.position
+			else:
+				_is_panning = false
+				if _did_pan:
+					get_viewport().set_input_as_handled()
 
 	# Pan with middle-mouse drag
 	if event is InputEventMouseMotion and _is_panning:

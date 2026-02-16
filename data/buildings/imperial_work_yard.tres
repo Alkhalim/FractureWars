@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"imperial_work_yard"
+display_name = "Imperial Work Yard II"
+description = "An organized labor complex with faster captive conversion and improved resource output."
+faction_id = &"empire"
+category = &"economic"
+build_cost = {0: 700, 1: 50, 5: 120, 2: 10}
+build_time = 3
+income_bonus = {5: 15, 1: 15}
+population_growth_bonus = 5
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"labor_camp"

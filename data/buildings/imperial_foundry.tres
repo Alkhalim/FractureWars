@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"imperial_foundry"
+display_name = "Imperial Foundry III"
+description = "A vast smelting complex producing refined imperial steel. Enormous iron output and reduces unit iron upkeep."
+faction_id = &"empire"
+category = &"economic"
+build_cost = {0: 1000, 1: 120, 5: 120, 2: 25}
+build_time = 4
+income_bonus = {1: 120}
+population_growth_bonus = 0
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+upgrades_from = &"iron_mine"

@@ -67,6 +67,7 @@ class BattleFormation:
 
 	var is_dead: bool = false
 	var is_fled: bool = false
+	var damage_dealt: int = 0
 
 	func take_damage(amount: int) -> int:
 		# Returns entities killed this hit
@@ -108,11 +109,11 @@ func compute_grid_size(attacker_army: ArmyState, defender_army: ArmyState) -> vo
 		if ud:
 			total_tiles += ud.squad_size * ud.tiles_per_entity
 
-	var target_area := total_tiles * 6
+	var target_area := total_tiles * 12
 	grid_width = ceili(sqrt(target_area * 1.5))
 	grid_height = ceili(float(target_area) / float(grid_width))
-	grid_width = clampi(grid_width, 30, 120)
-	grid_height = clampi(grid_height, 20, 90)
+	grid_width = clampi(grid_width, 60, 200)
+	grid_height = clampi(grid_height, 40, 150)
 
 	# Deploy zones: top 25% for defender, bottom 25% for attacker
 	deploy_top_end = ceili(grid_height * 0.25)
@@ -124,36 +125,46 @@ func setup_terrain(terrain_data: Dictionary) -> void:
 	terrain = terrain_data
 
 func setup_attacker_formations(army: ArmyState, cmd_bonuses: Dictionary = {}) -> void:
-	var x_offset := 0
+	var col_cursor := 2
+	var row_offset := 0
 	for unit in army.units:
 		var ud := DataManager.get_unit(unit.unit_data_id)
 		if ud == null:
 			continue
 		var f := _create_formation(unit, ud, 0, cmd_bonuses)
-		# Place in attacker deploy zone (bottom)
-		var col := clampi(grid_width / 2 - army.units.size() * 2 + x_offset * 4, 2, grid_width - 3)
-		var row := deploy_bottom_start + 2
+		var tile_count := ud.squad_size * ud.tiles_per_entity
+		var width := mini(tile_count, 10) + 2
+		if col_cursor + width > grid_width - 2:
+			col_cursor = 2
+			row_offset += 3
+		var col := clampi(col_cursor, 2, grid_width - width - 2)
+		var row := deploy_bottom_start + 2 + row_offset
 		f.anchor_pos = Vector2i(col, clampi(row, deploy_bottom_start, grid_height - 2))
 		f.facing = Vector2i(0, -1)  # Face up toward enemy
 		attacker_formations.append(f)
 		_build_formation(f)
-		x_offset += 1
+		col_cursor = col + width
 
 func setup_defender_formations(army: ArmyState, cmd_bonuses: Dictionary = {}) -> void:
-	var x_offset := 0
+	var col_cursor := 2
+	var row_offset := 0
 	for unit in army.units:
 		var ud := DataManager.get_unit(unit.unit_data_id)
 		if ud == null:
 			continue
 		var f := _create_formation(unit, ud, 1, cmd_bonuses)
-		# Place in defender deploy zone (top)
-		var col := clampi(grid_width / 2 - army.units.size() * 2 + x_offset * 4, 2, grid_width - 3)
-		var row := deploy_top_end - 3
+		var tile_count := ud.squad_size * ud.tiles_per_entity
+		var width := mini(tile_count, 10) + 2
+		if col_cursor + width > grid_width - 2:
+			col_cursor = 2
+			row_offset += 3
+		var col := clampi(col_cursor, 2, grid_width - width - 2)
+		var row := deploy_top_end - 3 - row_offset
 		f.anchor_pos = Vector2i(col, clampi(row, 1, deploy_top_end - 1))
 		f.facing = Vector2i(0, 1)   # Face down toward enemy
 		defender_formations.append(f)
 		_build_formation(f)
-		x_offset += 1
+		col_cursor = col + width
 
 func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses: Dictionary) -> BattleFormation:
 	var f := BattleFormation.new()
@@ -462,6 +473,7 @@ func _resolve_combat_pair(a: BattleFormation, b: BattleFormation) -> Array[Dicti
 	var result_ab := _resolve_melee_combat(a, b)
 	var ab_dmg: int = result_ab.damage
 	if ab_dmg > 0:
+		a.damage_dealt += ab_dmg
 		var killed := b.take_damage(ab_dmg)
 		var ab_morale_dmg: float = result_ab.morale_damage
 		b.current_morale -= ab_morale_dmg
@@ -489,6 +501,7 @@ func _resolve_combat_pair(a: BattleFormation, b: BattleFormation) -> Array[Dicti
 		var result_ba := _resolve_melee_combat(b, a)
 		var ba_dmg: int = result_ba.damage
 		if ba_dmg > 0:
+			b.damage_dealt += ba_dmg
 			var killed := a.take_damage(ba_dmg)
 			var ba_morale_dmg: float = result_ba.morale_damage
 			a.current_morale -= ba_morale_dmg
@@ -571,6 +584,7 @@ func _execute_ranged_attack(f: BattleFormation) -> Array[Dictionary]:
 	var total_damage := int(dmg_per_entity * f.entities_alive * randf_range(0.8, 1.2))
 	total_damage = maxi(1, total_damage)
 
+	f.damage_dealt += total_damage
 	var killed := target.take_damage(total_damage)
 	target.current_morale -= 1.5  # Bombardment fear
 
@@ -835,11 +849,7 @@ func _rotate_toward(f: BattleFormation, target_pos: Vector2i) -> void:
 	var diff := target_pos - f.anchor_pos
 	if diff == Vector2i.ZERO:
 		return
-	# Set facing to primary cardinal direction
-	if absi(diff.x) >= absi(diff.y):
-		f.facing = Vector2i(signi(diff.x), 0)
-	else:
-		f.facing = Vector2i(0, signi(diff.y))
+	f.facing = Vector2i(clampi(diff.x, -1, 1), clampi(diff.y, -1, 1))
 
 func _count_friendly_flank_support(f: BattleFormation) -> int:
 	var count := 0

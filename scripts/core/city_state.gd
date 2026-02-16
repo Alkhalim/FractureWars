@@ -16,6 +16,9 @@ extends Resource
 @export var siege_turns: int = 0
 @export var is_capital: bool = false
 @export var can_found_settlement: bool = false
+@export var loyalty: int = 50              # -100 to 100
+@export var original_faction_id: StringName = &""  # cultural origin, never changes
+@export var turns_since_capture: int = -1  # -1 = never captured; 0+ = turns since capture
 
 const GROWTH_THRESHOLDS := [200, 400, 700, 1100] # pop needed for levels 2-5
 

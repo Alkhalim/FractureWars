@@ -11,7 +11,12 @@
       "Bash(reg query:*)",
       "Bash(reg query \"HKCU\\\\SOFTWARE\\\\Classes\\\\Godot.ProjectFile\\\\shell\\\\open\\\\command\")",
       "Bash(ls:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(git -C \"D:/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars\" diff --stat)",
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "Bash(pip:*)",
+      "Bash(C:/Python313/python.exe:*)"
     ]
   }
 }

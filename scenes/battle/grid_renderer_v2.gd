@@ -42,7 +42,8 @@ func _draw() -> void:
 		if formation.is_fled or formation.is_dead:
 			continue
 
-		var base_color: Color = battle_scene.COLOR_ATTACKER if formation.side == 0 else battle_scene.COLOR_DEFENDER
+		var is_player: bool = formation.side == battle_scene.player_side
+		var base_color: Color = battle_scene.COLOR_PLAYER if is_player else battle_scene.COLOR_ENEMY
 		if formation.is_routing:
 			base_color = base_color.lerp(Color.DARK_GRAY, 0.5)
 
@@ -118,11 +119,11 @@ func _draw_morale_bar(formation: BattleSimulatorV2.BattleFormation, cs: int) -> 
 	# Morale fill
 	var morale_ratio := clampf(formation.current_morale / float(formation.base_morale), 0.0, 1.5)
 	var fill_width := bar_width * minf(morale_ratio, 1.0)
-	var morale_color := Color(0.4, 0.8, 0.35)
+	var morale_color := Color(1, 1, 1, 0.9)
 	if morale_ratio < 0.3:
-		morale_color = Color(0.85, 0.25, 0.2)
+		morale_color = Color(1, 1, 1, 0.4)
 	elif morale_ratio < 0.6:
-		morale_color = Color(0.85, 0.75, 0.2)
+		morale_color = Color(1, 1, 1, 0.65)
 	draw_rect(Rect2(bar_x, bar_y, fill_width, bar_height), morale_color)
 
 func _draw_hp_bar(formation: BattleSimulatorV2.BattleFormation, cs: int) -> void:

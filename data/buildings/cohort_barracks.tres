@@ -4,15 +4,16 @@
 
 [resource]
 script = ExtResource("1")
-id = &"barracks"
-display_name = "Barracks"
-description = "Trains basic military units. Essential for any city's defense."
+id = &"cohort_barracks"
+display_name = "Cohort Barracks I"
+description = "Standard imperial barracks for training and housing legionary cohorts. Unlocks Levy Conscripts and Legionnaires."
+faction_id = &"empire"
 category = &"military"
-build_cost = {0: 50, 1: 30}
-build_time = 1
+build_cost = {0: 300, 1: 40, 5: 60}
+build_time = 2
 income_bonus = {}
 population_growth_bonus = 0
 defense_bonus = 0
 recruit_speed_bonus = 0
-unlocks_units = Array[StringName]([&"warband_raider", &"skulloath_raider", &"grove_warden", &"jade_fang", &"crystal_swarmling", &"void_skirmisher"])
+unlocks_units = Array[StringName]([&"levy_conscripts", &"legionary"])
 required_capital_level = 1

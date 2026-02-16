@@ -13,10 +13,10 @@ const TERRAIN_COLORS := {
 	Enums.BattleTerrain.BRUSH:   Color(0.13, 0.15, 0.11, 1),
 }
 
-const COLOR_DEPLOY_TINT := Color(0.14, 0.22, 0.12, 1)
-const COLOR_ENEMY_TINT := Color(0.22, 0.12, 0.12, 1)
-const COLOR_ATTACKER := Color(0.7, 0.2, 0.15, 1)
-const COLOR_DEFENDER := Color(0.35, 0.18, 0.5, 1)
+const COLOR_DEPLOY_TINT := Color(0.12, 0.15, 0.25, 1)
+const COLOR_ENEMY_TINT := Color(0.25, 0.12, 0.12, 1)
+const COLOR_PLAYER := Color(0.2, 0.45, 0.85, 1)
+const COLOR_ENEMY := Color(0.75, 0.2, 0.15, 1)
 const COLOR_SELECTED := Color(0.95, 0.85, 0.3, 1)
 
 const ORDER_NAMES := {
@@ -46,6 +46,8 @@ var grid_height: int = 20
 # Setup state
 var selected_formation: BattleSimulatorV2.BattleFormation = null
 var player_side: int = 0
+var is_player_attacker: bool = false
+var _battle_loot: Dictionary = {}  # {gold: int, iron: int}
 
 # Simulation state
 var sim_speed: float = 0.5
@@ -83,8 +85,8 @@ func _ready() -> void:
 	attacker_faction_id = attacker_army.faction_id
 	defender_faction_id = defender_army.faction_id
 
-	var player_is_attacker := attacker_faction_id == GameManager.state.player_faction_id
-	player_side = 0 if player_is_attacker else 1
+	is_player_attacker = attacker_faction_id == GameManager.state.player_faction_id
+	player_side = 0  # Player always at bottom
 
 	# Create simulator
 	simulator = BattleSimulatorV2.new()
@@ -103,16 +105,20 @@ func _ready() -> void:
 	simulator.setup_terrain(terrain_data)
 
 	# Calculate cell size
-	cell_size = clampi(mini(1400 / grid_width, 850 / grid_height), 4, 32)
+	cell_size = clampi(mini(1400 / grid_width, 850 / grid_height), 3, 16)
 
-	# Setup formations
+	# Setup formations — player army always as side 0 (bottom)
 	var atk_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(attacker_army.commander)
 	var def_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(defender_army.commander)
-	simulator.setup_attacker_formations(attacker_army, atk_cmd_bonuses)
-	simulator.setup_defender_formations(defender_army, def_cmd_bonuses)
+	if is_player_attacker:
+		simulator.setup_attacker_formations(attacker_army, atk_cmd_bonuses)
+		simulator.setup_defender_formations(defender_army, def_cmd_bonuses)
+	else:
+		simulator.setup_attacker_formations(defender_army, def_cmd_bonuses)
+		simulator.setup_defender_formations(attacker_army, atk_cmd_bonuses)
 
-	# AI assigns orders for non-player side
-	simulator.assign_ai_orders(1 - player_side)
+	# AI assigns orders for enemy side (always side 1)
+	simulator.assign_ai_orders(1)
 
 	# Build scene
 	_build_scene()
@@ -316,6 +322,8 @@ func _populate_unit_list() -> void:
 		btn.text = "%s [%s]" % [f.display_name, ORDER_NAMES.get(f.current_order, "?")]
 		btn.add_theme_font_size_override("font_size", 11)
 		btn.custom_minimum_size = Vector2(190, 24)
+		if f == selected_formation:
+			btn.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
 		var captured_f := f
 		btn.pressed.connect(_on_formation_selected.bind(captured_f))
 		unit_list_container.add_child(btn)
@@ -355,34 +363,29 @@ func _on_grid_gui_input(event: InputEvent) -> void:
 
 func _on_grid_left_click(grid_pos: Vector2i) -> void:
 	if current_phase == Phase.SETUP:
-		# Select formation at this position
 		var f: BattleSimulatorV2.BattleFormation = simulator.grid.get(grid_pos)
-		if f and f.side == player_side:
+		if f:
 			selected_formation = f
 			_update_unit_info(f)
-		else:
-			# Move selected formation to this position if in deploy zone
-			if selected_formation and _is_in_deploy_zone(grid_pos, player_side):
+		elif selected_formation and selected_formation.side == player_side:
+			# Only allow repositioning player units in deploy zone
+			if _is_in_deploy_zone(grid_pos, player_side):
 				_reposition_formation(selected_formation, grid_pos)
 		grid_renderer.queue_redraw()
 
 	elif current_phase == Phase.SIMULATION and is_paused:
-		# Select formation to change orders
 		var f: BattleSimulatorV2.BattleFormation = simulator.grid.get(grid_pos)
-		if f and f.side == player_side and not f.is_dead and not f.is_fled:
+		if f and not f.is_dead and not f.is_fled:
 			selected_formation = f
 			_update_unit_info(f)
 			grid_renderer.queue_redraw()
 
 func _on_grid_right_click(grid_pos: Vector2i) -> void:
-	if current_phase == Phase.SETUP and selected_formation:
-		# Rotate facing
+	if current_phase == Phase.SETUP and selected_formation and selected_formation.side == player_side:
+		# Rotate facing (8-directional)
 		var diff := grid_pos - selected_formation.anchor_pos
 		if diff != Vector2i.ZERO:
-			if absi(diff.x) >= absi(diff.y):
-				selected_formation.facing = Vector2i(signi(diff.x), 0)
-			else:
-				selected_formation.facing = Vector2i(0, signi(diff.y))
+			selected_formation.facing = Vector2i(clampi(diff.x, -1, 1), clampi(diff.y, -1, 1))
 			simulator._build_formation(selected_formation)
 			grid_renderer.queue_redraw()
 
@@ -394,6 +397,10 @@ func _is_in_deploy_zone(pos: Vector2i, side: int) -> bool:
 
 func _reposition_formation(f: BattleSimulatorV2.BattleFormation, new_pos: Vector2i) -> void:
 	if not simulator._in_bounds(new_pos) or not simulator._is_passable(new_pos):
+		return
+	# Check if target is occupied by another formation
+	var occupant = simulator.grid.get(new_pos)
+	if occupant != null and occupant != f:
 		return
 	# Clear old tiles
 	for tile in f.occupied_tiles:
@@ -429,8 +436,28 @@ func _update_unit_info(f: BattleSimulatorV2.BattleFormation) -> void:
 	name_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 	vbox.add_child(name_label)
 
+	# Show base + bonus breakdown for stats
+	var ud := DataManager.get_unit(f.unit_data_id)
+	var base_atk: int = ud.attack if ud else f.attack
+	var bonus_atk: int = f.attack - base_atk
+	var atk_text := "ATK:%d" % f.attack
+	if bonus_atk != 0:
+		atk_text += " (%+d)" % bonus_atk
+
+	var base_def: int = ud.defense if ud else f.defense
+	var bonus_def: int = f.defense - base_def
+	var def_text := "DEF:%d" % f.defense
+	if bonus_def != 0:
+		def_text += " (%+d)" % bonus_def
+
+	# Terrain defense bonus
+	var terrain_def := BattleTerrainGen.get_defense_bonus(
+		simulator.terrain.get(f.anchor_pos, Enums.BattleTerrain.OPEN))
+	if terrain_def != 0:
+		def_text += " [terrain %+d]" % terrain_def
+
 	var stats_label := Label.new()
-	stats_label.text = "ATK:%d DEF:%d SPD:%d RNG:%d" % [f.attack, f.defense, f.speed, f.attack_range]
+	stats_label.text = "%s %s SPD:%d RNG:%d" % [atk_text, def_text, f.speed, f.attack_range]
 	stats_label.add_theme_font_size_override("font_size", 11)
 	stats_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
 	vbox.add_child(stats_label)
@@ -620,7 +647,7 @@ func _show_result() -> void:
 			status = "KILLED"
 		elif f.is_fled:
 			status = "FLED"
-		text += "  %s - %s (%d/%d HP)\n" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp]
+		text += "  %s - %s (%d/%d HP, %d dmg dealt)\n" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp, f.damage_dealt]
 
 	text += "\nENEMY FORCES:\n"
 	var enemy_formations := simulator.defender_formations if player_side == 0 else simulator.attacker_formations
@@ -630,12 +657,29 @@ func _show_result() -> void:
 			status = "KILLED"
 		elif f.is_fled:
 			status = "FLED"
-		text += "  %s - %s (%d/%d HP)\n" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp]
+		text += "  %s - %s (%d/%d HP, %d dmg dealt)\n" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp, f.damage_dealt]
 
 	# Captives
 	var player_captives: int = simulator.captives.get(player_side, 0)
 	if player_captives > 0:
 		text += "\nCaptives gained: %d" % player_captives
+
+	# Loot preview (based on loser's strength)
+	if player_won:
+		var enemy_strength: int
+		if is_player_attacker:
+			enemy_strength = defender_army.get_total_strength()
+		else:
+			enemy_strength = attacker_army.get_total_strength()
+		var loot_gold := int(enemy_strength * 0.1)
+		var loot_iron := int(enemy_strength * 0.03)
+		var loot_parts: Array[String] = []
+		if loot_gold > 0:
+			loot_parts.append("+%d Gold" % loot_gold)
+		if loot_iron > 0:
+			loot_parts.append("+%d Iron" % loot_iron)
+		if loot_parts.size() > 0:
+			text += "\nResources gained: %s" % ", ".join(loot_parts)
 
 	casualty_label.text = text
 	vbox.add_child(casualty_label)
@@ -658,14 +702,22 @@ func _apply_battle_results() -> void:
 	var atk_strength := attacker_army.get_total_strength()
 	var def_strength := defender_army.get_total_strength()
 
-	_update_army_survivors(attacker_army, simulator.get_surviving_formations(0))
-	_update_army_survivors(defender_army, simulator.get_surviving_formations(1))
+	if is_player_attacker:
+		_update_army_survivors(attacker_army, simulator.get_surviving_formations(0))
+		_update_army_survivors(defender_army, simulator.get_surviving_formations(1))
+	else:
+		_update_army_survivors(defender_army, simulator.get_surviving_formations(0))
+		_update_army_survivors(attacker_army, simulator.get_surviving_formations(1))
 
 	var attacker_alive := attacker_army.units.size() > 0
 	var defender_alive := defender_army.units.size() > 0
 
 	# Award captives to winner
-	var winner_faction_id := attacker_faction_id if simulator.winner_side == 0 else defender_faction_id
+	var winner_faction_id: StringName
+	if is_player_attacker:
+		winner_faction_id = attacker_faction_id if simulator.winner_side == 0 else defender_faction_id
+	else:
+		winner_faction_id = defender_faction_id if simulator.winner_side == 0 else attacker_faction_id
 	var winner_captives: int = simulator.captives.get(simulator.winner_side, 0)
 	if winner_captives > 0:
 		var fs: FactionState = GameManager.state.faction_states.get(winner_faction_id)
@@ -689,6 +741,33 @@ func _apply_battle_results() -> void:
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 		if city_at and city_at.faction_id == defender_faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
+
+	# Battle loot from defeated enemies
+	_battle_loot.clear()
+	if attacker_alive and not defender_alive:
+		var loot_gold := int(def_strength * 0.1)
+		var loot_iron := int(def_strength * 0.03)
+		if loot_gold > 0 or loot_iron > 0:
+			var fs: FactionState = GameManager.state.faction_states.get(attacker_faction_id)
+			if fs:
+				if loot_gold > 0:
+					fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
+					_battle_loot[Enums.ResourceType.GOLD] = loot_gold
+				if loot_iron > 0:
+					fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
+					_battle_loot[Enums.ResourceType.IRON] = loot_iron
+	elif defender_alive and not attacker_alive:
+		var loot_gold := int(atk_strength * 0.1)
+		var loot_iron := int(atk_strength * 0.03)
+		if loot_gold > 0 or loot_iron > 0:
+			var fs: FactionState = GameManager.state.faction_states.get(defender_faction_id)
+			if fs:
+				if loot_gold > 0:
+					fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
+					_battle_loot[Enums.ResourceType.GOLD] = loot_gold
+				if loot_iron > 0:
+					fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
+					_battle_loot[Enums.ResourceType.IRON] = loot_iron
 
 	# Commander XP and item drops
 	if attacker_army.commander:

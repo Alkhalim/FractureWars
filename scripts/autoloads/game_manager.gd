@@ -43,6 +43,7 @@ func new_game() -> void:
 	movement_system = MovementSystem.new(state.hex_map)
 
 	_init_factions()
+	_init_rebels_faction()
 	_init_regions()
 	_init_cities()
 	_init_elderbeasts()
@@ -78,6 +79,20 @@ func _init_factions() -> void:
 				Enums.ResourceType.CAPTIVES: 0,
 			}
 		state.faction_states[faction_id] = fs
+
+func _init_rebels_faction() -> void:
+	var fs := FactionState.new()
+	fs.faction_data_id = &"rebels"
+	fs.resources = {
+		Enums.ResourceType.GOLD: 0,
+		Enums.ResourceType.IRON: 0,
+		Enums.ResourceType.FOOD: 0,
+		Enums.ResourceType.TECHNOLOGY: 0,
+		Enums.ResourceType.SHARD_ESSENCE: 0,
+		Enums.ResourceType.WOOD: 0,
+		Enums.ResourceType.CAPTIVES: 0,
+	}
+	state.faction_states[&"rebels"] = fs
 
 func _init_regions() -> void:
 	# Assign starting regions to factions via hex map tile ownership
@@ -181,7 +196,14 @@ func _init_cities() -> void:
 			city.level = 1
 			city.population = 100
 			city.is_capital = is_first_city
-			city.buildings.append(&"barracks") # Free starting barracks
+			# Empire gets cohort_barracks; other factions get generic barracks
+			if faction_id == &"empire":
+				city.buildings.append(&"cohort_barracks")
+			else:
+				city.buildings.append(&"barracks")
+			city.original_faction_id = faction_id
+			city.loyalty = 50
+			city.turns_since_capture = -1
 			# Grant player a free settlement founding on turn 1
 			if faction_id == state.player_faction_id and is_first_city:
 				city.can_found_settlement = true
@@ -323,6 +345,11 @@ func _init_diplomacy() -> void:
 	state.diplomacy[&"gladehost:shardhorde"] = Enums.FactionRelation.HOSTILE
 	state.diplomacy[&"shardhorde:tainted_jade"] = Enums.FactionRelation.NEUTRAL
 	state.diplomacy[&"tainted_jade:shardhorde"] = Enums.FactionRelation.NEUTRAL
+	# Rebels at WAR with all factions
+	for faction_id in state.faction_states:
+		if faction_id != &"rebels":
+			state.diplomacy[StringName(str(&"rebels") + ":" + str(faction_id))] = Enums.FactionRelation.WAR
+			state.diplomacy[StringName(str(faction_id) + ":" + str(&"rebels"))] = Enums.FactionRelation.WAR
 
 func get_army_at_tile(coord: Vector2i) -> ArmyState:
 	for army_id in state.armies:
@@ -407,6 +434,9 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	city.level = 1
 	city.population = 50
 	city.is_capital = false
+	city.original_faction_id = faction_id
+	city.loyalty = 50
+	city.turns_since_capture = -1
 	state.cities[city.city_id] = city
 
 	var fs: FactionState = state.faction_states.get(faction_id)

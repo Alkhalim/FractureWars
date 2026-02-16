@@ -3,11 +3,11 @@ extends RefCounted
 
 const REALM_NAMES := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
 const REALM_COLORS := [
-	Color(1.0, 0.9, 0.4),   # Divine - golden
-	Color(0.4, 0.1, 0.6),   # Void - purple
-	Color(0.9, 0.4, 0.1),   # Elemental - orange
-	Color(0.2, 0.8, 0.3),   # Nature - green
-	Color(0.7, 0.7, 0.8),   # Mortal - silver
+	Color(0.95, 0.85, 0.2),   # Divine - yellow
+	Color(0.5, 0.15, 0.7),    # Void - purple
+	Color(0.9, 0.5, 0.15),    # Elemental - orange
+	Color(0.2, 0.75, 0.3),    # Nature - green
+	Color(0.25, 0.5, 0.9),    # Mortal - blue
 ]
 
 var turns_since_last_fall: int = 0
