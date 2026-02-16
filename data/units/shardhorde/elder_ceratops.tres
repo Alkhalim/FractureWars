@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"elder_ceratops"
+display_name = "Elder Ceratops"
+description = "A massive armored beast that can crush walls and formations alike."
+faction_id = &"shardhorde"
+max_hp = 250
+attack = 20
+defense = 15
+speed = 3
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+movement_points = 1.5
+upkeep_cost = {0: 12, 3: 8}
+recruit_cost = {0: 100, 1: 50, 3: 40}
+recruit_time = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "beast"])
+base_morale = 85
+tiles_per_entity = 16
+captive_chance = 0.02
+morale_aura = -5
+fear_radius = 5

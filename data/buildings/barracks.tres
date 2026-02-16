@@ -14,5 +14,5 @@ income_bonus = {}
 population_growth_bonus = 0
 defense_bonus = 0
 recruit_speed_bonus = 0
-unlocks_units = Array[StringName]([&"legionary", &"warband_raider", &"skulloath_raider", &"grove_warden", &"jade_fang"])
+unlocks_units = Array[StringName]([&"legionary", &"warband_raider", &"skulloath_raider", &"grove_warden", &"jade_fang", &"crystal_swarmling", &"void_skirmisher"])
 required_capital_level = 1

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"master_woodworks"
+display_name = "Master Woodworks"
+description = "An elite workshop of master carpenters, producing fine timber and siege equipment."
+category = &"economic"
+build_cost = {0: 130, 1: 60, 2: 20}
+build_time = 3
+income_bonus = {5: 14, 0: 2, 1: 2}
+population_growth_bonus = 2
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+upgrades_from = &"sawmill"

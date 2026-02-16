@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"void_crown"
+display_name = "Void Crown"
+description = "A crown pulsing with void energy, granting otherworldly power."
+rarity = &"legendary"
+effects = {"army_attack_bonus": 4, "army_defense_bonus": 4}
+source_factions = Array[StringName]([&"shardhorde", &"tainted_jade"])

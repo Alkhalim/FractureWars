@@ -6,7 +6,25 @@ var hex_map: HexMapData
 func _init(map: HexMapData) -> void:
 	hex_map = map
 
-func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: float) -> Array[Vector2i]:
+func _is_tile_blocked(coord: Vector2i, faction_id: StringName, excluded_army_id: StringName) -> bool:
+	# Friendly armies no longer block — they merge on arrival
+	# Check elderbeasts
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		if beast.hex_pos == coord:
+			return true # Elderbeasts always block movement onto their tile
+	return false
+
+func _has_enemy_at(coord: Vector2i, faction_id: StringName, excluded_army_id: StringName) -> bool:
+	var armies := GameManager.get_armies_at_tile(coord)
+	for army in armies:
+		if army.army_id == excluded_army_id:
+			continue
+		if army.faction_id != faction_id and GameManager.get_relation(faction_id, army.faction_id) == Enums.FactionRelation.WAR:
+			return true
+	return false
+
+func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: float, excluded_army_id: StringName = &"") -> Array[Vector2i]:
 	# A* pathfinding on hex grid
 	if from == to:
 		return []
@@ -47,6 +65,14 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 			if hex_map.get_tile(neighbor) == null:
 				continue
 
+			# Check tile occupancy
+			if _is_tile_blocked(neighbor, faction_id, excluded_army_id):
+				continue
+			# Enemy tile: passable as destination (battle), but don't path through
+			if _has_enemy_at(neighbor, faction_id, excluded_army_id):
+				if neighbor != to:
+					continue
+
 			var move_cost := hex_map.get_movement_cost(neighbor, faction_id)
 			if move_cost >= INF:
 				continue
@@ -64,7 +90,7 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 
 	return [] # No path found
 
-func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: StringName) -> Dictionary:
+func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: StringName, excluded_army_id: StringName = &"") -> Dictionary:
 	# Returns Dictionary of Vector2i -> remaining_mp
 	var result: Dictionary = {}
 	result[from] = movement_points
@@ -95,6 +121,10 @@ func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: Str
 			if hex_map.get_tile(neighbor) == null:
 				continue
 
+			# Check tile occupancy
+			if _is_tile_blocked(neighbor, faction_id, excluded_army_id):
+				continue
+
 			var cost := hex_map.get_movement_cost(neighbor, faction_id)
 			var new_remaining := remaining - cost
 
@@ -103,7 +133,9 @@ func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: Str
 
 			if new_remaining > result.get(neighbor, -1.0):
 				result[neighbor] = new_remaining
-				open_set.append([neighbor, new_remaining])
+				# Enemy tiles are reachable (for battle) but don't expand through them
+				if not _has_enemy_at(neighbor, faction_id, excluded_army_id):
+					open_set.append([neighbor, new_remaining])
 
 	result.erase(from) # Don't include starting tile
 	return result

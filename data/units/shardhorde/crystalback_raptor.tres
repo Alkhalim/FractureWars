@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystalback_raptor"
+display_name = "Crystalback Raptor"
+description = "A ferocious crystal-encrusted predator, fast and deadly."
+faction_id = &"shardhorde"
+max_hp = 140
+attack = 16
+defense = 8
+speed = 9
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+movement_points = 3.5
+upkeep_cost = {0: 8, 3: 5}
+recruit_cost = {0: 60, 1: 30, 3: 20}
+recruit_time = 2
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "beast"])
+base_morale = 60
+tiles_per_entity = 2
+captive_chance = 0.1

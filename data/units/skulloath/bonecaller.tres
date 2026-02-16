@@ -22,3 +22,5 @@ recruit_time = 2
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["mage", "ranged", "support"])
+base_morale = 35
+captive_chance = 0.05

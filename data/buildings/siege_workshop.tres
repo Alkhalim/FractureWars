@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"siege_workshop"
+display_name = "Siege Workshop"
+description = "A fortified workshop producing siege equipment and heavy armor."
+category = &"military"
+build_cost = {0: 120, 1: 100}
+build_time = 3
+income_bonus = {1: 2}
+population_growth_bonus = 0
+defense_bonus = 5
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([&"elder_ceratops"])
+required_capital_level = 3
+upgrades_from = &"training_grounds"

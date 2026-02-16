@@ -25,3 +25,10 @@ extends Resource
 @export var terrain_bonuses: Dictionary = {} # TerrainType -> modifier
 @export var realm_bonuses: Dictionary = {} # Realm -> modifier
 @export var tags: Array[String] = [] # "infantry", "cavalry", "construct", "mage"
+
+# Battle V2 fields
+@export var base_morale: int = 50
+@export var tiles_per_entity: int = 1   # 1=infantry, 2=cavalry, 4-6=siege, 6-16=monster
+@export var captive_chance: float = 0.3
+@export var morale_aura: int = 0         # +N boosts friendly morale; -N scares enemies
+@export var fear_radius: int = 0         # Range of morale_aura in tiles (0=no aura)

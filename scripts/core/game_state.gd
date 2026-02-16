@@ -10,6 +10,8 @@ extends Resource
 @export var active_shards: Dictionary = {} # shard_instance_id -> ShardInstance
 @export var cities: Dictionary = {} # city_id -> CityState
 @export var diplomacy: Dictionary = {} # "factionA:factionB" -> FactionRelation enum value
+@export var elderbeasts: Dictionary = {} # beast_id -> ElderbeastState
+@export var selected_army_id: StringName = &""
 @export var next_id: int = 0
 
 var hex_map: HexMapData # Runtime hex map state (not serialized)

@@ -32,6 +32,7 @@ func _load_units() -> void:
 	_load_resources_from_dir("res://data/units/skulloath/", units)
 	_load_resources_from_dir("res://data/units/gladehost/", units)
 	_load_resources_from_dir("res://data/units/tainted_jade/", units)
+	_load_resources_from_dir("res://data/units/shardhorde/", units)
 
 func _load_regions() -> void:
 	_load_resources_from_dir("res://data/regions/", regions)

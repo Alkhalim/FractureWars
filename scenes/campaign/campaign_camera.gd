@@ -23,21 +23,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_zoom_camera(-ZOOM_SPEED)
 			get_viewport().set_input_as_handled()
-		elif event.button_index == MOUSE_BUTTON_RIGHT:
+		elif event.button_index == MOUSE_BUTTON_MIDDLE:
 			if event.pressed:
 				_is_panning = true
 				_did_pan = false
 				_pan_start = event.position
 			else:
 				_is_panning = false
-				if _did_pan:
-					get_viewport().set_input_as_handled() # Consume release if we dragged
-		elif event.button_index == MOUSE_BUTTON_MIDDLE:
-			_is_panning = event.pressed
-			_pan_start = event.position
 			get_viewport().set_input_as_handled()
 
-	# Pan with right-click or middle-mouse drag
+	# Pan with middle-mouse drag
 	if event is InputEventMouseMotion and _is_panning:
 		var move_delta: Vector2 = _pan_start - event.position
 		if move_delta.length() > 2.0:

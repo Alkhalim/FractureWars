@@ -24,7 +24,7 @@ const REALM_COLORS := {
 	Enums.Realm.MORTAL: Color(0.7, 0.65, 0.55),
 }
 
-const RESOURCE_NAMES := ["Gold", "Iron", "Technology", "Food", "Shard Essence", "Wood"]
+const RESOURCE_NAMES := ["Gold", "Iron", "Technology", "Food", "Shard Essence", "Wood", "Captives"]
 const RESOURCE_COLORS := {
 	0: Color(0.95, 0.85, 0.3), # Gold
 	1: Color(0.6, 0.6, 0.65), # Iron
@@ -32,6 +32,7 @@ const RESOURCE_COLORS := {
 	3: Color(0.5, 0.8, 0.35), # Food
 	4: Color(0.7, 0.3, 0.8), # Shard Essence
 	5: Color(0.55, 0.40, 0.25), # Wood (warm brown)
+	6: Color(0.65, 0.45, 0.35), # Captives (muted rust)
 }
 
 @onready var turn_label: Label = $TopBar/HBoxContainer/TurnLabel
@@ -41,10 +42,20 @@ const RESOURCE_COLORS := {
 @onready var region_panel: PanelContainer = $RegionPanel
 @onready var army_panel: PanelContainer = $SelectedArmyPanel
 var city_panel: PanelContainer
-var resource_label: Label
+var resource_bar: HBoxContainer
+var _resource_items: Dictionary = {} # resource_type -> {amount_label, income_label, container}
+var _resource_tooltip: PanelContainer
 var shard_label: Label
 var shard_tooltip: PanelContainer
 var commander_panel: PanelContainer
+var economy_panel: PanelContainer
+var _skill_tooltip: PanelContainer
+var _building_tooltip: PanelContainer
+var _level_up_dialog: PanelContainer
+var _item_drop_dialog: PanelContainer
+var _event_dialog: PanelContainer
+var _pending_level_up_commander: CommanderState
+var _pending_event_data: Dictionary
 
 func _ready() -> void:
 	end_turn_button.pressed.connect(_on_end_turn)
@@ -56,8 +67,13 @@ func _ready() -> void:
 	EventBus.turn_started.connect(_on_turn_started)
 	EventBus.army_moved.connect(_on_army_moved)
 
-	_create_resource_label()
+	EventBus.commander_level_up.connect(_on_commander_level_up)
+	EventBus.commander_item_full.connect(_on_commander_item_full)
+	EventBus.random_event_triggered.connect(_on_random_event_triggered)
+
+	_create_resource_bar()
 	_create_shard_display()
+	_create_economy_panel()
 	_create_city_panel()
 	_create_commander_panel()
 	_update_top_bar()
@@ -341,31 +357,448 @@ func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void
 
 # ── Resource display ─────────────────────────────────────────
 
-func _create_resource_label() -> void:
-	resource_label = Label.new()
-	resource_label.add_theme_font_size_override("font_size", 12)
-	resource_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+const RESOURCE_ICONS := {
+	0: "●",  # Gold - yellow circle
+	1: "◆",  # Iron - grey diamond
+	2: "✦",  # Technology - blue-grey star
+	3: "●",  # Food - green circle
+	5: "■",  # Wood - brown square
+	6: "⛓",  # Captives - chain
+}
+
+func _create_resource_bar() -> void:
+	resource_bar = HBoxContainer.new()
+	resource_bar.add_theme_constant_override("separation", 16)
+
 	# Insert before the Spacer in the top bar
 	var hbox: HBoxContainer = $TopBar/HBoxContainer
 	var spacer := hbox.get_node("Spacer")
-	hbox.add_child(resource_label)
-	hbox.move_child(resource_label, spacer.get_index())
+	hbox.add_child(resource_bar)
+	hbox.move_child(resource_bar, spacer.get_index())
+
+	# Create tooltip panel (hidden)
+	_resource_tooltip = PanelContainer.new()
+	_resource_tooltip.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.55, 0.42, 0.2, 0.6)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 8.0
+	style.content_margin_top = 6.0
+	style.content_margin_right = 8.0
+	style.content_margin_bottom = 6.0
+	_resource_tooltip.add_theme_stylebox_override("panel", style)
+	var tooltip_label := Label.new()
+	tooltip_label.name = "TooltipText"
+	tooltip_label.add_theme_font_size_override("font_size", 12)
+	tooltip_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	_resource_tooltip.add_child(tooltip_label)
+	add_child(_resource_tooltip)
+
+	# Build individual resource items
+	for res_type in [0, 1, 2, 3, 5, 6]:
+		var item_vbox := VBoxContainer.new()
+		item_vbox.add_theme_constant_override("separation", 0)
+		item_vbox.mouse_filter = Control.MOUSE_FILTER_STOP
+
+		var top_row := HBoxContainer.new()
+		top_row.add_theme_constant_override("separation", 3)
+
+		# Icon label
+		var icon_label := Label.new()
+		icon_label.text = RESOURCE_ICONS.get(res_type, "?")
+		icon_label.add_theme_font_size_override("font_size", 12)
+		icon_label.add_theme_color_override("font_color", RESOURCE_COLORS.get(res_type, Color.WHITE))
+		top_row.add_child(icon_label)
+
+		# Amount label
+		var amount_label := Label.new()
+		amount_label.text = "0"
+		amount_label.add_theme_font_size_override("font_size", 13)
+		amount_label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+		top_row.add_child(amount_label)
+
+		item_vbox.add_child(top_row)
+
+		# Income preview label (smaller, below)
+		var income_label := Label.new()
+		income_label.text = ""
+		income_label.add_theme_font_size_override("font_size", 10)
+		income_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		item_vbox.add_child(income_label)
+
+		# Hover signals for tooltip
+		var res_idx: int = res_type  # capture for lambda
+		item_vbox.mouse_entered.connect(_on_resource_hover_entered.bind(res_idx))
+		item_vbox.mouse_exited.connect(_on_resource_hover_exited)
+
+		resource_bar.add_child(item_vbox)
+		_resource_items[res_type] = {
+			"amount_label": amount_label,
+			"income_label": income_label,
+			"container": item_vbox,
+		}
+
+func _calculate_projected_income() -> Dictionary:
+	var income: Dictionary = {}
+	var player_id := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if fs == null:
+		return income
+	# Sum city incomes
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city and not city.is_under_siege:
+			var city_income := GameManager.city_system.calculate_city_income(city)
+			for res in city_income:
+				income[res] = income.get(res, 0) + city_income[res]
+	# Subtract upkeep
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id == player_id:
+			for unit in army.units:
+				var ud := DataManager.get_unit(unit.unit_data_id)
+				if ud:
+					for res in ud.upkeep_cost:
+						income[res] = income.get(res, 0) - ud.upkeep_cost[res]
+			# Commander upkeep
+			if army.commander != null:
+				var level_mult := 1.0 + (army.commander.level - 1) * 0.5
+				for res_type in CommanderSystem.COMMANDER_UPKEEP:
+					var cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
+					income[res_type] = income.get(res_type, 0) - cost
+	return income
+
+func _calculate_income_breakdown(res_type: int) -> Dictionary:
+	# Returns {"cities": {city_name: amount}, "upkeep": {category: amount}, "net": int}
+	var breakdown := {"cities": {}, "upkeep": {}, "net": 0}
+	var player_id := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if fs == null:
+		return breakdown
+	var total := 0
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city and not city.is_under_siege:
+			var city_income := GameManager.city_system.calculate_city_income(city)
+			var amount: int = city_income.get(res_type, 0)
+			if amount != 0:
+				breakdown.cities[city.get_display_name()] = amount
+				total += amount
+	# Upkeep grouped by tag
+	var upkeep_by_tag: Dictionary = {}
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id == player_id:
+			for unit in army.units:
+				var ud := DataManager.get_unit(unit.unit_data_id)
+				if ud and ud.upkeep_cost.has(res_type):
+					var tag := "Other"
+					for t in ["infantry", "ranged", "cavalry", "mage", "construct"]:
+						if ud.tags.has(t):
+							tag = t.capitalize()
+							break
+					upkeep_by_tag[tag] = upkeep_by_tag.get(tag, 0) + ud.upkeep_cost[res_type]
+					total -= ud.upkeep_cost[res_type]
+			# Commander upkeep
+			if army.commander != null and CommanderSystem.COMMANDER_UPKEEP.has(res_type):
+				var level_mult := 1.0 + (army.commander.level - 1) * 0.5
+				var cmd_cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
+				upkeep_by_tag["Commanders"] = upkeep_by_tag.get("Commanders", 0) + cmd_cost
+				total -= cmd_cost
+	breakdown.upkeep = upkeep_by_tag
+	breakdown.net = total
+	return breakdown
 
 func _update_resource_display() -> void:
-	if GameManager.state == null or resource_label == null:
+	if GameManager.state == null or resource_bar == null:
 		return
 	var fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
 	if fs == null:
 		return
-	var parts: Array[String] = []
-	# Show Gold(0), Iron(1), Technology(2), Food(3), Wood(5) - skip Shard Essence(4)
-	for i in [0, 1, 2, 3, 5]:
-		var amount: int = fs.resources.get(i, 0)
-		parts.append(RESOURCE_NAMES[i] + ": " + str(amount))
-	resource_label.text = "  |  ".join(parts)
+
+	var projected := _calculate_projected_income()
+
+	for res_type in [0, 1, 2, 3, 5, 6]:
+		var item: Dictionary = _resource_items.get(res_type, {})
+		if item.is_empty():
+			continue
+		var amount: int = fs.resources.get(res_type, 0)
+		var net: int = projected.get(res_type, 0)
+
+		var amount_label: Label = item.amount_label
+		amount_label.text = str(amount)
+
+		var income_label: Label = item.income_label
+		if net > 0:
+			income_label.text = "+" + str(net)
+			income_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+		elif net < 0:
+			income_label.text = str(net)
+			income_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+		else:
+			income_label.text = "+0"
+			income_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
 
 	# Update shard display
 	_update_shard_display()
+
+func _on_resource_hover_entered(res_type: int) -> void:
+	if _resource_tooltip == null:
+		return
+	var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+	var breakdown := _calculate_income_breakdown(res_type)
+	var fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
+	var current: int = fs.resources.get(res_type, 0) if fs else 0
+
+	var text := "%s: %d" % [rname, current]
+	for city_name in breakdown.cities:
+		var amount: int = breakdown.cities[city_name]
+		text += "\n  %s: +%d" % [city_name, amount]
+	for tag in breakdown.upkeep:
+		var amount: int = breakdown.upkeep[tag]
+		text += "\n  %s Upkeep: -%d" % [tag, amount]
+	text += "\n  Net: %s%d" % ["+" if breakdown.net >= 0 else "", breakdown.net]
+
+	var tooltip_label: Label = _resource_tooltip.get_node("TooltipText")
+	tooltip_label.text = text
+
+	# Position tooltip below the resource item
+	var item: Dictionary = _resource_items.get(res_type, {})
+	if not item.is_empty():
+		var container: Control = item.container
+		var rect := container.get_global_rect()
+		_resource_tooltip.position = Vector2(rect.position.x, rect.end.y + 4)
+
+	_resource_tooltip.visible = true
+
+func _on_resource_hover_exited() -> void:
+	if _resource_tooltip:
+		_resource_tooltip.visible = false
+
+# ── Economy Panel ─────────────────────────────────────────────
+
+func _create_economy_panel() -> void:
+	# Add Economy button to top bar (before End Turn)
+	var hbox: HBoxContainer = $TopBar/HBoxContainer
+	var economy_btn := Button.new()
+	economy_btn.name = "EconomyButton"
+	economy_btn.text = "Economy"
+	economy_btn.custom_minimum_size = Vector2(90, 0)
+	economy_btn.pressed.connect(_toggle_economy_panel)
+	# Insert before EndTurnButton
+	var end_btn_idx := end_turn_button.get_index()
+	hbox.add_child(economy_btn)
+	hbox.move_child(economy_btn, end_btn_idx)
+
+	# Create the economy panel itself
+	economy_panel = PanelContainer.new()
+	economy_panel.name = "EconomyPanel"
+	economy_panel.visible = false
+
+	economy_panel.set_anchors_preset(Control.PRESET_CENTER)
+	economy_panel.anchor_left = 0.5
+	economy_panel.anchor_right = 0.5
+	economy_panel.anchor_top = 0.1
+	economy_panel.anchor_bottom = 0.9
+	economy_panel.offset_left = -190.0
+	economy_panel.offset_right = 190.0
+	economy_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	economy_panel.custom_minimum_size = Vector2(360, 0)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_right = 6
+	style.corner_radius_bottom_left = 6
+	style.content_margin_left = 12.0
+	style.content_margin_top = 10.0
+	style.content_margin_right = 12.0
+	style.content_margin_bottom = 10.0
+	economy_panel.add_theme_stylebox_override("panel", style)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	economy_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "EconomyVBox"
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	add_child(economy_panel)
+
+func _toggle_economy_panel() -> void:
+	if economy_panel.visible:
+		economy_panel.visible = false
+	else:
+		_refresh_economy_panel()
+		economy_panel.visible = true
+
+func _refresh_economy_panel() -> void:
+	var scroll: ScrollContainer = economy_panel.get_child(0)
+	var vbox: VBoxContainer = scroll.get_node("EconomyVBox")
+	for child in vbox.get_children():
+		child.queue_free()
+
+	var player_id := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if fs == null:
+		return
+
+	# Header
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	title.text = "Economy Overview"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func(): economy_panel.visible = false)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+	_add_separator(vbox)
+
+	# Section 1: City Income
+	var city_header := Label.new()
+	city_header.text = "City Income"
+	city_header.add_theme_font_size_override("font_size", 14)
+	city_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(city_header)
+
+	var total_income: Dictionary = {}
+
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null:
+			continue
+		var city_income := GameManager.city_system.calculate_city_income(city)
+		var income_parts: Array[String] = []
+		for res_type in city_income:
+			if city_income[res_type] > 0:
+				var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+				income_parts.append("+%d %s" % [city_income[res_type], rname])
+				total_income[res_type] = total_income.get(res_type, 0) + city_income[res_type]
+
+		var city_label := Label.new()
+		var suffix := " (Capital)" if city.is_capital else ""
+		city_label.text = "  %s%s (Lv%d)" % [city.get_display_name(), suffix, city.level]
+		city_label.add_theme_font_size_override("font_size", 12)
+		city_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		vbox.add_child(city_label)
+
+		if income_parts.size() > 0:
+			var income_text := Label.new()
+			income_text.text = "    " + ", ".join(income_parts)
+			income_text.add_theme_font_size_override("font_size", 11)
+			income_text.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+			vbox.add_child(income_text)
+
+		if city.is_under_siege:
+			var siege_note := Label.new()
+			siege_note.text = "    (BESIEGED - no income)"
+			siege_note.add_theme_font_size_override("font_size", 11)
+			siege_note.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+			vbox.add_child(siege_note)
+
+	_add_separator(vbox)
+
+	# Section 2: Military Upkeep
+	var upkeep_header := Label.new()
+	upkeep_header.text = "Military Upkeep"
+	upkeep_header.add_theme_font_size_override("font_size", 14)
+	upkeep_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(upkeep_header)
+
+	var total_upkeep: Dictionary = {}
+	var upkeep_by_tag: Dictionary = {} # tag -> {res_type: amount}
+
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id != player_id:
+			continue
+		for unit in army.units:
+			var ud := DataManager.get_unit(unit.unit_data_id)
+			if ud == null:
+				continue
+			var tag := "Other"
+			for t in ["infantry", "ranged", "cavalry", "mage", "construct"]:
+				if ud.tags.has(t):
+					tag = t.capitalize()
+					break
+			if not upkeep_by_tag.has(tag):
+				upkeep_by_tag[tag] = {}
+			for res in ud.upkeep_cost:
+				upkeep_by_tag[tag][res] = upkeep_by_tag[tag].get(res, 0) + ud.upkeep_cost[res]
+				total_upkeep[res] = total_upkeep.get(res, 0) + ud.upkeep_cost[res]
+
+	for tag in upkeep_by_tag:
+		var parts: Array[String] = []
+		for res_type in upkeep_by_tag[tag]:
+			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+			parts.append("-%d %s" % [upkeep_by_tag[tag][res_type], rname])
+		var tag_label := Label.new()
+		tag_label.text = "  %s: %s" % [tag, ", ".join(parts)]
+		tag_label.add_theme_font_size_override("font_size", 12)
+		tag_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
+		vbox.add_child(tag_label)
+
+	if upkeep_by_tag.is_empty():
+		var no_upkeep := Label.new()
+		no_upkeep.text = "  No military upkeep"
+		no_upkeep.add_theme_font_size_override("font_size", 12)
+		no_upkeep.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+		vbox.add_child(no_upkeep)
+
+	_add_separator(vbox)
+
+	# Section 3: Net Income
+	var net_header := Label.new()
+	net_header.text = "Net Income per Turn"
+	net_header.add_theme_font_size_override("font_size", 14)
+	net_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(net_header)
+
+	var all_resources: Dictionary = {}
+	for res in total_income:
+		all_resources[res] = true
+	for res in total_upkeep:
+		all_resources[res] = true
+
+	for res_type in all_resources:
+		var inc: int = total_income.get(res_type, 0)
+		var upk: int = total_upkeep.get(res_type, 0)
+		var net: int = inc - upk
+		var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+		var net_label := Label.new()
+		var sign_str := "+" if net >= 0 else ""
+		net_label.text = "  %s: %s%d" % [rname, sign_str, net]
+		net_label.add_theme_font_size_override("font_size", 13)
+		if net > 0:
+			net_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+		elif net < 0:
+			net_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+		else:
+			net_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+		vbox.add_child(net_label)
 
 # ── City management panel ────────────────────────────────────
 
@@ -415,11 +848,42 @@ func _create_city_panel() -> void:
 
 	add_child(city_panel)
 
+	# Building tooltip (floats above city panel)
+	_building_tooltip = PanelContainer.new()
+	_building_tooltip.visible = false
+	_building_tooltip.custom_minimum_size = Vector2(240, 0)
+	_building_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var btt_style := StyleBoxFlat.new()
+	btt_style.bg_color = Color(0.06, 0.05, 0.08, 0.95)
+	btt_style.border_width_left = 1
+	btt_style.border_width_top = 1
+	btt_style.border_width_right = 1
+	btt_style.border_width_bottom = 1
+	btt_style.border_color = Color(0.55, 0.42, 0.2, 0.7)
+	btt_style.corner_radius_top_left = 4
+	btt_style.corner_radius_top_right = 4
+	btt_style.corner_radius_bottom_right = 4
+	btt_style.corner_radius_bottom_left = 4
+	btt_style.content_margin_left = 8.0
+	btt_style.content_margin_top = 6.0
+	btt_style.content_margin_right = 8.0
+	btt_style.content_margin_bottom = 6.0
+	_building_tooltip.add_theme_stylebox_override("panel", btt_style)
+	var btt_label := Label.new()
+	btt_label.name = "TooltipText"
+	btt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	btt_label.custom_minimum_size = Vector2(220, 0)
+	btt_label.add_theme_font_size_override("font_size", 11)
+	btt_label.add_theme_color_override("font_color", Color(0.8, 0.76, 0.68))
+	_building_tooltip.add_child(btt_label)
+	add_child(_building_tooltip)
+
 func _show_city_panel(city_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null:
 		return
 
+	var is_player_city := city.faction_id == GameManager.state.player_faction_id
 	city_panel.visible = true
 
 	var scroll: ScrollContainer = city_panel.get_child(0)
@@ -445,6 +909,15 @@ func _show_city_panel(city_id: StringName) -> void:
 	header.add_child(close_btn)
 	vbox.add_child(header)
 
+	# Show faction owner for foreign cities
+	if not is_player_city:
+		var faction := DataManager.get_faction(city.faction_id)
+		var owner_label := Label.new()
+		owner_label.text = "Owner: " + (faction.display_name if faction else str(city.faction_id))
+		owner_label.add_theme_font_size_override("font_size", 13)
+		owner_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
+		vbox.add_child(owner_label)
+
 	_add_separator(vbox)
 
 	# City info: Level, Population, Growth
@@ -460,23 +933,24 @@ func _show_city_panel(city_id: StringName) -> void:
 	info_label.text = "Level %d  |  Pop: %d  |  %s" % [city.level, city.population, growth_text]
 	vbox.add_child(info_label)
 
-	# Income preview
-	var income := GameManager.city_system.calculate_city_income(city)
-	if income.size() > 0:
-		var income_parts: Array[String] = []
-		for res_type in income:
-			if income[res_type] > 0:
-				var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-				income_parts.append("+" + str(income[res_type]) + " " + rname)
-		if income_parts.size() > 0:
-			var income_label := Label.new()
-			income_label.text = "Income: " + ", ".join(income_parts)
-			income_label.add_theme_font_size_override("font_size", 12)
-			income_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
-			vbox.add_child(income_label)
+	# Income preview (player cities only)
+	if is_player_city:
+		var income := GameManager.city_system.calculate_city_income(city)
+		if income.size() > 0:
+			var income_parts: Array[String] = []
+			for res_type in income:
+				if income[res_type] > 0:
+					var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+					income_parts.append("+" + str(income[res_type]) + " " + rname)
+			if income_parts.size() > 0:
+				var income_label := Label.new()
+				income_label.text = "Income: " + ", ".join(income_parts)
+				income_label.add_theme_font_size_override("font_size", 12)
+				income_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+				vbox.add_child(income_label)
 
 	# Settlement founding button (only for player capitals that can found)
-	if city.is_capital and city.can_found_settlement and city.faction_id == GameManager.state.player_faction_id:
+	if is_player_city and city.is_capital and city.can_found_settlement:
 		var found_btn := Button.new()
 		found_btn.text = "Found Settlement"
 		found_btn.custom_minimum_size = Vector2(180, 32)
@@ -510,6 +984,9 @@ func _show_city_panel(city_id: StringName) -> void:
 			blabel.text = "  " + building.display_name
 			blabel.add_theme_font_size_override("font_size", 12)
 			blabel.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+			blabel.mouse_filter = Control.MOUSE_FILTER_STOP
+			blabel.mouse_entered.connect(_on_building_hover.bind(building_id))
+			blabel.mouse_exited.connect(_on_building_hover_exit)
 			vbox.add_child(blabel)
 
 	# Build queue
@@ -522,8 +999,9 @@ func _show_city_panel(city_id: StringName) -> void:
 		qlabel.add_theme_color_override("font_color", Color(0.85, 0.75, 0.4))
 		vbox.add_child(qlabel)
 
-	# Available buildings to construct
-	if city.get_available_building_slots() > 0 and city.build_queue.is_empty():
+	# Available buildings to construct (player only)
+	var available_buildings := GameManager.city_system.get_available_buildings(city)
+	if is_player_city and available_buildings.size() > 0 and city.build_queue.is_empty():
 		_add_separator(vbox)
 		var build_header := Label.new()
 		build_header.text = "Available Buildings"
@@ -531,30 +1009,24 @@ func _show_city_panel(city_id: StringName) -> void:
 		build_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 		vbox.add_child(build_header)
 
-		for building_id in DataManager.buildings:
-			var building: BuildingData = DataManager.buildings[building_id]
-			if city.buildings.has(building_id):
-				continue
-			if city.level < building.required_capital_level:
-				continue
-			# Check if already in queue
-			var in_queue := false
-			for item in city.build_queue:
-				if item.building_id == building_id:
-					in_queue = true
-					break
-			if in_queue:
-				continue
+		for building in available_buildings:
+			var building_id: StringName = building.id
 
 			var btn_row := HBoxContainer.new()
 			btn_row.add_theme_constant_override("separation", 6)
 
 			var build_btn := Button.new()
-			build_btn.text = building.display_name
+			if building.upgrades_from != &"":
+				var from_building: BuildingData = DataManager.get_building(building.upgrades_from)
+				var from_name := from_building.display_name if from_building else str(building.upgrades_from)
+				build_btn.text = "\u25B2 " + building.display_name + " (from " + from_name + ")"
+			else:
+				build_btn.text = building.display_name
 			build_btn.custom_minimum_size = Vector2(140, 28)
 			build_btn.pressed.connect(_on_build_pressed.bind(city_id, building_id))
+			build_btn.mouse_entered.connect(_on_building_hover.bind(building_id))
+			build_btn.mouse_exited.connect(_on_building_hover_exit)
 
-			# Check if can afford
 			var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 			if fs and not _can_afford_display(fs, building.build_cost):
 				build_btn.disabled = true
@@ -569,72 +1041,75 @@ func _show_city_panel(city_id: StringName) -> void:
 
 			vbox.add_child(btn_row)
 
-	_add_separator(vbox)
+	# Recruitment section (player only)
+	if is_player_city:
+		_add_separator(vbox)
 
-	# Recruitment section
-	var recruit_header := Label.new()
-	recruit_header.text = "Recruitment"
-	recruit_header.add_theme_font_size_override("font_size", 14)
-	recruit_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-	vbox.add_child(recruit_header)
+		var recruit_header := Label.new()
+		recruit_header.text = "Recruitment"
+		recruit_header.add_theme_font_size_override("font_size", 14)
+		recruit_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(recruit_header)
 
-	# Recruit queue
-	for item in city.recruit_queue:
-		var unit_data := DataManager.get_unit(item.unit_data_id)
-		var uname := unit_data.display_name if unit_data else str(item.unit_data_id)
-		var qlabel := Label.new()
-		qlabel.text = "  [Training] " + uname + " (%d turns)" % item.turns_remaining
-		qlabel.add_theme_font_size_override("font_size", 12)
-		qlabel.add_theme_color_override("font_color", Color(0.85, 0.75, 0.4))
-		vbox.add_child(qlabel)
+		# Recruit queue
+		for item in city.recruit_queue:
+			var unit_data := DataManager.get_unit(item.unit_data_id)
+			var uname := unit_data.display_name if unit_data else str(item.unit_data_id)
+			var qlabel := Label.new()
+			qlabel.text = "  [Training] " + uname + " (%d turns)" % item.turns_remaining
+			qlabel.add_theme_font_size_override("font_size", 12)
+			qlabel.add_theme_color_override("font_color", Color(0.85, 0.75, 0.4))
+			vbox.add_child(qlabel)
 
-	# Available units to recruit
-	var recruitable := _get_recruitable_units(city)
-	if recruitable.size() > 0 and city.recruit_queue.is_empty():
-		for unit_data_id in recruitable:
-			var unit_data := DataManager.get_unit(unit_data_id)
-			if unit_data == null:
-				continue
+		# Available units to recruit
+		var recruitable := _get_recruitable_units(city)
+		if recruitable.size() > 0:
+			for unit_data_id in recruitable:
+				var unit_data := DataManager.get_unit(unit_data_id)
+				if unit_data == null:
+					continue
 
-			var btn_row := HBoxContainer.new()
-			btn_row.add_theme_constant_override("separation", 6)
+				var btn_row := HBoxContainer.new()
+				btn_row.add_theme_constant_override("separation", 6)
 
-			var recruit_btn := Button.new()
-			recruit_btn.text = unit_data.display_name
-			recruit_btn.custom_minimum_size = Vector2(140, 28)
-			recruit_btn.pressed.connect(_on_recruit_pressed.bind(city_id, unit_data_id))
+				var recruit_btn := Button.new()
+				recruit_btn.text = unit_data.display_name
+				recruit_btn.custom_minimum_size = Vector2(140, 28)
+				recruit_btn.pressed.connect(_on_recruit_pressed.bind(city_id, unit_data_id))
 
-			var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
-			var can_afford := fs != null and _can_afford_display(fs, unit_data.recruit_cost)
-			var has_pop := city.population >= unit_data.squad_size
-			if not can_afford or not has_pop:
-				recruit_btn.disabled = true
+				var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+				var can_afford := fs != null and _can_afford_display(fs, unit_data.recruit_cost)
+				var has_pop := city.population >= unit_data.squad_size
+				if not can_afford or not has_pop:
+					recruit_btn.disabled = true
 
-			btn_row.add_child(recruit_btn)
+				btn_row.add_child(recruit_btn)
 
-			var cost_parts: Array[String] = []
-			if unit_data.recruit_cost.size() > 0:
-				cost_parts.append(_format_cost(unit_data.recruit_cost))
-			cost_parts.append("Pop: " + str(unit_data.squad_size))
-			var cost_label := Label.new()
-			cost_label.text = ", ".join(cost_parts) + " | " + str(unit_data.recruit_time) + " turn(s)"
-			cost_label.add_theme_font_size_override("font_size", 11)
-			cost_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
-			btn_row.add_child(cost_label)
+				var cost_parts: Array[String] = []
+				if unit_data.recruit_cost.size() > 0:
+					cost_parts.append(_format_cost(unit_data.recruit_cost))
+				cost_parts.append("Pop: " + str(unit_data.squad_size))
+				var cost_label := Label.new()
+				cost_label.text = ", ".join(cost_parts) + " | " + str(unit_data.recruit_time) + " turn(s)"
+				cost_label.add_theme_font_size_override("font_size", 11)
+				cost_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
+				btn_row.add_child(cost_label)
 
-			vbox.add_child(btn_row)
-	elif recruitable.is_empty():
-		var no_units := Label.new()
-		no_units.text = "  No units available (need Barracks)"
-		no_units.add_theme_font_size_override("font_size", 12)
-		no_units.add_theme_color_override("font_color", Color(0.55, 0.5, 0.45))
-		vbox.add_child(no_units)
+				vbox.add_child(btn_row)
+		elif recruitable.is_empty():
+			var no_units := Label.new()
+			no_units.text = "  No units available (need Barracks)"
+			no_units.add_theme_font_size_override("font_size", 12)
+			no_units.add_theme_color_override("font_color", Color(0.55, 0.5, 0.45))
+			vbox.add_child(no_units)
 
 func _hide_city_panel() -> void:
 	if city_panel:
 		city_panel.visible = false
 
 func _on_city_panel_close() -> void:
+	if _building_tooltip:
+		_building_tooltip.visible = false
 	var campaign: Node2D = get_parent().get_parent()
 	if campaign and campaign.has_method("_close_city_panel"):
 		campaign._close_city_panel()
@@ -643,6 +1118,58 @@ func _on_build_pressed(city_id: StringName, building_id: StringName) -> void:
 	if GameManager.city_system.start_building(city_id, building_id):
 		_show_city_panel(city_id)
 		_update_resource_display()
+
+func _on_building_hover(building_id: StringName) -> void:
+	var building: BuildingData = DataManager.get_building(building_id)
+	if building == null or _building_tooltip == null:
+		return
+
+	var text := building.display_name + "\n"
+	text += building.description + "\n"
+
+	# Income bonuses
+	var has_effects := false
+	for res_type in building.income_bonus:
+		if building.income_bonus[res_type] != 0:
+			text += "\n  +%d %s/turn" % [building.income_bonus[res_type], RESOURCE_NAMES[res_type]]
+			has_effects = true
+	if building.population_growth_bonus > 0:
+		text += "\n  +%d Growth" % building.population_growth_bonus
+		has_effects = true
+	if building.defense_bonus > 0:
+		text += "\n  +%d Defense" % building.defense_bonus
+		has_effects = true
+	if building.recruit_speed_bonus > 0:
+		text += "\n  +%d Recruit Speed" % building.recruit_speed_bonus
+		has_effects = true
+
+	# Units unlocked
+	if building.unlocks_units.size() > 0:
+		var unit_names: Array[String] = []
+		for uid in building.unlocks_units:
+			var ud := DataManager.get_unit(uid)
+			unit_names.append(ud.display_name if ud else str(uid))
+		text += "\n\nUnlocks: " + ", ".join(unit_names)
+
+	# Next upgrade in chain
+	var next_building := _find_upgrade_for(building_id)
+	if next_building:
+		text += "\n\nUpgrades to: " + next_building.display_name
+
+	_building_tooltip.get_node("TooltipText").text = text
+	_building_tooltip.position = get_global_mouse_position() + Vector2(-260, 12)
+	_building_tooltip.visible = true
+
+func _on_building_hover_exit() -> void:
+	if _building_tooltip:
+		_building_tooltip.visible = false
+
+func _find_upgrade_for(building_id: StringName) -> BuildingData:
+	for bid in DataManager.buildings:
+		var b: BuildingData = DataManager.buildings[bid]
+		if b.upgrades_from == building_id:
+			return b
+	return null
 
 func _on_recruit_pressed(city_id: StringName, unit_data_id: StringName) -> void:
 	if GameManager.city_system.start_recruitment(city_id, unit_data_id):
@@ -773,9 +1300,9 @@ func _create_commander_panel() -> void:
 	commander_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	commander_panel.offset_left = 10.0
 	commander_panel.offset_top = 54.0
-	commander_panel.offset_right = 270.0
-	commander_panel.offset_bottom = 300.0
-	commander_panel.custom_minimum_size = Vector2(260, 0)
+	commander_panel.offset_right = 290.0
+	commander_panel.offset_bottom = 450.0
+	commander_panel.custom_minimum_size = Vector2(280, 0)
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
@@ -794,38 +1321,253 @@ func _create_commander_panel() -> void:
 	style.content_margin_bottom = 8.0
 	commander_panel.add_theme_stylebox_override("panel", style)
 
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	commander_panel.add_child(scroll)
+
 	var vbox := VBoxContainer.new()
 	vbox.name = "CommanderVBox"
 	vbox.add_theme_constant_override("separation", 4)
-	commander_panel.add_child(vbox)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
 
 	add_child(commander_panel)
+
+	# Create skill/item tooltip (hidden, positioned on hover)
+	_skill_tooltip = PanelContainer.new()
+	_skill_tooltip.visible = false
+	var tt_style := StyleBoxFlat.new()
+	tt_style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	tt_style.border_width_left = 1
+	tt_style.border_width_top = 1
+	tt_style.border_width_right = 1
+	tt_style.border_width_bottom = 1
+	tt_style.border_color = Color(0.55, 0.42, 0.2, 0.6)
+	tt_style.corner_radius_top_left = 4
+	tt_style.corner_radius_top_right = 4
+	tt_style.corner_radius_bottom_right = 4
+	tt_style.corner_radius_bottom_left = 4
+	tt_style.content_margin_left = 8.0
+	tt_style.content_margin_top = 6.0
+	tt_style.content_margin_right = 8.0
+	tt_style.content_margin_bottom = 6.0
+	_skill_tooltip.add_theme_stylebox_override("panel", tt_style)
+	var tt_label := Label.new()
+	tt_label.name = "TooltipText"
+	tt_label.add_theme_font_size_override("font_size", 11)
+	tt_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	tt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tt_label.custom_minimum_size = Vector2(220, 0)
+	_skill_tooltip.add_child(tt_label)
+	add_child(_skill_tooltip)
 
 func _update_commander_panel(army: ArmyState) -> void:
 	if commander_panel == null:
 		return
 
 	commander_panel.visible = true
-	var vbox: VBoxContainer = commander_panel.get_node("CommanderVBox")
+	var scroll: ScrollContainer = commander_panel.get_child(0)
+	var vbox: VBoxContainer = scroll.get_node("CommanderVBox")
 	for child in vbox.get_children():
 		child.queue_free()
 
 	var faction := DataManager.get_faction(army.faction_id)
 	var faction_color: Color = faction.color if faction else Color.WHITE
+	var is_player_army := army.faction_id == GameManager.state.player_faction_id
 
-	# Commander name
-	var name_label := Label.new()
-	name_label.text = army.commander_name if army.commander_name != "" else "Unknown Commander"
-	name_label.add_theme_font_size_override("font_size", 15)
-	name_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
-	vbox.add_child(name_label)
+	if army.commander == null:
+		# No commander assigned
+		var no_cmd_label := Label.new()
+		no_cmd_label.text = "No Commander"
+		no_cmd_label.add_theme_font_size_override("font_size", 15)
+		no_cmd_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
+		vbox.add_child(no_cmd_label)
 
-	# Faction
-	var faction_name_label := Label.new()
-	faction_name_label.text = faction.display_name if faction else str(army.faction_id)
-	faction_name_label.add_theme_font_size_override("font_size", 12)
-	faction_name_label.add_theme_color_override("font_color", faction_color.lightened(0.3))
-	vbox.add_child(faction_name_label)
+		# Faction
+		var faction_name_label := Label.new()
+		faction_name_label.text = faction.display_name if faction else str(army.faction_id)
+		faction_name_label.add_theme_font_size_override("font_size", 12)
+		faction_name_label.add_theme_color_override("font_color", faction_color.lightened(0.3))
+		vbox.add_child(faction_name_label)
+
+		# Show dropdown for player armies
+		if is_player_army:
+			var available := GameManager.get_available_commanders(army.faction_id)
+			if available.size() > 0:
+				_add_separator(vbox)
+				var assign_label := Label.new()
+				assign_label.text = "Assign Commander:"
+				assign_label.add_theme_font_size_override("font_size", 12)
+				assign_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+				vbox.add_child(assign_label)
+
+				var dropdown := OptionButton.new()
+				dropdown.add_theme_font_size_override("font_size", 12)
+				dropdown.custom_minimum_size = Vector2(200, 28)
+				dropdown.add_item("-- Select --")
+				for cmd in available:
+					dropdown.add_item("%s (Lv%d)" % [cmd.name, cmd.level])
+				var captured_army_id := army.army_id
+				var captured_commanders := available
+				dropdown.item_selected.connect(func(idx: int):
+					if idx > 0:
+						var selected_cmd: CommanderState = captured_commanders[idx - 1]
+						GameManager.assign_commander_to_army(captured_army_id, selected_cmd.commander_id)
+						_update_commander_panel(GameManager.state.armies.get(captured_army_id))
+						EventBus.army_selected.emit(captured_army_id)
+				)
+				vbox.add_child(dropdown)
+			else:
+				var no_pool := Label.new()
+				no_pool.text = "No commanders in pool"
+				no_pool.add_theme_font_size_override("font_size", 11)
+				no_pool.add_theme_color_override("font_color", Color(0.5, 0.48, 0.42))
+				vbox.add_child(no_pool)
+	else:
+		# Commander name
+		var cmd_name := army.get_commander_name()
+		var name_row := HBoxContainer.new()
+		name_row.add_theme_constant_override("separation", 6)
+		var name_label := Label.new()
+		name_label.text = cmd_name if cmd_name != "" else "Unknown Commander"
+		name_label.add_theme_font_size_override("font_size", 15)
+		name_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_row.add_child(name_label)
+
+		# Unassign button (player armies only)
+		if is_player_army:
+			var unassign_btn := Button.new()
+			unassign_btn.text = "Unassign"
+			unassign_btn.custom_minimum_size = Vector2(70, 24)
+			unassign_btn.add_theme_font_size_override("font_size", 10)
+			var captured_army_id := army.army_id
+			unassign_btn.pressed.connect(func():
+				GameManager.unassign_commander_from_army(captured_army_id)
+				var updated_army: ArmyState = GameManager.state.armies.get(captured_army_id)
+				if updated_army:
+					_update_commander_panel(updated_army)
+					EventBus.army_selected.emit(captured_army_id)
+			)
+			name_row.add_child(unassign_btn)
+		vbox.add_child(name_row)
+
+		# Faction
+		var faction_name_label := Label.new()
+		faction_name_label.text = faction.display_name if faction else str(army.faction_id)
+		faction_name_label.add_theme_font_size_override("font_size", 12)
+		faction_name_label.add_theme_color_override("font_color", faction_color.lightened(0.3))
+		vbox.add_child(faction_name_label)
+
+	# Commander level & XP bar
+	if army.commander:
+		var cmd: CommanderState = army.commander
+		var level_label := Label.new()
+		level_label.text = "Level %d" % cmd.level
+		level_label.add_theme_font_size_override("font_size", 13)
+		level_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(level_label)
+
+		# XP progress bar
+		var xp_threshold := 0
+		if cmd.level < CommanderState.XP_THRESHOLDS.size():
+			xp_threshold = CommanderState.XP_THRESHOLDS[cmd.level]
+		if xp_threshold > 0:
+			var xp_bar := ProgressBar.new()
+			xp_bar.custom_minimum_size = Vector2(200, 8)
+			xp_bar.max_value = xp_threshold
+			xp_bar.value = cmd.xp
+			xp_bar.show_percentage = false
+			var bar_style := StyleBoxFlat.new()
+			bar_style.bg_color = Color(0.55, 0.42, 0.2)
+			bar_style.corner_radius_top_left = 2
+			bar_style.corner_radius_top_right = 2
+			bar_style.corner_radius_bottom_right = 2
+			bar_style.corner_radius_bottom_left = 2
+			xp_bar.add_theme_stylebox_override("fill", bar_style)
+			var bg_style := StyleBoxFlat.new()
+			bg_style.bg_color = Color(0.15, 0.12, 0.1)
+			bg_style.corner_radius_top_left = 2
+			bg_style.corner_radius_top_right = 2
+			bg_style.corner_radius_bottom_right = 2
+			bg_style.corner_radius_bottom_left = 2
+			xp_bar.add_theme_stylebox_override("background", bg_style)
+			vbox.add_child(xp_bar)
+
+			var xp_text := Label.new()
+			xp_text.text = "XP: %d / %d" % [cmd.xp, xp_threshold]
+			xp_text.add_theme_font_size_override("font_size", 10)
+			xp_text.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
+			vbox.add_child(xp_text)
+		elif cmd.level >= 10:
+			var max_label := Label.new()
+			max_label.text = "XP: MAX LEVEL"
+			max_label.add_theme_font_size_override("font_size", 10)
+			max_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+			vbox.add_child(max_label)
+
+		# Skills section
+		if cmd.skill_levels.size() > 0:
+			_add_separator(vbox)
+			var skills_header := Label.new()
+			skills_header.text = "Skills"
+			skills_header.add_theme_font_size_override("font_size", 12)
+			skills_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+			vbox.add_child(skills_header)
+			for skill_id in cmd.skill_levels:
+				var skill_data = CommanderSystem.skills.get(skill_id)
+				var slevel: int = cmd.skill_levels[skill_id]
+				var skill_label := Label.new()
+				if skill_data:
+					skill_label.text = "  %s (Lv.%d)" % [skill_data.display_name, slevel]
+					if skill_data.is_minor:
+						skill_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
+					else:
+						skill_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.4))
+				else:
+					skill_label.text = "  " + str(skill_id) + " (Lv.%d)" % slevel
+					skill_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
+				skill_label.add_theme_font_size_override("font_size", 11)
+				skill_label.mouse_filter = Control.MOUSE_FILTER_STOP
+				skill_label.mouse_entered.connect(_on_skill_hover_entered.bind(skill_id, slevel))
+				skill_label.mouse_exited.connect(_on_skill_hover_exited)
+				vbox.add_child(skill_label)
+
+		# Items section
+		_add_separator(vbox)
+		var items_header := Label.new()
+		items_header.text = "Items (%d/3)" % cmd.items.size()
+		items_header.add_theme_font_size_override("font_size", 12)
+		items_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(items_header)
+		if cmd.items.size() > 0:
+			for item_id in cmd.items:
+				var item_data = CommanderSystem.items.get(item_id)
+				var item_label := Label.new()
+				if item_data:
+					item_label.text = "  " + item_data.display_name
+					match item_data.rarity:
+						&"legendary":
+							item_label.add_theme_color_override("font_color", Color(0.95, 0.7, 0.2))
+						&"rare":
+							item_label.add_theme_color_override("font_color", Color(0.4, 0.6, 0.9))
+						_:
+							item_label.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+				else:
+					item_label.text = "  " + str(item_id)
+					item_label.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+				item_label.add_theme_font_size_override("font_size", 11)
+				item_label.mouse_filter = Control.MOUSE_FILTER_STOP
+				item_label.mouse_entered.connect(_on_item_hover_entered.bind(item_id))
+				item_label.mouse_exited.connect(_on_skill_hover_exited)
+				vbox.add_child(item_label)
+		else:
+			var no_items := Label.new()
+			no_items.text = "  (none)"
+			no_items.add_theme_font_size_override("font_size", 11)
+			no_items.add_theme_color_override("font_color", Color(0.5, 0.48, 0.42))
+			vbox.add_child(no_items)
 
 	_add_separator(vbox)
 
@@ -846,14 +1588,14 @@ func _update_commander_panel(army: ArmyState) -> void:
 		total_atk += ud.attack
 		total_def += ud.defense
 		total_spd += ud.speed
-		if ud.tags.has("infantry"):
-			infantry_count += 1
-		if ud.tags.has("ranged"):
-			ranged_count += 1
-		if ud.tags.has("mage"):
-			mage_count += 1
 		if ud.tags.has("cavalry"):
 			cavalry_count += 1
+		elif ud.tags.has("mage"):
+			mage_count += 1
+		elif ud.tags.has("ranged"):
+			ranged_count += 1
+		elif ud.tags.has("infantry"):
+			infantry_count += 1
 		for res_type in ud.upkeep_cost:
 			total_upkeep[res_type] = total_upkeep.get(res_type, 0) + ud.upkeep_cost[res_type]
 
@@ -902,6 +1644,37 @@ func _update_commander_panel(army: ArmyState) -> void:
 		upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
 		vbox.add_child(upkeep_label)
 
+func _on_skill_hover_entered(skill_id: StringName, skill_level: int = 1) -> void:
+	var skill_data: CommanderSkill = CommanderSystem.skills.get(skill_id)
+	if skill_data == null or _skill_tooltip == null:
+		return
+	var text := "%s (Lv.%d)\n" % [skill_data.display_name, skill_level]
+	text += skill_data.description + "\n"
+	for key in skill_data.effects:
+		var base_val = skill_data.effects[key]
+		var total_val = base_val * skill_level
+		var key_name: String = str(key).replace("_", " ").capitalize()
+		text += "  %s: %s (%s per level)\n" % [key_name, str(total_val), str(base_val)]
+	_skill_tooltip.get_node("TooltipText").text = text.strip_edges()
+	_skill_tooltip.position = get_global_mouse_position() + Vector2(12, 12)
+	_skill_tooltip.visible = true
+
+func _on_item_hover_entered(item_id: StringName) -> void:
+	var item_data: CommanderItem = CommanderSystem.items.get(item_id)
+	if item_data == null or _skill_tooltip == null:
+		return
+	var text := item_data.display_name + " [" + str(item_data.rarity).capitalize() + "]\n"
+	text += item_data.description + "\n"
+	for key in item_data.effects:
+		text += "  %s: %s\n" % [str(key).replace("_", " ").capitalize(), str(item_data.effects[key])]
+	_skill_tooltip.get_node("TooltipText").text = text.strip_edges()
+	_skill_tooltip.position = get_global_mouse_position() + Vector2(12, 12)
+	_skill_tooltip.visible = true
+
+func _on_skill_hover_exited() -> void:
+	if _skill_tooltip:
+		_skill_tooltip.visible = false
+
 func _hide_commander_panel() -> void:
 	if commander_panel:
 		commander_panel.visible = false
@@ -913,3 +1686,290 @@ signal settlement_placement_cancelled()
 
 func _on_found_settlement_pressed(city_id: StringName) -> void:
 	settlement_placement_requested.emit(city_id)
+
+# ── Level-Up Dialog ──────────────────────────────────────────
+
+func _on_commander_level_up(commander: CommanderState) -> void:
+	# Only show dialog for player commanders
+	if commander.faction_id != GameManager.state.player_faction_id:
+		CommanderSystem.ai_auto_pick_major_skill(commander)
+		return
+	_pending_level_up_commander = commander
+	_show_level_up_dialog(commander)
+
+func _show_level_up_dialog(commander: CommanderState) -> void:
+	if _level_up_dialog:
+		_level_up_dialog.queue_free()
+
+	_level_up_dialog = _create_centered_dialog(350, 280)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_level_up_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Commander Level Up!"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var info := Label.new()
+	info.text = "%s reached Level %d!" % [commander.name, commander.level]
+	info.add_theme_font_size_override("font_size", 14)
+	info.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(info)
+
+	# Show auto-assigned minor skill info
+	# Find the most recently changed minor skill
+	for sid in commander.skill_levels:
+		var skill_data = CommanderSystem.skills.get(sid)
+		if skill_data and skill_data.is_minor:
+			var slevel: int = commander.skill_levels[sid]
+			var minor_label := Label.new()
+			if slevel > 1:
+				minor_label.text = "%s leveled up to Lv.%d" % [skill_data.display_name, slevel]
+			else:
+				minor_label.text = "Gained: %s" % skill_data.display_name
+			minor_label.add_theme_font_size_override("font_size", 13)
+			minor_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+			minor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			vbox.add_child(minor_label)
+			break
+
+	_add_separator(vbox)
+
+	# Major skill choices (now can include level-ups)
+	var choices = CommanderSystem.get_major_skill_choices(commander)
+	if choices.size() > 0:
+		var choose_label := Label.new()
+		choose_label.text = "Choose a major skill:"
+		choose_label.add_theme_font_size_override("font_size", 13)
+		choose_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(choose_label)
+
+		for choice in choices:
+			var skill_data = CommanderSystem.skills.get(choice.skill_id)
+			if skill_data == null:
+				continue
+			var btn := Button.new()
+			if choice.is_levelup:
+				var cur_lv: int = choice.current_level
+				btn.text = "%s Lv.%d -> Lv.%d" % [skill_data.display_name, cur_lv, cur_lv + 1]
+			else:
+				btn.text = "%s (NEW) - %s" % [skill_data.display_name, skill_data.description]
+			btn.custom_minimum_size = Vector2(300, 36)
+			btn.pressed.connect(_on_major_skill_chosen.bind(choice.skill_id))
+			vbox.add_child(btn)
+	else:
+		var no_skills := Label.new()
+		no_skills.text = "No major skills available"
+		no_skills.add_theme_font_size_override("font_size", 12)
+		no_skills.add_theme_color_override("font_color", Color(0.55, 0.5, 0.45))
+		vbox.add_child(no_skills)
+
+		var ok_btn := Button.new()
+		ok_btn.text = "Continue"
+		ok_btn.custom_minimum_size = Vector2(120, 32)
+		ok_btn.pressed.connect(_on_level_up_dismiss)
+		var btn_container := HBoxContainer.new()
+		btn_container.alignment = BoxContainer.ALIGNMENT_CENTER
+		btn_container.add_child(ok_btn)
+		vbox.add_child(btn_container)
+
+	add_child(_level_up_dialog)
+
+func _on_major_skill_chosen(skill_id: StringName) -> void:
+	if _pending_level_up_commander:
+		CommanderSystem.choose_major_skill(_pending_level_up_commander, skill_id)
+		_pending_level_up_commander = null
+	if _level_up_dialog:
+		_level_up_dialog.queue_free()
+		_level_up_dialog = null
+
+func _on_level_up_dismiss() -> void:
+	_pending_level_up_commander = null
+	if _level_up_dialog:
+		_level_up_dialog.queue_free()
+		_level_up_dialog = null
+
+# ── Item Drop Dialog ─────────────────────────────────────────
+
+func _on_commander_item_full(commander: CommanderState, new_item) -> void:
+	if commander.faction_id != GameManager.state.player_faction_id:
+		return
+	_show_item_drop_dialog(commander, new_item)
+
+func _show_item_drop_dialog(commander: CommanderState, new_item) -> void:
+	if _item_drop_dialog:
+		_item_drop_dialog.queue_free()
+
+	_item_drop_dialog = _create_centered_dialog(320, 260)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_item_drop_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Item Found!"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var item_name := Label.new()
+	item_name.text = new_item.display_name
+	item_name.add_theme_font_size_override("font_size", 15)
+	match new_item.rarity:
+		&"legendary":
+			item_name.add_theme_color_override("font_color", Color(0.95, 0.7, 0.2))
+		&"rare":
+			item_name.add_theme_color_override("font_color", Color(0.4, 0.6, 0.9))
+		_:
+			item_name.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+	item_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(item_name)
+
+	var desc := Label.new()
+	desc.text = new_item.description
+	desc.add_theme_font_size_override("font_size", 12)
+	desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc)
+
+	_add_separator(vbox)
+
+	var replace_label := Label.new()
+	replace_label.text = "Inventory full! Replace which item?"
+	replace_label.add_theme_font_size_override("font_size", 13)
+	replace_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(replace_label)
+
+	for i in commander.items.size():
+		var old_item_data = CommanderSystem.items.get(commander.items[i])
+		var old_name: String = old_item_data.display_name if old_item_data else str(commander.items[i])
+		var btn := Button.new()
+		btn.text = "Replace: " + old_name
+		btn.custom_minimum_size = Vector2(260, 30)
+		btn.pressed.connect(_on_item_replace.bind(commander, i, new_item.id))
+		vbox.add_child(btn)
+
+	var discard_btn := Button.new()
+	discard_btn.text = "Discard New Item"
+	discard_btn.custom_minimum_size = Vector2(260, 30)
+	discard_btn.pressed.connect(_on_item_discard)
+	vbox.add_child(discard_btn)
+
+	add_child(_item_drop_dialog)
+
+func _on_item_replace(commander: CommanderState, slot_index: int, new_item_id: StringName) -> void:
+	if slot_index < commander.items.size():
+		commander.items[slot_index] = new_item_id
+	if _item_drop_dialog:
+		_item_drop_dialog.queue_free()
+		_item_drop_dialog = null
+
+func _on_item_discard() -> void:
+	if _item_drop_dialog:
+		_item_drop_dialog.queue_free()
+		_item_drop_dialog = null
+
+# ── Random Event Dialog ──────────────────────────────────────
+
+func _on_random_event_triggered(event_data: Dictionary) -> void:
+	_pending_event_data = event_data
+	_show_event_dialog(event_data)
+
+func _show_event_dialog(event_data: Dictionary) -> void:
+	if _event_dialog:
+		_event_dialog.queue_free()
+
+	_event_dialog = _create_centered_dialog(400, 260)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	_event_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = event_data.get("title", "Event")
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	_add_separator(vbox)
+
+	var desc := Label.new()
+	desc.text = event_data.get("text", "")
+	desc.add_theme_font_size_override("font_size", 13)
+	desc.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc)
+
+	_add_separator(vbox)
+
+	# Choice A button
+	var choice_a_text: String = event_data.get("choice_a", "Accept")
+	var btn_a := Button.new()
+	btn_a.text = choice_a_text
+	btn_a.custom_minimum_size = Vector2(340, 36)
+	btn_a.pressed.connect(_on_event_choice.bind("a"))
+	vbox.add_child(btn_a)
+
+	# Choice B button
+	var choice_b_text: String = event_data.get("choice_b", "Decline")
+	var btn_b := Button.new()
+	btn_b.text = choice_b_text
+	btn_b.custom_minimum_size = Vector2(340, 36)
+	btn_b.pressed.connect(_on_event_choice.bind("b"))
+	vbox.add_child(btn_b)
+
+	add_child(_event_dialog)
+
+func _on_event_choice(choice: String) -> void:
+	var result := TurnManager.apply_random_event_choice(_pending_event_data, choice)
+	if _event_dialog:
+		_event_dialog.queue_free()
+		_event_dialog = null
+	_pending_event_data = {}
+	_update_resource_display()
+	# Show brief outcome notification
+	if result != "":
+		var campaign: Node2D = get_parent().get_parent()
+		if campaign and campaign.has_method("_show_notification"):
+			campaign._show_notification(result)
+
+# ── Dialog Helper ────────────────────────────────────────────
+
+func _create_centered_dialog(width: int, height: int) -> PanelContainer:
+	var dialog := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_right = 6
+	style.corner_radius_bottom_left = 6
+	style.content_margin_left = 16.0
+	style.content_margin_top = 12.0
+	style.content_margin_right = 16.0
+	style.content_margin_bottom = 12.0
+	dialog.add_theme_stylebox_override("panel", style)
+
+	dialog.anchors_preset = Control.PRESET_CENTER
+	dialog.anchor_left = 0.5
+	dialog.anchor_top = 0.5
+	dialog.anchor_right = 0.5
+	dialog.anchor_bottom = 0.5
+	dialog.offset_left = -width / 2
+	dialog.offset_top = -height / 2
+	dialog.offset_right = width / 2
+	dialog.offset_bottom = height / 2
+	dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	dialog.grow_vertical = Control.GROW_DIRECTION_BOTH
+	return dialog

@@ -14,7 +14,17 @@ enum ResourceType {
 	TECHNOLOGY,
 	FOOD,
 	SHARD_ESSENCE,
-	WOOD
+	WOOD,
+	CAPTIVES
+}
+
+enum BattleOrder {
+	ADVANCE,
+	HOLD,
+	FLANK_LEFT,
+	FLANK_RIGHT,
+	CHARGE,
+	RETREAT
 }
 
 enum TerrainType {

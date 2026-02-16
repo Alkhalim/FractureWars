@@ -56,6 +56,11 @@ func calculate_city_income(city: CityState) -> Dictionary:
 			else:
 				income[res_type] = building.income_bonus[res_type]
 
+	# Commander influence: friendly commanders within influence_radius boost gold
+	var cmd_gold_bonus := _get_commander_gold_bonus(city)
+	if cmd_gold_bonus > 0:
+		income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + cmd_gold_bonus
+
 	return income
 
 func _add_growth(city: CityState) -> void:
@@ -69,6 +74,8 @@ func calculate_growth(city: CityState) -> int:
 		var building: BuildingData = DataManager.get_building(building_id)
 		if building:
 			base_growth += building.population_growth_bonus
+	# Commander influence: friendly commanders within radius boost growth
+	base_growth += _get_commander_growth_bonus(city)
 	return base_growth
 
 func _check_level_up(city: CityState) -> void:
@@ -89,9 +96,14 @@ func _process_build_queue(city: CityState) -> void:
 	var item: Dictionary = city.build_queue[0]
 	item.turns_remaining -= 1
 	if item.turns_remaining <= 0:
-		city.buildings.append(item.building_id)
+		var building_id: StringName = item.building_id
+		var building: BuildingData = DataManager.get_building(building_id)
+		# Handle upgrades: remove the old building before adding the new one
+		if building and building.upgrades_from != &"":
+			city.buildings.erase(building.upgrades_from)
+		city.buildings.append(building_id)
 		city.build_queue.remove_at(0)
-		EventBus.building_completed.emit(city.city_id, item.building_id)
+		EventBus.building_completed.emit(city.city_id, building_id)
 
 func _process_recruit_queue(city: CityState, faction_id: StringName) -> void:
 	if city.recruit_queue.is_empty():
@@ -151,6 +163,7 @@ func _process_sieges(faction_id: StringName) -> void:
 func _capture_city(city: CityState) -> void:
 	var old_owner := city.faction_id
 	var new_owner := city.siege_faction
+	var was_capital := city.is_capital
 
 	# Remove from old owner's city list
 	var old_fs: FactionState = GameManager.state.faction_states.get(old_owner)
@@ -162,6 +175,8 @@ func _capture_city(city: CityState) -> void:
 	city.is_under_siege = false
 	city.siege_faction = &""
 	city.siege_turns = 0
+	city.is_capital = false
+	city.can_found_settlement = false
 
 	# Add to new owner's city list
 	var new_fs: FactionState = GameManager.state.faction_states.get(new_owner)
@@ -173,6 +188,22 @@ func _capture_city(city: CityState) -> void:
 
 	EventBus.city_captured.emit(city.city_id, old_owner, new_owner)
 
+	# If old owner lost their capital, promote their largest remaining city
+	if was_capital and old_fs and old_fs.owned_cities.size() > 0:
+		var best_city: CityState = null
+		var best_pop := -1
+		for cid in old_fs.owned_cities:
+			var c: CityState = GameManager.state.cities.get(cid)
+			if c and c.population > best_pop:
+				best_pop = c.population
+				best_city = c
+		if best_city:
+			best_city.is_capital = true
+
+	# If old owner has no cities left, mark defeated
+	if old_fs and old_fs.owned_cities.is_empty():
+		old_fs.is_defeated = true
+
 func _deduct_upkeep(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null:
@@ -182,6 +213,7 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		if army.faction_id != faction_id:
 			continue
+		# Unit upkeep
 		for unit in army.units:
 			var unit_data := DataManager.get_unit(unit.unit_data_id)
 			if unit_data == null:
@@ -189,8 +221,42 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 			for res_type in unit_data.upkeep_cost:
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= unit_data.upkeep_cost[res_type]
+		# Commander upkeep (only while assigned to army)
+		if army.commander != null:
+			var level_mult := 1.0 + (army.commander.level - 1) * 0.5
+			for res_type in CommanderSystem.COMMANDER_UPKEEP:
+				var cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
+				if fs.resources.has(res_type):
+					fs.resources[res_type] -= cost
 
 # ── Public API ────────────────────────────────────────────────
+
+func get_available_buildings(city: CityState) -> Array[BuildingData]:
+	var result: Array[BuildingData] = []
+	for building_id in DataManager.buildings:
+		var building: BuildingData = DataManager.buildings[building_id]
+		# Skip buildings already owned
+		if city.buildings.has(building_id):
+			continue
+		# Skip buildings already in queue
+		var in_queue := false
+		for item in city.build_queue:
+			if item.building_id == building_id:
+				in_queue = true
+				break
+		if in_queue:
+			continue
+		# Skip if city level too low
+		if city.level < building.required_capital_level:
+			continue
+		if building.upgrades_from == &"":
+			# Base building: city must not already have it
+			result.append(building)
+		else:
+			# Upgrade building: city must have the prerequisite
+			if city.buildings.has(building.upgrades_from):
+				result.append(building)
+	return result
 
 func start_building(city_id: StringName, building_id: StringName) -> bool:
 	var city: CityState = GameManager.state.cities.get(city_id)
@@ -202,8 +268,15 @@ func start_building(city_id: StringName, building_id: StringName) -> bool:
 		return false
 
 	# Validate
-	if city.get_available_building_slots() <= 0:
-		return false
+	var is_upgrade := building.upgrades_from != &""
+	if is_upgrade:
+		# Upgrade: must have prerequisite, doesn't consume a new slot
+		if not city.buildings.has(building.upgrades_from):
+			return false
+	else:
+		# New building: needs a free slot
+		if city.get_available_building_slots() <= 0:
+			return false
 	if city.level < building.required_capital_level:
 		return false
 	if city.buildings.has(building_id):
@@ -392,6 +465,41 @@ func _get_primary_resource(terrain: Enums.TerrainType) -> int:
 		Enums.TerrainType.COAST: return 0  # Gold
 		Enums.TerrainType.TUNDRA: return 1  # Iron
 	return -1
+
+# ── Commander influence helpers ───────────────────────────────
+
+func _get_nearby_friendly_commanders(city: CityState) -> Array[CommanderState]:
+	var result: Array[CommanderState] = []
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id != city.faction_id:
+			continue
+		if army.commander == null:
+			continue
+		if HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= army.commander.influence_radius:
+			result.append(army.commander)
+	return result
+
+func _get_commander_gold_bonus(city: CityState) -> int:
+	var bonus := 0
+	for commander in _get_nearby_friendly_commanders(city):
+		var effects := CommanderSystem.get_commander_city_effects(commander, true)
+		bonus += effects.get("city_gold_bonus", 0)
+	return bonus
+
+func _get_commander_growth_bonus(city: CityState) -> int:
+	var bonus := 0
+	for commander in _get_nearby_friendly_commanders(city):
+		var effects := CommanderSystem.get_commander_city_effects(commander, true)
+		bonus += effects.get("city_growth_bonus", 0)
+	return bonus
+
+func _get_commander_defense_bonus(city: CityState) -> int:
+	var bonus := 0
+	for commander in _get_nearby_friendly_commanders(city):
+		var effects := CommanderSystem.get_commander_city_effects(commander, true)
+		bonus += effects.get("city_defense_bonus", 0)
+	return bonus
 
 func _get_hex_ring(center: Vector2i, radius: int) -> Array[Vector2i]:
 	var results: Array[Vector2i] = []

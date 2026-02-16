@@ -22,3 +22,4 @@ recruit_time = 1
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["infantry", "melee", "fast"])
+base_morale = 40

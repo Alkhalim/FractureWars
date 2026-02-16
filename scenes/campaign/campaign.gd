@@ -27,6 +27,21 @@ const TERRAIN_COLORS := {
 # Border color between tiles
 const HEX_BORDER_COLOR := Color(0.12, 0.10, 0.08)
 
+# Terrain elevation offsets (positive = raised, negative = lowered)
+const TERRAIN_ELEVATION := {
+	Enums.TerrainType.PLAINS: 0.0,
+	Enums.TerrainType.FOREST: 2.0,
+	Enums.TerrainType.MOUNTAINS: 5.0,
+	Enums.TerrainType.DESERT: 0.0,
+	Enums.TerrainType.SWAMP: -2.0,
+	Enums.TerrainType.COAST: -0.5,
+	Enums.TerrainType.TUNDRA: 1.0,
+	Enums.TerrainType.SHARD_WASTES: 0.0,
+	Enums.TerrainType.WATER: -4.0,
+	Enums.TerrainType.JUNGLE: 2.0,
+}
+var _hex_elevations: Dictionary = {} # Vector2i -> float
+
 var selected_hex: Vector2i = Vector2i(-1, -1)
 var selected_army_id: StringName = &""
 var _reachable_tiles: Dictionary = {} # coord -> remaining_mp
@@ -40,6 +55,7 @@ var _region_highlight_nodes: Array[Node2D] = [] # Highlight overlay polygons for
 var _region_tiles_cache: Dictionary = {} # region_id -> Array[Vector2i]
 var _city_panel_open := false
 var _selected_city_id: StringName = &""
+var _elderbeast_markers: Dictionary = {} # beast_id -> Node2D
 
 # Pre-battle dialog state
 var _pending_battle_attacker_id: StringName = &""
@@ -55,6 +71,10 @@ var _settlement_valid_tiles: Array[Vector2i] = []
 var _settlement_overlay_nodes: Array[Node2D] = []
 var _settlement_preview_panel: PanelContainer = null
 
+# Fog of war
+var _fog_of_war_enabled := true
+var _fog_overlay_nodes: Dictionary = {} # coord -> Polygon2D
+
 @onready var hex_map_layer: Node2D = $HexMapLayer
 @onready var reachable_overlay: Node2D = $OverlayLayer/ReachableOverlay
 @onready var path_overlay: Node2D = $OverlayLayer/PathOverlay
@@ -64,6 +84,8 @@ var _settlement_preview_panel: PanelContainer = null
 @onready var shard_markers_node: Node2D = $EntityLayer/ShardMarkers
 @onready var region_labels_node: Node2D = $EntityLayer/RegionLabels
 @onready var region_highlight_node: Node2D = $OverlayLayer/RegionHighlight
+@onready var fog_overlay_node: Node2D = $OverlayLayer/FogOverlay
+@onready var elderbeast_markers_node: Node2D = $EntityLayer/ElderbeastMarkers
 @onready var camera: Camera2D = $Camera2D
 
 func _ready() -> void:
@@ -85,9 +107,13 @@ func _ready() -> void:
 	EventBus.siege_broken.connect(_on_siege_broken)
 	EventBus.building_completed.connect(_on_building_completed)
 	EventBus.unit_recruited.connect(_on_unit_recruited)
+	EventBus.shard_claimed.connect(_on_shard_claimed)
 
 	_recreate_shard_markers()
+	_create_elderbeast_markers()
 	_build_region_tiles_cache()
+	_create_fog_overlay()
+	EventBus.elderbeast_moved.connect(_on_elderbeast_moved)
 
 	# Connect settlement placement signal from HUD
 	var hud: Control = $UILayer/HUD
@@ -150,10 +176,12 @@ func _render_hex_map() -> void:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
 		var pixel_pos := _hex_to_pixel(coord)
 		var base_color: Color = TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
+		var elevation: float = TERRAIN_ELEVATION.get(tile.terrain, 0.0)
+		_hex_elevations[coord] = elevation
 
-		# Container node
+		# Container node with vertical offset for elevation
 		var container := Node2D.new()
-		container.position = pixel_pos
+		container.position = Vector2(pixel_pos.x, pixel_pos.y - elevation)
 
 		# Border hex (slightly larger)
 		var border := Polygon2D.new()
@@ -172,6 +200,62 @@ func _render_hex_map() -> void:
 
 		hex_map_layer.add_child(container)
 		_hex_visuals[coord] = container
+
+	# Draw elevation shadow edges after all tiles
+	_draw_elevation_edges()
+
+func _draw_elevation_edges() -> void:
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+	var hex_points := _make_hex_polygon(HEX_RADIUS * 0.96)
+	for coord in hex_map.tiles:
+		var my_elev: float = _hex_elevations.get(coord, 0.0)
+		var my_pixel := _hex_to_pixel(coord)
+		var neighbors := HexHelper.get_neighbors(coord)
+		for i in 6:
+			var neighbor: Vector2i = neighbors[i]
+			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var n_elev: float = _hex_elevations.get(neighbor, 0.0)
+			var elev_diff := my_elev - n_elev
+			if elev_diff <= 0:
+				continue
+
+			# Draw shadow quad on the lower side of the shared edge
+			var v1: Vector2 = my_pixel + hex_points[i]
+			var v2: Vector2 = my_pixel + hex_points[(i + 1) % 6]
+			# Offset vertices down by elevation difference
+			var drop := elev_diff * 1.5
+			var shadow_poly := PackedVector2Array([
+				Vector2(v1.x, v1.y - my_elev),
+				Vector2(v2.x, v2.y - my_elev),
+				Vector2(v2.x, v2.y - my_elev + drop),
+				Vector2(v1.x, v1.y - my_elev + drop),
+			])
+			var shadow := Polygon2D.new()
+			shadow.polygon = shadow_poly
+			if elev_diff >= 3.0:
+				shadow.color = Color(0.06, 0.05, 0.04, 0.7)  # Cliff
+			elif elev_diff >= 1.5:
+				shadow.color = Color(0.08, 0.07, 0.06, 0.5)  # Medium
+			else:
+				shadow.color = Color(0.1, 0.09, 0.08, 0.35)  # Subtle
+			hex_map_layer.add_child(shadow)
+
+		# Mountain highlight on top edges (edges 4 and 5 = north-facing)
+		if hex_map.tiles[coord].terrain == Enums.TerrainType.MOUNTAINS:
+			for edge_i in [4, 5]:
+				var hv1: Vector2 = my_pixel + hex_points[edge_i]
+				var hv2: Vector2 = my_pixel + hex_points[(edge_i + 1) % 6]
+				var highlight := Line2D.new()
+				highlight.points = PackedVector2Array([
+					Vector2(hv1.x, hv1.y - my_elev),
+					Vector2(hv2.x, hv2.y - my_elev),
+				])
+				highlight.width = 1.5
+				highlight.default_color = Color(0.65, 0.6, 0.55, 0.4)
+				hex_map_layer.add_child(highlight)
 
 func _add_terrain_detail(container: Node2D, terrain: Enums.TerrainType, _hex_poly: PackedVector2Array, base_color: Color) -> void:
 	var r := HEX_RADIUS * 0.92
@@ -482,12 +566,27 @@ func _create_city_marker(city: CityState) -> void:
 	marker.add_child(tower_r)
 
 	# Center tower (taller)
+	var is_player_capital := city.is_capital and city.faction_id == GameManager.state.player_faction_id
 	var tower_c := Polygon2D.new()
 	tower_c.polygon = PackedVector2Array([
 		Vector2(-4, -18), Vector2(4, -18), Vector2(4, -6), Vector2(-4, -6)
 	])
-	tower_c.color = faction_color
+	tower_c.color = faction_color.lightened(0.15) if is_player_capital else faction_color
 	marker.add_child(tower_c)
+
+	# Gold diamond indicator on player capital
+	if is_player_capital:
+		var crown := Polygon2D.new()
+		crown.polygon = PackedVector2Array([
+			Vector2(0, -24), Vector2(4, -20), Vector2(0, -16), Vector2(-4, -20)
+		])
+		crown.color = Color(0.95, 0.85, 0.3)
+		marker.add_child(crown)
+		# Glow ring around base
+		var glow := Polygon2D.new()
+		glow.polygon = _make_circle(16.0, 12)
+		glow.color = Color(faction_color.r, faction_color.g, faction_color.b, 0.3)
+		marker.add_child(glow)
 
 	# Level label
 	var label := Label.new()
@@ -513,6 +612,92 @@ func _create_city_marker(city: CityState) -> void:
 
 	city_markers_node.add_child(marker)
 	_city_markers[city.city_id] = marker
+
+# ── Elderbeast markers ────────────────────────────────────────
+
+func _create_elderbeast_markers() -> void:
+	for child in elderbeast_markers_node.get_children():
+		child.queue_free()
+	_elderbeast_markers.clear()
+
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		_create_elderbeast_marker(beast)
+
+func _create_elderbeast_marker(beast: ElderbeastState) -> void:
+	var marker := Node2D.new()
+	marker.position = _hex_to_pixel(beast.hex_pos)
+	var faction_data: FactionData = DataManager.get_faction(beast.faction_id)
+	var faction_color: Color = faction_data.color if faction_data else Color(0.7, 0.3, 0.6)
+
+	# Large diamond shape (bigger than cities)
+	var diamond := Polygon2D.new()
+	diamond.polygon = PackedVector2Array([
+		Vector2(0, -18), Vector2(14, 0), Vector2(0, 18), Vector2(-14, 0)
+	])
+	diamond.color = faction_color.darkened(0.15)
+	marker.add_child(diamond)
+
+	# Inner diamond
+	var inner := Polygon2D.new()
+	inner.polygon = PackedVector2Array([
+		Vector2(0, -13), Vector2(10, 0), Vector2(0, 13), Vector2(-10, 0)
+	])
+	inner.color = faction_color
+	marker.add_child(inner)
+
+	# Crystal glow ring (pulsing)
+	var glow := Polygon2D.new()
+	glow.name = "GlowRing"
+	glow.polygon = PackedVector2Array([
+		Vector2(0, -22), Vector2(17, 0), Vector2(0, 22), Vector2(-17, 0)
+	])
+	glow.color = Color(faction_color.r, faction_color.g, faction_color.b, 0.25)
+	marker.add_child(glow)
+	var tween := create_tween().set_loops()
+	tween.tween_property(glow, "modulate:a", 0.3, 0.9)
+	tween.tween_property(glow, "modulate:a", 1.0, 0.9)
+
+	# Level label
+	var level_label := Label.new()
+	level_label.name = "LevelLabel"
+	level_label.text = str(beast.level)
+	level_label.position = Vector2(-4, -10)
+	level_label.add_theme_font_size_override("font_size", 12)
+	level_label.add_theme_color_override("font_color", Color.WHITE)
+	level_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	level_label.add_theme_constant_override("shadow_offset_x", 1)
+	level_label.add_theme_constant_override("shadow_offset_y", 1)
+	marker.add_child(level_label)
+
+	# HP bar below
+	var hp_ratio := float(beast.hp) / float(beast.max_hp)
+	var hp_bg := Polygon2D.new()
+	hp_bg.polygon = PackedVector2Array([
+		Vector2(-12, 20), Vector2(12, 20), Vector2(12, 24), Vector2(-12, 24)
+	])
+	hp_bg.color = Color(0.15, 0.08, 0.08, 0.8)
+	marker.add_child(hp_bg)
+
+	var hp_fill := Polygon2D.new()
+	hp_fill.name = "HPFill"
+	var fill_width := 24.0 * hp_ratio
+	hp_fill.polygon = PackedVector2Array([
+		Vector2(-12, 20), Vector2(-12 + fill_width, 20),
+		Vector2(-12 + fill_width, 24), Vector2(-12, 24)
+	])
+	hp_fill.color = Color(0.2, 0.7, 0.25) if hp_ratio > 0.5 else (Color(0.85, 0.65, 0.15) if hp_ratio > 0.25 else Color(0.8, 0.2, 0.15))
+	marker.add_child(hp_fill)
+
+	elderbeast_markers_node.add_child(marker)
+	_elderbeast_markers[beast.beast_id] = marker
+
+func _on_elderbeast_moved(beast_id: StringName, _from_hex: Vector2i, to_hex: Vector2i) -> void:
+	var marker: Node2D = _elderbeast_markers.get(beast_id)
+	if marker:
+		var target_pos := _hex_to_pixel(to_hex)
+		var tween := create_tween()
+		tween.tween_property(marker, "position", target_pos, 0.3)
 
 func _animate_siege_ring(ring: Polygon2D) -> void:
 	var tween := create_tween().set_loops()
@@ -612,18 +797,40 @@ func _unhandled_input(event: InputEvent) -> void:
 				_show_settlement_preview(hex_coord)
 		return
 
+	# LEFT CLICK — select / deselect
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var world_pos := get_global_mouse_position()
 		var hex_coord := _pixel_to_hex(world_pos)
-		if HexHelper.is_valid(hex_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-			_handle_hex_click(hex_coord)
-		else:
+		if not HexHelper.is_valid(hex_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 			_deselect_all()
+			return
 
-	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-		# Right-click release (only if camera didn't consume it as a drag)
 		if selected_army_id != &"":
+			# Army is selected: left-click on another player army = switch selection
+			var clicked_army := _get_army_at_click(world_pos)
+			if clicked_army != &"" and clicked_army != selected_army_id:
+				var clicked: ArmyState = GameManager.state.armies.get(clicked_army)
+				if clicked and clicked.faction_id == GameManager.state.player_faction_id:
+					_select_army(clicked_army)
+					return
+			# Otherwise deselect, then handle the hex
 			_deselect_all()
+			_handle_hex_left_click(hex_coord)
+		else:
+			_handle_hex_left_click(hex_coord)
+
+	# RIGHT CLICK — move command (on release, only if not consumed by camera drag)
+	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		if selected_army_id != &"":
+			var world_pos := get_global_mouse_position()
+			var hex_coord := _pixel_to_hex(world_pos)
+			if HexHelper.is_valid(hex_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				_handle_move_command(hex_coord)
+
+	# Fog of war toggle
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
+		_fog_of_war_enabled = not _fog_of_war_enabled
+		_update_fog_of_war()
 
 	# Hover: region highlighting + path preview
 	if event is InputEventMouseMotion:
@@ -636,43 +843,69 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				_clear_path_overlay()
 
-func _handle_hex_click(hex_coord: Vector2i) -> void:
-	# First check: did we click directly on an army marker?
+func _handle_hex_left_click(hex_coord: Vector2i) -> void:
+	# Check for player army at click position (marker hit-test first)
 	var clicked_army := _get_army_at_click(get_global_mouse_position())
 	if clicked_army != &"":
 		var army: ArmyState = GameManager.state.armies.get(clicked_army)
 		if army and army.faction_id == GameManager.state.player_faction_id:
 			_select_army(clicked_army)
 			return
+		elif army:
+			# Enemy army — open inspection panel
+			_show_inspect_army(army)
+			return
 
-	if selected_army_id != &"":
-		var army: ArmyState = GameManager.state.armies.get(selected_army_id)
-		if army and army.movement_remaining > 0:
-			if _reachable_tiles.has(hex_coord):
-				_move_army_to(army, hex_coord)
-				return
-			else:
-				var closest := _find_closest_reachable_toward(army.hex_pos, hex_coord)
-				if closest != Vector2i(-1, -1):
-					_move_army_to(army, closest)
-					return
-
-	# Check if there's a player army at this hex (fallback)
+	# Check for player army at hex (fallback)
 	var army_at := GameManager.get_army_at_tile(hex_coord)
-	if army_at and army_at.faction_id == GameManager.state.player_faction_id:
-		_select_army(army_at.army_id)
-	else:
-		# Check if there's a player city at this hex
-		var city_at := GameManager.city_system.get_city_at_hex(hex_coord)
-		if city_at and city_at.faction_id == GameManager.state.player_faction_id:
-			_deselect_all()
+	if army_at:
+		if army_at.faction_id == GameManager.state.player_faction_id:
+			_select_army(army_at.army_id)
+			return
+		else:
+			# Enemy army
+			_show_inspect_army(army_at)
+			return
+
+	# Check for city at hex
+	var city_at := GameManager.city_system.get_city_at_hex(hex_coord)
+	if city_at:
+		if city_at.faction_id == GameManager.state.player_faction_id:
 			_open_city_panel(city_at.city_id)
 		else:
-			if _city_panel_open:
-				_close_city_panel()
-			if selected_army_id != &"":
-				_deselect_all()
-			_select_hex(hex_coord)
+			# Enemy city — open inspection
+			_show_inspect_city(city_at)
+		return
+
+	# Empty hex — close city panel if open, select hex for region info
+	if _city_panel_open:
+		_close_city_panel()
+	_select_hex(hex_coord)
+
+func _handle_move_command(hex_coord: Vector2i) -> void:
+	var army: ArmyState = GameManager.state.armies.get(selected_army_id)
+	if army == null or army.movement_remaining <= 0:
+		return
+	if _reachable_tiles.has(hex_coord):
+		_move_army_to(army, hex_coord)
+	else:
+		var closest := _find_closest_reachable_toward(army.hex_pos, hex_coord)
+		if closest != Vector2i(-1, -1):
+			_move_army_to(army, closest)
+
+func _show_inspect_army(army: ArmyState) -> void:
+	# Show commander panel in read-only mode for enemy armies
+	var hud: Control = $UILayer/HUD
+	hud._update_commander_panel(army)
+	# Also show the army panel (unit cards)
+	EventBus.army_selected.emit(army.army_id)
+
+func _show_inspect_city(city: CityState) -> void:
+	# Show city panel in read-only mode for enemy cities
+	_selected_city_id = city.city_id
+	_city_panel_open = true
+	var hud: Control = $UILayer/HUD
+	hud._show_city_panel(city.city_id)
 
 func _get_army_at_click(world_pos: Vector2) -> StringName:
 	# Check if click is within any army marker's bounds (22x22 px centered on marker)
@@ -686,7 +919,7 @@ func _get_army_at_click(world_pos: Vector2) -> StringName:
 
 func _move_army_to(army: ArmyState, hex_coord: Vector2i) -> void:
 	var path := GameManager.movement_system.find_path(
-		army.hex_pos, hex_coord, army.faction_id, army.movement_remaining)
+		army.hex_pos, hex_coord, army.faction_id, army.movement_remaining, army.army_id)
 	if path.size() > 0:
 		_clear_reachable_overlay()
 		_clear_path_overlay()
@@ -734,6 +967,16 @@ func _animate_army_along_path(army_id: StringName, path: Array[Vector2i]) -> voi
 			return
 
 	_update_political_overlay()
+	_create_army_markers()
+	# Re-show selection ring on the moving army if it still exists
+	if GameManager.state.armies.has(army_id):
+		var new_marker: Node2D = _army_markers.get(army_id)
+		if new_marker:
+			var ring := new_marker.get_node_or_null("SelectionRing")
+			if ring:
+				ring.visible = true
+		# Refresh army panel
+		EventBus.army_selected.emit(army_id)
 
 func _find_closest_reachable_toward(from: Vector2i, target: Vector2i) -> Vector2i:
 	# Find the reachable tile closest to the target
@@ -756,10 +999,12 @@ func _select_army(army_id: StringName) -> void:
 	# Hide previous selection ring
 	_hide_all_selection_rings()
 	selected_army_id = army_id
+	GameManager.state.selected_army_id = army_id
 	var army: ArmyState = GameManager.state.armies.get(army_id)
 	if army:
 		selected_hex = army.hex_pos
-		_show_reachable_tiles(army)
+		if army.faction_id == GameManager.state.player_faction_id:
+			_show_reachable_tiles(army)
 	# Show selection ring
 	var marker: Node2D = _army_markers.get(army_id)
 	if marker:
@@ -769,9 +1014,16 @@ func _select_army(army_id: StringName) -> void:
 	EventBus.army_selected.emit(army_id)
 	EventBus.hex_tile_selected.emit(selected_hex)
 
+	# Also open city panel if player army is standing on a player city
+	if army and army.faction_id == GameManager.state.player_faction_id:
+		var city_at := GameManager.city_system.get_city_at_hex(army.hex_pos)
+		if city_at and city_at.faction_id == GameManager.state.player_faction_id:
+			_open_city_panel(city_at.city_id)
+
 func _select_hex(hex_coord: Vector2i) -> void:
 	selected_hex = hex_coord
 	selected_army_id = &""
+	GameManager.state.selected_army_id = &""
 	_clear_reachable_overlay()
 	_clear_path_overlay()
 	EventBus.hex_tile_selected.emit(hex_coord)
@@ -780,6 +1032,7 @@ func _deselect_all() -> void:
 	_hide_all_selection_rings()
 	selected_hex = Vector2i(-1, -1)
 	selected_army_id = &""
+	GameManager.state.selected_army_id = &""
 	_reachable_tiles.clear()
 	_clear_reachable_overlay()
 	_clear_path_overlay()
@@ -796,7 +1049,7 @@ func _hide_all_selection_rings() -> void:
 func _show_reachable_tiles(army: ArmyState) -> void:
 	_clear_reachable_overlay()
 	_reachable_tiles = GameManager.movement_system.get_reachable_tiles(
-		army.hex_pos, army.movement_remaining, army.faction_id)
+		army.hex_pos, army.movement_remaining, army.faction_id, army.army_id)
 
 	for coord in _reachable_tiles:
 		var pixel_pos := _hex_to_pixel(coord)
@@ -812,7 +1065,7 @@ func _show_path_preview(target: Vector2i) -> void:
 	if army == null:
 		return
 	var path := GameManager.movement_system.find_path(
-		army.hex_pos, target, army.faction_id, army.movement_remaining)
+		army.hex_pos, target, army.faction_id, army.movement_remaining, army.army_id)
 	for coord in path:
 		var pixel_pos := _hex_to_pixel(coord)
 		var polygon := Polygon2D.new()
@@ -841,6 +1094,7 @@ func _on_army_moved(army_id: StringName, _from_hex: Vector2i, to_hex: Vector2i) 
 			var tween := create_tween()
 			tween.tween_property(marker, "position", target_pos, 0.2)
 	_update_political_overlay()
+	_update_fog_of_war()
 
 func _on_army_destroyed(army_id: StringName, _faction_id: StringName) -> void:
 	var marker: Node2D = _army_markers.get(army_id)
@@ -850,6 +1104,7 @@ func _on_army_destroyed(army_id: StringName, _faction_id: StringName) -> void:
 
 func _on_region_ownership_changed(_region_id: StringName, _old: StringName, _new: StringName) -> void:
 	_update_political_overlay()
+	_update_fog_of_war()
 
 func _on_battle_initiated(attacker_id: StringName, defender_id: StringName, hex_pos: Vector2i) -> void:
 	var attacker_army: ArmyState = GameManager.state.armies.get(attacker_id)
@@ -984,13 +1239,24 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 
 	var manual_btn := Button.new()
 	manual_btn.text = "Manual Battle"
-	manual_btn.custom_minimum_size = Vector2(150, 36)
+	manual_btn.custom_minimum_size = Vector2(130, 36)
 	manual_btn.pressed.connect(_on_battle_dialog_manual)
 	btn_row.add_child(manual_btn)
 
+	var retreat_btn := Button.new()
+	retreat_btn.text = "Retreat"
+	retreat_btn.custom_minimum_size = Vector2(130, 36)
+	retreat_btn.pressed.connect(_on_battle_dialog_retreat)
+	# Disable for siege battles
+	var city := GameManager.city_system.get_city_at_hex(_pending_battle_hex)
+	if city and city.is_under_siege:
+		retreat_btn.disabled = true
+		retreat_btn.tooltip_text = "Cannot retreat during siege"
+	btn_row.add_child(retreat_btn)
+
 	var auto_btn := Button.new()
 	auto_btn.text = "Auto-Resolve"
-	auto_btn.custom_minimum_size = Vector2(150, 36)
+	auto_btn.custom_minimum_size = Vector2(130, 36)
 	auto_btn.pressed.connect(_on_battle_dialog_auto)
 	btn_row.add_child(auto_btn)
 
@@ -1004,7 +1270,13 @@ func _on_battle_dialog_manual() -> void:
 	GameManager.set_meta("battle_attacker", _pending_battle_attacker_id)
 	GameManager.set_meta("battle_defender", _pending_battle_defender_id)
 	GameManager.set_meta("battle_hex_pos", _pending_battle_hex)
-	get_tree().change_scene_to_file("res://scenes/battle/battle.tscn")
+	get_tree().change_scene_to_file("res://scenes/battle/battle_v2.tscn")
+
+func _on_battle_dialog_retreat() -> void:
+	if _battle_dialog:
+		_battle_dialog.queue_free()
+		_battle_dialog = null
+	_execute_retreat(_pending_battle_attacker_id, _pending_battle_defender_id, _pending_battle_hex)
 
 func _on_battle_dialog_auto() -> void:
 	if _battle_dialog:
@@ -1036,46 +1308,34 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 			"max_hp": ud.max_hp if ud else unit.current_hp,
 		})
 
-	# Create headless battle simulation
-	var sim := BattleSimulator.new()
-	var terrain := BattleTerrainGen.generate(Enums.TerrainType.PLAINS, hex_pos.x * 1000 + hex_pos.y)
+	# Calculate commander bonuses for both sides
+	var atk_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(attacker_army.commander)
+	var def_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(defender_army.commander)
+
+	# Create V2 headless battle simulation
+	var campaign_terrain := Enums.TerrainType.PLAINS
+	if GameManager.state and GameManager.state.hex_map:
+		var tile := GameManager.state.hex_map.get_tile(hex_pos)
+		if tile:
+			campaign_terrain = tile.terrain
+
+	var sim := BattleSimulatorV2.new()
+	sim.compute_grid_size(attacker_army, defender_army)
+	var terrain := BattleTerrainGen.generate(campaign_terrain, hex_pos.x * 1000 + hex_pos.y, sim.grid_width, sim.grid_height)
 	sim.setup_terrain(terrain)
-
-	# Setup attacker units
-	for i in attacker_army.units.size():
-		var unit: UnitInstance = attacker_army.units[i]
-		var unit_data := DataManager.get_unit(unit.unit_data_id)
-		if unit_data == null:
-			continue
-		var col: int = (10 - attacker_army.units.size() / 2 + i * 3) % 20
-		if col < 0: col = 0
-		var pos := Vector2i(col, 12)
-		while sim.grid.has(pos):
-			pos.x = (pos.x + 1) % 20
-		sim.setup_unit(unit, unit_data, 0, pos, Enums.UnitStance.AGGRESSIVE, Enums.TargetPriority.CLOSEST)
-
-	# Setup defender units
-	for i in defender_army.units.size():
-		var unit: UnitInstance = defender_army.units[i]
-		var unit_data := DataManager.get_unit(unit.unit_data_id)
-		if unit_data == null:
-			continue
-		var col: int = (10 - defender_army.units.size() / 2 + i * 3) % 20
-		if col < 0: col = 0
-		var pos := Vector2i(col, 2)
-		while sim.grid.has(pos):
-			pos.x = (pos.x + 1) % 20
-		sim.setup_unit(unit, unit_data, 1, pos, Enums.UnitStance.AGGRESSIVE, Enums.TargetPriority.CLOSEST)
+	sim.setup_attacker_formations(attacker_army, atk_cmd_bonuses)
+	sim.setup_defender_formations(defender_army, def_cmd_bonuses)
+	sim.assign_ai_orders_both_sides()
 
 	# Run simulation to completion
-	for tick in range(100):
+	for tick in range(sim.max_ticks):
 		sim.simulate_tick()
 		if sim.is_finished:
 			break
 
 	# Apply results
-	var atk_survivors := sim.get_surviving_units(0)
-	var def_survivors := sim.get_surviving_units(1)
+	var atk_survivors := sim.get_surviving_formations(0)
+	var def_survivors := sim.get_surviving_formations(1)
 
 	_apply_auto_battle_results(attacker_army, atk_survivors)
 	_apply_auto_battle_results(defender_army, def_survivors)
@@ -1094,6 +1354,16 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 		for i in def_snapshot.size():
 			if i < defender_army.units.size() and defender_army.units[i].instance_id == bu.instance_id:
 				def_hp_after[i] = bu.current_hp
+
+	# Award captives
+	var winner_side := sim.winner_side
+	if winner_side >= 0:
+		var winner_faction := attacker_army.faction_id if winner_side == 0 else defender_army.faction_id
+		var winner_captives: int = sim.captives.get(winner_side, 0)
+		if winner_captives > 0:
+			var wfs: FactionState = GameManager.state.faction_states.get(winner_faction)
+			if wfs:
+				wfs.resources[Enums.ResourceType.CAPTIVES] = wfs.resources.get(Enums.ResourceType.CAPTIVES, 0) + winner_captives
 
 	if not atk_alive:
 		GameManager.remove_army(attacker_id)
@@ -1114,6 +1384,18 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 		if city_at and city_at.faction_id == defender_army.faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
 
+	# Commander XP and item drops
+	var atk_strength := attacker_army.get_total_strength()
+	var def_strength := defender_army.get_total_strength()
+	if attacker_army.commander:
+		CommanderSystem.grant_battle_xp(attacker_army.commander, def_strength, atk_alive)
+		if atk_alive and not def_alive:
+			CommanderSystem.apply_item_drop(attacker_army.commander, defender_army.faction_id)
+	if defender_army.commander:
+		CommanderSystem.grant_battle_xp(defender_army.commander, atk_strength, def_alive)
+		if def_alive and not atk_alive:
+			CommanderSystem.apply_item_drop(defender_army.commander, attacker_army.faction_id)
+
 	# Show battle report for player-involved battles
 	var player_fid := GameManager.state.player_faction_id
 	var player_involved := attacker_army.faction_id == player_fid or defender_army.faction_id == player_fid
@@ -1127,16 +1409,173 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 			"def_hp_after": def_hp_after,
 			"atk_alive": atk_alive,
 			"def_alive": def_alive,
+			"captives": sim.captives.get(0 if attacker_army.faction_id == player_fid else 1, 0),
 		}
 		_show_battle_report(report)
 
 	# Refresh visuals
 	_create_army_markers()
 
-func _apply_auto_battle_results(army: ArmyState, survivors: Array[BattleSimulator.BattleUnit]) -> void:
+func _execute_retreat(attacker_id: StringName, defender_id: StringName, hex_pos: Vector2i) -> void:
+	var player_fid := GameManager.state.player_faction_id
+	var attacker_army: ArmyState = GameManager.state.armies.get(attacker_id)
+	var defender_army: ArmyState = GameManager.state.armies.get(defender_id)
+	if attacker_army == null or defender_army == null:
+		return
+
+	# Determine which is the player army
+	var player_army: ArmyState
+	var enemy_army: ArmyState
+	if attacker_army.faction_id == player_fid:
+		player_army = attacker_army
+		enemy_army = defender_army
+	else:
+		player_army = defender_army
+		enemy_army = attacker_army
+
+	# Calculate speed ratio
+	var player_avg_speed := 0.0
+	for unit in player_army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud:
+			player_avg_speed += ud.speed
+	if player_army.units.size() > 0:
+		player_avg_speed /= player_army.units.size()
+
+	var enemy_avg_speed := 0.0
+	for unit in enemy_army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud:
+			enemy_avg_speed += ud.speed
+	if enemy_army.units.size() > 0:
+		enemy_avg_speed /= enemy_army.units.size()
+
+	var speed_ratio := player_avg_speed / maxf(enemy_avg_speed, 1.0)
+
+	# Count enemy ranged units
+	var enemy_ranged_count := 0
+	for unit in enemy_army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud and (ud.tags.has("ranged") or ud.tags.has("mage")):
+			enemy_ranged_count += 1
+
+	var base_loss_chance := clampf(0.40 - speed_ratio * 0.15, 0.05, 0.50)
+	base_loss_chance += enemy_ranged_count * 0.05
+	base_loss_chance = minf(base_loss_chance, 0.60)
+
+	# Apply losses
+	var lost_count := 0
+	var surviving_units: Array[UnitInstance] = []
+	for unit in player_army.units:
+		if randf() < base_loss_chance:
+			lost_count += 1
+		else:
+			# Survivors take 10-30% HP loss
+			var hp_loss := int(unit.current_hp * randf_range(0.10, 0.30))
+			unit.current_hp = maxi(1, unit.current_hp - hp_loss)
+			surviving_units.append(unit)
+	player_army.units = surviving_units
+
+	# Move army back one hex
+	var from_hex := player_army.hex_pos
+	var retreat_hex := _find_retreat_hex(player_army, enemy_army.hex_pos)
+	if retreat_hex != Vector2i(-1, -1):
+		player_army.hex_pos = retreat_hex
+
+	# Remove army if no survivors
+	if surviving_units.is_empty():
+		GameManager.remove_army(player_army.army_id)
+
+	EventBus.army_retreated.emit(player_army.army_id, from_hex, retreat_hex, lost_count)
+
+	# Show retreat summary
+	_show_retreat_report(player_army, lost_count, from_hex, retreat_hex)
+	_create_army_markers()
+
+func _find_retreat_hex(army: ArmyState, enemy_hex: Vector2i) -> Vector2i:
+	# Find adjacent hex that's farthest from enemy and passable
+	var neighbors := HexHelper.get_neighbors(army.hex_pos)
+	var best_hex := Vector2i(-1, -1)
+	var best_dist := -1
+	for n in neighbors:
+		if not GameManager.state.hex_map.tiles.has(n):
+			continue
+		var tile: HexMapData.TileState = GameManager.state.hex_map.tiles[n]
+		if tile.terrain == Enums.TerrainType.WATER:
+			continue
+		var dist := HexHelper.hex_distance(n, enemy_hex)
+		if dist > best_dist:
+			best_dist = dist
+			best_hex = n
+	return best_hex
+
+func _show_retreat_report(army: ArmyState, losses: int, from_hex: Vector2i, to_hex: Vector2i) -> void:
+	if _battle_report_panel:
+		_battle_report_panel.queue_free()
+
+	_battle_report_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_right = 6
+	style.corner_radius_bottom_left = 6
+	style.content_margin_left = 16.0
+	style.content_margin_top = 12.0
+	style.content_margin_right = 16.0
+	style.content_margin_bottom = 12.0
+	_battle_report_panel.add_theme_stylebox_override("panel", style)
+	_battle_report_panel.anchors_preset = Control.PRESET_CENTER
+	_battle_report_panel.anchor_left = 0.5
+	_battle_report_panel.anchor_top = 0.5
+	_battle_report_panel.anchor_right = 0.5
+	_battle_report_panel.anchor_bottom = 0.5
+	_battle_report_panel.offset_left = -150
+	_battle_report_panel.offset_top = -80
+	_battle_report_panel.offset_right = 150
+	_battle_report_panel.offset_bottom = 80
+	_battle_report_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_battle_report_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+
+	var title := Label.new()
+	title.text = "RETREAT"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.85, 0.75, 0.3))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var info := Label.new()
+	info.text = "Your army retreated from battle.\nUnits lost: %d\nSurvivors: %d" % [losses, army.units.size()]
+	info.add_theme_font_size_override("font_size", 13)
+	info.add_theme_color_override("font_color", Color(0.8, 0.75, 0.65))
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(info)
+
+	var close_btn := Button.new()
+	close_btn.text = "OK"
+	close_btn.custom_minimum_size = Vector2(80, 30)
+	close_btn.pressed.connect(func() -> void:
+		if _battle_report_panel:
+			_battle_report_panel.queue_free()
+			_battle_report_panel = null
+	)
+	vbox.add_child(close_btn)
+
+	_battle_report_panel.add_child(vbox)
+	$UILayer/HUD.add_child(_battle_report_panel)
+
+func _apply_auto_battle_results(army: ArmyState, survivors: Array[BattleSimulatorV2.BattleFormation]) -> void:
 	var surviving_ids: Dictionary = {}
-	for bu in survivors:
-		surviving_ids[bu.instance_id] = bu.current_hp
+	for f in survivors:
+		surviving_ids[f.instance_id] = f.current_hp
 
 	var updated_units: Array[UnitInstance] = []
 	for unit in army.units:
@@ -1151,6 +1590,8 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 	# Refresh markers
 	_refresh_city_markers()
 	_create_army_markers()
+	_create_elderbeast_markers()
+	_update_fog_of_war()
 	if selected_army_id != &"":
 		var army: ArmyState = GameManager.state.armies.get(selected_army_id)
 		if army:
@@ -1169,6 +1610,15 @@ func _on_shardfall_occurred(shard_id: StringName, hex_pos: Vector2i, realm: Enum
 		var region := DataManager.get_region(tile.region_id)
 		region_name = region.display_name if region else str(tile.region_id)
 	_show_notification("SHARDFALL! A " + realm_name + " shard has fallen in " + region_name + "!")
+
+func _on_shard_claimed(shard_id: StringName, faction_id: StringName) -> void:
+	if _shard_markers.has(shard_id):
+		_shard_markers[shard_id].queue_free()
+		_shard_markers.erase(shard_id)
+	if faction_id == GameManager.state.player_faction_id:
+		var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+		var shard_value: int = shard.power_level * 5 if shard else 5
+		_show_notification("Shard claimed! +%d Shard Essence" % shard_value)
 
 func _create_shard_marker(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm) -> void:
 	var marker := Node2D.new()
@@ -1396,6 +1846,98 @@ func _on_battle_report_continue() -> void:
 		_battle_report_panel.queue_free()
 		_battle_report_panel = null
 
+# ── Fog of War ────────────────────────────────────────────────
+
+const FOG_SCOUT_RADIUS := 2
+
+func _create_fog_overlay() -> void:
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+	var fog_poly := _make_hex_polygon(HEX_RADIUS)
+	for coord in hex_map.tiles:
+		var elevation: float = _hex_elevations.get(coord, 0.0)
+		var fog := Polygon2D.new()
+		fog.polygon = fog_poly
+		fog.position = Vector2(_hex_to_pixel(coord).x, _hex_to_pixel(coord).y - elevation)
+		fog.color = Color(0.03, 0.02, 0.05, 0.75)
+		fog.z_index = 1  # Render above terrain
+		fog_overlay_node.add_child(fog)
+		_fog_overlay_nodes[coord] = fog
+	_update_fog_of_war()
+
+func _is_tile_visible(coord: Vector2i) -> bool:
+	if not _fog_of_war_enabled:
+		return true
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return true
+	var player_id := GameManager.state.player_faction_id
+	var tile := hex_map.get_tile(coord)
+	if tile == null:
+		return false
+
+	# Visible if owned by player
+	if tile.owner_faction == player_id:
+		return true
+
+	# Visible if owned by allied/friendly faction
+	if tile.owner_faction != &"":
+		var relation := GameManager.get_relation(player_id, tile.owner_faction)
+		if relation == Enums.FactionRelation.FRIENDLY or relation == Enums.FactionRelation.ALLIED:
+			return true
+
+	# Visible if within scouting radius of any player army (+ commander bonus)
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id == player_id:
+			var scout_radius := FOG_SCOUT_RADIUS
+			if army.commander:
+				scout_radius += CommanderSystem.get_scouting_bonus(army.commander)
+			if HexHelper.hex_distance(coord, army.hex_pos) <= scout_radius:
+				return true
+
+	return false
+
+func _update_fog_of_war() -> void:
+	for coord in _fog_overlay_nodes:
+		var fog: Polygon2D = _fog_overlay_nodes[coord]
+		var visible_tile := _is_tile_visible(coord)
+		fog.visible = not visible_tile
+
+	# Show/hide army markers in fogged tiles
+	for army_id in _army_markers:
+		var army: ArmyState = GameManager.state.armies.get(army_id)
+		var marker: Node2D = _army_markers[army_id]
+		if army == null:
+			continue
+		if army.faction_id == GameManager.state.player_faction_id:
+			marker.visible = true
+		else:
+			marker.visible = _is_tile_visible(army.hex_pos)
+
+	# Show/hide city marker details in fogged tiles
+	for city_id in _city_markers:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		var marker: Node2D = _city_markers[city_id]
+		if city == null:
+			continue
+		if city.faction_id == GameManager.state.player_faction_id:
+			marker.visible = true
+		else:
+			marker.visible = _is_tile_visible(city.hex_pos)
+
+	# Show/hide elderbeast markers in fogged tiles
+	for beast_id in _elderbeast_markers:
+		var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id)
+		var marker: Node2D = _elderbeast_markers[beast_id]
+		if beast == null:
+			continue
+		if beast.faction_id == GameManager.state.player_faction_id:
+			marker.visible = true
+		else:
+			marker.visible = _is_tile_visible(beast.hex_pos)
+
 # ── Settlement Placement Mode ─────────────────────────────────
 
 func _on_settlement_placement_requested(city_id: StringName) -> void:
@@ -1482,12 +2024,17 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 2)
 
+	var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+	var tile := GameManager.state.hex_map.get_tile(hex_coord)
+	var terrain_name: String = terrain_names[tile.terrain] if tile and tile.terrain < terrain_names.size() else "Unknown"
+
 	var header := Label.new()
-	header.text = "Settlement Income Preview"
+	header.text = "Settlement at " + terrain_name
 	header.add_theme_font_size_override("font_size", 12)
 	header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 	vbox.add_child(header)
 
+	var total_value := 0
 	for res_type in income:
 		if income[res_type] > 0:
 			var rname: String = resource_names[res_type] if res_type < resource_names.size() else "?"
@@ -1496,6 +2043,13 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 			rlabel.add_theme_font_size_override("font_size", 11)
 			rlabel.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
 			vbox.add_child(rlabel)
+			total_value += income[res_type]
+
+	var total_label := Label.new()
+	total_label.text = "Total: %d resources/turn" % total_value
+	total_label.add_theme_font_size_override("font_size", 11)
+	total_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(total_label)
 
 	_settlement_preview_panel.add_child(vbox)
 

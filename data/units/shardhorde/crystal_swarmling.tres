@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystal_swarmling"
+display_name = "Crystal Swarmling"
+description = "Small crystalline creatures that attack in overwhelming numbers."
+faction_id = &"shardhorde"
+max_hp = 60
+attack = 7
+defense = 3
+speed = 7
+attack_range = 1
+squad_size = 3
+hp_per_soldier = 20
+movement_points = 3.0
+upkeep_cost = {0: 2, 3: 3}
+recruit_cost = {0: 15, 3: 10}
+recruit_time = 1
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "swarm"])
+base_morale = 25
+captive_chance = 0.2

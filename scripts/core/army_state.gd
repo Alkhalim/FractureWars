@@ -7,7 +7,8 @@ extends Resource
 @export var units: Array[UnitInstance] = []
 @export var movement_remaining: float = 2.0
 @export var has_moved: bool = false
-@export var commander_name: String = ""
+@export var commander: CommanderState = null
+@export var commander_name: String = "" # Legacy fallback, use commander.name when available
 
 func get_region_id() -> StringName:
 	if GameManager.state and GameManager.state.hex_map:
@@ -26,7 +27,16 @@ func get_max_movement() -> float:
 			count += 1
 	if count == 0:
 		return 2.0
-	return total_mp / float(count)
+	var base_mp := total_mp / float(count)
+	if commander:
+		var bonuses := CommanderSystem.get_commander_army_bonuses(commander)
+		base_mp += bonuses.get("movement_bonus", 0.0)
+	return base_mp
+
+func get_commander_name() -> String:
+	if commander:
+		return commander.name
+	return commander_name
 
 func get_total_strength() -> int:
 	var strength := 0

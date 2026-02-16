@@ -38,6 +38,8 @@ script = ExtResource("2")
 
 [node name="RegionBorders" type="Node2D" parent="OverlayLayer"]
 
+[node name="FogOverlay" type="Node2D" parent="OverlayLayer"]
+
 [node name="EntityLayer" type="Node2D" parent="."]
 
 [node name="CityMarkers" type="Node2D" parent="EntityLayer"]
@@ -45,6 +47,8 @@ script = ExtResource("2")
 [node name="ArmyMarkers" type="Node2D" parent="EntityLayer"]
 
 [node name="ShardMarkers" type="Node2D" parent="EntityLayer"]
+
+[node name="ElderbeastMarkers" type="Node2D" parent="EntityLayer"]
 
 [node name="RegionLabels" type="Node2D" parent="EntityLayer"]
 

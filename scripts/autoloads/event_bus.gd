@@ -35,5 +35,18 @@ signal unit_recruited(city_id: StringName, unit_data_id: StringName, army_id: St
 signal siege_started(city_id: StringName, faction_id: StringName)
 signal siege_broken(city_id: StringName)
 
+# Commander signals
+signal commander_level_up(commander: CommanderState)
+signal commander_item_full(commander: CommanderState, item: CommanderItem)
+
+# Random event signals
+signal random_event_triggered(event_data: Dictionary)
+
+# Elderbeast signals
+signal elderbeast_moved(beast_id: StringName, from_hex: Vector2i, to_hex: Vector2i)
+
+# Army retreat signal
+signal army_retreated(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i, losses: int)
+
 # UI signals
 signal end_turn_pressed()
