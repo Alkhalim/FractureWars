@@ -1,6 +1,6 @@
 extends Node2D
 
-var battle_scene: Node = null
+var battle_scene = null  # Untyped to allow access to BattleV2 properties
 
 func _draw() -> void:
 	if battle_scene == null:
@@ -46,7 +46,7 @@ func _draw() -> void:
 		if formation.is_routing:
 			base_color = base_color.lerp(Color.DARK_GRAY, 0.5)
 
-		var is_selected := formation == battle_scene.selected_formation
+		var is_selected: bool = formation == battle_scene.selected_formation
 
 		for tile in formation.occupied_tiles:
 			var c: Color = base_color if tile == formation.anchor_pos else base_color.darkened(0.15)

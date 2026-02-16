@@ -162,8 +162,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.display_name = ud.display_name
 	f.side = side
 	f.tags = ud.tags.duplicate()
-	f.attack = ud.attack + cmd_bonuses.get("attack_bonus", 0)
-	f.defense = ud.defense + cmd_bonuses.get("defense_bonus", 0)
+	var atk_bonus: int = cmd_bonuses.get("attack_bonus", 0)
+	var def_bonus: int = cmd_bonuses.get("defense_bonus", 0)
+	f.attack = ud.attack + atk_bonus
+	f.defense = ud.defense + def_bonus
 	f.speed = ud.speed
 	f.attack_range = ud.attack_range
 	f.tiles_per_entity = ud.tiles_per_entity
@@ -291,7 +293,9 @@ func simulate_tick() -> Array[Dictionary]:
 	# Phase 2: Melee combat (all pairs in contact)
 	var combat_pairs := _find_all_contact_pairs()
 	for pair in combat_pairs:
-		actions.append_array(_resolve_combat_pair(pair[0], pair[1]))
+		var fa: BattleFormation = pair[0]
+		var fb: BattleFormation = pair[1]
+		actions.append_array(_resolve_combat_pair(fa, fb))
 
 	# Phase 3: Ranged attacks
 	for f in all:
@@ -319,7 +323,11 @@ func simulate_tick() -> Array[Dictionary]:
 	_check_victory()
 
 	# Clean stale deaths (older than 5 ticks)
-	recent_deaths = recent_deaths.filter(func(d: Dictionary) -> bool: return d.tick >= tick_count - 5)
+	var filtered: Array[Dictionary] = []
+	for d in recent_deaths:
+		if d.tick >= tick_count - 5:
+			filtered.append(d)
+	recent_deaths = filtered
 
 	tick_completed.emit(actions)
 	return actions
@@ -452,16 +460,21 @@ func _resolve_combat_pair(a: BattleFormation, b: BattleFormation) -> Array[Dicti
 
 	# A attacks B
 	var result_ab := _resolve_melee_combat(a, b)
-	if result_ab.damage > 0:
-		var killed := b.take_damage(result_ab.damage)
-		b.current_morale -= result_ab.morale_damage
+	var ab_dmg: int = result_ab.damage
+	if ab_dmg > 0:
+		var killed := b.take_damage(ab_dmg)
+		var ab_morale_dmg: float = result_ab.morale_damage
+		b.current_morale -= ab_morale_dmg
 		# Morale hit from entity losses
 		if b.total_entities > 1 and killed > 0:
 			b.current_morale -= killed * 3.0
+		var ab_contact: int = result_ab.contact
+		var ab_flank: int = result_ab.flank
+		var ab_rear: int = result_ab.rear
 		actions.append({
 			"type": "melee_hit", "attacker": a.instance_id, "defender": b.instance_id,
-			"damage": result_ab.damage, "killed": killed,
-			"contact": result_ab.contact, "flank": result_ab.flank, "rear": result_ab.rear
+			"damage": ab_dmg, "killed": killed,
+			"contact": ab_contact, "flank": ab_flank, "rear": ab_rear
 		})
 		if killed > 0:
 			var caps := _generate_captives(a, b, killed)
@@ -474,15 +487,20 @@ func _resolve_combat_pair(a: BattleFormation, b: BattleFormation) -> Array[Dicti
 	# B attacks A (if still alive)
 	if not b.is_dead and not b.is_fled:
 		var result_ba := _resolve_melee_combat(b, a)
-		if result_ba.damage > 0:
-			var killed := a.take_damage(result_ba.damage)
-			a.current_morale -= result_ba.morale_damage
+		var ba_dmg: int = result_ba.damage
+		if ba_dmg > 0:
+			var killed := a.take_damage(ba_dmg)
+			var ba_morale_dmg: float = result_ba.morale_damage
+			a.current_morale -= ba_morale_dmg
 			if a.total_entities > 1 and killed > 0:
 				a.current_morale -= killed * 3.0
+			var ba_contact: int = result_ba.contact
+			var ba_flank: int = result_ba.flank
+			var ba_rear: int = result_ba.rear
 			actions.append({
 				"type": "melee_hit", "attacker": b.instance_id, "defender": a.instance_id,
-				"damage": result_ba.damage, "killed": killed,
-				"contact": result_ba.contact, "flank": result_ba.flank, "rear": result_ba.rear
+				"damage": ba_dmg, "killed": killed,
+				"contact": ba_contact, "flank": ba_flank, "rear": ba_rear
 			})
 			if killed > 0:
 				var caps := _generate_captives(b, a, killed)
@@ -604,8 +622,11 @@ func _update_morale(f: BattleFormation) -> void:
 
 	# Nearby ally deaths
 	for death in recent_deaths:
-		if death.side == f.side and death.tick >= tick_count - 3:
-			if _grid_distance(f.anchor_pos, death.anchor_pos) <= 8:
+		var death_side: int = death.get("side", -1)
+		var death_tick: int = death.get("tick", 0)
+		var death_pos: Vector2i = death.get("anchor_pos", Vector2i.ZERO)
+		if death_side == f.side and death_tick >= tick_count - 3:
+			if _grid_distance(f.anchor_pos, death_pos) <= 8:
 				delta -= 4.0
 
 	f.current_morale = clampf(f.current_morale + delta, -30.0, f.base_morale * 1.5)
@@ -637,7 +658,8 @@ func _generate_captives(killer: BattleFormation, victim: BattleFormation, entiti
 	for i in entities_killed:
 		if randf() < chance:
 			count += 1
-	captives[killer.side] += count
+	var prev_captives: int = captives.get(killer.side, 0)
+	captives[killer.side] = prev_captives + count
 	return count
 
 # --- AI Order Assignment ---
@@ -726,10 +748,11 @@ func _is_passable(pos: Vector2i) -> bool:
 	return BattleTerrainGen.is_passable(t)
 
 func _get_neighbors(pos: Vector2i) -> Array[Vector2i]:
-	return [
+	var result: Array[Vector2i] = [
 		pos + Vector2i(1, 0), pos + Vector2i(-1, 0),
 		pos + Vector2i(0, 1), pos + Vector2i(0, -1)
 	]
+	return result
 
 func _find_free_adjacent(pos: Vector2i) -> Vector2i:
 	for n in _get_neighbors(pos):
@@ -822,9 +845,10 @@ func _count_friendly_flank_support(f: BattleFormation) -> int:
 	var count := 0
 	var perp := Vector2i(-f.facing.y, f.facing.x)
 	# Check tiles to the left and right of the formation
+	var side_dirs: Array[Vector2i] = [perp, -perp]
 	for tile in f.occupied_tiles:
-		for side_dir in [perp, -perp]:
-			var adj := tile + side_dir
+		for side_dir in side_dirs:
+			var adj: Vector2i = tile + side_dir
 			var other: BattleFormation = grid.get(adj)
 			if other != null and other != f and other.side == f.side and not other.is_dead:
 				count += 1
