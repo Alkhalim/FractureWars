@@ -188,9 +188,9 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		if city.build_queue.is_empty():
 			var available := GameManager.city_system.get_available_buildings(city)
 			if available.size() > 0:
-				# Priority: barracks > market > granary > upgrades > walls > temple
+				# Priority: first available building by priority, then upgrades
 				var built := false
-				for priority_id in [&"barracks", &"market", &"granary"]:
+				for priority_id in [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"tavern", &"arcane_registry"]:
 					if built:
 						break
 					for b in available:

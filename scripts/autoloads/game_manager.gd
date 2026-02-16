@@ -196,11 +196,9 @@ func _init_cities() -> void:
 			city.level = 1
 			city.population = 100
 			city.is_capital = is_first_city
-			# Empire gets cohort_barracks; other factions get generic barracks
+			# Faction-specific starting building
 			if faction_id == &"empire":
 				city.buildings.append(&"cohort_barracks")
-			else:
-				city.buildings.append(&"barracks")
 			city.original_faction_id = faction_id
 			city.loyalty = 50
 			city.turns_since_capture = -1

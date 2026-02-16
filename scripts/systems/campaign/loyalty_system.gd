@@ -283,25 +283,25 @@ static func apply_class_bonuses(income: Dictionary, classes: Dictionary, provinc
 
 	# Peasants: +0.5% Food per percentage point
 	if income.has(Enums.ResourceType.FOOD):
-		var bonus := income[Enums.ResourceType.FOOD] * (peasant_pct * 0.005)
+		var bonus := float(income[Enums.ResourceType.FOOD]) * (peasant_pct * 0.005)
 		income[Enums.ResourceType.FOOD] += int(bonus)
 
 	# Artisans: +0.5% Iron/Wood per percentage point
 	if income.has(Enums.ResourceType.IRON):
-		var bonus := income[Enums.ResourceType.IRON] * (artisan_pct * 0.005)
+		var bonus := float(income[Enums.ResourceType.IRON]) * (artisan_pct * 0.005)
 		income[Enums.ResourceType.IRON] += int(bonus)
 	if income.has(Enums.ResourceType.WOOD):
-		var bonus := income[Enums.ResourceType.WOOD] * (artisan_pct * 0.005)
+		var bonus := float(income[Enums.ResourceType.WOOD]) * (artisan_pct * 0.005)
 		income[Enums.ResourceType.WOOD] += int(bonus)
 
 	# Scholars: +0.8% Tech per percentage point
 	if income.has(Enums.ResourceType.TECHNOLOGY):
-		var bonus := income[Enums.ResourceType.TECHNOLOGY] * (scholar_pct * 0.008)
+		var bonus := float(income[Enums.ResourceType.TECHNOLOGY]) * (scholar_pct * 0.008)
 		income[Enums.ResourceType.TECHNOLOGY] += int(bonus)
 
 	# Nobles: +0.6% Gold per percentage point
 	if income.has(Enums.ResourceType.GOLD):
-		var bonus := income[Enums.ResourceType.GOLD] * (noble_pct * 0.006)
+		var bonus := float(income[Enums.ResourceType.GOLD]) * (noble_pct * 0.006)
 		income[Enums.ResourceType.GOLD] += int(bonus)
 
 	return income
