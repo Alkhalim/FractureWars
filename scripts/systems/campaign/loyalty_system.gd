@@ -31,8 +31,16 @@ static func _count_buildings_by_category(region_id: StringName, faction_id: Stri
 		for building_id in city.buildings:
 			var building: BuildingData = DataManager.get_building(building_id)
 			if building and building.category == category:
-				count += 1
+				count += building.required_capital_level  # Tier 1=1, Tier 2=2, Tier 3=3
 	return count
+
+static func _has_food_production(region_id: StringName, faction_id: StringName) -> bool:
+	for city in get_province_cities(region_id, faction_id):
+		for building_id in city.buildings:
+			var building: BuildingData = DataManager.get_building(building_id)
+			if building and building.income_bonus.get(Enums.ResourceType.FOOD, 0) > 0:
+				return true
+	return false
 
 static func _get_province_city_level_sum(region_id: StringName, faction_id: StringName) -> int:
 	var total := 0
@@ -115,9 +123,9 @@ static func calculate_class_pct_deltas(city: CityState, faction_id: StringName) 
 				var bd: BuildingData = DataManager.get_building(entry.get("building_id", &""))
 				if bd:
 					if bd.category == &"cultural":
-						extra_cultural += 1
+						extra_cultural += bd.required_capital_level
 					elif bd.category == &"economic":
-						extra_economic += 1
+						extra_economic += bd.required_capital_level
 		# Check for upgrade completing next turn
 		if pcity.upgrade_turns_remaining == 1:
 			extra_level += 1
@@ -162,10 +170,10 @@ static func get_class_percentage_breakdown(city: CityState, faction_id: StringNa
 				result.append({label = "Capital bonus", value = "+3%"})
 			result.append({label = "Max", value = "25%"})
 		"scholars":
-			result.append({label = "Cultural buildings (x%d)" % cultural_count, value = "%d%%" % int(float(cultural_count) * 3.0)})
+			result.append({label = "Cultural buildings (weight %d)" % cultural_count, value = "%d%%" % int(float(cultural_count) * 3.0)})
 			result.append({label = "Max", value = "20%"})
 		"artisans":
-			result.append({label = "Economic buildings (x%d)" % economic_count, value = "%d%%" % int(float(economic_count) * 4.0)})
+			result.append({label = "Economic buildings (weight %d)" % economic_count, value = "%d%%" % int(float(economic_count) * 4.0)})
 			result.append({label = "Max", value = "30%"})
 		"captives":
 			var fs: FactionState = GameManager.state.faction_states.get(faction_id)
@@ -203,6 +211,12 @@ const W_CAVALRY_PRESENCE := {peasants = 0, artisans = 0, scholars = 0, nobles = 
 const W_MAGE_PRESENCE := {peasants = -1, artisans = 0, scholars = 3, nobles = 0, captives = 0}
 const W_CONSTRUCT_PRESENCE := {peasants = -1, artisans = 3, scholars = 0, nobles = 0, captives = 0}
 const W_MONSTER_PRESENCE := {peasants = -4, artisans = -1, scholars = -1, nobles = -1, captives = 0}
+
+# Missing building type penalties
+const W_NO_ECONOMIC_BUILDINGS := {peasants = 0, artisans = -3, scholars = 0, nobles = 0, captives = 0}
+const W_NO_MILITARY_BUILDINGS := {peasants = 0, artisans = 0, scholars = 0, nobles = -3, captives = 0}
+const W_NO_CULTURAL_BUILDINGS := {peasants = 0, artisans = 0, scholars = -3, nobles = 0, captives = 0}
+const W_NO_FOOD_PRODUCTION := {peasants = -3, artisans = 0, scholars = 0, nobles = 0, captives = 0}
 
 # ── Per-Class Loyalty Delta ─────────────────────────────────
 
@@ -296,6 +310,16 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 	if province_pop < 100:
 		result.append({label = "Low Population", weights = W_LOW_POP, multiplier = 1})
 
+	# Missing building type penalties
+	if _count_buildings_by_category(region_id, faction_id, &"economic") == 0:
+		result.append({label = "No Economic Buildings", weights = W_NO_ECONOMIC_BUILDINGS, multiplier = 1})
+	if _count_buildings_by_category(region_id, faction_id, &"military") == 0:
+		result.append({label = "No Military Buildings", weights = W_NO_MILITARY_BUILDINGS, multiplier = 1})
+	if _count_buildings_by_category(region_id, faction_id, &"cultural") == 0:
+		result.append({label = "No Cultural Buildings", weights = W_NO_CULTURAL_BUILDINGS, multiplier = 1})
+	if not _has_food_production(region_id, faction_id):
+		result.append({label = "No Food Production", weights = W_NO_FOOD_PRODUCTION, multiplier = 1})
+
 	# High captive ratio
 	if pcts.captives > 0.05:
 		var captive_mult := int(pcts.captives * 10.0)
@@ -314,6 +338,35 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 		result.append({label = "Construct Garrison (x%d)" % mil_tags.construct, weights = W_CONSTRUCT_PRESENCE, multiplier = mil_tags.construct})
 	if mil_tags.monster > 0:
 		result.append({label = "Monster Presence (x%d)" % mil_tags.monster, weights = W_MONSTER_PRESENCE, multiplier = mil_tags.monster})
+
+	# ── Policy & Senate effects (Empire only) ──
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs:
+		# Active policy class loyalty effects
+		for policy_id in fs.active_policies:
+			var data: PolicyData = DataManager.policies.get(policy_id)
+			if data and not data.class_loyalty_effects.is_empty():
+				var pw := {peasants = 0, artisans = 0, scholars = 0, nobles = 0, captives = 0}
+				for cls in data.class_loyalty_effects:
+					pw[cls] = data.class_loyalty_effects[cls]
+				result.append({label = "Policy: " + data.display_name, weights = pw, multiplier = 1})
+
+		# Senate majority bonus (scaled by majority class loyalty)
+		var majority := GameManager.policy_system.get_senate_majority(faction_id)
+		if majority != &"":
+			var scale := GameManager.policy_system._get_majority_loyalty_scale(faction_id, majority)
+			var sw := {peasants = 0, artisans = 0, scholars = 0, nobles = 0, captives = 0}
+			var majority_label := "Senate Majority: " + str(majority).capitalize()
+			if majority == &"nobles":
+				sw.nobles = roundi(1.0 * scale)
+			elif majority == &"scholars":
+				sw.scholars = roundi(1.0 * scale)
+			elif majority == &"artisans":
+				sw.artisans = roundi(1.0 * scale)
+			elif majority == &"forsaken":
+				sw = {peasants = -3, artisans = -3, scholars = -3, nobles = -3, captives = 0}
+				majority_label = "Forsaken Senate Majority"
+			result.append({label = majority_label, weights = sw, multiplier = 1})
 
 	return result
 

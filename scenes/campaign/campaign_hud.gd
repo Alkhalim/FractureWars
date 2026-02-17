@@ -72,6 +72,7 @@ var _class_hover_tooltip: PanelContainer
 var _diplomacy_panel: PanelContainer
 var _policies_panel: PanelContainer
 var _forsaken_offer_dialog: PanelContainer
+var _senate_dilemma_dialog: PanelContainer
 var _senate_viz: Control
 var _pending_forsaken_offer: Dictionary = {}
 var _research_panel: PanelContainer
@@ -93,6 +94,8 @@ func _ready() -> void:
 	EventBus.random_event_triggered.connect(_on_random_event_triggered)
 	EventBus.shard_claimed.connect(_on_shard_claimed)
 	EventBus.forsaken_offer.connect(_on_forsaken_offer_received)
+	EventBus.senate_dilemma.connect(_on_senate_dilemma_received)
+	EventBus.research_completed.connect(_on_research_completed)
 
 	_create_resource_bar()
 	_create_shard_display()
@@ -572,11 +575,19 @@ func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 	# Auto-refresh loyalty panel if open
 	if _loyalty_panel_city_id != &"":
 		_show_loyalty_panel(_loyalty_panel_city_id)
+	# Auto-refresh research panel if open
+	if _research_panel and _research_panel.visible:
+		_refresh_research_panel()
 	# Check for Forsaken offer on player turn
 	if TurnManager.is_player_turn and _faction_id == GameManager.state.player_faction_id:
 		var offer := GameManager.policy_system.check_forsaken_offer(_faction_id, GameManager.state.current_turn)
 		if not offer.is_empty():
 			EventBus.forsaken_offer.emit(_faction_id, offer)
+		else:
+			# Check for senate dilemma (deferred to avoid dialog overlap)
+			var dilemma := GameManager.policy_system.check_senate_dilemma(_faction_id, GameManager.state.current_turn)
+			if not dilemma.is_empty():
+				call_deferred("_emit_senate_dilemma", _faction_id, dilemma)
 
 func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
 	# Refresh army panel if the moved army is selected
@@ -841,6 +852,20 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 				upkeep_by_tag["Commanders"] = upkeep_by_tag.get("Commanders", 0) + cmd_cost
 				total -= cmd_cost
 	breakdown.upkeep = upkeep_by_tag
+
+	# Senate majority effects (percentage bonuses)
+	var senate_effects := GameManager.policy_system.get_senate_majority_effects(player_id)
+	var senate_pct_key := ""
+	match res_type:
+		Enums.ResourceType.GOLD: senate_pct_key = "gold_income_pct"
+		Enums.ResourceType.TECHNOLOGY: senate_pct_key = "tech_income_pct"
+		Enums.ResourceType.IRON: senate_pct_key = "iron_income_pct"
+		Enums.ResourceType.WOOD: senate_pct_key = "wood_income_pct"
+	if senate_pct_key != "" and senate_effects.has(senate_pct_key):
+		var pct: int = senate_effects[senate_pct_key]
+		if pct != 0:
+			breakdown["senate"] = pct
+
 	breakdown.net = total
 	return breakdown
 
@@ -889,6 +914,8 @@ func _on_resource_hover_entered(res_type: int) -> void:
 	for city_name in breakdown.cities:
 		var amount: int = breakdown.cities[city_name]
 		text += "\n  %s: +%d" % [city_name, amount]
+	if breakdown.has("senate") and breakdown.senate != 0:
+		text += "\n  Senate Majority: %+d%%" % breakdown.senate
 	for tag in breakdown.upkeep:
 		var amount: int = breakdown.upkeep[tag]
 		text += "\n  %s Upkeep: -%d" % [tag, amount]
@@ -1441,6 +1468,13 @@ func _create_research_panel() -> void:
 
 	add_child(_research_panel)
 
+func _on_research_completed(faction_id: StringName, _research_id: StringName) -> void:
+	if faction_id != GameManager.state.player_faction_id:
+		return
+	# Refresh research panel if open
+	if _research_panel and _research_panel.visible:
+		_refresh_research_panel()
+
 func _toggle_research_panel() -> void:
 	if _research_panel.visible:
 		_research_panel.visible = false
@@ -1891,13 +1925,37 @@ func _refresh_policies_panel() -> void:
 	# Senate semicircle visualization
 	var seats := GameManager.policy_system.calculate_senate_seats(player_id)
 	_senate_viz = _SenateVisualization.new()
-	_senate_viz.custom_minimum_size = Vector2(400, 120)
+	_senate_viz.custom_minimum_size = Vector2(400, 130)
 	_senate_viz.update_seats(seats)
 	vbox.add_child(_senate_viz)
 
-	# Majority label with effects
+	# Seat breakdown with percentages
+	var seat_names: Array[String] = ["Nobles", "Scholars", "Artisans", "Forsaken"]
+	var seat_colors: Array[Color] = [
+		Color(0.85, 0.72, 0.3), Color(0.3, 0.5, 0.85),
+		Color(0.6, 0.5, 0.38), Color(0.6, 0.15, 0.2),
+	]
+	var total_seats := 0
+	for s in seats:
+		total_seats += s
+	var breakdown_row := HBoxContainer.new()
+	breakdown_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	breakdown_row.add_theme_constant_override("separation", 14)
+	for i in seats.size():
+		if seats[i] <= 0:
+			continue
+		var pct := int(float(seats[i]) / float(maxi(total_seats, 1)) * 100.0)
+		var entry := Label.new()
+		entry.text = "%s: %d (%d%%)" % [seat_names[i], seats[i], pct]
+		entry.add_theme_font_size_override("font_size", 10)
+		entry.add_theme_color_override("font_color", seat_colors[i])
+		breakdown_row.add_child(entry)
+	vbox.add_child(breakdown_row)
+
+	# Majority label with effects (scaled by class loyalty)
 	var majority := GameManager.policy_system.get_senate_majority(player_id)
 	var majority_effects := GameManager.policy_system.get_senate_majority_effects(player_id)
+	var majority_scale := GameManager.policy_system._get_majority_loyalty_scale(player_id, majority)
 	var majority_label := Label.new()
 	var effects_text := ""
 	for key in majority_effects:
@@ -1907,7 +1965,8 @@ func _refresh_policies_panel() -> void:
 			var parts := str(key).split("_")
 			var res_name: String = parts[0].capitalize() if parts.size() > 0 else key
 			effects_text += "%s %+d%%  " % [res_name, majority_effects[key]]
-	majority_label.text = "Majority: %s — %s" % [str(majority).capitalize(), effects_text.strip_edges()]
+	var scale_pct := int(majority_scale * 100.0)
+	majority_label.text = "Majority: %s (x%d%%) — %s" % [str(majority).capitalize(), scale_pct, effects_text.strip_edges()]
 	majority_label.add_theme_font_size_override("font_size", 12)
 	majority_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var majority_colors := {
@@ -1941,18 +2000,21 @@ func _refresh_policies_panel() -> void:
 	count_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 	vbox.add_child(count_label)
 
-	# Class loyalty summary with forecast
+	# Class loyalty summary with forecast (unified with province loyalty)
 	var capital := GameManager.policy_system._get_faction_capital(player_id)
-	var forecast := GameManager.policy_system.get_loyalty_change_forecast(player_id)
 	if capital:
+		var deltas := LoyaltySystem.calculate_class_loyalty_deltas(capital, player_id)
 		var loyalty_header := Label.new()
 		loyalty_header.text = "Class Loyalty"
 		loyalty_header.add_theme_font_size_override("font_size", 14)
 		loyalty_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 		vbox.add_child(loyalty_header)
 		for cls in capital.class_loyalty:
+			# Skip peasants/captives — they don't hold senate seats
+			if cls == "peasants" or cls == "captives":
+				continue
 			var val: int = capital.class_loyalty[cls]
-			var change: int = forecast.get(cls, 0)
+			var change: int = deltas.get(cls, 0)
 			var cls_row := HBoxContainer.new()
 			var cls_name := Label.new()
 			cls_name.text = cls.capitalize()
@@ -2128,24 +2190,53 @@ class _SenateVisualization extends Control:
 		var total := seats.size()
 		if total == 0:
 			return
-		var center := Vector2(size.x / 2.0, size.y - 10.0)
-		var dot_radius := 3.5
-		var gap := 2.0
-		# 3 concentric arcs
-		var rows := 3
-		var per_row := ceili(float(total) / float(rows))
+		var center := Vector2(size.x / 2.0, size.y - 8.0)
+		var dot_radius := 3.0
+
+		# Distribute across rows: inner rows hold fewer seats, outer rows more
+		var row_counts: Array[int] = []
+		var remaining := total
+		var rows := 4 if total > 60 else 3
+		# Distribute proportionally: inner rows smaller
+		for row in rows:
+			var fraction := float(row + 1) / float((rows * (rows + 1)) / 2)
+			var count := roundi(fraction * total)
+			row_counts.append(count)
+			remaining -= count
+		# Fix rounding error on last row
+		row_counts[rows - 1] += remaining
+
 		var placed := 0
 		for row in rows:
-			var arc_radius := 35.0 + row * (dot_radius * 2.0 + gap + 6.0)
-			var this_row := mini(per_row, total - placed)
+			# Each row radius: space them so dots don't overlap
+			var arc_radius := 30.0 + row * (dot_radius * 2.0 + 5.0)
+			var this_row := row_counts[row]
 			if this_row <= 0:
-				break
+				continue
+			# Calculate spacing: arc length / seats must be >= dot diameter + gap
+			var arc_length := PI * arc_radius
+			var needed_spacing := dot_radius * 2.0 + 2.0
+			var max_seats_this_row := int(arc_length / needed_spacing)
+			this_row = mini(this_row, max_seats_this_row)
+			# Add margin at edges so dots don't sit right at 0/180 degrees
+			var margin := 0.06
 			for i in this_row:
 				if placed >= total:
 					break
 				var t := float(i) / float(maxi(this_row - 1, 1))
-				var angle := PI + t * PI  # 180 to 360 degrees (semicircle opening upward)
+				var angle := PI + margin + t * (PI - 2.0 * margin)
 				var pos := center + Vector2(cos(angle), sin(angle)) * arc_radius
+				var color: Color = SEAT_COLORS[seats[placed]] if seats[placed] < SEAT_COLORS.size() else Color.WHITE
+				draw_circle(pos, dot_radius, color)
+				placed += 1
+		# Draw any leftover seats on outermost ring
+		if placed < total:
+			var extra_radius := 30.0 + rows * (dot_radius * 2.0 + 5.0)
+			var leftover := total - placed
+			for i in leftover:
+				var t := float(i) / float(maxi(leftover - 1, 1))
+				var angle := PI + 0.06 + t * (PI - 0.12)
+				var pos := center + Vector2(cos(angle), sin(angle)) * extra_radius
 				var color: Color = SEAT_COLORS[seats[placed]] if seats[placed] < SEAT_COLORS.size() else Color.WHITE
 				draw_circle(pos, dot_radius, color)
 				placed += 1
@@ -2303,6 +2394,104 @@ func _show_forsaken_crisis_dialog() -> void:
 	btn_row.add_child(submit_btn)
 
 	add_child(_forsaken_offer_dialog)
+
+# ── Senate Dilemma Dialog ─────────────────────────────────────
+
+func _emit_senate_dilemma(faction_id: StringName, dilemma: Dictionary) -> void:
+	EventBus.senate_dilemma.emit(faction_id, dilemma)
+
+func _on_senate_dilemma_received(faction_id: StringName, dilemma: Dictionary) -> void:
+	if faction_id != GameManager.state.player_faction_id:
+		return
+	_show_senate_dilemma_dialog(faction_id, dilemma)
+
+func _show_senate_dilemma_dialog(faction_id: StringName, dilemma: Dictionary) -> void:
+	if _senate_dilemma_dialog != null:
+		_senate_dilemma_dialog.queue_free()
+
+	_senate_dilemma_dialog = PanelContainer.new()
+	_senate_dilemma_dialog.set_anchors_preset(Control.PRESET_CENTER)
+	_senate_dilemma_dialog.offset_left = -200.0
+	_senate_dilemma_dialog.offset_right = 200.0
+	_senate_dilemma_dialog.offset_top = -140.0
+	_senate_dilemma_dialog.offset_bottom = 140.0
+
+	# Class-themed background color
+	var majority: StringName = dilemma.get("majority", &"nobles")
+	var bg_color: Color
+	var border_color: Color
+	match majority:
+		&"nobles":
+			bg_color = Color(0.12, 0.1, 0.05, 0.97)
+			border_color = Color(0.85, 0.72, 0.3)
+		&"scholars":
+			bg_color = Color(0.05, 0.07, 0.12, 0.97)
+			border_color = Color(0.3, 0.5, 0.85)
+		&"artisans":
+			bg_color = Color(0.1, 0.08, 0.05, 0.97)
+			border_color = Color(0.6, 0.5, 0.38)
+		_:
+			bg_color = Color(0.08, 0.08, 0.08, 0.97)
+			border_color = Color(0.5, 0.5, 0.5)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg_color
+	style.border_color = border_color
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(14)
+	_senate_dilemma_dialog.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_senate_dilemma_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = dilemma.get("title", "Senate Dilemma")
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", border_color)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var desc := Label.new()
+	desc.text = dilemma.get("text", "")
+	desc.add_theme_font_size_override("font_size", 11)
+	desc.add_theme_color_override("font_color", Color(0.8, 0.75, 0.65))
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(desc)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(btn_row)
+
+	var choice_a: Dictionary = dilemma.get("choice_a", {})
+	var choice_b: Dictionary = dilemma.get("choice_b", {})
+
+	var btn_a := Button.new()
+	btn_a.text = choice_a.get("label", "Choice A")
+	btn_a.tooltip_text = choice_a.get("tooltip", "")
+	btn_a.custom_minimum_size = Vector2(150, 30)
+	btn_a.pressed.connect(func():
+		GameManager.policy_system.apply_senate_dilemma_choice(faction_id, dilemma, "a")
+		_senate_dilemma_dialog.queue_free()
+		_senate_dilemma_dialog = null
+		_update_resource_display())
+	btn_row.add_child(btn_a)
+
+	var btn_b := Button.new()
+	btn_b.text = choice_b.get("label", "Choice B")
+	btn_b.tooltip_text = choice_b.get("tooltip", "")
+	btn_b.custom_minimum_size = Vector2(150, 30)
+	btn_b.pressed.connect(func():
+		GameManager.policy_system.apply_senate_dilemma_choice(faction_id, dilemma, "b")
+		_senate_dilemma_dialog.queue_free()
+		_senate_dilemma_dialog = null
+		_update_resource_display())
+	btn_row.add_child(btn_b)
+
+	add_child(_senate_dilemma_dialog)
 
 # ── City management panel ────────────────────────────────────
 
@@ -2541,6 +2730,22 @@ func _show_city_panel(city_id: StringName) -> void:
 			cost_hbox.add_child(cost_label)
 		vbox.add_child(cost_hbox)
 
+		# Show what's missing when can't afford
+		if not can_afford and fs_upgrade:
+			var missing_text := ""
+			for res_type2 in upgrade_cost:
+				var have2: int = fs_upgrade.resources.get(res_type2, 0)
+				var need2: int = upgrade_cost[res_type2]
+				if have2 < need2:
+					var rname2: String = RESOURCE_NAMES[res_type2] if res_type2 < RESOURCE_NAMES.size() else "?"
+					missing_text += " Need %d more %s." % [need2 - have2, rname2]
+			if missing_text != "":
+				var missing_label := Label.new()
+				missing_label.text = missing_text.strip_edges()
+				missing_label.add_theme_font_size_override("font_size", 10)
+				missing_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.3))
+				vbox.add_child(missing_label)
+
 	# Income preview (player cities only)
 	if is_player_city:
 		var income := GameManager.city_system.calculate_city_income(city)
@@ -2654,6 +2859,44 @@ func _show_city_panel(city_id: StringName) -> void:
 			else:
 				build_btn.text = building.display_name
 			build_btn.custom_minimum_size = Vector2(140, 28)
+			# Color by building category
+			var cat_color: Color
+			match building.category:
+				&"economic":
+					# Check if industrial (iron/wood production) or pastoral (food/gold)
+					var is_industrial := false
+					for res in building.income_bonus:
+						if res == Enums.ResourceType.IRON or res == Enums.ResourceType.WOOD:
+							is_industrial = true
+							break
+					if is_industrial:
+						cat_color = Color(0.85, 0.72, 0.3, 0.25)  # Gold/amber for industrial
+					else:
+						cat_color = Color(0.35, 0.7, 0.3, 0.25)   # Green for pastoral/village
+				&"military":
+					cat_color = Color(0.75, 0.25, 0.2, 0.25)
+				&"defensive":
+					cat_color = Color(0.35, 0.55, 0.75, 0.25)
+				&"cultural":
+					cat_color = Color(0.55, 0.35, 0.75, 0.25)
+				_:
+					cat_color = Color(0.4, 0.4, 0.4, 0.2)
+			var cat_style := StyleBoxFlat.new()
+			cat_style.bg_color = cat_color
+			cat_style.border_color = Color(cat_color, 0.6)
+			cat_style.set_border_width_all(1)
+			cat_style.set_corner_radius_all(3)
+			cat_style.set_content_margin_all(4)
+			build_btn.add_theme_stylebox_override("normal", cat_style)
+			var cat_hover := cat_style.duplicate()
+			cat_hover.bg_color = Color(cat_color, 0.4)
+			build_btn.add_theme_stylebox_override("hover", cat_hover)
+			var cat_pressed := cat_style.duplicate()
+			cat_pressed.bg_color = Color(cat_color, 0.5)
+			build_btn.add_theme_stylebox_override("pressed", cat_pressed)
+			var cat_disabled := cat_style.duplicate()
+			cat_disabled.bg_color = Color(cat_color, 0.1)
+			build_btn.add_theme_stylebox_override("disabled", cat_disabled)
 			build_btn.pressed.connect(_on_build_pressed.bind(city_id, building_id))
 			build_btn.mouse_entered.connect(_on_building_hover.bind(building_id))
 			build_btn.mouse_exited.connect(_on_building_hover_exit)
@@ -3109,7 +3352,16 @@ func _on_build_pressed(city_id: StringName, building_id: StringName) -> void:
 
 func _on_building_hover(building_id: StringName) -> void:
 	var building: BuildingData = DataManager.get_building(building_id)
-	if building == null or _building_tooltip == null:
+	if building == null:
+		return
+
+	# Highlight produced resources in top bar
+	for res_type in building.income_bonus:
+		if building.income_bonus[res_type] > 0 and _resource_items.has(res_type):
+			var lbl: Label = _resource_items[res_type]["amount_label"]
+			lbl.add_theme_color_override("font_color", Color(1.0, 1.0, 0.4))
+
+	if _building_tooltip == null:
 		return
 
 	var text := building.display_name + "\n"
@@ -3154,6 +3406,10 @@ func _on_building_hover(building_id: StringName) -> void:
 	_building_tooltip.visible = true
 
 func _on_building_hover_exit() -> void:
+	# Reset all resource label colors in top bar
+	for res_type in _resource_items:
+		var lbl: Label = _resource_items[res_type]["amount_label"]
+		lbl.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
 	if _building_tooltip:
 		_building_tooltip.visible = false
 

@@ -1437,6 +1437,10 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 	var atk_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(attacker_army.commander)
 	var def_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(defender_army.commander)
 
+	# Snapshot army strengths before battle (for loot and XP calculation)
+	var atk_strength_pre := attacker_army.get_total_strength()
+	var def_strength_pre := defender_army.get_total_strength()
+
 	# Create V2 headless battle simulation
 	var campaign_terrain := Enums.TerrainType.PLAINS
 	if GameManager.state and GameManager.state.hex_map:
@@ -1514,17 +1518,31 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 		if city_at and city_at.faction_id == defender_army.faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
 
-	# Commander XP and item drops
-	var atk_strength := attacker_army.get_total_strength()
-	var def_strength := defender_army.get_total_strength()
+	# Commander XP and item drops (use pre-battle strengths)
 	if attacker_army.commander:
-		CommanderSystem.grant_battle_xp(attacker_army.commander, def_strength, atk_alive)
+		CommanderSystem.grant_battle_xp(attacker_army.commander, def_strength_pre, atk_alive)
 		if atk_alive and not def_alive:
 			CommanderSystem.apply_item_drop(attacker_army.commander, defender_army.faction_id)
 	if defender_army.commander:
-		CommanderSystem.grant_battle_xp(defender_army.commander, atk_strength, def_alive)
+		CommanderSystem.grant_battle_xp(defender_army.commander, atk_strength_pre, def_alive)
 		if def_alive and not atk_alive:
 			CommanderSystem.apply_item_drop(defender_army.commander, attacker_army.faction_id)
+
+	# Battle loot for the winner
+	if atk_alive and not def_alive:
+		var loot_gold := int(def_strength_pre * 0.1)
+		var loot_iron := int(def_strength_pre * 0.03)
+		var wfs: FactionState = GameManager.state.faction_states.get(attacker_army.faction_id)
+		if wfs:
+			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
+			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
+	elif def_alive and not atk_alive:
+		var loot_gold := int(atk_strength_pre * 0.1)
+		var loot_iron := int(atk_strength_pre * 0.03)
+		var wfs: FactionState = GameManager.state.faction_states.get(defender_army.faction_id)
+		if wfs:
+			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
+			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
 
 	# Show battle report for player-involved battles
 	var player_fid := GameManager.state.player_faction_id

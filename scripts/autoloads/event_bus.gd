@@ -68,6 +68,7 @@ signal policy_revoked(faction_id: StringName, policy_id: StringName)
 
 # Senate / Forsaken signals
 signal forsaken_offer(faction_id: StringName, offer: Dictionary)
+signal senate_dilemma(faction_id: StringName, dilemma: Dictionary)
 
 # UI signals
 signal end_turn_pressed()

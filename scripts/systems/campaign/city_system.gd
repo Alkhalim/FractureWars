@@ -150,11 +150,6 @@ func _process_upgrade(city: CityState) -> void:
 		# Grant settlement founding ability on capital level-up
 		if city.is_capital:
 			city.can_found_settlement = true
-			# Level up settlements in the same region
-			for cid in GameManager.state.cities:
-				var c: CityState = GameManager.state.cities[cid]
-				if c.region_id == city.region_id and not c.is_capital and c.level < city.level:
-					c.level = city.level
 
 func can_start_upgrade(city: CityState) -> bool:
 	if not city.is_upgrade_available():

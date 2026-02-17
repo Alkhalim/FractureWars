@@ -81,6 +81,7 @@ func _start_faction_turn() -> void:
 		GameManager.diplomacy_system.execute_ai_diplomacy(faction_id)
 		GameManager.research_system.execute_ai_research(faction_id)
 		_ai_handle_forsaken_offer(faction_id)
+		_ai_handle_senate_dilemma(faction_id)
 		if faction_id == &"shardhorde":
 			_execute_shardhorde_ai()
 		elif faction_id == &"gladehost":
@@ -164,6 +165,15 @@ func _ai_handle_forsaken_offer(faction_id: StringName) -> void:
 		GameManager.policy_system.accept_forsaken_offer(faction_id, offer)
 	else:
 		GameManager.policy_system.decline_forsaken_offer(faction_id)
+
+# ── AI Senate Dilemma Handling ───────────────────────────────
+
+func _ai_handle_senate_dilemma(faction_id: StringName) -> void:
+	var dilemma := GameManager.policy_system.check_senate_dilemma(faction_id, GameManager.state.current_turn)
+	if dilemma.is_empty():
+		return
+	# AI always picks choice_a
+	GameManager.policy_system.apply_senate_dilemma_choice(faction_id, dilemma, "a")
 
 # ── Commander XP ─────────────────────────────────────────────
 

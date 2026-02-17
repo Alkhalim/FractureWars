@@ -934,8 +934,8 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 		for j in limit_d:
 			var dist := attacker.entity_positions[i].distance_to(defender.entity_positions[j])
 			if dist < engage_dist:
-				# Proximity-weighted: full contribution at point-blank, zero at edge
-				var proximity := 1.0 - dist / engage_dist
+				# Proximity-weighted: full contribution at point-blank, minimum 0.35 at edge
+				var proximity := maxf(0.35, 1.0 - dist / engage_dist)
 				# Direction from defender entity toward attacker entity
 				var dir := (attacker.entity_positions[i] - defender.entity_positions[j]).normalized()
 				var dot := dir.dot(def_facing)

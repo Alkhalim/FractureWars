@@ -25,3 +25,4 @@ extends Resource
 @export var forsaken_seats: int = 3
 @export var forsaken_next_offer_turn: int = 5
 @export var forsaken_crisis_stage: int = 0
+@export var senate_dilemma_next_turn: int = 8

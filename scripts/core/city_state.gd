@@ -16,9 +16,9 @@ extends Resource
 @export var siege_turns: int = 0
 @export var is_capital: bool = false
 @export var can_found_settlement: bool = false
-@export var loyalty: int = 50              # -100 to 100 (computed weighted average)
+@export var loyalty: int = 20              # -100 to 100 (computed weighted average)
 @export var class_loyalty: Dictionary = {
-	"peasants": 50, "artisans": 50, "scholars": 50, "nobles": 50, "captives": 0
+	"peasants": 20, "artisans": 20, "scholars": 20, "nobles": 20, "captives": 0
 }
 @export var original_faction_id: StringName = &""  # cultural origin, never changes
 @export var turns_since_capture: int = -1  # -1 = never captured; 0+ = turns since capture
