@@ -22,8 +22,25 @@ extends Resource
 }
 @export var original_faction_id: StringName = &""  # cultural origin, never changes
 @export var turns_since_capture: int = -1  # -1 = never captured; 0+ = turns since capture
+@export var upgrade_turns_remaining: int = 0 # 0 = no upgrade in progress; >0 = turns left
 
 const GROWTH_THRESHOLDS := [200, 400, 700, 1100] # pop needed for levels 2-5
+
+# Resource costs to upgrade to each level: {target_level: {ResourceType: amount}}
+const UPGRADE_COSTS := {
+	2: {0: 200, 1: 30, 5: 50},
+	3: {0: 500, 1: 80, 5: 100},
+	4: {0: 1000, 1: 150, 5: 200, 2: 30},
+	5: {0: 2000, 1: 300, 5: 400, 2: 80},
+}
+
+# Turns required to complete upgrade to each level
+const UPGRADE_TURNS := {
+	2: 3,
+	3: 4,
+	4: 5,
+	5: 6,
+}
 
 func get_max_building_slots() -> int:
 	if is_capital:
@@ -38,11 +55,32 @@ func get_growth_threshold() -> int:
 		return GROWTH_THRESHOLDS[level - 1]
 	return -1 # max level
 
+func is_upgrade_available() -> bool:
+	if upgrade_turns_remaining > 0:
+		return false # already upgrading
+	var threshold := get_growth_threshold()
+	if threshold < 0:
+		return false # max level
+	return population >= threshold
+
+func get_upgrade_cost() -> Dictionary:
+	var target_level := level + 1
+	return UPGRADE_COSTS.get(target_level, {})
+
+func get_upgrade_time() -> int:
+	var target_level := level + 1
+	return UPGRADE_TURNS.get(target_level, 3)
+
 func can_recruit(unit_data_id: StringName) -> bool:
 	for building_id in buildings:
-		var building: BuildingData = DataManager.get_building(building_id)
-		if building and building.unlocks_units.has(unit_data_id):
-			return true
+		var current_id: StringName = building_id
+		while current_id != &"":
+			var building: BuildingData = DataManager.get_building(current_id)
+			if building == null:
+				break
+			if building.unlocks_units.has(unit_data_id):
+				return true
+			current_id = building.upgrades_from
 	return false
 
 func get_display_name() -> String:

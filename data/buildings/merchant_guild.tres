@@ -4,17 +4,18 @@
 
 [resource]
 script = ExtResource("1")
-id = &"sawmill_empire"
-display_name = "Sawmill II"
-description = "Mechanical saws that process timber far more efficiently. Reduces wood costs for construction."
+id = &"merchant_guild"
+display_name = "Merchant Guild II"
+description = "A powerful guild of merchants and traders. Greatly increases gold income and empowers the artisan class."
 faction_id = &"empire"
 category = &"economic"
-build_cost = {0: 350, 1: 25, 5: 90, 2: 5}
+build_cost = {0: 450, 5: 80}
 build_time = 3
-income_bonus = {5: 60}
-population_growth_bonus = 0
+income_bonus = {0: 90}
+population_growth_bonus = 7
 defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
-upgrades_from = &"lumber_camp_empire"
+class_loyalty_bonus = {"peasants": -1, "artisans": 2, "nobles": 3}
+upgrades_from = &"market_square"

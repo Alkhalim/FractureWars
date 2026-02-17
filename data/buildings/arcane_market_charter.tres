@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"arcane_market_charter"
+display_name = "Arcane Market Charter II"
+description = "A chartered market for magical goods and scholarly research. Generates technology and unlocks Emberlight Auxilia."
+faction_id = &"empire"
+category = &"military"
+build_cost = {0: 500, 5: 60, 2: 20}
+build_time = 3
+income_bonus = {2: 30}
+population_growth_bonus = 6
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([&"emberlight_auxilia"])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": -2, "scholars": 3, "nobles": -1}
+upgrades_from = &"market_square"

@@ -61,6 +61,11 @@ var _pending_level_up_commander: CommanderState
 var _pending_event_data: Dictionary
 var _loyalty_panel: PanelContainer
 var _class_hover_tooltip: PanelContainer
+var _diplomacy_panel: PanelContainer
+var _policies_panel: PanelContainer
+var _research_panel: PanelContainer
+var _unit_detail_panel: PanelContainer
+var _item_swap_panel: PanelContainer
 
 func _ready() -> void:
 	end_turn_button.pressed.connect(_on_end_turn)
@@ -337,7 +342,137 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 	stats_vbox.add_child(mp_label)
 
 	hbox.add_child(stats_vbox)
+
+	# Detail "+" button
+	var detail_btn := Button.new()
+	detail_btn.text = "+"
+	detail_btn.custom_minimum_size = Vector2(24, 24)
+	detail_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	detail_btn.add_theme_font_size_override("font_size", 14)
+	detail_btn.pressed.connect(_show_unit_detail.bind(unit, unit_data))
+	hbox.add_child(detail_btn)
+
 	return card
+
+func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
+	if _unit_detail_panel:
+		_unit_detail_panel.queue_free()
+		_unit_detail_panel = null
+
+	_unit_detail_panel = _create_centered_dialog(360, 380)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_unit_detail_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 4)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	# Header with close
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	title.text = unit_data.display_name
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func():
+		if _unit_detail_panel:
+			_unit_detail_panel.queue_free()
+			_unit_detail_panel = null
+	)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+
+	# Description
+	if unit_data.description != "":
+		var desc := Label.new()
+		desc.text = unit_data.description
+		desc.add_theme_font_size_override("font_size", 11)
+		desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		vbox.add_child(desc)
+
+	_add_separator(vbox)
+
+	# Combat stats
+	var stats_header := Label.new()
+	stats_header.text = "Combat Stats"
+	stats_header.add_theme_font_size_override("font_size", 13)
+	stats_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(stats_header)
+
+	var hp_text := "  HP: %d / %d" % [unit.current_hp, unit_data.max_hp]
+	if unit_data.hp_per_soldier > 0:
+		hp_text += "  (%d per soldier)" % unit_data.hp_per_soldier
+	var hp_label := Label.new()
+	hp_label.text = hp_text
+	hp_label.add_theme_font_size_override("font_size", 12)
+	hp_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	vbox.add_child(hp_label)
+
+	var stat_lines: Array[String] = [
+		"  ATK: %d  |  DEF: %d  |  SPD: %d" % [unit_data.attack, unit_data.defense, unit_data.speed],
+		"  Range: %d  |  Morale: %d" % [unit_data.attack_range, unit_data.base_morale],
+		"  Squad Size: %d  |  MP: %.1f" % [unit_data.squad_size, unit_data.movement_points],
+	]
+	for line in stat_lines:
+		var l := Label.new()
+		l.text = line
+		l.add_theme_font_size_override("font_size", 12)
+		l.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		vbox.add_child(l)
+
+	# Tags
+	if unit_data.tags.size() > 0:
+		var tag_strs: Array[String] = []
+		for t in unit_data.tags:
+			tag_strs.append(t.capitalize())
+		var tags_label := Label.new()
+		tags_label.text = "  Tags: " + ", ".join(tag_strs)
+		tags_label.add_theme_font_size_override("font_size", 12)
+		tags_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
+		vbox.add_child(tags_label)
+
+	_add_separator(vbox)
+
+	# Costs
+	var cost_header := Label.new()
+	cost_header.text = "Costs"
+	cost_header.add_theme_font_size_override("font_size", 13)
+	cost_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(cost_header)
+
+	if unit_data.recruit_cost.size() > 0:
+		var recruit_label := Label.new()
+		recruit_label.text = "  Recruit: " + _format_cost(unit_data.recruit_cost)
+		recruit_label.add_theme_font_size_override("font_size", 12)
+		recruit_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		vbox.add_child(recruit_label)
+
+	if unit_data.upkeep_cost.size() > 0:
+		var upkeep_label := Label.new()
+		upkeep_label.text = "  Upkeep: " + _format_cost(unit_data.upkeep_cost)
+		upkeep_label.add_theme_font_size_override("font_size", 12)
+		upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
+		vbox.add_child(upkeep_label)
+
+	# Veterancy
+	if unit.veterancy_level > 0 or unit.experience > 0:
+		_add_separator(vbox)
+		var vet_label := Label.new()
+		vet_label.text = "  Veterancy: Lv%d  |  XP: %d" % [unit.veterancy_level, unit.experience]
+		vet_label.add_theme_font_size_override("font_size", 12)
+		vet_label.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+		vbox.add_child(vet_label)
+
+	add_child(_unit_detail_panel)
 
 func _add_stat_label(parent: HBoxContainer, stat_name: String, value: String, color: Color) -> void:
 	var label := Label.new()
@@ -689,17 +824,48 @@ func _on_resource_hover_exited() -> void:
 # ── Economy Panel ─────────────────────────────────────────────
 
 func _create_economy_panel() -> void:
-	# Add Economy button to top bar (before End Turn)
+	# Add top bar buttons (before End Turn): Diplomacy, Policies, Research, Economy
 	var hbox: HBoxContainer = $TopBar/HBoxContainer
+	var end_btn_idx := end_turn_button.get_index()
+
+	# Diplomacy button
+	_diplomacy_panel = _create_stub_panel("Diplomacy")
+	var diplomacy_btn := Button.new()
+	diplomacy_btn.name = "DiplomacyButton"
+	diplomacy_btn.text = "Diplomacy"
+	diplomacy_btn.custom_minimum_size = Vector2(90, 0)
+	diplomacy_btn.pressed.connect(_toggle_diplomacy_panel)
+	hbox.add_child(diplomacy_btn)
+	hbox.move_child(diplomacy_btn, end_btn_idx)
+
+	# Policies button
+	_policies_panel = _create_stub_panel("Policies")
+	var policies_btn := Button.new()
+	policies_btn.name = "PoliciesButton"
+	policies_btn.text = "Policies"
+	policies_btn.custom_minimum_size = Vector2(90, 0)
+	policies_btn.pressed.connect(_toggle_policies_panel)
+	hbox.add_child(policies_btn)
+	hbox.move_child(policies_btn, end_btn_idx + 1)
+
+	# Research button
+	_research_panel = _create_stub_panel("Research")
+	var research_btn := Button.new()
+	research_btn.name = "ResearchButton"
+	research_btn.text = "Research"
+	research_btn.custom_minimum_size = Vector2(90, 0)
+	research_btn.pressed.connect(_toggle_research_panel)
+	hbox.add_child(research_btn)
+	hbox.move_child(research_btn, end_btn_idx + 2)
+
+	# Economy button
 	var economy_btn := Button.new()
 	economy_btn.name = "EconomyButton"
 	economy_btn.text = "Economy"
 	economy_btn.custom_minimum_size = Vector2(90, 0)
 	economy_btn.pressed.connect(_toggle_economy_panel)
-	# Insert before EndTurnButton
-	var end_btn_idx := end_turn_button.get_index()
 	hbox.add_child(economy_btn)
-	hbox.move_child(economy_btn, end_btn_idx)
+	hbox.move_child(economy_btn, end_btn_idx + 3)
 
 	# Create the economy panel itself
 	economy_panel = PanelContainer.new()
@@ -903,6 +1069,84 @@ func _refresh_economy_panel() -> void:
 			net_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
 		vbox.add_child(net_label)
 
+# ── Stub Panels (Diplomacy, Policies, Research) ──────────────
+
+func _create_stub_panel(title_text: String) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.name = title_text + "Panel"
+	panel.visible = false
+
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -160.0
+	panel.offset_right = 160.0
+	panel.offset_top = -100.0
+	panel.offset_bottom = 100.0
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	panel.custom_minimum_size = Vector2(300, 180)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.corner_radius_top_left = 6
+	style.corner_radius_top_right = 6
+	style.corner_radius_bottom_right = 6
+	style.corner_radius_bottom_left = 6
+	style.content_margin_left = 16.0
+	style.content_margin_top = 12.0
+	style.content_margin_right = 16.0
+	style.content_margin_bottom = 12.0
+	panel.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+
+	# Header with close button
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	title.text = title_text
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func(): panel.visible = false)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+
+	_add_separator(vbox)
+
+	# Coming Soon message
+	var msg := Label.new()
+	msg.text = "Coming Soon"
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg.add_theme_font_size_override("font_size", 14)
+	msg.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+	vbox.add_child(msg)
+
+	panel.add_child(vbox)
+	add_child(panel)
+	return panel
+
+func _toggle_diplomacy_panel() -> void:
+	_diplomacy_panel.visible = not _diplomacy_panel.visible
+
+func _toggle_policies_panel() -> void:
+	_policies_panel.visible = not _policies_panel.visible
+
+func _toggle_research_panel() -> void:
+	_research_panel.visible = not _research_panel.visible
+
 # ── City management panel ────────────────────────────────────
 
 func _create_city_panel() -> void:
@@ -1034,8 +1278,13 @@ func _show_city_panel(city_id: StringName) -> void:
 	info_hbox.add_theme_constant_override("separation", 0)
 
 	var pop_text := ""
-	if threshold > 0:
-		pop_text = "Level %d  |  Pop: %d/%d +%d" % [city.level, province_pop, threshold, growth_per_turn]
+	if city.upgrade_turns_remaining > 0:
+		pop_text = "Level %d  |  Pop: %d  (Upgrading: %d turns)" % [city.level, province_pop, city.upgrade_turns_remaining]
+	elif threshold > 0:
+		if province_pop >= threshold:
+			pop_text = "Level %d  |  Pop: %d/%d +%d  (Ready)" % [city.level, province_pop, threshold, growth_per_turn]
+		else:
+			pop_text = "Level %d  |  Pop: %d/%d +%d" % [city.level, province_pop, threshold, growth_per_turn]
 	else:
 		pop_text = "Level %d  |  Pop: %d (MAX)" % [city.level, province_pop]
 
@@ -1045,13 +1294,10 @@ func _show_city_panel(city_id: StringName) -> void:
 	pop_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 	info_hbox.add_child(pop_label)
 
-	# Loyalty button (clickable, color-coded, with border)
+	# Loyalty button (clickable, color-coded border, "Loyalty:" white, numbers colored)
 	var loyalty_color := LoyaltySystem.get_loyalty_color(city.loyalty)
 	var delta_sign := "+" if loyalty_delta >= 0 else ""
-	var loyalty_btn := Button.new()
-	loyalty_btn.text = "Loyalty: %d %s%d" % [city.loyalty, delta_sign, loyalty_delta]
-	loyalty_btn.add_theme_font_size_override("font_size", 12)
-	loyalty_btn.add_theme_color_override("font_color", loyalty_color)
+	var loyalty_container := PanelContainer.new()
 	var lbtn_style := StyleBoxFlat.new()
 	lbtn_style.bg_color = Color(0.08, 0.07, 0.1, 0.8)
 	lbtn_style.border_width_left = 1
@@ -1067,16 +1313,56 @@ func _show_city_panel(city_id: StringName) -> void:
 	lbtn_style.content_margin_right = 6.0
 	lbtn_style.content_margin_top = 2.0
 	lbtn_style.content_margin_bottom = 2.0
-	loyalty_btn.add_theme_stylebox_override("normal", lbtn_style)
-	var lbtn_hover := lbtn_style.duplicate()
-	lbtn_hover.bg_color = Color(0.12, 0.11, 0.15, 0.9)
-	lbtn_hover.border_color = loyalty_color * Color(1, 1, 1, 0.9)
-	loyalty_btn.add_theme_stylebox_override("hover", lbtn_hover)
-	loyalty_btn.add_theme_stylebox_override("pressed", lbtn_hover)
-	loyalty_btn.pressed.connect(_show_loyalty_panel.bind(city_id))
-	info_hbox.add_child(loyalty_btn)
+	loyalty_container.add_theme_stylebox_override("panel", lbtn_style)
+	loyalty_container.mouse_filter = Control.MOUSE_FILTER_STOP
+	loyalty_container.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	loyalty_container.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_show_loyalty_panel(city_id)
+	)
+	var loyalty_hbox := HBoxContainer.new()
+	loyalty_hbox.add_theme_constant_override("separation", 0)
+	loyalty_hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var loyalty_word := Label.new()
+	loyalty_word.text = "Loyalty: "
+	loyalty_word.add_theme_font_size_override("font_size", 12)
+	loyalty_word.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+	loyalty_word.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	loyalty_hbox.add_child(loyalty_word)
+	var loyalty_nums := Label.new()
+	loyalty_nums.text = "%d %s%d" % [city.loyalty, delta_sign, loyalty_delta]
+	loyalty_nums.add_theme_font_size_override("font_size", 12)
+	loyalty_nums.add_theme_color_override("font_color", loyalty_color)
+	loyalty_nums.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	loyalty_hbox.add_child(loyalty_nums)
+	loyalty_container.add_child(loyalty_hbox)
+	info_hbox.add_child(loyalty_container)
 
 	vbox.add_child(info_hbox)
+
+	# Upgrade button (player cities only, when population threshold met)
+	if is_player_city and city.is_upgrade_available():
+		var can_afford := GameManager.city_system.can_start_upgrade(city)
+		var upgrade_cost := city.get_upgrade_cost()
+		var upgrade_time := city.get_upgrade_time()
+		var cost_parts: Array[String] = []
+		for res_type in upgrade_cost:
+			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+			cost_parts.append("%d %s" % [upgrade_cost[res_type], rname])
+		var upgrade_btn := Button.new()
+		upgrade_btn.text = "Upgrade to Level %d  (%s, %d turns)" % [city.level + 1, ", ".join(cost_parts), upgrade_time]
+		upgrade_btn.add_theme_font_size_override("font_size", 12)
+		upgrade_btn.disabled = not can_afford
+		if can_afford:
+			upgrade_btn.add_theme_color_override("font_color", Color(0.5, 0.9, 0.45))
+		else:
+			upgrade_btn.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48))
+		upgrade_btn.pressed.connect(func() -> void:
+			if GameManager.city_system.start_upgrade(city_id):
+				_show_city_panel(city_id)
+				_update_resource_display()
+		)
+		vbox.add_child(upgrade_btn)
 
 	# Income preview (player cities only)
 	if is_player_city:
@@ -1094,11 +1380,33 @@ func _show_city_panel(city_id: StringName) -> void:
 				income_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
 				vbox.add_child(income_label)
 
+	# Garrison info
+	var garrison_def: Array = CitySystem.GARRISON_BY_LEVEL.get(city.level, CitySystem.GARRISON_BY_LEVEL[1])
+	var garrison_parts: Array[String] = []
+	for entry in garrison_def:
+		var ud := DataManager.get_unit(entry.unit_id)
+		if ud:
+			garrison_parts.append("%dx %s" % [entry.count, ud.display_name])
+	if garrison_parts.size() > 0:
+		var garrison_label := Label.new()
+		garrison_label.text = "Garrison: " + ", ".join(garrison_parts)
+		garrison_label.add_theme_font_size_override("font_size", 12)
+		garrison_label.add_theme_color_override("font_color", Color(0.7, 0.6, 0.5))
+		vbox.add_child(garrison_label)
+
 	# Settlement founding button (only for player capitals that can found)
 	if is_player_city and city.is_capital and city.can_found_settlement:
+		var found_cost_text := _format_cost(CitySystem.SETTLEMENT_FOUNDING_COST)
+		var can_afford_found := GameManager.can_afford_settlement(GameManager.state.player_faction_id)
 		var found_btn := Button.new()
-		found_btn.text = "Found Settlement"
-		found_btn.custom_minimum_size = Vector2(180, 32)
+		found_btn.text = "Found Settlement  (%s)" % found_cost_text
+		found_btn.custom_minimum_size = Vector2(280, 32)
+		found_btn.add_theme_font_size_override("font_size", 12)
+		found_btn.disabled = not can_afford_found
+		if can_afford_found:
+			found_btn.add_theme_color_override("font_color", Color(0.5, 0.9, 0.45))
+		else:
+			found_btn.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48))
 		found_btn.pressed.connect(_on_found_settlement_pressed.bind(city_id))
 		vbox.add_child(found_btn)
 
@@ -1349,6 +1657,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 
 	var pcts := LoyaltySystem.calculate_class_percentages(city, faction_id)
 	var deltas := LoyaltySystem.calculate_class_loyalty_deltas(city, faction_id)
+	var pct_deltas := LoyaltySystem.calculate_class_pct_deltas(city, faction_id)
 
 	var class_entries := [
 		{key = "peasants", name = "Peasants", color = Color(0.5, 0.8, 0.35)},
@@ -1371,26 +1680,35 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 		name_label.add_theme_color_override("font_color", entry.color)
 		vbox.add_child(name_label)
 
-		# Population percentage with next-turn loyalty delta
+		# Population percentage with projected % change
 		var pct_hbox := HBoxContainer.new()
 		pct_hbox.add_theme_constant_override("separation", 0)
 		var pct_label := Label.new()
-		pct_label.text = "    %d%% of Population  " % cls_pct
+		pct_label.text = "    %d%% of Population " % cls_pct
 		pct_label.add_theme_font_size_override("font_size", 11)
 		pct_label.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
 		pct_hbox.add_child(pct_label)
-		if cls_key != "captives":
-			var next_loyalty := clampi(cls_loyalty + cls_delta, -100, 100)
-			var arrow_label := Label.new()
-			arrow_label.text = "(next turn: %d)" % next_loyalty
-			arrow_label.add_theme_font_size_override("font_size", 11)
-			if cls_delta > 0:
-				arrow_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.45, 0.7))
-			elif cls_delta < 0:
-				arrow_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35, 0.7))
+		var pct_delta: float = pct_deltas.get(cls_key, 0.0)
+		if abs(pct_delta) >= 0.5:
+			var pct_delta_int := int(pct_delta)
+			var open_bracket := Label.new()
+			open_bracket.text = "("
+			open_bracket.add_theme_font_size_override("font_size", 11)
+			open_bracket.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+			pct_hbox.add_child(open_bracket)
+			var pct_num := Label.new()
+			pct_num.text = "%s%d%%" % ["+" if pct_delta_int >= 0 else "", pct_delta_int]
+			pct_num.add_theme_font_size_override("font_size", 11)
+			if pct_delta_int > 0:
+				pct_num.add_theme_color_override("font_color", Color(0.5, 0.8, 0.45, 0.7))
 			else:
-				arrow_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48, 0.7))
-			pct_hbox.add_child(arrow_label)
+				pct_num.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35, 0.7))
+			pct_hbox.add_child(pct_num)
+			var close_bracket := Label.new()
+			close_bracket.text = ")"
+			close_bracket.add_theme_font_size_override("font_size", 11)
+			close_bracket.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+			pct_hbox.add_child(close_bracket)
 		pct_hbox.mouse_filter = Control.MOUSE_FILTER_STOP
 		pct_hbox.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		pct_hbox.mouse_entered.connect(_on_class_hover.bind(city_id, cls_key, "population"))
@@ -1844,14 +2162,17 @@ func _on_recruit_pressed(city_id: StringName, unit_data_id: StringName) -> void:
 func _get_recruitable_units(city: CityState) -> Array[StringName]:
 	var result: Array[StringName] = []
 	for building_id in city.buildings:
-		var building: BuildingData = DataManager.get_building(building_id)
-		if building == null:
-			continue
-		for unit_id in building.unlocks_units:
-			# Only show units matching this faction
-			var unit_data := DataManager.get_unit(unit_id)
-			if unit_data and unit_data.faction_id == city.faction_id and not result.has(unit_id):
-				result.append(unit_id)
+		# Collect units from this building and all its predecessors in the upgrade chain
+		var current_id: StringName = building_id
+		while current_id != &"":
+			var building: BuildingData = DataManager.get_building(current_id)
+			if building == null:
+				break
+			for unit_id in building.unlocks_units:
+				var unit_data := DataManager.get_unit(unit_id)
+				if unit_data and unit_data.faction_id == city.faction_id and not result.has(unit_id):
+					result.append(unit_id)
+			current_id = building.upgrades_from
 	return result
 
 func _can_afford_display(fs: FactionState, cost: Dictionary) -> bool:
@@ -2205,13 +2526,16 @@ func _update_commander_panel(army: ArmyState) -> void:
 
 		# Items section
 		_add_separator(vbox)
+		var max_item_slots := CommanderSystem.get_max_item_slots(cmd)
 		var items_header := Label.new()
-		items_header.text = "Items (%d/3)" % cmd.items.size()
+		items_header.text = "Items (%d/%d)" % [cmd.items.size(), max_item_slots]
 		items_header.add_theme_font_size_override("font_size", 12)
 		items_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 		vbox.add_child(items_header)
+		var is_player_cmd := cmd.faction_id == GameManager.state.player_faction_id
 		if cmd.items.size() > 0:
-			for item_id in cmd.items:
+			for item_idx in cmd.items.size():
+				var item_id: StringName = cmd.items[item_idx]
 				var item_data = CommanderSystem.items.get(item_id)
 				var item_label := Label.new()
 				if item_data:
@@ -2230,6 +2554,9 @@ func _update_commander_panel(army: ArmyState) -> void:
 				item_label.mouse_filter = Control.MOUSE_FILTER_STOP
 				item_label.mouse_entered.connect(_on_item_hover_entered.bind(item_id))
 				item_label.mouse_exited.connect(_on_skill_hover_exited)
+				if is_player_cmd:
+					item_label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+					item_label.gui_input.connect(_on_item_label_clicked.bind(cmd, item_idx))
 				vbox.add_child(item_label)
 		else:
 			var no_items := Label.new()
@@ -2237,6 +2564,15 @@ func _update_commander_panel(army: ArmyState) -> void:
 			no_items.add_theme_font_size_override("font_size", 11)
 			no_items.add_theme_color_override("font_color", Color(0.5, 0.48, 0.42))
 			vbox.add_child(no_items)
+		# "Equip from storage" button if there are empty slots and storage items
+		if is_player_cmd and cmd.items.size() < max_item_slots:
+			var fs: FactionState = GameManager.state.faction_states.get(cmd.faction_id)
+			if fs and fs.item_storage.size() > 0:
+				var equip_btn := Button.new()
+				equip_btn.text = "  + Equip from Storage (%d)" % fs.item_storage.size()
+				equip_btn.add_theme_font_size_override("font_size", 11)
+				equip_btn.pressed.connect(_show_item_swap_panel.bind(cmd, -1))
+				vbox.add_child(equip_btn)
 
 	_add_separator(vbox)
 
@@ -2344,7 +2680,156 @@ func _on_skill_hover_exited() -> void:
 	if _skill_tooltip:
 		_skill_tooltip.visible = false
 
+func _on_item_label_clicked(event: InputEvent, commander: CommanderState, item_idx: int) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_on_skill_hover_exited()
+		_show_item_swap_panel(commander, item_idx)
+
+func _show_item_swap_panel(commander: CommanderState, item_idx: int) -> void:
+	_close_item_swap_panel()
+
+	var fs: FactionState = GameManager.state.faction_states.get(commander.faction_id)
+	var has_storage := fs != null and fs.item_storage.size() > 0
+	var has_equipped := item_idx >= 0 and item_idx < commander.items.size()
+
+	if not has_storage and not has_equipped:
+		return
+
+	_item_swap_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.05, 0.08, 0.97)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 8.0
+	style.content_margin_top = 6.0
+	style.content_margin_right = 8.0
+	style.content_margin_bottom = 6.0
+	_item_swap_panel.add_theme_stylebox_override("panel", style)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(240, 0)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_item_swap_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 3)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	# Header
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	if has_equipped:
+		var equipped_data = CommanderSystem.items.get(commander.items[item_idx])
+		title.text = "Swap: " + (equipped_data.display_name if equipped_data else "?")
+	else:
+		title.text = "Equip from Storage"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 12)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(24, 24)
+	close_btn.pressed.connect(_close_item_swap_panel)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+
+	_add_separator(vbox)
+
+	# Unequip option (send to storage)
+	if has_equipped:
+		var unequip_btn := Button.new()
+		unequip_btn.text = "Unequip to Storage"
+		unequip_btn.add_theme_font_size_override("font_size", 11)
+		unequip_btn.custom_minimum_size = Vector2(220, 26)
+		unequip_btn.pressed.connect(_on_item_unequip.bind(commander, item_idx))
+		vbox.add_child(unequip_btn)
+
+		_add_separator(vbox)
+
+	# Storage items list
+	if has_storage:
+		var storage_header := Label.new()
+		storage_header.text = "Storage (%d)" % fs.item_storage.size()
+		storage_header.add_theme_font_size_override("font_size", 11)
+		storage_header.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+		vbox.add_child(storage_header)
+
+		for si in fs.item_storage.size():
+			var storage_item_id: StringName = fs.item_storage[si]
+			var storage_item_data = CommanderSystem.items.get(storage_item_id)
+			var btn := Button.new()
+			if storage_item_data:
+				btn.text = storage_item_data.display_name
+				match storage_item_data.rarity:
+					&"legendary":
+						btn.add_theme_color_override("font_color", Color(0.95, 0.7, 0.2))
+					&"rare":
+						btn.add_theme_color_override("font_color", Color(0.4, 0.6, 0.9))
+			else:
+				btn.text = str(storage_item_id)
+			btn.add_theme_font_size_override("font_size", 11)
+			btn.custom_minimum_size = Vector2(220, 26)
+			btn.pressed.connect(_on_item_swap_from_storage.bind(commander, item_idx, si))
+			vbox.add_child(btn)
+	elif not has_equipped:
+		var empty := Label.new()
+		empty.text = "Storage is empty"
+		empty.add_theme_font_size_override("font_size", 11)
+		empty.add_theme_color_override("font_color", Color(0.5, 0.48, 0.42))
+		vbox.add_child(empty)
+
+	# Position near the commander panel
+	_item_swap_panel.position = Vector2(commander_panel.get_global_rect().end.x + 4, commander_panel.get_global_rect().position.y + 60)
+	add_child(_item_swap_panel)
+
+func _close_item_swap_panel() -> void:
+	if _item_swap_panel:
+		_item_swap_panel.queue_free()
+		_item_swap_panel = null
+
+func _on_item_unequip(commander: CommanderState, item_idx: int) -> void:
+	if item_idx < commander.items.size():
+		var item_id: StringName = commander.items[item_idx]
+		var fs: FactionState = GameManager.state.faction_states.get(commander.faction_id)
+		if fs:
+			fs.item_storage.append(item_id)
+		commander.items.remove_at(item_idx)
+	_close_item_swap_panel()
+	_refresh_commander_panel()
+
+func _on_item_swap_from_storage(commander: CommanderState, item_idx: int, storage_idx: int) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(commander.faction_id)
+	if fs == null or storage_idx >= fs.item_storage.size():
+		_close_item_swap_panel()
+		return
+
+	var storage_item_id: StringName = fs.item_storage[storage_idx]
+	fs.item_storage.remove_at(storage_idx)
+
+	if item_idx >= 0 and item_idx < commander.items.size():
+		# Swap: put equipped item into storage, equip storage item
+		var old_item_id: StringName = commander.items[item_idx]
+		commander.items[item_idx] = storage_item_id
+		fs.item_storage.append(old_item_id)
+	else:
+		# Equip into empty slot
+		commander.items.append(storage_item_id)
+
+	_close_item_swap_panel()
+	_refresh_commander_panel()
+
 func _hide_commander_panel() -> void:
+	_close_item_swap_panel()
 	if commander_panel:
 		commander_panel.visible = false
 
@@ -2456,12 +2941,22 @@ func _on_major_skill_chosen(skill_id: StringName) -> void:
 	if _level_up_dialog:
 		_level_up_dialog.queue_free()
 		_level_up_dialog = null
+	_refresh_commander_panel()
 
 func _on_level_up_dismiss() -> void:
 	_pending_level_up_commander = null
 	if _level_up_dialog:
 		_level_up_dialog.queue_free()
 		_level_up_dialog = null
+	_refresh_commander_panel()
+
+func _refresh_commander_panel() -> void:
+	var army_id: StringName = GameManager.state.selected_army_id if GameManager.state else &""
+	if army_id == &"":
+		return
+	var army: ArmyState = GameManager.state.armies.get(army_id)
+	if army and army.commander and commander_panel.visible:
+		_update_commander_panel(army)
 
 # ── Item Drop Dialog ─────────────────────────────────────────
 
@@ -2524,25 +3019,35 @@ func _show_item_drop_dialog(commander: CommanderState, new_item) -> void:
 		btn.pressed.connect(_on_item_replace.bind(commander, i, new_item.id))
 		vbox.add_child(btn)
 
-	var discard_btn := Button.new()
-	discard_btn.text = "Discard New Item"
-	discard_btn.custom_minimum_size = Vector2(260, 30)
-	discard_btn.pressed.connect(_on_item_discard)
-	vbox.add_child(discard_btn)
+	var storage_btn := Button.new()
+	storage_btn.text = "Send to Storage"
+	storage_btn.custom_minimum_size = Vector2(260, 30)
+	storage_btn.pressed.connect(_on_item_to_storage.bind(commander, new_item.id))
+	vbox.add_child(storage_btn)
 
 	add_child(_item_drop_dialog)
 
 func _on_item_replace(commander: CommanderState, slot_index: int, new_item_id: StringName) -> void:
 	if slot_index < commander.items.size():
+		# Send replaced item to faction storage
+		var old_item_id: StringName = commander.items[slot_index]
+		var fs: FactionState = GameManager.state.faction_states.get(commander.faction_id)
+		if fs:
+			fs.item_storage.append(old_item_id)
 		commander.items[slot_index] = new_item_id
 	if _item_drop_dialog:
 		_item_drop_dialog.queue_free()
 		_item_drop_dialog = null
+	_refresh_commander_panel()
 
-func _on_item_discard() -> void:
+func _on_item_to_storage(commander: CommanderState, item_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(commander.faction_id)
+	if fs:
+		fs.item_storage.append(item_id)
 	if _item_drop_dialog:
 		_item_drop_dialog.queue_free()
 		_item_drop_dialog = null
+	_refresh_commander_panel()
 
 # ── Random Event Dialog ──────────────────────────────────────
 
@@ -2597,17 +3102,52 @@ func _show_event_dialog(event_data: Dictionary) -> void:
 	add_child(_event_dialog)
 
 func _on_event_choice(choice: String) -> void:
+	var event_title: String = _pending_event_data.get("title", "Event")
 	var result := TurnManager.apply_random_event_choice(_pending_event_data, choice)
 	if _event_dialog:
 		_event_dialog.queue_free()
 		_event_dialog = null
 	_pending_event_data = {}
 	_update_resource_display()
-	# Show brief outcome notification
+	_refresh_commander_panel()
 	if result != "":
-		var campaign: Node2D = get_parent().get_parent()
-		if campaign and campaign.has_method("_show_notification"):
-			campaign._show_notification(result)
+		_show_event_result(event_title, result)
+
+func _show_event_result(event_title: String, result_text: String) -> void:
+	var dialog := _create_centered_dialog(380, 180)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = event_title + " - Result"
+	title.add_theme_font_size_override("font_size", 15)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	_add_separator(vbox)
+
+	var result_label := Label.new()
+	result_label.text = result_text
+	result_label.add_theme_font_size_override("font_size", 13)
+	result_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	result_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(result_label)
+
+	_add_separator(vbox)
+
+	var btn_container := HBoxContainer.new()
+	btn_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	var ok_btn := Button.new()
+	ok_btn.text = "OK"
+	ok_btn.custom_minimum_size = Vector2(100, 32)
+	ok_btn.pressed.connect(func(): dialog.queue_free())
+	btn_container.add_child(ok_btn)
+	vbox.add_child(btn_container)
+
+	add_child(dialog)
 
 # ── Region Overview Panel ────────────────────────────────────
 

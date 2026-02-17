@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"imperial_sky_lancers"
+display_name = "Imperial Sky Lancers"
+description = "The pinnacle of Imperial mounted warfare. Sky Lancers ride specially bred drakes trained for aerial diving attacks. Their devastating charges shatter formations."
+faction_id = &"empire"
+max_hp = 1100
+attack = 26
+defense = 14
+speed = 9
+attack_range = 1
+squad_size = 50
+hp_per_soldier = 22
+tiles_per_entity = 2
+movement_points = 6.0
+upkeep_cost = {0: 18, 1: 5, 3: 13}
+recruit_cost = {0: 220, 1: 80, 5: 30, 3: 130}
+recruit_time = 4
+population_cost = 11
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 95
+captive_chance = 0.1

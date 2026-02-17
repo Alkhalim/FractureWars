@@ -99,6 +99,54 @@ static func calculate_class_percentages(city: CityState, faction_id: StringName)
 		nobles = noble_pct,
 	}
 
+static func calculate_class_pct_deltas(city: CityState, faction_id: StringName) -> Dictionary:
+	# Returns per-class percentage point deltas (e.g. {peasants = -1.0, artisans = 2.0, ...})
+	# by simulating next turn's building completions and level changes
+	var region_id := city.region_id
+	var current_pcts := calculate_class_percentages(city, faction_id)
+
+	# Simulate next-turn state: check all province cities for building completions and level-ups
+	var extra_cultural := 0
+	var extra_economic := 0
+	var extra_level := 0
+	for pcity in get_province_cities(region_id, faction_id):
+		for entry in pcity.build_queue:
+			if entry.get("turns_remaining", 99) <= 1:
+				var bd: BuildingData = DataManager.get_building(entry.get("building_id", &""))
+				if bd:
+					if bd.category == &"cultural":
+						extra_cultural += 1
+					elif bd.category == &"economic":
+						extra_economic += 1
+		# Check for upgrade completing next turn
+		if pcity.upgrade_turns_remaining == 1:
+			extra_level += 1
+
+	if extra_cultural == 0 and extra_economic == 0 and extra_level == 0:
+		return {peasants = 0.0, artisans = 0.0, scholars = 0.0, nobles = 0.0, captives = 0.0}
+
+	# Recalculate with projected values
+	var cultural_count := _count_buildings_by_category(region_id, faction_id, &"cultural") + extra_cultural
+	var economic_count := _count_buildings_by_category(region_id, faction_id, &"economic") + extra_economic
+	var city_level_sum := _get_province_city_level_sum(region_id, faction_id) + extra_level
+	var has_capital := _has_capital_in_province(region_id, faction_id)
+
+	var noble_pct := minf(float(city_level_sum) * 0.02 + (0.03 if has_capital else 0.0), 0.25)
+	var scholar_pct := minf(float(cultural_count) * 0.03, 0.20)
+	var artisan_pct := minf(float(economic_count) * 0.04, 0.30)
+
+	# Captives stay same for projection
+	var captive_pct: float = current_pcts.get("captives", 0.0)
+	var peasant_pct := maxf(0.0, 1.0 - noble_pct - scholar_pct - artisan_pct - captive_pct)
+
+	return {
+		peasants = (peasant_pct - float(current_pcts.get("peasants", 0.0))) * 100.0,
+		artisans = (artisan_pct - float(current_pcts.get("artisans", 0.0))) * 100.0,
+		scholars = (scholar_pct - float(current_pcts.get("scholars", 0.0))) * 100.0,
+		nobles = (noble_pct - float(current_pcts.get("nobles", 0.0))) * 100.0,
+		captives = 0.0,
+	}
+
 static func get_class_percentage_breakdown(city: CityState, faction_id: StringName, class_key: String) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var region_id := city.region_id
@@ -202,6 +250,16 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 	# Economic buildings (per building)
 	if economic_count > 0:
 		result.append({label = "Economic Buildings (x%d)" % economic_count, weights = W_ECONOMIC_BUILDINGS, multiplier = economic_count})
+
+	# Per-building class loyalty bonuses
+	for city_in_prov in get_province_cities(region_id, faction_id):
+		for building_id in city_in_prov.buildings:
+			var building: BuildingData = DataManager.get_building(building_id)
+			if building and not building.class_loyalty_bonus.is_empty():
+				var bw := {peasants = 0, artisans = 0, scholars = 0, nobles = 0, captives = 0}
+				for cls in building.class_loyalty_bonus:
+					bw[cls] = building.class_loyalty_bonus[cls]
+				result.append({label = building.display_name, weights = bw, multiplier = 1})
 
 	# High population
 	if province_pop >= 300:

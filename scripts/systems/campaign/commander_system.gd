@@ -86,24 +86,38 @@ func choose_major_skill(commander: CommanderState, skill_id: StringName) -> void
 
 # ── Item Drops ────────────────────────────────────────────────
 
-func apply_item_drop(commander: CommanderState, defeated_faction: StringName) -> void:
+static func get_max_item_slots(commander: CommanderState) -> int:
+	if commander.level >= 5:
+		return 5
+	elif commander.level >= 3:
+		return 4
+	return 3
+
+func apply_item_drop(commander: CommanderState, defeated_faction: StringName) -> String:
 	var base_chance := 0.3
 	if commander.items.size() == 0:
 		base_chance = 0.6
 	elif commander.items.size() == 1:
 		base_chance = 0.4
 	if randf() > base_chance:
-		return
+		return ""
 	var possible_items := _get_items_for_faction(defeated_faction)
 	if possible_items.is_empty():
-		return
+		return ""
 	var item := _weighted_random_item(possible_items)
 	if item == null:
-		return
-	if commander.items.size() < 3:
+		return ""
+	var max_slots := get_max_item_slots(commander)
+	if commander.items.size() < max_slots:
 		commander.items.append(item.id)
+		return item.display_name
 	else:
+		# Overflow to faction storage
+		var fs: FactionState = GameManager.state.faction_states.get(commander.faction_id)
+		if fs:
+			fs.item_storage.append(item.id)
 		EventBus.commander_item_full.emit(commander, item)
+		return item.display_name
 
 func _get_items_for_faction(faction_id: StringName) -> Array[CommanderItem]:
 	var result: Array[CommanderItem] = []

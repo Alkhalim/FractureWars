@@ -1442,6 +1442,11 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 	if not def_alive:
 		GameManager.remove_army(defender_id)
 
+	# Remove surviving garrison armies (they regenerate on next attack)
+	if def_alive and defender_army.is_garrison:
+		GameManager.remove_army(defender_id)
+		def_alive = false
+
 	# Handle siege consequences (same as manual battle)
 	if atk_alive and not def_alive:
 		EventBus.battle_resolved.emit(attacker_army.faction_id, hex_pos)

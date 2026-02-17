@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sanctified_temple_knowledge"
+display_name = "Sanctified Temple - God of Knowledge III"
+description = "A temple-library devoted to the God of Knowledge. Scholars and alchemists gather here to study the arcane and advance Imperial technology."
+faction_id = &"empire"
+category = &"cultural"
+build_cost = {0: 800, 5: 60, 2: 30}
+build_time = 4
+income_bonus = {2: 5}
+population_growth_bonus = 0
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+class_loyalty_bonus = {"scholars": 5, "artisans": 3}
+upgrades_from = &"temple_of_the_pantheon"

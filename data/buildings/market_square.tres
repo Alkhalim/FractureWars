@@ -4,18 +4,17 @@
 
 [resource]
 script = ExtResource("1")
-id = &"imperial_granary"
-display_name = "Imperial Granary II"
-description = "A centralized grain storage facility. Provides large food output and encourages peasant growth."
+id = &"market_square"
+display_name = "Market Square I"
+description = "A bustling market square where merchants gather to trade. Generates gold and attracts artisans."
 faction_id = &"empire"
 category = &"economic"
-build_cost = {0: 300, 5: 60}
-build_time = 3
-income_bonus = {3: 60}
+build_cost = {0: 200, 5: 60}
+build_time = 2
+income_bonus = {0: 40}
 population_growth_bonus = 5
 defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
-required_capital_level = 2
-class_loyalty_bonus = {"peasants": 2, "nobles": -2}
-upgrades_from = &"grain_fields"
+required_capital_level = 1
+class_loyalty_bonus = {"artisans": 1, "nobles": 2}

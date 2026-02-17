@@ -11,10 +11,10 @@ func process_turn(faction_id: StringName) -> void:
 		if not city.is_under_siege:
 			_generate_income(city, faction_id)
 			_add_growth(city)
-			_check_level_up(city)
 
 		_process_build_queue(city)
 		_process_recruit_queue(city, faction_id)
+		_process_upgrade(city)
 
 		# Loyalty update (capitals compute; settlements inherit)
 		_update_loyalty(city, faction_id)
@@ -99,13 +99,12 @@ func calculate_growth(city: CityState) -> int:
 	base_growth += _get_commander_growth_bonus(city)
 	return base_growth
 
-func _check_level_up(city: CityState) -> void:
-	var threshold := city.get_growth_threshold()
-	if threshold < 0:
-		return # already max level
-	if city.growth_points >= threshold:
+func _process_upgrade(city: CityState) -> void:
+	if city.upgrade_turns_remaining <= 0:
+		return
+	city.upgrade_turns_remaining -= 1
+	if city.upgrade_turns_remaining <= 0:
 		city.level = mini(city.level + 1, 5)
-		city.growth_points -= threshold
 		# Grant settlement founding ability on capital level-up
 		if city.is_capital:
 			city.can_found_settlement = true
@@ -114,6 +113,32 @@ func _check_level_up(city: CityState) -> void:
 				var c: CityState = GameManager.state.cities[cid]
 				if c.region_id == city.region_id and not c.is_capital and c.level < city.level:
 					c.level = city.level
+
+func can_start_upgrade(city: CityState) -> bool:
+	if not city.is_upgrade_available():
+		return false
+	var cost := city.get_upgrade_cost()
+	var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+	if fs == null:
+		return false
+	for res_type in cost:
+		if fs.resources.get(res_type, 0) < cost[res_type]:
+			return false
+	return true
+
+func start_upgrade(city_id: StringName) -> bool:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null or not can_start_upgrade(city):
+		return false
+	var cost := city.get_upgrade_cost()
+	var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+	if fs == null:
+		return false
+	# Deduct resources
+	for res_type in cost:
+		fs.resources[res_type] = fs.resources.get(res_type, 0) - cost[res_type]
+	city.upgrade_turns_remaining = city.get_upgrade_time()
+	return true
 
 func _process_build_queue(city: CityState) -> void:
 	if city.build_queue.is_empty():
@@ -244,6 +269,8 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		if army.faction_id != faction_id:
 			continue
+		if army.is_garrison:
+			continue # garrison armies don't cost upkeep
 		# Unit upkeep
 		for unit in army.units:
 			var unit_data := DataManager.get_unit(unit.unit_data_id)
@@ -430,12 +457,13 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 		return false
 
 	# Check population
-	if city.population < unit_data.squad_size:
+	var pop_cost := unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
+	if city.population < pop_cost:
 		return false
 
 	# Deduct
 	_deduct_cost(fs, unit_data.recruit_cost)
-	city.population -= unit_data.squad_size
+	city.population -= pop_cost
 
 	# Calculate recruit time with building bonuses
 	var recruit_time := unit_data.recruit_time
@@ -459,6 +487,40 @@ func _deduct_cost(fs: FactionState, cost: Dictionary) -> void:
 	for res_type in cost:
 		if fs.resources.has(res_type):
 			fs.resources[res_type] -= cost[res_type]
+
+# ── Garrison ─────────────────────────────────────────────────
+
+# Garrison units spawned when a city is attacked with no defending army
+# {level: [{unit_id, count}]}
+const GARRISON_BY_LEVEL := {
+	1: [{unit_id = &"levy_conscripts", count = 1}],
+	2: [{unit_id = &"levy_conscripts", count = 1}, {unit_id = &"legionary", count = 1}],
+	3: [{unit_id = &"levy_conscripts", count = 2}, {unit_id = &"legionary", count = 1}],
+	4: [{unit_id = &"levy_conscripts", count = 2}, {unit_id = &"legionary", count = 2}],
+	5: [{unit_id = &"levy_conscripts", count = 3}, {unit_id = &"legionary", count = 2}],
+}
+
+func create_garrison_army(city: CityState) -> ArmyState:
+	var garrison_def: Array = GARRISON_BY_LEVEL.get(city.level, GARRISON_BY_LEVEL[1])
+	var army := ArmyState.new()
+	army.army_id = GameManager.state.generate_id()
+	army.faction_id = city.faction_id
+	army.hex_pos = city.hex_pos
+	army.movement_remaining = 0.0
+	army.has_moved = true # garrison doesn't move
+	army.is_garrison = true
+
+	for entry in garrison_def:
+		var uid: StringName = entry.unit_id
+		var unit_data := DataManager.get_unit(uid)
+		if unit_data == null:
+			continue
+		for i in entry.count:
+			var instance := UnitInstance.new()
+			instance.init_from_data(unit_data, GameManager.state.generate_id())
+			army.units.append(instance)
+
+	return army
 
 # ── Siege helpers ─────────────────────────────────────────────
 
@@ -498,6 +560,12 @@ const TILE_INCOME := {
 	Enums.TerrainType.SWAMP:     {0: 1, 3: 2, 5: 1},
 	Enums.TerrainType.COAST:     {0: 2, 3: 2, 5: 0},
 	Enums.TerrainType.TUNDRA:    {0: 1, 3: 1, 1: 1},
+}
+
+const SETTLEMENT_FOUNDING_COST := {
+	Enums.ResourceType.GOLD: 80,
+	Enums.ResourceType.WOOD: 40,
+	Enums.ResourceType.FOOD: 30,
 }
 
 const SETTLEMENT_SPHERE_RADIUS := 2

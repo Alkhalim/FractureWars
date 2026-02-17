@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"border_mercenaries"
+display_name = "Border Mercenaries"
+description = "Hired swords from the empire's frontier regions. Require no population to recruit but demand high gold upkeep. Versatile but unreliable."
+faction_id = &"empire"
+max_hp = 1200
+attack = 10
+defense = 5
+speed = 4
+attack_range = 1
+squad_size = 100
+hp_per_soldier = 12
+movement_points = 3.6
+upkeep_cost = {0: 20, 3: 3}
+recruit_cost = {0: 120, 3: 40}
+recruit_time = 1
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 60
+captive_chance = 0.4

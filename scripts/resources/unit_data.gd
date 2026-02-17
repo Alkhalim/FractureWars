@@ -20,6 +20,7 @@ extends Resource
 @export var upkeep_cost: Dictionary = {} # ResourceType -> amount
 @export var recruit_cost: Dictionary = {} # ResourceType -> amount
 @export var recruit_time: int = 1
+@export var population_cost: int = -1 # -1 = use squad_size
 
 # Battle modifiers
 @export var terrain_bonuses: Dictionary = {} # TerrainType -> modifier

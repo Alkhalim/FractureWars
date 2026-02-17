@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"provincial_court"
+display_name = "Provincial Court III"
+description = "The seat of regional authority. Judges and prefects enforce Imperial law, ensuring prosperity for the ruling class and stability for the province."
+faction_id = &"empire"
+category = &"cultural"
+build_cost = {0: 700, 5: 100}
+build_time = 4
+income_bonus = {0: 25}
+population_growth_bonus = 0
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+class_loyalty_bonus = {"nobles": 5, "scholars": 3, "peasants": -2}
+upgrades_from = &"administrative_forum"

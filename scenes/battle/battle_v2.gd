@@ -729,6 +729,11 @@ func _apply_battle_results() -> void:
 	if not defender_alive:
 		GameManager.remove_army(defender_army.army_id)
 
+	# Remove surviving garrison armies (they regenerate on next attack)
+	if defender_alive and defender_army.is_garrison:
+		GameManager.remove_army(defender_army.army_id)
+		defender_alive = false
+
 	if attacker_alive and not defender_alive:
 		EventBus.battle_resolved.emit(attacker_faction_id, battle_hex_pos)
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)

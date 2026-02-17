@@ -4,18 +4,17 @@
 
 [resource]
 script = ExtResource("1")
-id = &"grain_fields"
-display_name = "Grain Fields I"
-description = "Basic agricultural plots that provide food and encourage peasant growth."
+id = &"village_gathering_place"
+display_name = "Village Gathering Place I"
+description = "A modest communal space where citizens meet and settle local affairs. The foundation for both civic governance and religious devotion."
 faction_id = &"empire"
-category = &"economic"
+category = &"cultural"
 build_cost = {0: 120, 5: 40}
 build_time = 2
-income_bonus = {3: 25}
-population_growth_bonus = 3
+income_bonus = {}
+population_growth_bonus = 2
 defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
-required_terrain = 0
-class_loyalty_bonus = {"peasants": 1, "nobles": -1}
+class_loyalty_bonus = {"peasants": 2, "artisans": 1}

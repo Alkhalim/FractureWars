@@ -50,10 +50,10 @@ func _start_faction_turn() -> void:
 	# Grant passive XP to commanders
 	_grant_passive_commander_xp(faction_id)
 
-	# Reset army movement for this faction
+	# Reset army movement for this faction (skip garrisons)
 	for army_id in GameManager.state.armies:
 		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id:
+		if army.faction_id == faction_id and not army.is_garrison:
 			army.movement_remaining = army.get_max_movement()
 			army.has_moved = false
 
@@ -190,7 +190,7 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 			if available.size() > 0:
 				# Priority: first available building by priority, then upgrades
 				var built := false
-				for priority_id in [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"tavern", &"arcane_registry"]:
+				for priority_id in [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"tavern", &"market_square"]:
 					if built:
 						break
 					for b in available:
@@ -210,6 +210,10 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 					for b in available:
 						if GameManager.city_system.start_building(city_id, b.id):
 							break
+
+		# Upgrade city when possible
+		if city.upgrade_turns_remaining <= 0 and GameManager.city_system.can_start_upgrade(city):
+			GameManager.city_system.start_upgrade(city_id)
 
 		# Recruit units with composition awareness
 		if city.recruit_queue.is_empty() and city.population > 120:
@@ -246,23 +250,26 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 		elif inf_ratio >= 0.6 and rng_ratio >= 0.25:
 			needed_tag = "cavalry"
 
-	# Find best unit matching the needed tag
+	# Find best unit matching the needed tag (walk upgrade chain for inherited unlocks)
 	var best_unit_id: StringName = &""
 	var best_score := 0
 	for building_id in city.buildings:
-		var building: BuildingData = DataManager.get_building(building_id)
-		if building == null:
-			continue
-		for uid in building.unlocks_units:
-			var udata := DataManager.get_unit(uid)
-			if udata == null or udata.faction_id != faction_id:
-				continue
-			var score := udata.attack + udata.defense
-			if udata.tags.has(needed_tag):
-				score += 20 # Prefer units matching needed tag
-			if score > best_score:
-				best_score = score
-				best_unit_id = uid
+		var current_id: StringName = building_id
+		while current_id != &"":
+			var building: BuildingData = DataManager.get_building(current_id)
+			if building == null:
+				break
+			for uid in building.unlocks_units:
+				var udata := DataManager.get_unit(uid)
+				if udata == null or udata.faction_id != faction_id:
+					continue
+				var score := udata.attack + udata.defense
+				if udata.tags.has(needed_tag):
+					score += 20
+				if score > best_score:
+					best_score = score
+					best_unit_id = uid
+			current_id = building.upgrades_from
 
 	if best_unit_id != &"":
 		GameManager.city_system.start_recruitment(city.city_id, best_unit_id)
@@ -278,6 +285,9 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 		return
 
 	# Check if any capital can found a settlement
+	if not GameManager.can_afford_settlement(faction_id):
+		return
+
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
 		if city == null or not city.is_capital or not city.can_found_settlement:
@@ -928,35 +938,35 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 			if choice == "a":
 				if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 50:
 					fs.resources[Enums.ResourceType.GOLD] -= 50
-					# Give a random common item to a commander
 					var armies := GameManager.get_faction_armies(faction_id)
 					for army in armies:
-						if army.commander and army.commander.items.size() < 3:
-							CommanderSystem.apply_item_drop(army.commander, faction_id)
-							return "Purchased a rare trinket from the merchant!"
-					return "Paid 50 Gold but found nothing of interest."
+						var max_slots := CommanderSystem.get_max_item_slots(army.commander) if army.commander else 0
+						if army.commander and army.commander.items.size() < max_slots:
+							var item_name := CommanderSystem.apply_item_drop(army.commander, faction_id)
+							if item_name != "":
+								return "Spent 50 Gold. Acquired: %s" % item_name
+							return "Spent 50 Gold but the merchant had nothing worthwhile."
+					return "Spent 50 Gold but no commander could carry the goods."
 				else:
-					return "Not enough gold!"
+					return "Not enough gold! (need 50)"
 			return "The merchant moves on."
 		"ruins":
 			if choice == "a":
 				var armies := GameManager.get_faction_armies(faction_id)
 				if armies.size() > 0:
-					# Risk: lose 20% HP on first army
 					for unit in armies[0].units:
 						var ud := DataManager.get_unit(unit.unit_data_id)
 						if ud:
 							unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * 0.2))
-					# 60% chance of rare item
 					if randf() < 0.6 and armies[0].commander:
-						CommanderSystem.apply_item_drop(armies[0].commander, &"")
-						return "Found treasure in the ruins, but at a cost!"
-					return "The ruins held nothing but danger."
+						var item_name := CommanderSystem.apply_item_drop(armies[0].commander, &"")
+						if item_name != "":
+							return "Army took 20%% HP damage. Found: %s" % item_name
+					return "Army took 20%% HP damage. The ruins held nothing of value."
 				return "No army available to explore."
 			return "You leave the ruins undisturbed."
 		"deserters":
 			if choice == "a":
-				# Free basic unit
 				var armies := GameManager.get_faction_armies(faction_id)
 				if armies.size() > 0:
 					var unit_id := &"legionary"
@@ -966,8 +976,10 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 						unit_id = &"grove_warden"
 					elif faction_id == &"tainted_jade":
 						unit_id = &"jade_fang"
+					var ud := DataManager.get_unit(unit_id)
+					var unit_name := ud.display_name if ud else str(unit_id)
 					_spawn_unit_at_hex(unit_id, faction_id, armies[0].hex_pos)
-					return "The deserters join your ranks!"
+					return "Gained unit: %s" % unit_name
 				return "No army to receive the deserters."
 			return "The deserters wander off."
 		"stranger":
@@ -987,11 +999,11 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 				if target_cmd:
 					target_cmd.xp += 30
 					CommanderSystem._check_level_up(target_cmd)
-					return "Your commander gains valuable wisdom! (+30 XP)"
+					return "%s gained +30 XP (now %d XP)" % [target_cmd.name, target_cmd.xp]
 				return "No commander to receive the wisdom."
 			else:
 				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 40
-				return "You take the gold. (+40 Gold)"
+				return "Received +40 Gold (now %d)" % fs.resources.get(Enums.ResourceType.GOLD, 0)
 		"grove":
 			if choice == "a":
 				_temp_effects.append({
@@ -1000,7 +1012,7 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 					"value": 5,
 					"turns_remaining": 10,
 				})
-				return "Your commander is blessed with healing energy!"
+				return "Healing Blessing: +5 HP/turn for all armies (10 turns)"
 			else:
 				_temp_effects.append({
 					"faction_id": faction_id,
@@ -1008,13 +1020,13 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 					"value": 3,
 					"turns_remaining": 10,
 				})
-				return "Your cities flourish with renewed growth!"
+				return "Growth Blessing: +3 population growth in all cities (10 turns)"
 		"dispute":
 			if choice == "a":
 				return "Relations improved with a neighboring faction."
 			else:
 				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 30
-				return "You receive 30 Iron as tribute."
+				return "Received +30 Iron (now %d)" % fs.resources.get(Enums.ResourceType.IRON, 0)
 
 	return "Event resolved."
 

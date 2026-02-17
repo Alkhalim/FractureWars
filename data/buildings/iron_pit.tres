@@ -5,16 +5,17 @@
 [resource]
 script = ExtResource("1")
 id = &"iron_pit"
-display_name = "Iron Pit I"
-description = "A shallow mining operation extracting iron ore from accessible deposits."
+display_name = "Iron Mine I"
+description = "A mining operation extracting iron ore from mountain deposits."
 faction_id = &"empire"
 category = &"economic"
-build_cost = {0: 220, 1: 20, 5: 40}
+build_cost = {0: 150, 5: 30}
 build_time = 2
-income_bonus = {1: 20}
-population_growth_bonus = 0
+income_bonus = {1: 40}
+population_growth_bonus = 2
 defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
 required_terrain = 2
+class_loyalty_bonus = {"peasants": -2, "artisans": 1}

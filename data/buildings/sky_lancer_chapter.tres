@@ -15,6 +15,6 @@ income_bonus = {}
 population_growth_bonus = 0
 defense_bonus = 0
 recruit_speed_bonus = 0
-unlocks_units = Array[StringName]([])
+unlocks_units = Array[StringName]([&"imperial_sky_lancers"])
 required_capital_level = 3
 upgrades_from = &"dracarii_stables"

@@ -384,7 +384,7 @@ func merge_armies_at_tile(coord: Vector2i, faction_id: StringName, prefer_army_i
 	var armies_here: Array[ArmyState] = []
 	for aid in state.armies:
 		var army: ArmyState = state.armies[aid]
-		if army.hex_pos == coord and army.faction_id == faction_id:
+		if army.hex_pos == coord and army.faction_id == faction_id and not army.is_garrison:
 			armies_here.append(army)
 	if armies_here.size() <= 1:
 		return
@@ -417,15 +417,29 @@ func merge_armies_at_tile(coord: Vector2i, faction_id: StringName, prefer_army_i
 		a.commander = null
 		remove_army(a.army_id)
 
+func can_afford_settlement(faction_id: StringName) -> bool:
+	var fs: FactionState = state.faction_states.get(faction_id)
+	if fs == null:
+		return false
+	for res_type in CitySystem.SETTLEMENT_FOUNDING_COST:
+		if fs.resources.get(res_type, 0) < CitySystem.SETTLEMENT_FOUNDING_COST[res_type]:
+			return false
+	return true
+
 func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id: StringName) -> StringName:
 	var parent_city: CityState = state.cities.get(parent_city_id)
 	if parent_city == null:
 		return &""
 
-	# Determine region from hex
 	var tile := state.hex_map.get_tile(hex_pos)
 	if tile == null:
 		return &""
+
+	# Deduct founding cost
+	var fs: FactionState = state.faction_states.get(faction_id)
+	if fs:
+		for res_type in CitySystem.SETTLEMENT_FOUNDING_COST:
+			fs.resources[res_type] = fs.resources.get(res_type, 0) - CitySystem.SETTLEMENT_FOUNDING_COST[res_type]
 
 	var city := CityState.new()
 	city.city_id = state.generate_id()
@@ -443,7 +457,6 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	city.turns_since_capture = -1
 	state.cities[city.city_id] = city
 
-	var fs: FactionState = state.faction_states.get(faction_id)
 	if fs:
 		fs.owned_cities.append(city.city_id)
 
@@ -456,7 +469,7 @@ func get_faction_armies(faction_id: StringName) -> Array[ArmyState]:
 	var result: Array[ArmyState] = []
 	for army_id in state.armies:
 		var army: ArmyState = state.armies[army_id]
-		if army.faction_id == faction_id:
+		if army.faction_id == faction_id and not army.is_garrison:
 			result.append(army)
 	return result
 
@@ -485,11 +498,15 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 			EventBus.battle_initiated.emit(army_id, enemies[0].army_id, tile_coord)
 			return
 
-		# Check for enemy city at this hex → start siege
+		# Check for enemy city at this hex → garrison battle or siege
 		var city_at := city_system.get_city_at_hex(tile_coord)
 		if city_at and city_at.faction_id != army.faction_id:
 			if not city_at.is_under_siege or city_at.siege_faction != army.faction_id:
-				city_system.start_siege(city_at.city_id, army.faction_id)
+				# Spawn garrison army and fight before siege can begin
+				var garrison := city_system.create_garrison_army(city_at)
+				state.armies[garrison.army_id] = garrison
+				EventBus.battle_initiated.emit(army_id, garrison.army_id, tile_coord)
+				return
 
 		# Break siege on own cities if army arrives
 		if city_at and city_at.faction_id == army.faction_id and city_at.is_under_siege:

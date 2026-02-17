@@ -16,7 +16,9 @@
       "Bash(pip install:*)",
       "Bash(python3:*)",
       "Bash(pip:*)",
-      "Bash(C:/Python313/python.exe:*)"
+      "Bash(C:/Python313/python.exe:*)",
+      "Bash(py -3 -c:*)",
+      "Bash(python:*)"
     ]
   }
 }

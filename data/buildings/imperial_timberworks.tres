@@ -5,16 +5,17 @@
 [resource]
 script = ExtResource("1")
 id = &"imperial_timberworks"
-display_name = "Imperial Timberworks III"
-description = "A grand imperial lumber processing complex. Massive wood output and improved construct build speed."
+display_name = "Imperial Timberworks II"
+description = "A grand imperial lumber processing complex. Massive wood output."
 faction_id = &"empire"
 category = &"economic"
-build_cost = {0: 750, 1: 60, 5: 150, 2: 10}
-build_time = 4
-income_bonus = {5: 100}
-population_growth_bonus = 0
+build_cost = {0: 350, 1: 20}
+build_time = 3
+income_bonus = {5: 90}
+population_growth_bonus = 6
 defense_bonus = 0
-recruit_speed_bonus = 1
+recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
-required_capital_level = 3
-upgrades_from = &"sawmill_empire"
+required_capital_level = 2
+class_loyalty_bonus = {"artisans": 2, "nobles": -1}
+upgrades_from = &"lumber_camp_empire"

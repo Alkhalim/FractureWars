@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sanctified_temple_war"
+display_name = "Sanctified Temple - God of War III"
+description = "Consecrated to the God of War. Warriors pray here before battle, and the temple's war-priests bolster the city's defenses and martial spirit."
+faction_id = &"empire"
+category = &"cultural"
+build_cost = {0: 750, 1: 20, 5: 80}
+build_time = 4
+income_bonus = {}
+population_growth_bonus = 0
+defense_bonus = 5
+recruit_speed_bonus = 1
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+class_loyalty_bonus = {"nobles": 3, "peasants": 2}
+upgrades_from = &"temple_of_the_pantheon"

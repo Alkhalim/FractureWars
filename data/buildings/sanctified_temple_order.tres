@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sanctified_temple_order"
+display_name = "Sanctified Temple - God of Order III"
+description = "Sacred halls of the God of Order. Inquisitors and lawkeepers impose rigid discipline, generating gold through tithes while suppressing dissent among captives."
+faction_id = &"empire"
+category = &"cultural"
+build_cost = {0: 900, 5: 100}
+build_time = 4
+income_bonus = {0: 15}
+population_growth_bonus = 0
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+class_loyalty_bonus = {"nobles": 4, "scholars": 2, "captives": -3}
+upgrades_from = &"temple_of_the_pantheon"

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"administrative_forum"
+display_name = "Administrative Forum II"
+description = "A formal hall of governance where magistrates administer law, taxation, and civic order. Increases gold income and noble approval."
+faction_id = &"empire"
+category = &"cultural"
+build_cost = {0: 350, 5: 60}
+build_time = 3
+income_bonus = {0: 10}
+population_growth_bonus = 0
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+class_loyalty_bonus = {"nobles": 3, "artisans": 2, "peasants": -1}
+upgrades_from = &"village_gathering_place"

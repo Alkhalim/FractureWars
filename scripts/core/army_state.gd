@@ -9,6 +9,7 @@ extends Resource
 @export var has_moved: bool = false
 @export var commander: CommanderState = null
 @export var commander_name: String = "" # Legacy fallback, use commander.name when available
+@export var is_garrison: bool = false # City garrison, not player-controlled, no upkeep
 
 func get_region_id() -> StringName:
 	if GameManager.state and GameManager.state.hex_map:
