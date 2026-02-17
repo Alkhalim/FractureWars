@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"captive_labor"
+display_name = "Captive Labor"
+description = "Putting prisoners to work in mines and lumber camps boosts production."
+category = 3
+class_loyalty_effects = { "captives": -5, "peasants": 1, "artisans": 2 }
+resource_effects = { 1: 3, 5: 3 }
+required_class_loyalty = {}
+mutually_exclusive = Array[StringName]([])
+cooldown_turns = 3
+faction_id = &"empire"

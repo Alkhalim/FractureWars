@@ -1,0 +1,142 @@
+class_name ResearchSystem
+extends RefCounted
+
+# Cache for research effects per faction
+var _effects_cache: Dictionary = {} # faction_id -> Dictionary
+
+func get_available_research(faction_id: StringName) -> Array[ResearchData]:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return []
+	var result: Array[ResearchData] = []
+	for research_id in DataManager.research:
+		var data: ResearchData = DataManager.research[research_id]
+		# Skip if already completed
+		if fs.completed_research.has(research_id):
+			continue
+		# Skip if currently researching
+		if fs.current_research_id == research_id:
+			continue
+		# Skip faction-specific research for other factions
+		if data.faction_id != &"" and data.faction_id != fs.faction_data_id:
+			continue
+		# Check prerequisites
+		var prereqs_met := true
+		for prereq in data.prerequisites:
+			if not fs.completed_research.has(prereq):
+				prereqs_met = false
+				break
+		if prereqs_met:
+			result.append(data)
+	return result
+
+func start_research(faction_id: StringName, research_id: StringName) -> bool:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return false
+	var data: ResearchData = DataManager.research.get(research_id)
+	if data == null:
+		return false
+	# Check if already researching
+	if fs.current_research_id != &"":
+		return false
+	# Check cost
+	var tech: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
+	if tech < data.tech_cost:
+		return false
+	# Deduct cost
+	fs.resources[Enums.ResourceType.TECHNOLOGY] -= data.tech_cost
+	fs.current_research_id = research_id
+	fs.research_progress = 0
+	EventBus.research_started.emit(faction_id, research_id)
+	return true
+
+func invest_shard(faction_id: StringName, shard_id: StringName) -> bool:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null or fs.current_research_id == &"":
+		return false
+	var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+	if shard == null or shard.claimed_by != faction_id:
+		return false
+	# Record the realm of the invested shard
+	var research_id := fs.current_research_id
+	if not fs.research_invested_shards.has(research_id):
+		fs.research_invested_shards[research_id] = []
+	fs.research_invested_shards[research_id].append(shard.realm)
+	# Remove shard from faction ownership
+	fs.owned_shards.erase(shard_id)
+	# Remove from active shards (consumed)
+	GameManager.state.active_shards.erase(shard_id)
+	return true
+
+func process_research(faction_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null or fs.current_research_id == &"":
+		return
+	var data: ResearchData = DataManager.research.get(fs.current_research_id)
+	if data == null:
+		fs.current_research_id = &""
+		return
+	fs.research_progress += 1
+	if fs.research_progress >= data.research_time:
+		_complete_research(faction_id, fs)
+
+func _complete_research(faction_id: StringName, fs: FactionState) -> void:
+	var research_id := fs.current_research_id
+	fs.completed_research.append(research_id)
+	fs.current_research_id = &""
+	fs.research_progress = 0
+	_invalidate_cache(faction_id)
+	EventBus.research_completed.emit(faction_id, research_id)
+
+func cancel_research(faction_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null or fs.current_research_id == &"":
+		return
+	# Clear invested shards for this research (they're already consumed)
+	fs.research_invested_shards.erase(fs.current_research_id)
+	fs.current_research_id = &""
+	fs.research_progress = 0
+
+func get_research_effects(faction_id: StringName) -> Dictionary:
+	if _effects_cache.has(faction_id):
+		return _effects_cache[faction_id]
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return {}
+	var combined: Dictionary = {}
+	for research_id in fs.completed_research:
+		var data: ResearchData = DataManager.research.get(research_id)
+		if data == null:
+			continue
+		# Base effects
+		for key in data.effects:
+			combined[key] = combined.get(key, 0) + data.effects[key]
+		# Shard bonuses
+		var invested_realms: Array = fs.research_invested_shards.get(research_id, [])
+		for realm in invested_realms:
+			if data.shard_bonuses.has(realm):
+				var bonus: Dictionary = data.shard_bonuses[realm]
+				for key in bonus:
+					combined[key] = combined.get(key, 0) + bonus[key]
+	_effects_cache[faction_id] = combined
+	return combined
+
+func _invalidate_cache(faction_id: StringName) -> void:
+	_effects_cache.erase(faction_id)
+
+# ── AI Research ─────────────────────────────────────────────
+
+func execute_ai_research(faction_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null or fs.current_research_id != &"":
+		return
+	var available := get_available_research(faction_id)
+	if available.is_empty():
+		return
+	# Pick cheapest available research
+	var best: ResearchData = available[0]
+	for data in available:
+		if data.tech_cost < best.tech_cost:
+			best = data
+	start_research(faction_id, best.id)

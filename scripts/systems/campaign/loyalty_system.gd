@@ -195,7 +195,7 @@ const W_CAPTURED_FADING := {peasants = -1, artisans = -1, scholars = -2, nobles 
 const W_WAR_NEIGHBOR := {peasants = -3, artisans = -2, scholars = -1, nobles = -1, captives = 0}
 const W_UNDER_SIEGE := {peasants = -6, artisans = -5, scholars = -5, nobles = -4, captives = -2}
 const W_LOW_POP := {peasants = -2, artisans = -1, scholars = 0, nobles = 0, captives = 0}
-const W_HIGH_CAPTIVE_RATIO := {peasants = 0, artisans = 0, scholars = -1, nobles = -1, captives = 1}
+const W_HIGH_CAPTIVE_RATIO := {peasants = -2, artisans = 0, scholars = -4, nobles = 3, captives = 1}
 
 # Military presence
 const W_INFANTRY_PRESENCE := {peasants = 2, artisans = 0, scholars = 0, nobles = 0, captives = -1}

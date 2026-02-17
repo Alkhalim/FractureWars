@@ -18,6 +18,7 @@ const DEATH_PROXIMITY := 120.0
 const ROUT_SPEED_MULT := 1.5
 const BASE_MOVE_SPEED := 0.3  # Pixels per tick per speed point (scaled for 10 ticks/sec)
 const TICK_SCALE := 0.2       # Damage/morale scale factor for high tick rate
+const FORCE_ADVANCE_TICK := 600  # After this tick, attacker forced to advance
 
 # Deploy zones
 const DEPLOY_BOTTOM_Y := 900.0  # Attacker zone: y 900-1200
@@ -39,7 +40,7 @@ static func get_entity_radius(f: BattleFormationV3) -> float:
 var attacker_formations: Array[BattleFormationV3] = []
 var defender_formations: Array[BattleFormationV3] = []
 var tick_count: int = 0
-var max_ticks: int = 1000
+var max_ticks: int = 5000  # Safety cap for skip-to-end only
 var is_finished: bool = false
 var winner_side: int = -1
 var captives: Dictionary = {0: 0, 1: 0}
@@ -112,10 +113,13 @@ class BattleFormationV3:
 	var in_melee_contact: bool = false
 	var was_in_melee_contact: bool = false
 	var first_contact_tick: int = -1  # Tick when first melee contact happened
+	var momentum: float = 0.0        # Cavalry acceleration (0.0 to 1.0)
 
 	# Ranged attack cooldown
 	var ranged_cooldown_max: int = 5   # Ticks between ranged attacks
 	var ranged_cooldown_timer: int = 0 # Current cooldown counter
+	var fire_deploy_timer: int = 0     # Ticks remaining before unit can fire after stopping
+	var is_deployed: bool = false      # True when stationary and ready to fire
 
 	func take_damage(amount: int) -> int:
 		var entities_before := entities_alive
@@ -249,6 +253,8 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 
 	if ud.tags.has("ranged") or ud.tags.has("mage"):
 		f.stance = Enums.UnitStance.DEFENSIVE
+		f.fire_deploy_timer = 5  # Short initial deploy delay
+		f.is_deployed = false
 	elif ud.tags.has("cavalry") or ud.tags.has("fast"):
 		f.stance = Enums.UnitStance.AGGRESSIVE
 
@@ -426,6 +432,12 @@ func simulate_tick() -> Array[Dictionary]:
 		f.was_in_melee_contact = f.in_melee_contact
 		f.in_melee_contact = false
 
+	# Force attacker advance after prolonged battle
+	if tick_count >= FORCE_ADVANCE_TICK:
+		for f in attacker_formations:
+			if not f.is_dead and not f.is_fled and not f.is_routing:
+				f.current_order = Enums.BattleOrder.ADVANCE
+
 	# Phase 1: Movement
 	_rebuild_spatial_grid()
 	for f in all:
@@ -437,9 +449,14 @@ func simulate_tick() -> Array[Dictionary]:
 		if _check_melee_contact(f):
 			f.in_melee_contact = true
 			_apply_melee_spread(f)
+			if f.tags.has("cavalry") or f.tags.has("infantry"):
+				_loosen_melee_formation(f)
 			continue
 		# If was in melee but lost contact, aggressively close the gap
 		if f.was_in_melee_contact:
+			# All multi-entity units reform when disengaging
+			if f.tags.has("cavalry") or f.tags.has("infantry"):
+				_generate_formation_offsets(f)
 			var target := _find_target(f)
 			if target != null:
 				var dir := f.position.direction_to(target.position)
@@ -450,6 +467,17 @@ func simulate_tick() -> Array[Dictionary]:
 				actions.append({"type": "move", "id": f.instance_id, "to": f.position})
 				continue
 		actions.append_array(_execute_order_movement(f))
+
+	# Update cavalry momentum
+	for f in all:
+		if f.is_dead or f.is_fled or not f.tags.has("cavalry"):
+			continue
+		if f.in_melee_contact or f.is_routing:
+			f.momentum = maxf(0.0, f.momentum - 0.15)
+		elif f.current_order in [Enums.BattleOrder.ADVANCE, Enums.BattleOrder.CHARGE, Enums.BattleOrder.FLANK_LEFT, Enums.BattleOrder.FLANK_RIGHT]:
+			f.momentum = minf(1.0, f.momentum + 0.05)
+		else:
+			f.momentum = maxf(0.0, f.momentum - 0.05)
 
 	# Update all entity world positions with smooth lerp
 	for f in all:
@@ -494,6 +522,9 @@ func simulate_tick() -> Array[Dictionary]:
 		if f.entity_positions.size() > f.entities_alive:
 			var excess := f.entity_positions.size() - f.entities_alive
 			f.entity_positions = f.entity_positions.slice(excess)
+		# Regenerate proper formation for surviving entities in melee
+		if f.in_melee_contact and f.total_entities > 1:
+			_generate_formation_offsets(f)
 		_update_entity_world_positions(f, true)
 
 	# Phase 6: Victory check
@@ -517,6 +548,23 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 	if target == null:
 		return actions
 
+	# Ranged/mage units stop moving when a target is in range
+	if f.attack_range > 1 and not f.in_melee_contact:
+		var dist := f.position.distance_to(target.position)
+		var range_px := f.attack_range * RANGED_PX_PER_RANGE
+		if dist <= range_px:
+			# Stop and deploy — face target but don't move
+			_rotate_toward_smooth(f, target.position)
+			if not f.is_deployed:
+				f.fire_deploy_timer = maxi(0, f.fire_deploy_timer - 1)
+				if f.fire_deploy_timer <= 0:
+					f.is_deployed = true
+			return actions
+		else:
+			# Moving again — reset deploy state
+			f.is_deployed = false
+			f.fire_deploy_timer = 8  # ~0.8 second deploy delay at 10 ticks/sec
+
 	# Apply terrain speed modifier
 	var terrain_mod := BattleTerrainGen.get_speed_modifier(get_terrain_at(f.position))
 	var effective_speed := f.move_speed * maxf(0.2, terrain_mod)
@@ -537,6 +585,10 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 			weight_factor = 0.95
 		effective_speed *= weight_factor
 
+	# Cavalry momentum bonus (up to 80% faster at full momentum)
+	if f.tags.has("cavalry") and f.momentum > 0.0:
+		effective_speed *= 1.0 + f.momentum * 0.8
+
 	match f.current_order:
 		Enums.BattleOrder.ADVANCE:
 			var dir := f.position.direction_to(target.position)
@@ -546,6 +598,11 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 
 		Enums.BattleOrder.HOLD:
 			_rotate_toward_smooth(f, target.position)
+			# Holding units deploy quickly for ranged fire
+			if f.attack_range > 1 and not f.is_deployed:
+				f.fire_deploy_timer = maxi(0, f.fire_deploy_timer - 1)
+				if f.fire_deploy_timer <= 0:
+					f.is_deployed = true
 
 		Enums.BattleOrder.FLANK_LEFT:
 			var fwd := f.position.direction_to(target.position)
@@ -636,6 +693,9 @@ func _apply_melee_spread(f: BattleFormationV3) -> void:
 
 	var enemies := _get_side_formations(1 - f.side)
 	var max_drift := ENTITY_SPACING * 3.0
+	# Cavalry wedge needs more drift to connect rear riders
+	if f.tags.has("cavalry"):
+		max_drift = ENTITY_SPACING * 5.0
 
 	for i in limit:
 		var epos: Vector2 = f.entity_target_positions[i]
@@ -672,6 +732,9 @@ func _apply_melee_spread(f: BattleFormationV3) -> void:
 		if nearest_dist < 999999.0:
 			var drift_dir := (nearest_pos - epos).normalized()
 			var drift_amount := 0.3 * f.move_speed
+			# Cavalry closes faster to bring rear riders into contact
+			if f.tags.has("cavalry"):
+				drift_amount = 0.6 * f.move_speed
 			var new_target := epos + drift_dir * drift_amount
 			# Cap distance from formation center
 			if new_target.distance_to(f.position) <= max_drift:
@@ -681,13 +744,21 @@ func _apply_charge_pushback(attacker: BattleFormationV3, defender: BattleFormati
 	if not (attacker.tags.has("cavalry") or attacker.tags.has("monster") or attacker.tags.has("construct")):
 		return
 
-	var push_strength := 6.0
+	var base_push := 6.0
 	if attacker.tags.has("cavalry"):
-		push_strength = 8.0
+		base_push = 8.0
 	elif attacker.tags.has("monster"):
-		push_strength = 12.0
+		base_push = 12.0
 
-	var push_dir := (defender.position - attacker.position).normalized()
+	# Scale by momentum for cavalry
+	var momentum_mult := 1.0
+	if attacker.tags.has("cavalry"):
+		momentum_mult = 0.3 + attacker.momentum * 1.2
+
+	# Armor resistance: higher defense = less push (up to 70% reduction)
+	var armor_resist := clampf(float(defender.defense) / 20.0, 0.0, 0.7)
+	var push_strength := base_push * momentum_mult * (1.0 - armor_resist)
+
 	var engage_dist := get_entity_radius(attacker) + get_entity_radius(defender) + 12.0
 	var dlimit := mini(defender.entities_alive, defender.entity_target_positions.size())
 	var alimit := mini(attacker.entities_alive, attacker.entity_positions.size())
@@ -696,8 +767,55 @@ func _apply_charge_pushback(attacker: BattleFormationV3, defender: BattleFormati
 		var dpos: Vector2 = defender.entity_target_positions[i]
 		for j in alimit:
 			if dpos.distance_to(attacker.entity_positions[j]) < engage_dist:
+				# Push direction from attacker entity toward defender entity (individual)
+				var push_dir := (dpos - attacker.entity_positions[j]).normalized()
 				defender.entity_target_positions[i] += push_dir * push_strength
 				break
+
+func _loosen_melee_formation(f: BattleFormationV3) -> void:
+	# Entities in melee spread out toward nearby enemies (wrapping around them)
+	# while maintaining some cohesion with the formation center
+	if f.entities_alive <= 1:
+		return
+	var limit := mini(f.entities_alive, f.entity_local_offsets.size())
+	var enemies := _get_side_formations(1 - f.side)
+	var engage_dist := get_entity_radius(f) * 2.0 + 15.0
+	var max_spread := ENTITY_SPACING * get_entity_radius(f) / 4.0 * 4.0
+	var cos_r := cos(-f.rotation)
+	var sin_r := sin(-f.rotation)
+
+	for i in limit:
+		# Convert current world position to find nearest enemy
+		var world_pos: Vector2 = f.entity_positions[i] if i < f.entity_positions.size() else f.position
+		var nearest_enemy := Vector2.ZERO
+		var nearest_dist := 999999.0
+		for enemy in enemies:
+			if enemy.is_dead or enemy.is_fled:
+				continue
+			var elimit := mini(enemy.entities_alive, enemy.entity_positions.size())
+			for j in elimit:
+				var d := world_pos.distance_to(enemy.entity_positions[j])
+				if d < nearest_dist:
+					nearest_dist = d
+					nearest_enemy = enemy.entity_positions[j]
+
+		if nearest_dist > engage_dist * 5.0:
+			continue
+
+		# Calculate desired drift in world space toward the nearest enemy
+		var drift_dir := (nearest_enemy - world_pos).normalized()
+		var drift_amount := 0.4
+
+		# Convert drift to local space
+		var local_drift := Vector2(
+			drift_dir.x * cos_r - drift_dir.y * sin_r,
+			drift_dir.x * sin_r + drift_dir.y * cos_r
+		) * drift_amount
+
+		var new_offset := f.entity_local_offsets[i] + local_drift
+		# Limit distance from formation center to prevent entities drifting too far
+		if new_offset.length() <= max_spread:
+			f.entity_local_offsets[i] = new_offset
 
 func _entities_in_contact(f1: BattleFormationV3, f2: BattleFormationV3) -> int:
 	var count := 0
@@ -787,11 +905,12 @@ func _resolve_combat_pair(a: BattleFormationV3, b: BattleFormationV3) -> Array[D
 			if a.is_dead:
 				recent_deaths.append({"side": a.side, "position": a.position, "tick": tick_count})
 
-	# Charge push-back on contact
-	if a.current_order == Enums.BattleOrder.CHARGE and not a.is_dead and not b.is_dead:
-		_apply_charge_pushback(a, b)
-	if b.current_order == Enums.BattleOrder.CHARGE and not b.is_dead and not a.is_dead:
-		_apply_charge_pushback(b, a)
+	# Charge/momentum push-back on contact
+	if not a.is_dead and not b.is_dead:
+		if a.current_order == Enums.BattleOrder.CHARGE or (a.tags.has("cavalry") and a.momentum > 0.5):
+			_apply_charge_pushback(a, b)
+		if b.current_order == Enums.BattleOrder.CHARGE or (b.tags.has("cavalry") and b.momentum > 0.5):
+			_apply_charge_pushback(b, a)
 
 	# Reset charge after contact
 	if a.current_order == Enums.BattleOrder.CHARGE and not a.is_dead:
@@ -802,9 +921,9 @@ func _resolve_combat_pair(a: BattleFormationV3, b: BattleFormationV3) -> Array[D
 	return actions
 
 func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormationV3) -> Dictionary:
-	var front_contact := 0
-	var flank_contact := 0
-	var rear_contact := 0
+	var front_contact := 0.0
+	var flank_contact := 0.0
+	var rear_contact := 0.0
 
 	var engage_dist := get_entity_radius(attacker) + get_entity_radius(defender) + 12.0
 	var def_facing := defender.get_facing_vector()
@@ -813,25 +932,34 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 
 	for i in limit_a:
 		for j in limit_d:
-			if attacker.entity_positions[i].distance_to(defender.entity_positions[j]) < engage_dist:
+			var dist := attacker.entity_positions[i].distance_to(defender.entity_positions[j])
+			if dist < engage_dist:
+				# Proximity-weighted: full contribution at point-blank, zero at edge
+				var proximity := 1.0 - dist / engage_dist
 				# Direction from defender entity toward attacker entity
 				var dir := (attacker.entity_positions[i] - defender.entity_positions[j]).normalized()
 				var dot := dir.dot(def_facing)
 				if dot > 0.5:
-					front_contact += 1
+					front_contact += proximity
 				elif dot < -0.5:
-					rear_contact += 1
+					rear_contact += proximity
 				else:
-					flank_contact += 1
+					flank_contact += proximity
 
 	var total_contact := front_contact + flank_contact + rear_contact
-	if total_contact == 0:
-		return {"damage": 0, "morale_damage": 0.0, "contact": 0, "flank": 0, "rear": 0}
+	if total_contact < 0.01:
+		return {"damage": 0, "morale_damage": 0.0, "contact": 0.0, "flank": 0.0, "rear": 0.0}
 
 	# Cap contact to reasonable amount
-	total_contact = mini(total_contact, mini(attacker.entities_alive, defender.entities_alive))
+	total_contact = minf(total_contact, float(mini(attacker.entities_alive, defender.entities_alive)))
 
 	var per_tile_dps := maxf(1.0, float(attacker.attack) - float(defender.defense) * 0.5)
+
+	# Ranged/mage units fight weakly in melee
+	if attacker.tags.has("mage"):
+		per_tile_dps *= 0.3
+	elif attacker.tags.has("ranged"):
+		per_tile_dps *= 0.4
 
 	# Multi-soldier units lose combat effectiveness as soldiers fall
 	if attacker.total_entities > 1:
@@ -876,6 +1004,10 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
 
+	# Must be deployed (stationary) before firing
+	if not f.is_deployed:
+		return actions
+
 	# Cooldown check: skip if not ready to fire
 	if f.ranged_cooldown_timer > 0:
 		f.ranged_cooldown_timer -= 1
@@ -894,10 +1026,12 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	f.ranged_cooldown_timer = f.ranged_cooldown_max
 
 	# Per-entity firing with miss chance
-	# Empire ranged units are generally inaccurate
-	var miss_chance := 0.15
+	# Mages are less accurate than archers; Empire units are generally inaccurate
+	var miss_chance := 0.20
+	if f.tags.has("mage"):
+		miss_chance = 0.30
 	if f.faction_id == &"empire":
-		miss_chance = 0.35
+		miss_chance += 0.20
 
 	var dmg_per_entity := maxf(0.5, float(f.attack) * 0.6 - float(target.defense) * 0.3)
 	var total_damage := 0
@@ -909,13 +1043,13 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	# Build visual projectile data (sample up to 20 for performance)
 	var visual_projs: Array[Dictionary] = []
 	var sample_step := maxi(1, ceili(float(entity_limit) / 20.0))
+	var is_mage := f.tags.has("mage")
 
 	for i in entity_limit:
 		var is_hit := randf() >= miss_chance
 		if is_hit:
 			hit_count += 1
-			# Splash: hits deal 1.5x damage to represent area effect
-			var dmg := maxi(1, int(dmg_per_entity * 1.5 * randf_range(0.8, 1.2)))
+			var dmg := maxi(1, int(dmg_per_entity * randf_range(0.8, 1.2)))
 			total_damage += dmg
 		else:
 			miss_count += 1
@@ -926,8 +1060,13 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 			var target_idx := randi() % target_limit
 			var to_pos: Vector2 = target.entity_positions[target_idx]
 			if not is_hit:
-				to_pos += Vector2(randf_range(-40, 40), randf_range(-40, 40))
-			visual_projs.append({"from": from_pos, "to": to_pos, "hit": is_hit})
+				to_pos += Vector2(randf_range(-50, 50), randf_range(-50, 50))
+			var proj_data: Dictionary = {"from": from_pos, "to": to_pos, "hit": is_hit}
+			if is_mage:
+				proj_data["is_mage"] = true
+				proj_data["faction_id"] = f.faction_id
+				proj_data["speed_var"] = randf_range(0.8, 1.3)
+			visual_projs.append(proj_data)
 
 	if total_damage > 0:
 		f.damage_dealt += total_damage
@@ -1085,10 +1224,6 @@ func _check_victory() -> void:
 		is_finished = true
 		winner_side = 0
 		battle_ended.emit(0)
-	elif tick_count >= max_ticks:
-		is_finished = true
-		winner_side = 1
-		battle_ended.emit(1)
 
 # --- Surviving Units Query ---
 

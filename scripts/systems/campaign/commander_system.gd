@@ -26,21 +26,33 @@ func _load_resources_from_dir(path: String, target: Dictionary) -> void:
 # ── XP & Level-Up ────────────────────────────────────────────
 
 func grant_battle_xp(commander: CommanderState, enemy_strength: int, won: bool) -> void:
-	var xp_gain := (20 if won else 8) + enemy_strength / 10
+	# Base XP: 15 for a win, 5 for a loss. Scaling capped so large battles
+	# don't rocket through multiple levels at once.
+	var xp_gain := (15 if won else 5) + mini(enemy_strength / 25, 40)
 	commander.xp += xp_gain
-	_check_level_up(commander)
+	# Cap to at most 2 level-ups per battle
+	var levels_gained := 0
+	while levels_gained < 2:
+		if not _try_level_up(commander):
+			break
+		levels_gained += 1
 
 func grant_passive_xp(commander: CommanderState) -> void:
 	commander.xp += 2
 	_check_level_up(commander)
 
-func _check_level_up(commander: CommanderState) -> void:
+func _try_level_up(commander: CommanderState) -> bool:
 	if commander.level >= 10:
-		return
+		return false
 	var threshold: int = CommanderState.XP_THRESHOLDS[commander.level]
 	if commander.xp >= threshold:
 		commander.level += 1
 		_apply_level_up(commander)
+		return true
+	return false
+
+func _check_level_up(commander: CommanderState) -> void:
+	_try_level_up(commander)
 
 func _apply_level_up(commander: CommanderState) -> void:
 	# Minor skill: either level up an existing one or gain a new one

@@ -40,6 +40,11 @@ func _start_faction_turn() -> void:
 	# Process city system: income, growth, queues, sieges
 	GameManager.city_system.process_turn(faction_id)
 
+	# Process diplomacy, policies, and research
+	GameManager.diplomacy_system.process_treaties(faction_id)
+	GameManager.policy_system.process_policies(faction_id)
+	GameManager.research_system.process_research(faction_id)
+
 	# Process elderbeasts for Shardhorde
 	if faction_id == &"shardhorde":
 		_process_elderbeasts()
@@ -73,6 +78,9 @@ func _start_faction_turn() -> void:
 		_consolidate_ai_armies(faction_id)
 		_execute_ai_city_management(faction_id)
 		_execute_ai_settlement_building(faction_id)
+		GameManager.diplomacy_system.execute_ai_diplomacy(faction_id)
+		GameManager.research_system.execute_ai_research(faction_id)
+		_ai_handle_forsaken_offer(faction_id)
 		if faction_id == &"shardhorde":
 			_execute_shardhorde_ai()
 		elif faction_id == &"gladehost":
@@ -131,6 +139,31 @@ func get_current_faction() -> StringName:
 	if current_faction_index < faction_order.size():
 		return faction_order[current_faction_index]
 	return &""
+
+# ── AI Forsaken Offer Handling ────────────────────────────────
+
+func _ai_handle_forsaken_offer(faction_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return
+	var offer := GameManager.policy_system.check_forsaken_offer(faction_id, GameManager.state.current_turn)
+	if offer.is_empty():
+		return
+	# AI accepts when desperate: low gold or at war
+	var gold: int = fs.resources.get(Enums.ResourceType.GOLD, 0)
+	var at_war := false
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id:
+			continue
+		var key := str(faction_id) + ":" + str(other_id)
+		var relation = GameManager.state.diplomacy.get(key, Enums.FactionRelation.NEUTRAL)
+		if relation == Enums.FactionRelation.WAR:
+			at_war = true
+			break
+	if gold < 50 or at_war:
+		GameManager.policy_system.accept_forsaken_offer(faction_id, offer)
+	else:
+		GameManager.policy_system.decline_forsaken_offer(faction_id)
 
 # ── Commander XP ─────────────────────────────────────────────
 

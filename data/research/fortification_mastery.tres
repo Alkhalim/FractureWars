@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fortification_mastery"
+display_name = "Fortification Mastery"
+description = "Advanced defensive construction techniques harden your troops."
+tech_cost = 50
+research_time = 3
+prerequisites = Array[StringName]([])
+effects = { "unit_defense_bonus": 1 }
+shard_bonuses = { 4: { "unit_defense_bonus": 1 } }
+tier = 1
+research_category = &"military"
+faction_id = &""

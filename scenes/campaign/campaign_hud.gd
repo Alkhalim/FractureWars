@@ -24,6 +24,13 @@ const REALM_COLORS := {
 	Enums.Realm.MORTAL: Color(0.7, 0.65, 0.55),
 }
 
+const RESEARCH_CATEGORY_COLORS := {
+	&"military": Color(0.85, 0.35, 0.3),
+	&"economy": Color(0.35, 0.8, 0.35),
+	&"arcane": Color(0.65, 0.35, 0.85),
+	&"logistics": Color(0.35, 0.6, 0.9),
+}
+
 const RESOURCE_NAMES := ["Gold", "Iron", "Technology", "Food", "Shard Essence", "Wood", "Captives"]
 const RESOURCE_COLORS := {
 	0: Color(0.95, 0.85, 0.3), # Gold
@@ -64,6 +71,9 @@ var _loyalty_panel_city_id: StringName = &""
 var _class_hover_tooltip: PanelContainer
 var _diplomacy_panel: PanelContainer
 var _policies_panel: PanelContainer
+var _forsaken_offer_dialog: PanelContainer
+var _senate_viz: Control
+var _pending_forsaken_offer: Dictionary = {}
 var _research_panel: PanelContainer
 var _unit_detail_panel: PanelContainer
 var _item_swap_panel: PanelContainer
@@ -82,6 +92,7 @@ func _ready() -> void:
 	EventBus.commander_item_full.connect(_on_commander_item_full)
 	EventBus.random_event_triggered.connect(_on_random_event_triggered)
 	EventBus.shard_claimed.connect(_on_shard_claimed)
+	EventBus.forsaken_offer.connect(_on_forsaken_offer_received)
 
 	_create_resource_bar()
 	_create_shard_display()
@@ -310,11 +321,12 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 	hp_container.add_child(hp_text)
 	stats_vbox.add_child(hp_container)
 
-	# Stat row: ATK / DEF / SPD / RNG
+	# Stat row: DPS / DEF / SPD / RNG
 	var stat_grid := HBoxContainer.new()
 	stat_grid.add_theme_constant_override("separation", 6)
 
-	_add_stat_label(stat_grid, "ATK", str(unit_data.attack), Color(0.85, 0.4, 0.35))
+	var dps_val := estimate_unit_dps(unit_data)
+	_add_stat_label(stat_grid, "DPS", str(int(dps_val)), Color(0.85, 0.4, 0.35))
 	_add_stat_label(stat_grid, "DEF", str(unit_data.defense), Color(0.4, 0.6, 0.85))
 	_add_stat_label(stat_grid, "SPD", str(unit_data.speed), Color(0.5, 0.8, 0.45))
 	if unit_data.attack_range > 1:
@@ -467,8 +479,9 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	hp_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 	vbox.add_child(hp_label)
 
+	var detail_dps := estimate_unit_dps(unit_data)
 	var stat_lines: Array[String] = [
-		"  ATK: %d  |  DEF: %d  |  SPD: %d" % [unit_data.attack, unit_data.defense, unit_data.speed],
+		"  DPS: %d  |  DEF: %d  |  SPD: %d" % [int(detail_dps), unit_data.defense, unit_data.speed],
 		"  Range: %d  |  Morale: %d" % [unit_data.attack_range, unit_data.base_morale],
 		"  Squad Size: %d  |  MP: %.1f" % [unit_data.squad_size, unit_data.movement_points],
 	]
@@ -533,6 +546,22 @@ func _add_stat_label(parent: HBoxContainer, stat_name: String, value: String, co
 	label.add_theme_color_override("font_color", color)
 	parent.add_child(label)
 
+## Estimate DPS for a unit based on its type, squad size, and attack speed.
+## Ranged/mage: full salvo DPS (all entities fire). Melee: frontline contact DPS.
+static func estimate_unit_dps(ud: UnitData) -> float:
+	if ud.tags.has("mage"):
+		# Mages: slow fire rate (18 tick cooldown), 0.6 dmg mult, ~70% hit
+		return ud.squad_size * ud.attack * 0.6 * 0.7 * (10.0 / 18.0)
+	if ud.tags.has("ranged"):
+		# Archers: fast fire rate (5 tick cooldown), 0.6 dmg mult, ~80% hit
+		return ud.squad_size * ud.attack * 0.6 * 0.8 * (10.0 / 5.0)
+	# Melee: continuous damage at TICK_SCALE(0.2) * 10 ticks/sec = 2x attack per entity
+	if ud.squad_size <= 1:
+		return ud.attack * 2.0
+	# Multi-entity melee: assume ~35% squad in frontline contact (proximity-weighted)
+	var frontline := ceili(ud.squad_size * 0.35)
+	return frontline * ud.attack * 2.0
+
 func _on_army_deselected() -> void:
 	army_panel.visible = false
 	_hide_commander_panel()
@@ -543,6 +572,11 @@ func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 	# Auto-refresh loyalty panel if open
 	if _loyalty_panel_city_id != &"":
 		_show_loyalty_panel(_loyalty_panel_city_id)
+	# Check for Forsaken offer on player turn
+	if TurnManager.is_player_turn and _faction_id == GameManager.state.player_faction_id:
+		var offer := GameManager.policy_system.check_forsaken_offer(_faction_id, GameManager.state.current_turn)
+		if not offer.is_empty():
+			EventBus.forsaken_offer.emit(_faction_id, offer)
 
 func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
 	# Refresh army panel if the moved army is selected
@@ -884,7 +918,7 @@ func _create_economy_panel() -> void:
 	var end_btn_idx := end_turn_button.get_index()
 
 	# Diplomacy button
-	_diplomacy_panel = _create_stub_panel("Diplomacy")
+	_create_diplomacy_panel()
 	var diplomacy_btn := Button.new()
 	diplomacy_btn.name = "DiplomacyButton"
 	diplomacy_btn.text = "Diplomacy"
@@ -894,17 +928,17 @@ func _create_economy_panel() -> void:
 	hbox.move_child(diplomacy_btn, end_btn_idx)
 
 	# Policies button
-	_policies_panel = _create_stub_panel("Policies")
+	_create_policies_panel()
 	var policies_btn := Button.new()
 	policies_btn.name = "PoliciesButton"
-	policies_btn.text = "Policies"
+	policies_btn.text = "Senate"
 	policies_btn.custom_minimum_size = Vector2(90, 0)
 	policies_btn.pressed.connect(_toggle_policies_panel)
 	hbox.add_child(policies_btn)
 	hbox.move_child(policies_btn, end_btn_idx + 1)
 
 	# Research button
-	_research_panel = _create_stub_panel("Research")
+	_create_research_panel()
 	var research_btn := Button.new()
 	research_btn.name = "ResearchButton"
 	research_btn.text = "Research"
@@ -1124,26 +1158,9 @@ func _refresh_economy_panel() -> void:
 			net_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
 		vbox.add_child(net_label)
 
-# ── Stub Panels (Diplomacy, Policies, Research) ──────────────
+# ── Panel Style Helper ────────────────────────────────────────
 
-func _create_stub_panel(title_text: String) -> PanelContainer:
-	var panel := PanelContainer.new()
-	panel.name = title_text + "Panel"
-	panel.visible = false
-
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_top = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -160.0
-	panel.offset_right = 160.0
-	panel.offset_top = -100.0
-	panel.offset_bottom = 100.0
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	panel.custom_minimum_size = Vector2(300, 180)
-
+func _create_panel_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
 	style.border_width_left = 2
@@ -1155,16 +1172,13 @@ func _create_stub_panel(title_text: String) -> PanelContainer:
 	style.corner_radius_top_right = 6
 	style.corner_radius_bottom_right = 6
 	style.corner_radius_bottom_left = 6
-	style.content_margin_left = 16.0
-	style.content_margin_top = 12.0
-	style.content_margin_right = 16.0
-	style.content_margin_bottom = 12.0
-	panel.add_theme_stylebox_override("panel", style)
+	style.content_margin_left = 12.0
+	style.content_margin_top = 10.0
+	style.content_margin_right = 12.0
+	style.content_margin_bottom = 10.0
+	return style
 
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
-
-	# Header with close button
+func _create_panel_header(vbox: VBoxContainer, title_text: String, panel: PanelContainer) -> void:
 	var header := HBoxContainer.new()
 	var title := Label.new()
 	title.text = title_text
@@ -1178,29 +1192,1117 @@ func _create_stub_panel(title_text: String) -> PanelContainer:
 	close_btn.pressed.connect(func(): panel.visible = false)
 	header.add_child(close_btn)
 	vbox.add_child(header)
+	_add_separator(vbox)
+
+# ── Diplomacy Panel ──────────────────────────────────────────
+
+var _diplomacy_trade_panel: PanelContainer
+var _diplomacy_trade_target: StringName = &""
+
+func _create_diplomacy_panel() -> void:
+	_diplomacy_panel = PanelContainer.new()
+	_diplomacy_panel.name = "DiplomacyPanel"
+	_diplomacy_panel.visible = false
+	_diplomacy_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_diplomacy_panel.anchor_left = 0.5
+	_diplomacy_panel.anchor_right = 0.5
+	_diplomacy_panel.anchor_top = 0.08
+	_diplomacy_panel.anchor_bottom = 0.92
+	_diplomacy_panel.offset_left = -220.0
+	_diplomacy_panel.offset_right = 220.0
+	_diplomacy_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_diplomacy_panel.custom_minimum_size = Vector2(420, 0)
+	_diplomacy_panel.add_theme_stylebox_override("panel", _create_panel_style())
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_diplomacy_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "DiplomacyVBox"
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	add_child(_diplomacy_panel)
+
+func _toggle_diplomacy_panel() -> void:
+	if _diplomacy_panel.visible:
+		_diplomacy_panel.visible = false
+	else:
+		_refresh_diplomacy_panel()
+		_diplomacy_panel.visible = true
+
+const RELATION_NAMES := ["War", "Hostile", "Neutral", "Friendly", "Allied"]
+const RELATION_COLORS := {
+	0: Color(0.85, 0.2, 0.2),
+	1: Color(0.85, 0.5, 0.2),
+	2: Color(0.6, 0.6, 0.55),
+	3: Color(0.3, 0.75, 0.4),
+	4: Color(0.3, 0.5, 0.9),
+}
+
+func _refresh_diplomacy_panel() -> void:
+	var scroll: ScrollContainer = _diplomacy_panel.get_child(0)
+	var vbox: VBoxContainer = scroll.get_node("DiplomacyVBox")
+	for child in vbox.get_children():
+		child.queue_free()
+
+	_create_panel_header(vbox, "Diplomacy", _diplomacy_panel)
+
+	var player_id := GameManager.state.player_faction_id
+	for faction_id in GameManager.state.faction_states:
+		if faction_id == player_id or faction_id == &"rebels":
+			continue
+		var fs: FactionState = GameManager.state.faction_states[faction_id]
+		if fs.is_defeated:
+			continue
+		var fd: FactionData = DataManager.get_faction(faction_id)
+		if fd == null:
+			continue
+
+		var relation := GameManager.get_relation(player_id, faction_id)
+		var standing := GameManager.diplomacy_system.get_standing(player_id, faction_id)
+
+		# Faction row container
+		var faction_box := VBoxContainer.new()
+		faction_box.add_theme_constant_override("separation", 4)
+
+		# Name + relation + standing row
+		var info_row := HBoxContainer.new()
+		var color_rect := ColorRect.new()
+		color_rect.custom_minimum_size = Vector2(12, 12)
+		color_rect.color = fd.color
+		info_row.add_child(color_rect)
+		var name_label := Label.new()
+		name_label.text = " " + fd.display_name
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.add_theme_font_size_override("font_size", 13)
+		info_row.add_child(name_label)
+		var rel_label := Label.new()
+		rel_label.text = RELATION_NAMES[relation]
+		rel_label.add_theme_font_size_override("font_size", 12)
+		rel_label.add_theme_color_override("font_color", RELATION_COLORS.get(relation, Color.WHITE))
+		info_row.add_child(rel_label)
+		var standing_label := Label.new()
+		standing_label.text = "  [%d]" % standing
+		standing_label.add_theme_font_size_override("font_size", 11)
+		if standing > 0:
+			standing_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+		elif standing < 0:
+			standing_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+		else:
+			standing_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		info_row.add_child(standing_label)
+		faction_box.add_child(info_row)
+
+		# Action buttons row
+		var btn_row := HBoxContainer.new()
+		btn_row.add_theme_constant_override("separation", 4)
+
+		if relation == Enums.FactionRelation.WAR:
+			var peace_btn := Button.new()
+			peace_btn.text = "Propose Peace"
+			peace_btn.custom_minimum_size = Vector2(100, 28)
+			var fid: StringName = faction_id
+			peace_btn.pressed.connect(func(): _on_diplomacy_propose_peace(fid))
+			btn_row.add_child(peace_btn)
+		elif relation != Enums.FactionRelation.ALLIED:
+			var war_btn := Button.new()
+			war_btn.text = "Declare War"
+			war_btn.custom_minimum_size = Vector2(90, 28)
+			var fid: StringName = faction_id
+			war_btn.pressed.connect(func(): _on_diplomacy_declare_war(fid))
+			btn_row.add_child(war_btn)
+			if relation == Enums.FactionRelation.FRIENDLY:
+				var ally_btn := Button.new()
+				ally_btn.text = "Propose Alliance"
+				ally_btn.custom_minimum_size = Vector2(110, 28)
+				var fid2: StringName = faction_id
+				ally_btn.pressed.connect(func(): _on_diplomacy_propose_alliance(fid2))
+				btn_row.add_child(ally_btn)
+
+		if relation != Enums.FactionRelation.WAR:
+			var trade_btn := Button.new()
+			trade_btn.text = "Trade"
+			trade_btn.custom_minimum_size = Vector2(60, 28)
+			var fid: StringName = faction_id
+			trade_btn.pressed.connect(func(): _on_diplomacy_open_trade(fid))
+			btn_row.add_child(trade_btn)
+
+		var gift_btn := Button.new()
+		gift_btn.text = "Gift"
+		gift_btn.custom_minimum_size = Vector2(50, 28)
+		var fid_gift: StringName = faction_id
+		gift_btn.pressed.connect(func(): _on_diplomacy_gift(fid_gift))
+		btn_row.add_child(gift_btn)
+
+		# Shard offer button (only if player owns shards)
+		var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
+		if player_fs and player_fs.owned_shards.size() > 0:
+			var shard_btn := Button.new()
+			shard_btn.text = "Offer Shard"
+			shard_btn.custom_minimum_size = Vector2(80, 28)
+			var fid_s: StringName = faction_id
+			shard_btn.pressed.connect(func(): _on_diplomacy_offer_shard(fid_s))
+			btn_row.add_child(shard_btn)
+
+		faction_box.add_child(btn_row)
+
+		# Active treaties
+		var treaties := GameManager.diplomacy_system.get_treaties_between(player_id, faction_id)
+		if treaties.size() > 0:
+			for treaty in treaties:
+				var treaty_label := Label.new()
+				var type_name := ""
+				match treaty.treaty_type:
+					Enums.TreatyType.PEACE: type_name = "Peace Treaty"
+					Enums.TreatyType.ALLIANCE: type_name = "Alliance"
+					Enums.TreatyType.TRADE_DEAL: type_name = "Trade Deal"
+				var duration_text := ""
+				if treaty.turns_remaining > 0:
+					duration_text = " (%d turns)" % treaty.turns_remaining
+				elif treaty.turns_remaining == -1:
+					duration_text = " (permanent)"
+				treaty_label.text = "  > " + type_name + duration_text
+				treaty_label.add_theme_font_size_override("font_size", 11)
+				treaty_label.add_theme_color_override("font_color", Color(0.5, 0.7, 0.8))
+				faction_box.add_child(treaty_label)
+
+		vbox.add_child(faction_box)
+		_add_separator(vbox)
+
+func _on_diplomacy_declare_war(target: StringName) -> void:
+	GameManager.diplomacy_system.declare_war(GameManager.state.player_faction_id, target)
+	_refresh_diplomacy_panel()
+
+func _on_diplomacy_propose_peace(target: StringName) -> void:
+	var result := GameManager.diplomacy_system.propose_peace(GameManager.state.player_faction_id, target)
+	_refresh_diplomacy_panel()
+
+func _on_diplomacy_propose_alliance(target: StringName) -> void:
+	var result := GameManager.diplomacy_system.propose_alliance(GameManager.state.player_faction_id, target)
+	_refresh_diplomacy_panel()
+
+func _on_diplomacy_gift(target: StringName) -> void:
+	# Gift 20 gold as default action
+	var player_id := GameManager.state.player_faction_id
+	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if player_fs and player_fs.resources.get(Enums.ResourceType.GOLD, 0) >= 20:
+		GameManager.diplomacy_system.gift_resources(player_id, target, Enums.ResourceType.GOLD, 20)
+	_refresh_diplomacy_panel()
+
+func _on_diplomacy_offer_shard(target: StringName) -> void:
+	var player_id := GameManager.state.player_faction_id
+	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if player_fs and player_fs.owned_shards.size() > 0:
+		var shard_id: StringName = player_fs.owned_shards[0]
+		GameManager.diplomacy_system.offer_shard(player_id, target, shard_id)
+	_refresh_diplomacy_panel()
+
+func _on_diplomacy_open_trade(target: StringName) -> void:
+	# Simple trade proposal: offer 10 gold for 10 food, 5 turns
+	var player_id := GameManager.state.player_faction_id
+	var result := GameManager.diplomacy_system.propose_trade(
+		player_id, target,
+		Enums.ResourceType.GOLD, 10,
+		Enums.ResourceType.FOOD, 10,
+		5)
+	_refresh_diplomacy_panel()
+
+# ── Research Panel ───────────────────────────────────────────
+
+func _create_research_panel() -> void:
+	_research_panel = PanelContainer.new()
+	_research_panel.name = "ResearchPanel"
+	_research_panel.visible = false
+	_research_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_research_panel.anchor_left = 0.5
+	_research_panel.anchor_right = 0.5
+	_research_panel.anchor_top = 0.08
+	_research_panel.anchor_bottom = 0.92
+	_research_panel.offset_left = -220.0
+	_research_panel.offset_right = 220.0
+	_research_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_research_panel.custom_minimum_size = Vector2(420, 0)
+	_research_panel.add_theme_stylebox_override("panel", _create_panel_style())
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_research_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "ResearchVBox"
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	add_child(_research_panel)
+
+func _toggle_research_panel() -> void:
+	if _research_panel.visible:
+		_research_panel.visible = false
+	else:
+		_refresh_research_panel()
+		_research_panel.visible = true
+
+func _refresh_research_panel() -> void:
+	var scroll: ScrollContainer = _research_panel.get_child(0)
+	var vbox: VBoxContainer = scroll.get_node("ResearchVBox")
+	for child in vbox.get_children():
+		child.queue_free()
+
+	_create_panel_header(vbox, "Research", _research_panel)
+
+	var player_id := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if fs == null:
+		return
+
+	var current_tech: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
+
+	# Technology resource display
+	var tech_row := HBoxContainer.new()
+	var tech_icon := Label.new()
+	tech_icon.text = "Technology: "
+	tech_icon.add_theme_font_size_override("font_size", 13)
+	tech_icon.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	tech_row.add_child(tech_icon)
+	var tech_val := Label.new()
+	tech_val.text = str(current_tech)
+	tech_val.add_theme_font_size_override("font_size", 13)
+	tech_val.add_theme_color_override("font_color", RESOURCE_COLORS.get(2, Color.WHITE))
+	tech_row.add_child(tech_val)
+	vbox.add_child(tech_row)
+
+	# Current research section
+	if fs.current_research_id != &"":
+		var data: ResearchData = DataManager.get_research(fs.current_research_id)
+		if data:
+			_add_separator(vbox)
+			var section_label := Label.new()
+			section_label.text = "Current Research"
+			section_label.add_theme_font_size_override("font_size", 14)
+			section_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+			vbox.add_child(section_label)
+
+			var cat_color: Color = RESEARCH_CATEGORY_COLORS.get(data.research_category, Color(0.7, 0.7, 0.7))
+			var cur_box := VBoxContainer.new()
+			cur_box.add_theme_constant_override("separation", 2)
+			var name_label := Label.new()
+			name_label.text = data.display_name
+			name_label.add_theme_font_size_override("font_size", 13)
+			name_label.add_theme_color_override("font_color", cat_color)
+			cur_box.add_child(name_label)
+
+			var progress_row := HBoxContainer.new()
+			var bar := ProgressBar.new()
+			bar.min_value = 0
+			bar.max_value = data.research_time
+			bar.value = fs.research_progress
+			bar.custom_minimum_size = Vector2(200, 20)
+			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar.show_percentage = false
+			progress_row.add_child(bar)
+			var turns_label := Label.new()
+			turns_label.text = " %d/%d turns" % [fs.research_progress, data.research_time]
+			turns_label.add_theme_font_size_override("font_size", 11)
+			progress_row.add_child(turns_label)
+			cur_box.add_child(progress_row)
+
+			var invested: Array = fs.research_invested_shards.get(fs.current_research_id, [])
+			if invested.size() > 0:
+				var shard_text := Label.new()
+				var realm_names: Array[String] = []
+				for realm in invested:
+					realm_names.append(REALM_NAMES[realm])
+				shard_text.text = "Invested shards: " + ", ".join(realm_names)
+				shard_text.add_theme_font_size_override("font_size", 11)
+				shard_text.add_theme_color_override("font_color", Color(0.7, 0.3, 0.8))
+				cur_box.add_child(shard_text)
+
+			var cancel_btn := Button.new()
+			cancel_btn.text = "Cancel Research"
+			cancel_btn.custom_minimum_size = Vector2(120, 26)
+			cancel_btn.pressed.connect(func():
+				GameManager.research_system.cancel_research(player_id)
+				_refresh_research_panel())
+			cur_box.add_child(cancel_btn)
+			vbox.add_child(cur_box)
+
+	# Available shards to invest
+	if fs.current_research_id != &"" and fs.owned_shards.size() > 0:
+		_add_separator(vbox)
+		var shard_section := Label.new()
+		shard_section.text = "Invest Shard"
+		shard_section.add_theme_font_size_override("font_size", 14)
+		shard_section.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(shard_section)
+		for shard_id in fs.owned_shards:
+			var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+			if shard == null:
+				continue
+			var shard_row := HBoxContainer.new()
+			var shard_label_item := Label.new()
+			shard_label_item.text = "%s Shard (Power %d)" % [REALM_NAMES[shard.realm], shard.power_level]
+			shard_label_item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			shard_label_item.add_theme_font_size_override("font_size", 12)
+			shard_row.add_child(shard_label_item)
+			var invest_btn := Button.new()
+			invest_btn.text = "Invest"
+			invest_btn.custom_minimum_size = Vector2(60, 24)
+			var sid: StringName = shard_id
+			invest_btn.pressed.connect(func():
+				GameManager.research_system.invest_shard(player_id, sid)
+				_refresh_research_panel())
+			shard_row.add_child(invest_btn)
+			vbox.add_child(shard_row)
+
+	# Category legend
+	_add_separator(vbox)
+	var legend_row := HBoxContainer.new()
+	legend_row.add_theme_constant_override("separation", 12)
+	for cat_name in [&"military", &"economy", &"arcane", &"logistics"]:
+		var chip := Label.new()
+		chip.text = str(cat_name).capitalize()
+		chip.add_theme_font_size_override("font_size", 10)
+		chip.add_theme_color_override("font_color", RESEARCH_CATEGORY_COLORS.get(cat_name, Color.WHITE))
+		legend_row.add_child(chip)
+	vbox.add_child(legend_row)
+
+	# Research tree grouped by tier
+	for tier in [1, 2, 3]:
+		_add_separator(vbox)
+		var tier_label := Label.new()
+		tier_label.text = "Tier %d" % tier
+		tier_label.add_theme_font_size_override("font_size", 14)
+		tier_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(tier_label)
+
+		var has_any := false
+		for research_id in DataManager.research:
+			var data: ResearchData = DataManager.research[research_id]
+			if data.tier != tier:
+				continue
+			if data.faction_id != &"" and data.faction_id != fs.faction_data_id:
+				continue
+			has_any = true
+			var cat_color: Color = RESEARCH_CATEGORY_COLORS.get(data.research_category, Color(0.7, 0.7, 0.7))
+
+			# Research card
+			var card := PanelContainer.new()
+			var card_style := StyleBoxFlat.new()
+			card_style.bg_color = Color(0.1, 0.09, 0.13, 0.9)
+			card_style.border_width_left = 3
+			card_style.border_width_top = 1
+			card_style.border_width_right = 1
+			card_style.border_width_bottom = 1
+			card_style.border_color = cat_color.darkened(0.3)
+			card_style.corner_radius_top_left = 4
+			card_style.corner_radius_top_right = 4
+			card_style.corner_radius_bottom_right = 4
+			card_style.corner_radius_bottom_left = 4
+			card_style.content_margin_left = 8.0
+			card_style.content_margin_top = 4.0
+			card_style.content_margin_right = 6.0
+			card_style.content_margin_bottom = 4.0
+			card.add_theme_stylebox_override("panel", card_style)
+
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 6)
+			var info_box := VBoxContainer.new()
+			info_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			info_box.add_theme_constant_override("separation", 1)
+			var r_name := Label.new()
+			r_name.add_theme_font_size_override("font_size", 12)
+			var desc := Label.new()
+			desc.add_theme_font_size_override("font_size", 10)
+			desc.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+
+			if fs.completed_research.has(research_id):
+				r_name.text = data.display_name
+				r_name.add_theme_color_override("font_color", cat_color)
+				card_style.bg_color = Color(cat_color.r * 0.15, cat_color.g * 0.15, cat_color.b * 0.15, 0.9)
+				desc.text = _format_research_effects(data, fs)
+				var done_badge := Label.new()
+				done_badge.text = "DONE"
+				done_badge.add_theme_font_size_override("font_size", 10)
+				done_badge.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+				row.add_child(info_box)
+				info_box.add_child(r_name)
+				info_box.add_child(desc)
+				row.add_child(done_badge)
+			elif fs.current_research_id == research_id:
+				r_name.text = data.display_name
+				r_name.add_theme_color_override("font_color", Color(0.9, 0.8, 0.3))
+				desc.text = "%d/%d turns" % [fs.research_progress, data.research_time]
+				row.add_child(info_box)
+				info_box.add_child(r_name)
+				info_box.add_child(desc)
+			else:
+				var prereqs_met := true
+				for prereq in data.prerequisites:
+					if not fs.completed_research.has(prereq):
+						prereqs_met = false
+						break
+				var can_afford := current_tech >= data.tech_cost
+				var not_busy := fs.current_research_id == &""
+
+				if not prereqs_met:
+					r_name.text = data.display_name
+					r_name.add_theme_color_override("font_color", Color(0.4, 0.38, 0.35))
+					card_style.border_color = Color(0.3, 0.28, 0.25)
+					var prereq_names: Array[String] = []
+					for prereq in data.prerequisites:
+						var pdata: ResearchData = DataManager.get_research(prereq)
+						if pdata:
+							prereq_names.append(pdata.display_name)
+					desc.text = "Requires: " + ", ".join(prereq_names)
+					var lock_badge := Label.new()
+					lock_badge.text = "LOCKED"
+					lock_badge.add_theme_font_size_override("font_size", 10)
+					lock_badge.add_theme_color_override("font_color", Color(0.5, 0.45, 0.4))
+					row.add_child(info_box)
+					info_box.add_child(r_name)
+					info_box.add_child(desc)
+					row.add_child(lock_badge)
+				else:
+					r_name.text = data.display_name
+					r_name.add_theme_color_override("font_color", cat_color if can_afford else cat_color.darkened(0.4))
+					var cost_color := Color(0.6, 0.58, 0.5) if can_afford else Color(0.85, 0.35, 0.3)
+					desc.text = "Cost: %dT, %d turns" % [data.tech_cost, data.research_time]
+					desc.add_theme_color_override("font_color", cost_color)
+					row.add_child(info_box)
+					info_box.add_child(r_name)
+					info_box.add_child(desc)
+					if not_busy:
+						var start_btn := Button.new()
+						start_btn.text = "Start"
+						start_btn.custom_minimum_size = Vector2(55, 24)
+						start_btn.disabled = not can_afford
+						var rid: StringName = research_id
+						start_btn.pressed.connect(func():
+							GameManager.research_system.start_research(player_id, rid)
+							_refresh_research_panel())
+						row.add_child(start_btn)
+					else:
+						var busy_label := Label.new()
+						busy_label.text = "BUSY"
+						busy_label.add_theme_font_size_override("font_size", 10)
+						busy_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+						row.add_child(busy_label)
+
+			card.add_child(row)
+
+			# Right-click for detail popup
+			var captured_data: ResearchData = data
+			card.gui_input.connect(func(event: InputEvent):
+				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+					_show_research_detail(captured_data))
+
+			vbox.add_child(card)
+
+		if not has_any:
+			var none_label := Label.new()
+			none_label.text = "  No research available"
+			none_label.add_theme_font_size_override("font_size", 11)
+			none_label.add_theme_color_override("font_color", Color(0.5, 0.45, 0.4))
+			vbox.add_child(none_label)
+
+func _show_research_detail(data: ResearchData) -> void:
+	var existing := get_node_or_null("ResearchDetailDialog")
+	if existing:
+		existing.queue_free()
+	var dialog := _create_centered_dialog(400, 340)
+	dialog.name = "ResearchDetailDialog"
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+
+	# Header
+	var header := HBoxContainer.new()
+	var cat_color: Color = RESEARCH_CATEGORY_COLORS.get(data.research_category, Color(0.7, 0.7, 0.7))
+	var title := Label.new()
+	title.text = data.display_name
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", cat_color)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(28, 28)
+	close_btn.pressed.connect(dialog.queue_free)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+
+	# Category + Tier
+	var cat_label := Label.new()
+	cat_label.text = "%s  |  Tier %d" % [str(data.research_category).capitalize(), data.tier]
+	cat_label.add_theme_font_size_override("font_size", 11)
+	cat_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+	vbox.add_child(cat_label)
 
 	_add_separator(vbox)
 
-	# Coming Soon message
-	var msg := Label.new()
-	msg.text = "Coming Soon"
-	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	msg.add_theme_font_size_override("font_size", 14)
-	msg.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
-	vbox.add_child(msg)
+	# Description
+	var desc := Label.new()
+	desc.text = data.description
+	desc.add_theme_font_size_override("font_size", 12)
+	desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc)
 
-	panel.add_child(vbox)
-	add_child(panel)
-	return panel
+	_add_separator(vbox)
 
-func _toggle_diplomacy_panel() -> void:
-	_diplomacy_panel.visible = not _diplomacy_panel.visible
+	# Cost + Time
+	var cost_label := Label.new()
+	cost_label.text = "Cost: %d Technology  |  Research Time: %d turns" % [data.tech_cost, data.research_time]
+	cost_label.add_theme_font_size_override("font_size", 12)
+	cost_label.add_theme_color_override("font_color", RESOURCE_COLORS.get(2, Color.WHITE))
+	vbox.add_child(cost_label)
+
+	# Effects
+	if data.effects.size() > 0:
+		_add_separator(vbox)
+		var eff_header := Label.new()
+		eff_header.text = "Effects"
+		eff_header.add_theme_font_size_override("font_size", 13)
+		eff_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(eff_header)
+		for key in data.effects:
+			var eff := Label.new()
+			eff.text = "  %s: %+d" % [key.replace("_", " ").capitalize(), data.effects[key]]
+			eff.add_theme_font_size_override("font_size", 11)
+			eff.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+			vbox.add_child(eff)
+
+	# Shard bonuses
+	if data.shard_bonuses.size() > 0:
+		_add_separator(vbox)
+		var shard_header := Label.new()
+		shard_header.text = "Shard Bonuses"
+		shard_header.add_theme_font_size_override("font_size", 13)
+		shard_header.add_theme_color_override("font_color", Color(0.7, 0.3, 0.8))
+		vbox.add_child(shard_header)
+		for realm in data.shard_bonuses:
+			var bonus: Dictionary = data.shard_bonuses[realm]
+			var realm_name: String = REALM_NAMES[realm] if realm < REALM_NAMES.size() else "?"
+			for key in bonus:
+				var sb := Label.new()
+				sb.text = "  %s Shard: %s %+d" % [realm_name, key.replace("_", " ").capitalize(), bonus[key]]
+				sb.add_theme_font_size_override("font_size", 11)
+				sb.add_theme_color_override("font_color", Color(0.6, 0.4, 0.75))
+				vbox.add_child(sb)
+
+	# Prerequisites
+	if data.prerequisites.size() > 0:
+		_add_separator(vbox)
+		var prereq_header := Label.new()
+		prereq_header.text = "Prerequisites"
+		prereq_header.add_theme_font_size_override("font_size", 13)
+		prereq_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(prereq_header)
+		for prereq in data.prerequisites:
+			var pdata: ResearchData = DataManager.get_research(prereq)
+			var pl := Label.new()
+			pl.text = "  " + (pdata.display_name if pdata else str(prereq))
+			pl.add_theme_font_size_override("font_size", 11)
+			pl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+			vbox.add_child(pl)
+
+	dialog.add_child(vbox)
+	add_child(dialog)
+
+func _format_research_effects(data: ResearchData, fs: FactionState) -> String:
+	var parts: Array[String] = []
+	for key in data.effects:
+		parts.append("%s: %+d" % [key.replace("_", " "), data.effects[key]])
+	var invested: Array = fs.research_invested_shards.get(data.id, [])
+	for realm in invested:
+		if data.shard_bonuses.has(realm):
+			var bonus: Dictionary = data.shard_bonuses[realm]
+			for key in bonus:
+				parts.append("%s shard: %s %+d" % [REALM_NAMES[realm], key.replace("_", " "), bonus[key]])
+	return ", ".join(parts) if parts.size() > 0 else "No effects"
+
+# ── Policies Panel ───────────────────────────────────────────
+
+func _create_policies_panel() -> void:
+	_policies_panel = PanelContainer.new()
+	_policies_panel.name = "PoliciesPanel"
+	_policies_panel.visible = false
+	_policies_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_policies_panel.anchor_left = 0.5
+	_policies_panel.anchor_right = 0.5
+	_policies_panel.anchor_top = 0.08
+	_policies_panel.anchor_bottom = 0.92
+	_policies_panel.offset_left = -220.0
+	_policies_panel.offset_right = 220.0
+	_policies_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_policies_panel.custom_minimum_size = Vector2(420, 0)
+	_policies_panel.add_theme_stylebox_override("panel", _create_panel_style())
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_policies_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "PoliciesVBox"
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	add_child(_policies_panel)
+
+const POLICY_CATEGORY_NAMES := ["Taxation", "Military", "Cultural", "Labor"]
 
 func _toggle_policies_panel() -> void:
-	_policies_panel.visible = not _policies_panel.visible
+	if _policies_panel.visible:
+		_policies_panel.visible = false
+	else:
+		_refresh_policies_panel()
+		_policies_panel.visible = true
 
-func _toggle_research_panel() -> void:
-	_research_panel.visible = not _research_panel.visible
+func _refresh_policies_panel() -> void:
+	var scroll: ScrollContainer = _policies_panel.get_child(0)
+	var vbox: VBoxContainer = scroll.get_node("PoliciesVBox")
+	for child in vbox.get_children():
+		child.queue_free()
+
+	_create_panel_header(vbox, "Imperial Senate", _policies_panel)
+
+	var player_id := GameManager.state.player_faction_id
+	if player_id != &"empire":
+		var msg := Label.new()
+		msg.text = "Only the Empire has senate policies."
+		msg.add_theme_font_size_override("font_size", 12)
+		msg.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vbox.add_child(msg)
+		return
+
+	var fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if fs == null:
+		return
+
+	# Senate semicircle visualization
+	var seats := GameManager.policy_system.calculate_senate_seats(player_id)
+	_senate_viz = _SenateVisualization.new()
+	_senate_viz.custom_minimum_size = Vector2(400, 120)
+	_senate_viz.update_seats(seats)
+	vbox.add_child(_senate_viz)
+
+	# Majority label with effects
+	var majority := GameManager.policy_system.get_senate_majority(player_id)
+	var majority_effects := GameManager.policy_system.get_senate_majority_effects(player_id)
+	var majority_label := Label.new()
+	var effects_text := ""
+	for key in majority_effects:
+		if key == "loyalty_all":
+			effects_text += "All Loyalty %+d/turn  " % majority_effects[key]
+		else:
+			var parts := str(key).split("_")
+			var res_name: String = parts[0].capitalize() if parts.size() > 0 else key
+			effects_text += "%s %+d%%  " % [res_name, majority_effects[key]]
+	majority_label.text = "Majority: %s — %s" % [str(majority).capitalize(), effects_text.strip_edges()]
+	majority_label.add_theme_font_size_override("font_size", 12)
+	majority_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var majority_colors := {
+		&"nobles": Color(0.85, 0.72, 0.3),
+		&"scholars": Color(0.3, 0.5, 0.85),
+		&"artisans": Color(0.6, 0.5, 0.38),
+		&"forsaken": Color(0.6, 0.15, 0.2),
+	}
+	majority_label.add_theme_color_override("font_color", majority_colors.get(majority, Color(0.7, 0.7, 0.7)))
+	vbox.add_child(majority_label)
+
+	# Forsaken crisis warning
+	if fs.forsaken_crisis_stage >= 1:
+		var crisis_label := Label.new()
+		if fs.forsaken_crisis_stage <= 2:
+			crisis_label.text = "Senate PARALYZED — The Forsaken hold sway. Cannot enact/swap policies."
+		elif fs.forsaken_crisis_stage >= 3:
+			crisis_label.text = "FORSAKEN CRISIS — The corruption deepens..."
+		crisis_label.add_theme_font_size_override("font_size", 11)
+		crisis_label.add_theme_color_override("font_color", Color(0.85, 0.2, 0.2))
+		crisis_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		crisis_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+		vbox.add_child(crisis_label)
+
+	_add_separator(vbox)
+
+	# Active policy count
+	var count_label := Label.new()
+	count_label.text = "Active Policies: %d/%d" % [fs.active_policies.size(), PolicySystem.MAX_ACTIVE_POLICIES]
+	count_label.add_theme_font_size_override("font_size", 12)
+	count_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(count_label)
+
+	# Class loyalty summary with forecast
+	var capital := GameManager.policy_system._get_faction_capital(player_id)
+	var forecast := GameManager.policy_system.get_loyalty_change_forecast(player_id)
+	if capital:
+		var loyalty_header := Label.new()
+		loyalty_header.text = "Class Loyalty"
+		loyalty_header.add_theme_font_size_override("font_size", 14)
+		loyalty_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(loyalty_header)
+		for cls in capital.class_loyalty:
+			var val: int = capital.class_loyalty[cls]
+			var change: int = forecast.get(cls, 0)
+			var cls_row := HBoxContainer.new()
+			var cls_name := Label.new()
+			cls_name.text = cls.capitalize()
+			cls_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			cls_name.add_theme_font_size_override("font_size", 11)
+			cls_row.add_child(cls_name)
+			var cls_val := Label.new()
+			var val_text := str(val)
+			if change != 0:
+				val_text += "  (%+d)" % change
+			cls_val.text = val_text
+			cls_val.add_theme_font_size_override("font_size", 11)
+			if val >= 30:
+				cls_val.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+			elif val <= -10:
+				cls_val.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+			else:
+				cls_val.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+			cls_row.add_child(cls_val)
+			# Change indicator color
+			if change != 0:
+				var change_label := Label.new()
+				change_label.text = "/turn"
+				change_label.add_theme_font_size_override("font_size", 9)
+				change_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35) if change > 0 else Color(0.85, 0.35, 0.3))
+				cls_row.add_child(change_label)
+			vbox.add_child(cls_row)
+		_add_separator(vbox)
+
+	# Policies organized by category
+	for cat_idx in 4:
+		var cat_name: String = POLICY_CATEGORY_NAMES[cat_idx]
+		var cooldown: int = fs.policy_cooldowns.get(cat_idx, 0)
+
+		# Category header
+		var cat_header := HBoxContainer.new()
+		var cat_title := Label.new()
+		cat_title.text = cat_name
+		cat_title.add_theme_font_size_override("font_size", 13)
+		cat_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		cat_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cat_header.add_child(cat_title)
+		if cooldown > 0:
+			var cd_label := Label.new()
+			cd_label.text = "Cooldown: %d turns" % cooldown
+			cd_label.add_theme_font_size_override("font_size", 10)
+			cd_label.add_theme_color_override("font_color", Color(0.85, 0.55, 0.3))
+			cat_header.add_child(cd_label)
+		vbox.add_child(cat_header)
+
+		# Find active policy in this category
+		var active_in_cat: StringName = GameManager.policy_system._get_active_policy_in_category(fs, cat_idx)
+		if active_in_cat != &"":
+			var data: PolicyData = DataManager.get_policy(active_in_cat)
+			if data:
+				var row := HBoxContainer.new()
+				var info := VBoxContainer.new()
+				info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				var p_name := Label.new()
+				p_name.text = data.display_name + " [ACTIVE]"
+				p_name.add_theme_font_size_override("font_size", 12)
+				p_name.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+				info.add_child(p_name)
+				var p_desc := Label.new()
+				p_desc.text = _format_policy_effects(data)
+				p_desc.add_theme_font_size_override("font_size", 10)
+				p_desc.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+				info.add_child(p_desc)
+				row.add_child(info)
+				var revoke_btn := Button.new()
+				revoke_btn.text = "Revoke"
+				revoke_btn.custom_minimum_size = Vector2(60, 24)
+				var pid: StringName = active_in_cat
+				revoke_btn.pressed.connect(func():
+					GameManager.policy_system.revoke_policy(player_id, pid)
+					_refresh_policies_panel())
+				row.add_child(revoke_btn)
+				vbox.add_child(row)
+
+		# Available policies in this category
+		for policy_id in DataManager.policies:
+			var data: PolicyData = DataManager.policies[policy_id]
+			if data.category != cat_idx:
+				continue
+			if data.faction_id != &"" and data.faction_id != fs.faction_data_id:
+				continue
+			if fs.active_policies.has(policy_id):
+				continue
+
+			var row := HBoxContainer.new()
+			var info := VBoxContainer.new()
+			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var p_name := Label.new()
+			p_name.text = data.display_name
+			p_name.add_theme_font_size_override("font_size", 12)
+			info.add_child(p_name)
+
+			var p_desc := Label.new()
+			p_desc.text = _format_policy_effects(data)
+			p_desc.add_theme_font_size_override("font_size", 10)
+			p_desc.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+			info.add_child(p_desc)
+
+			var can_enact := GameManager.policy_system.can_enact_policy(player_id, policy_id)
+			if not can_enact:
+				p_name.add_theme_color_override("font_color", Color(0.5, 0.45, 0.4))
+				if cooldown > 0:
+					var reason := Label.new()
+					reason.text = "Category on cooldown"
+					reason.add_theme_font_size_override("font_size", 10)
+					reason.add_theme_color_override("font_color", Color(0.85, 0.55, 0.3))
+					info.add_child(reason)
+				elif fs.active_policies.size() >= PolicySystem.MAX_ACTIVE_POLICIES and active_in_cat == &"":
+					var reason := Label.new()
+					reason.text = "Max policies reached (%d/%d)" % [fs.active_policies.size(), PolicySystem.MAX_ACTIVE_POLICIES]
+					reason.add_theme_font_size_override("font_size", 10)
+					reason.add_theme_color_override("font_color", Color(0.85, 0.55, 0.3))
+					info.add_child(reason)
+				elif capital:
+					for cls in data.required_class_loyalty:
+						var required: int = data.required_class_loyalty[cls]
+						var current: int = capital.class_loyalty.get(cls, 0)
+						if current < required:
+							var reason := Label.new()
+							reason.text = "Requires %s loyalty >= %d (current: %d)" % [cls.capitalize(), required, current]
+							reason.add_theme_font_size_override("font_size", 10)
+							reason.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+							info.add_child(reason)
+
+			row.add_child(info)
+			var enact_btn := Button.new()
+			enact_btn.text = "Enact" if active_in_cat == &"" else "Swap"
+			enact_btn.custom_minimum_size = Vector2(55, 24)
+			enact_btn.disabled = not can_enact
+			var pid: StringName = policy_id
+			enact_btn.pressed.connect(func():
+				GameManager.policy_system.enact_policy(player_id, pid)
+				_refresh_policies_panel())
+			row.add_child(enact_btn)
+			vbox.add_child(row)
+
+		_add_separator(vbox)
+
+func _format_policy_effects(data: PolicyData) -> String:
+	var parts: Array[String] = []
+	for cls in data.class_loyalty_effects:
+		parts.append("%s %+d" % [cls.capitalize(), data.class_loyalty_effects[cls]])
+	for res_type in data.resource_effects:
+		var res_name: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+		parts.append("%s %+d/turn" % [res_name, data.resource_effects[res_type]])
+	return ", ".join(parts) if parts.size() > 0 else data.description
+
+# ── Senate Visualization (semicircle of colored dots) ─────────
+
+class _SenateVisualization extends Control:
+	const SEAT_COLORS := [
+		Color(0.85, 0.72, 0.3),   # 0 = nobles (gold)
+		Color(0.3, 0.5, 0.85),    # 1 = scholars (blue)
+		Color(0.6, 0.5, 0.38),    # 2 = artisans (gray-brown)
+		Color(0.6, 0.15, 0.2),    # 3 = forsaken (dark red)
+	]
+
+	var seats: Array[int] = []  # faction index per seat
+
+	func update_seats(seat_counts: Array[int]) -> void:
+		seats.clear()
+		for faction_idx in seat_counts.size():
+			for _s in seat_counts[faction_idx]:
+				seats.append(faction_idx)
+		queue_redraw()
+
+	func _draw() -> void:
+		var total := seats.size()
+		if total == 0:
+			return
+		var center := Vector2(size.x / 2.0, size.y - 10.0)
+		var dot_radius := 3.5
+		var gap := 2.0
+		# 3 concentric arcs
+		var rows := 3
+		var per_row := ceili(float(total) / float(rows))
+		var placed := 0
+		for row in rows:
+			var arc_radius := 35.0 + row * (dot_radius * 2.0 + gap + 6.0)
+			var this_row := mini(per_row, total - placed)
+			if this_row <= 0:
+				break
+			for i in this_row:
+				if placed >= total:
+					break
+				var t := float(i) / float(maxi(this_row - 1, 1))
+				var angle := PI + t * PI  # 180 to 360 degrees (semicircle opening upward)
+				var pos := center + Vector2(cos(angle), sin(angle)) * arc_radius
+				var color: Color = SEAT_COLORS[seats[placed]] if seats[placed] < SEAT_COLORS.size() else Color.WHITE
+				draw_circle(pos, dot_radius, color)
+				placed += 1
+
+# ── Forsaken Offer Dialog ─────────────────────────────────────
+
+func _on_forsaken_offer_received(faction_id: StringName, offer: Dictionary) -> void:
+	if faction_id != GameManager.state.player_faction_id:
+		return
+	if offer.has("type") and offer.type == "crisis_dilemma":
+		_show_forsaken_crisis_dialog()
+		return
+	_pending_forsaken_offer = offer
+	_show_forsaken_offer_dialog(offer)
+
+func _show_forsaken_offer_dialog(offer: Dictionary) -> void:
+	if _forsaken_offer_dialog != null:
+		_forsaken_offer_dialog.queue_free()
+
+	_forsaken_offer_dialog = PanelContainer.new()
+	_forsaken_offer_dialog.set_anchors_preset(Control.PRESET_CENTER)
+	_forsaken_offer_dialog.offset_left = -180.0
+	_forsaken_offer_dialog.offset_right = 180.0
+	_forsaken_offer_dialog.offset_top = -120.0
+	_forsaken_offer_dialog.offset_bottom = 120.0
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.06, 0.08, 0.97)
+	style.border_color = Color(0.6, 0.15, 0.2)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(14)
+	_forsaken_offer_dialog.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_forsaken_offer_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "The Forsaken"
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.6, 0.15, 0.2))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var flavor := Label.new()
+	flavor.text = offer.get("flavor_text", "A dark bargain is offered...")
+	flavor.add_theme_font_size_override("font_size", 11)
+	flavor.add_theme_color_override("font_color", Color(0.65, 0.55, 0.5))
+	flavor.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	flavor.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(flavor)
+
+	var details := Label.new()
+	details.text = "Offer: +%d %s\nCost: %d Senate seats to The Forsaken" % [
+		offer.get("amount", 0), offer.get("resource_name", "Resources"), offer.get("seats_requested", 0)]
+	details.add_theme_font_size_override("font_size", 12)
+	details.add_theme_color_override("font_color", Color(0.8, 0.75, 0.65))
+	details.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(details)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 16)
+	vbox.add_child(btn_row)
+
+	var accept_btn := Button.new()
+	accept_btn.text = "Accept"
+	accept_btn.custom_minimum_size = Vector2(90, 30)
+	accept_btn.pressed.connect(func():
+		GameManager.policy_system.accept_forsaken_offer(GameManager.state.player_faction_id, _pending_forsaken_offer)
+		_forsaken_offer_dialog.queue_free()
+		_forsaken_offer_dialog = null
+		if _policies_panel.visible:
+			_refresh_policies_panel())
+	btn_row.add_child(accept_btn)
+
+	var decline_btn := Button.new()
+	decline_btn.text = "Decline"
+	decline_btn.custom_minimum_size = Vector2(90, 30)
+	decline_btn.pressed.connect(func():
+		GameManager.policy_system.decline_forsaken_offer(GameManager.state.player_faction_id)
+		_forsaken_offer_dialog.queue_free()
+		_forsaken_offer_dialog = null)
+	btn_row.add_child(decline_btn)
+
+	add_child(_forsaken_offer_dialog)
+
+func _show_forsaken_crisis_dialog() -> void:
+	if _forsaken_offer_dialog != null:
+		_forsaken_offer_dialog.queue_free()
+
+	_forsaken_offer_dialog = PanelContainer.new()
+	_forsaken_offer_dialog.set_anchors_preset(Control.PRESET_CENTER)
+	_forsaken_offer_dialog.offset_left = -200.0
+	_forsaken_offer_dialog.offset_right = 200.0
+	_forsaken_offer_dialog.offset_top = -130.0
+	_forsaken_offer_dialog.offset_bottom = 130.0
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.05, 0.07, 0.97)
+	style.border_color = Color(0.7, 0.1, 0.15)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(14)
+	_forsaken_offer_dialog.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_forsaken_offer_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "The Forsaken Demand"
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.8, 0.15, 0.15))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var desc := Label.new()
+	desc.text = "The Forsaken have seized control of the Senate. They demand submission or face purging."
+	desc.add_theme_font_size_override("font_size", 11)
+	desc.add_theme_color_override("font_color", Color(0.7, 0.55, 0.5))
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(desc)
+
+	var player_id := GameManager.state.player_faction_id
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(btn_row)
+
+	var purge_btn := Button.new()
+	purge_btn.text = "Purge Senate"
+	purge_btn.tooltip_text = "Remove half Forsaken seats. Nobles/Scholars loyalty -15, costs 200 Gold."
+	purge_btn.custom_minimum_size = Vector2(120, 30)
+	purge_btn.pressed.connect(func():
+		GameManager.policy_system.purge_forsaken_senate(player_id)
+		_forsaken_offer_dialog.queue_free()
+		_forsaken_offer_dialog = null
+		if _policies_panel.visible:
+			_refresh_policies_panel())
+	btn_row.add_child(purge_btn)
+
+	var submit_btn := Button.new()
+	submit_btn.text = "Submit"
+	submit_btn.tooltip_text = "Forsaken keep majority +3 seats. All income -20% for 5 turns."
+	submit_btn.custom_minimum_size = Vector2(120, 30)
+	submit_btn.pressed.connect(func():
+		GameManager.policy_system.submit_to_forsaken(player_id)
+		_forsaken_offer_dialog.queue_free()
+		_forsaken_offer_dialog = null
+		if _policies_panel.visible:
+			_refresh_policies_panel())
+	btn_row.add_child(submit_btn)
+
+	add_child(_forsaken_offer_dialog)
 
 # ── City management panel ────────────────────────────────────
 
@@ -2308,7 +3410,8 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 		vbox.add_child(tags_label)
 
 	var stats := Label.new()
-	stats.text = "HP: %d  ATK: %d  DEF: %d  SPD: %d" % [unit_data.max_hp, unit_data.attack, unit_data.defense, unit_data.speed]
+	var card_dps := estimate_unit_dps(unit_data)
+	stats.text = "HP: %d  DPS: %d  DEF: %d  SPD: %d" % [unit_data.max_hp, int(card_dps), unit_data.defense, unit_data.speed]
 	stats.add_theme_font_size_override("font_size", 11)
 	stats.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 	vbox.add_child(stats)
@@ -2823,7 +3926,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 	_add_separator(vbox)
 
 	# Army composition
-	var total_atk := 0
+	var total_dps := 0.0
 	var total_def := 0
 	var total_spd := 0
 	var infantry_count := 0
@@ -2836,7 +3939,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 		var ud := DataManager.get_unit(unit.unit_data_id)
 		if ud == null:
 			continue
-		total_atk += ud.attack
+		total_dps += estimate_unit_dps(ud)
 		total_def += ud.defense
 		total_spd += ud.speed
 		if ud.tags.has("cavalry"):
@@ -2854,7 +3957,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 
 	# Stats
 	var stats_label := Label.new()
-	stats_label.text = "STR: %d  |  DEF: %d  |  SPD: %d" % [total_atk, total_def, avg_spd]
+	stats_label.text = "DPS: %d  |  DEF: %d  |  SPD: %d" % [int(total_dps), total_def, avg_spd]
 	stats_label.add_theme_font_size_override("font_size", 12)
 	stats_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 	vbox.add_child(stats_label)

@@ -1303,9 +1303,58 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	def_units.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65, 1))
 	vbox.add_child(def_units)
 
+	# Bonuses summary
 	var sep2 := HSeparator.new()
 	sep2.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
 	vbox.add_child(sep2)
+
+	var bonus_label := Label.new()
+	bonus_label.add_theme_font_size_override("font_size", 11)
+	bonus_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55))
+	var bonus_parts: Array[String] = []
+
+	# Terrain
+	var campaign_terrain := Enums.TerrainType.PLAINS
+	if GameManager.state and GameManager.state.hex_map:
+		var tile := GameManager.state.hex_map.get_tile(_pending_battle_hex)
+		if tile:
+			campaign_terrain = tile.terrain
+	var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+	var t_name: String = terrain_names[campaign_terrain] if campaign_terrain < terrain_names.size() else "Unknown"
+	bonus_parts.append("Terrain: %s" % t_name)
+
+	# Commander bonuses
+	var player_fid := GameManager.state.player_faction_id
+	var player_army: ArmyState = attacker_army if attacker_army.faction_id == player_fid else defender_army
+	if player_army.commander:
+		var cmd_bonuses := CommanderSystem.get_commander_army_bonuses(player_army.commander)
+		var cmd_parts: Array[String] = []
+		if cmd_bonuses.get("attack_bonus", 0) != 0:
+			cmd_parts.append("ATK %+d (per entity)" % cmd_bonuses.attack_bonus)
+		if cmd_bonuses.get("defense_bonus", 0) != 0:
+			cmd_parts.append("DEF %+d" % cmd_bonuses.defense_bonus)
+		if cmd_bonuses.get("speed_bonus", 0) != 0:
+			cmd_parts.append("SPD %+d" % cmd_bonuses.speed_bonus)
+		if cmd_parts.size() > 0:
+			bonus_parts.append("Commander: " + ", ".join(cmd_parts))
+
+	# Research bonuses
+	var r_effects := GameManager.research_system.get_research_effects(player_fid)
+	if r_effects.size() > 0:
+		var r_parts: Array[String] = []
+		if r_effects.get("unit_attack_bonus", 0) != 0:
+			r_parts.append("ATK %+d (per entity)" % r_effects["unit_attack_bonus"])
+		if r_effects.get("unit_defense_bonus", 0) != 0:
+			r_parts.append("DEF %+d" % r_effects["unit_defense_bonus"])
+		if r_parts.size() > 0:
+			bonus_parts.append("Research: " + ", ".join(r_parts))
+
+	bonus_label.text = "\n".join(bonus_parts)
+	vbox.add_child(bonus_label)
+
+	var sep3 := HSeparator.new()
+	sep3.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	vbox.add_child(sep3)
 
 	# Buttons
 	var btn_row := HBoxContainer.new()

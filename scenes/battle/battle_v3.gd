@@ -23,6 +23,7 @@ var selected_formation: BattleSimulatorV3.BattleFormationV3 = null
 var player_side: int = 0
 var is_player_attacker: bool = false
 var _battle_loot: Dictionary = {}
+var _magic_projs: Array[Dictionary] = []
 
 # Simulation state
 var sim_speed: float = 0.1
@@ -469,13 +470,20 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	name_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 	vbox.add_child(name_label)
 
-	var ud := DataManager.get_unit(f.unit_data_id)
-	var base_atk: int = ud.attack if ud else f.attack
-	var bonus_atk: int = f.attack - base_atk
-	var atk_text := "ATK:%d" % f.attack
-	if bonus_atk != 0:
-		atk_text += " (%+d)" % bonus_atk
+	# Calculate live DPS from formation data
+	var live_dps := 0.0
+	if f.tags.has("mage"):
+		live_dps = f.entities_alive * f.attack * 0.6 * 0.7 * (10.0 / f.ranged_cooldown_max)
+	elif f.tags.has("ranged"):
+		live_dps = f.entities_alive * f.attack * 0.6 * 0.8 * (10.0 / f.ranged_cooldown_max)
+	elif f.total_entities <= 1:
+		live_dps = f.attack * 2.0
+	else:
+		var frontline := ceili(f.entities_alive * 0.35)
+		live_dps = frontline * f.attack * 2.0
+	var dps_text := "DPS:%d" % int(live_dps)
 
+	var ud := DataManager.get_unit(f.unit_data_id)
 	var base_def: int = ud.defense if ud else f.defense
 	var bonus_def: int = f.defense - base_def
 	var def_text := "DEF:%d" % f.defense
@@ -487,7 +495,7 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 		def_text += " [terrain %+d]" % terrain_def
 
 	var stats_label := Label.new()
-	stats_label.text = "%s %s SPD:%d RNG:%d" % [atk_text, def_text, f.speed, f.attack_range]
+	stats_label.text = "%s %s SPD:%d RNG:%d" % [dps_text, def_text, f.speed, f.attack_range]
 	stats_label.add_theme_font_size_override("font_size", 11)
 	stats_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
 	vbox.add_child(stats_label)
@@ -553,6 +561,7 @@ func _on_skip() -> void:
 	skip_to_end = true
 
 func _process(delta: float) -> void:
+	_update_magic_projectiles(delta)
 	if current_phase != Phase.SIMULATION or not is_simulating:
 		return
 
@@ -562,6 +571,7 @@ func _process(delta: float) -> void:
 			_process_visual_actions(actions)
 			if simulator.is_finished:
 				break
+		_clear_magic_projectiles()
 		skip_to_end = false
 		is_simulating = false
 		_show_result()
@@ -595,7 +605,11 @@ func _process_visual_actions(actions: Array[Dictionary]) -> void:
 				var projectiles: Array = action.get("projectiles", [])
 				if projectiles.size() > 0:
 					for proj in projectiles:
-						_spawn_projectile_from_pos(proj["from"], proj["to"], proj["hit"])
+						if proj.get("is_mage", false):
+							var magic_color := _get_magic_color(proj.get("faction_id", &""))
+							_spawn_magic_projectile(proj["from"], proj["to"], proj["hit"], magic_color, proj.get("speed_var", 1.0))
+						else:
+							_spawn_projectile_from_pos(proj["from"], proj["to"], proj["hit"])
 				else:
 					_spawn_projectile(action.attacker, r_def_id)
 				if r_dmg > 0:
@@ -652,6 +666,99 @@ func _spawn_projectile(attacker_id: StringName, defender_id: StringName) -> void
 	var tween := create_tween()
 	tween.tween_property(proj, "position", to_pos, 0.3)
 	tween.tween_callback(proj.queue_free)
+
+func _get_magic_color(faction_id: StringName) -> Color:
+	match faction_id:
+		&"empire":
+			return Color(1.0, 0.5, 0.1)      # Fire/amber
+		&"skulloath":
+			return Color(0.7, 0.2, 0.9)      # Necrotic/purple
+		&"tainted_jade":
+			return Color(0.2, 0.9, 0.4)      # Nature/poison green
+		&"gladehost":
+			return Color(0.3, 0.8, 0.9)      # Frost/ice blue
+		&"shardhorde":
+			return Color(0.9, 0.1, 0.3)      # Shard/crimson
+		_:
+			return Color(0.4, 0.6, 1.0)      # Default arcane blue
+
+func _spawn_magic_projectile(from_pos: Vector2, to_pos: Vector2, _is_hit: bool, magic_color: Color, speed_var: float) -> void:
+	var container := Node2D.new()
+	container.z_index = 10
+	effects_layer.add_child(container)
+
+	# Glow (semi-transparent circle)
+	var glow := Polygon2D.new()
+	var glow_pts := PackedVector2Array()
+	for k in 12:
+		var a := TAU * float(k) / 12.0
+		glow_pts.append(Vector2(cos(a), sin(a)) * 4.5)
+	glow.polygon = glow_pts
+	glow.color = Color(magic_color.r, magic_color.g, magic_color.b, 0.2)
+	container.add_child(glow)
+
+	# Teardrop body (pointing right along +X, rotation orients it)
+	var body := Polygon2D.new()
+	body.polygon = PackedVector2Array([
+		Vector2(-4, 0), Vector2(-2, -2.2), Vector2(1.5, -1.6),
+		Vector2(3.5, 0), Vector2(1.5, 1.6), Vector2(-2, 2.2),
+	])
+	body.color = magic_color
+	container.add_child(body)
+
+	_magic_projs.append({
+		"node": container,
+		"from": from_pos,
+		"to": to_pos,
+		"elapsed": 0.0,
+		"duration": (0.5 + randf_range(0.0, 0.15)) * speed_var,
+		"phase": randf() * TAU,
+		"amplitude": randf_range(4.0, 10.0),
+		"freq": randf_range(1.2, 2.2),
+	})
+	container.position = from_pos
+
+func _update_magic_projectiles(delta: float) -> void:
+	var i := _magic_projs.size() - 1
+	while i >= 0:
+		var p: Dictionary = _magic_projs[i]
+		p.elapsed += delta
+		var t: float = p.elapsed / p.duration
+		if t >= 1.0:
+			if is_instance_valid(p.node):
+				p.node.queue_free()
+			_magic_projs.remove_at(i)
+			i -= 1
+			continue
+
+		var from_p: Vector2 = p.from
+		var to_p: Vector2 = p.to
+		var base_pos := from_p.lerp(to_p, t)
+
+		# Perpendicular oscillation for erratic movement
+		var path_dir := (to_p - from_p).normalized()
+		var perp := Vector2(-path_dir.y, path_dir.x)
+		var osc: float = sin(t * TAU * p.freq + p.phase) * p.amplitude * (1.0 - t * 0.7)
+
+		var final_pos := base_pos + perp * osc
+		p.node.position = final_pos
+
+		# Rotate teardrop to face movement direction
+		var look_t := minf(t + 0.02, 1.0)
+		var look_base := from_p.lerp(to_p, look_t)
+		var look_osc: float = sin(look_t * TAU * p.freq + p.phase) * p.amplitude * (1.0 - look_t * 0.7)
+		var look_pos := look_base + perp * look_osc
+		var move_dir := look_pos - final_pos
+		if move_dir.length_squared() > 0.01:
+			p.node.rotation = move_dir.angle()
+
+		i -= 1
+
+func _clear_magic_projectiles() -> void:
+	for p in _magic_projs:
+		if is_instance_valid(p.node):
+			p.node.queue_free()
+	_magic_projs.clear()
 
 # --- Result ---
 

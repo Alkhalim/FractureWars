@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"low_taxes"
+display_name = "Low Taxes"
+description = "Reduced taxation eases the burden on common folk but strains the treasury."
+category = 0
+class_loyalty_effects = { "peasants": 3, "artisans": 2, "nobles": -2 }
+resource_effects = { 0: -10 }
+required_class_loyalty = {}
+mutually_exclusive = Array[StringName]([&"high_taxes"])
+cooldown_turns = 3
+faction_id = &"empire"

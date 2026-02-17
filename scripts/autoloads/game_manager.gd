@@ -4,6 +4,9 @@ var state: GameState
 var current_phase: Enums.GamePhase = Enums.GamePhase.MAIN_MENU
 var movement_system: MovementSystem
 var city_system: CitySystem = CitySystem.new()
+var diplomacy_system: DiplomacySystem = DiplomacySystem.new()
+var research_system: ResearchSystem = ResearchSystem.new()
+var policy_system: PolicySystem = PolicySystem.new()
 
 # Commander name lists per faction
 const COMMANDER_NAMES := {
@@ -360,6 +363,29 @@ func _init_diplomacy() -> void:
 		if faction_id != &"rebels":
 			state.diplomacy[StringName(str(&"rebels") + ":" + str(faction_id))] = Enums.FactionRelation.WAR
 			state.diplomacy[StringName(str(faction_id) + ":" + str(&"rebels"))] = Enums.FactionRelation.WAR
+
+	# Initialize diplomacy standing from starting relations
+	for key in state.diplomacy:
+		var parts := str(key).split(":")
+		if parts.size() != 2:
+			continue
+		var a := StringName(parts[0])
+		var b := StringName(parts[1])
+		# Only set once per pair (a < b alphabetically)
+		if str(a) > str(b):
+			continue
+		var relation: int = state.diplomacy[key]
+		var initial_standing := 0
+		match relation:
+			Enums.FactionRelation.WAR: initial_standing = -30
+			Enums.FactionRelation.HOSTILE: initial_standing = -15
+			Enums.FactionRelation.NEUTRAL: initial_standing = 0
+			Enums.FactionRelation.FRIENDLY: initial_standing = 20
+			Enums.FactionRelation.ALLIED: initial_standing = 50
+		var standing_key_ab := str(a) + ":" + str(b)
+		var standing_key_ba := str(b) + ":" + str(a)
+		state.diplomacy_state.standing[standing_key_ab] = initial_standing
+		state.diplomacy_state.standing[standing_key_ba] = initial_standing
 
 func get_army_at_tile(coord: Vector2i) -> ArmyState:
 	for army_id in state.armies:

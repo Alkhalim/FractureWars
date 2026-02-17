@@ -43,6 +43,30 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		for res_type in income:
 			income[res_type] = int(float(income[res_type]) * loyalty_mult)
 
+	# Apply research percentage bonuses
+	var research_effects := GameManager.research_system.get_research_effects(faction_id)
+	var gold_pct: int = research_effects.get("income_gold_pct", 0)
+	var food_pct: int = research_effects.get("income_food_pct", 0)
+	if gold_pct != 0 and income.has(Enums.ResourceType.GOLD):
+		income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * gold_pct / 100.0)
+	if food_pct != 0 and income.has(Enums.ResourceType.FOOD):
+		income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * food_pct / 100.0)
+
+	# Apply senate majority income effects
+	var senate_effects := GameManager.policy_system.get_senate_majority_effects(faction_id)
+	var senate_gold_pct: int = senate_effects.get("gold_income_pct", 0)
+	var senate_tech_pct: int = senate_effects.get("tech_income_pct", 0)
+	var senate_iron_pct: int = senate_effects.get("iron_income_pct", 0)
+	var senate_wood_pct: int = senate_effects.get("wood_income_pct", 0)
+	if senate_gold_pct != 0 and income.has(Enums.ResourceType.GOLD):
+		income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * senate_gold_pct / 100.0)
+	if senate_tech_pct != 0 and income.has(Enums.ResourceType.TECHNOLOGY):
+		income[Enums.ResourceType.TECHNOLOGY] += int(income[Enums.ResourceType.TECHNOLOGY] * senate_tech_pct / 100.0)
+	if senate_iron_pct != 0 and income.has(Enums.ResourceType.IRON):
+		income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * senate_iron_pct / 100.0)
+	if senate_wood_pct != 0 and income.has(Enums.ResourceType.WOOD):
+		income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * senate_wood_pct / 100.0)
+
 	for res_type in income:
 		if fs.resources.has(res_type):
 			fs.resources[res_type] += income[res_type]

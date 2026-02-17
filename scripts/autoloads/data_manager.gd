@@ -5,6 +5,8 @@ var units: Dictionary = {} # id -> UnitData
 var regions: Dictionary = {} # id -> RegionData
 var buildings: Dictionary = {} # id -> BuildingData
 var followers: Dictionary = {} # id -> FollowerData
+var research: Dictionary = {} # id -> ResearchData
+var policies: Dictionary = {} # id -> PolicyData
 
 var calendar_months: Array[Dictionary] = [
 	{name = "Moonwatch", realms = [Enums.Realm.DIVINE]},
@@ -25,6 +27,8 @@ func _ready() -> void:
 	_load_regions()
 	_load_buildings()
 	_load_followers()
+	_load_research()
+	_load_policies()
 
 func _load_factions() -> void:
 	_load_resources_from_dir("res://data/factions/", factions)
@@ -44,6 +48,12 @@ func _load_buildings() -> void:
 
 func _load_followers() -> void:
 	_load_resources_from_dir("res://data/followers/", followers)
+
+func _load_research() -> void:
+	_load_resources_from_dir("res://data/research/", research)
+
+func _load_policies() -> void:
+	_load_resources_from_dir("res://data/policies/", policies)
 
 func _load_resources_from_dir(path: String, target: Dictionary) -> void:
 	var dir := DirAccess.open(path)
@@ -74,6 +84,12 @@ func get_building(id: StringName) -> BuildingData:
 
 func get_follower(id: StringName) -> FollowerData:
 	return followers.get(id)
+
+func get_research(id: StringName) -> ResearchData:
+	return research.get(id)
+
+func get_policy(id: StringName) -> PolicyData:
+	return policies.get(id)
 
 func get_month_name(index: int) -> String:
 	if index >= 0 and index < calendar_months.size():

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"conscription_decree"
+display_name = "Conscription Decree"
+description = "Mandatory military service bolsters army ranks but angers the common folk."
+category = 1
+class_loyalty_effects = { "peasants": -5, "nobles": 2 }
+resource_effects = {}
+required_class_loyalty = { "nobles": 30 }
+mutually_exclusive = Array[StringName]([])
+cooldown_turns = 3
+faction_id = &"empire"

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"arcane_studies"
+display_name = "Arcane Studies"
+description = "Deep study of shard energies yields more essence from claimed shards."
+tech_cost = 50
+research_time = 3
+prerequisites = Array[StringName]([])
+effects = { "shard_essence_bonus_pct": 15 }
+shard_bonuses = { 1: { "shard_essence_bonus_pct": 10 } }
+tier = 1
+research_category = &"arcane"
+faction_id = &""

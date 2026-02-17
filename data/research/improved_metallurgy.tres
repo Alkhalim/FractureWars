@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"improved_metallurgy"
+display_name = "Improved Metallurgy"
+description = "Better smelting techniques yield stronger weapons."
+tech_cost = 40
+research_time = 2
+prerequisites = Array[StringName]([])
+effects = { "unit_attack_bonus": 1 }
+shard_bonuses = { 2: { "unit_attack_bonus": 1 } }
+tier = 1
+research_category = &"military"
+faction_id = &""

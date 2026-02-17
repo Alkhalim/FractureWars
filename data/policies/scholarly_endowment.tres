@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"scholarly_endowment"
+display_name = "Scholarly Endowment"
+description = "Funding academic institutions accelerates technological advancement."
+category = 2
+class_loyalty_effects = { "scholars": 5, "peasants": -2, "nobles": -1 }
+resource_effects = { 2: 5 }
+required_class_loyalty = { "scholars": 10 }
+mutually_exclusive = Array[StringName]([])
+cooldown_turns = 3
+faction_id = &"empire"
