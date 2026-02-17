@@ -8,6 +8,7 @@ extends Resource
 @export var xp: int = 0
 @export var skill_levels: Dictionary = {} # skill_id -> int level (1-10)
 @export var items: Array[StringName] = []
+@export var followers: Array[StringName] = []  # follower_data_ids
 @export var influence_radius: int = 3
 
 const XP_THRESHOLDS := [0, 50, 120, 220, 350, 520, 730, 1000, 1350, 1800]

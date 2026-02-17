@@ -83,3 +83,5 @@ enum BattleTerrain {
 	CRYSTAL,
 	BRUSH
 }
+
+enum FormationShape { LINE, LOOSE_LINE, WEDGE, BLOCK, SINGLE }

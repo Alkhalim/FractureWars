@@ -185,7 +185,6 @@ const CLASS_NAMES := ["peasants", "artisans", "scholars", "nobles", "captives"]
 
 const W_BASE_STABILITY := {peasants = 2, artisans = 2, scholars = 2, nobles = 2, captives = 1}
 const W_SAME_CULTURE := {peasants = 2, artisans = 1, scholars = 4, nobles = 3, captives = 1}
-const W_CULTURAL_BUILDINGS := {peasants = 1, artisans = 1, scholars = 3, nobles = 2, captives = 0}
 const W_HIGH_POP := {peasants = 1, artisans = 1, scholars = 0, nobles = 0, captives = 0}
 const W_FRIENDLY_NEIGHBORS := {peasants = 1, artisans = 1, scholars = 1, nobles = 2, captives = 0}
 const W_LONG_OWNERSHIP := {peasants = 2, artisans = 1, scholars = 1, nobles = 1, captives = 1}
@@ -197,9 +196,13 @@ const W_WAR_NEIGHBOR := {peasants = -3, artisans = -2, scholars = -1, nobles = -
 const W_UNDER_SIEGE := {peasants = -6, artisans = -5, scholars = -5, nobles = -4, captives = -2}
 const W_LOW_POP := {peasants = -2, artisans = -1, scholars = 0, nobles = 0, captives = 0}
 const W_HIGH_CAPTIVE_RATIO := {peasants = 0, artisans = 0, scholars = -1, nobles = -1, captives = 1}
-const W_NO_CULTURAL := {peasants = -1, artisans = 0, scholars = -2, nobles = -1, captives = 0}
-const W_ECONOMIC_BUILDINGS := {peasants = 1, artisans = 3, scholars = 0, nobles = 1, captives = 0}
-const W_NO_ECONOMIC := {peasants = -1, artisans = -3, scholars = 0, nobles = 0, captives = 0}
+
+# Military presence
+const W_INFANTRY_PRESENCE := {peasants = 2, artisans = 0, scholars = 0, nobles = 0, captives = -1}
+const W_CAVALRY_PRESENCE := {peasants = 0, artisans = 0, scholars = 0, nobles = 3, captives = -1}
+const W_MAGE_PRESENCE := {peasants = -1, artisans = 0, scholars = 3, nobles = 0, captives = 0}
+const W_CONSTRUCT_PRESENCE := {peasants = -1, artisans = 3, scholars = 0, nobles = 0, captives = 0}
+const W_MONSTER_PRESENCE := {peasants = -4, artisans = -1, scholars = -1, nobles = -1, captives = 0}
 
 # ── Per-Class Loyalty Delta ─────────────────────────────────
 
@@ -230,8 +233,6 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 	var region: RegionData = DataManager.get_region(region_id)
 	var faction: FactionData = DataManager.get_faction(faction_id)
 	var province_pop := get_province_population(region_id, faction_id)
-	var cultural_count := _count_buildings_by_category(region_id, faction_id, &"cultural")
-	var economic_count := _count_buildings_by_category(region_id, faction_id, &"economic")
 	var pcts := calculate_class_percentages(city, faction_id)
 
 	# ── Positive modifiers ──
@@ -242,14 +243,6 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 	# Same culture
 	if faction and region and faction.realm_affinity == region.realm_influence:
 		result.append({label = "Same Realm Culture", weights = W_SAME_CULTURE, multiplier = 1})
-
-	# Cultural buildings (per building)
-	if cultural_count > 0:
-		result.append({label = "Cultural Buildings (x%d)" % cultural_count, weights = W_CULTURAL_BUILDINGS, multiplier = cultural_count})
-
-	# Economic buildings (per building)
-	if economic_count > 0:
-		result.append({label = "Economic Buildings (x%d)" % economic_count, weights = W_ECONOMIC_BUILDINGS, multiplier = economic_count})
 
 	# Per-building class loyalty bonuses
 	for city_in_prov in get_province_cities(region_id, faction_id):
@@ -309,13 +302,18 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 		if captive_mult > 0:
 			result.append({label = "High Captive Ratio", weights = W_HIGH_CAPTIVE_RATIO, multiplier = captive_mult})
 
-	# No cultural buildings
-	if cultural_count == 0:
-		result.append({label = "No Cultural Buildings", weights = W_NO_CULTURAL, multiplier = 1})
-
-	# No economic buildings
-	if economic_count == 0:
-		result.append({label = "No Economic Buildings", weights = W_NO_ECONOMIC, multiplier = 1})
+	# Military presence
+	var mil_tags := _count_military_tags_at_city(city)
+	if mil_tags.infantry > 0:
+		result.append({label = "Infantry Garrison (x%d)" % mil_tags.infantry, weights = W_INFANTRY_PRESENCE, multiplier = mil_tags.infantry})
+	if mil_tags.cavalry > 0:
+		result.append({label = "Cavalry Garrison (x%d)" % mil_tags.cavalry, weights = W_CAVALRY_PRESENCE, multiplier = mil_tags.cavalry})
+	if mil_tags.mage > 0:
+		result.append({label = "Mage Garrison (x%d)" % mil_tags.mage, weights = W_MAGE_PRESENCE, multiplier = mil_tags.mage})
+	if mil_tags.construct > 0:
+		result.append({label = "Construct Garrison (x%d)" % mil_tags.construct, weights = W_CONSTRUCT_PRESENCE, multiplier = mil_tags.construct})
+	if mil_tags.monster > 0:
+		result.append({label = "Monster Presence (x%d)" % mil_tags.monster, weights = W_MONSTER_PRESENCE, multiplier = mil_tags.monster})
 
 	return result
 
@@ -326,7 +324,7 @@ static func calculate_province_loyalty(city: CityState, faction_id: StringName) 
 	var weighted := 0.0
 	for cls in city.class_loyalty:
 		weighted += float(city.class_loyalty[cls]) * float(pcts.get(cls, 0.0))
-	return int(weighted)
+	return roundi(weighted)
 
 # ── Legacy Compatibility ────────────────────────────────────
 
@@ -337,7 +335,7 @@ static func calculate_loyalty_delta(city: CityState, faction_id: StringName) -> 
 	var weighted := 0.0
 	for cls in deltas:
 		weighted += float(deltas[cls]) * float(pcts.get(cls, 0.0))
-	return int(weighted)
+	return roundi(weighted)
 
 static func get_loyalty_breakdown(city: CityState, faction_id: StringName) -> Array[Dictionary]:
 	# Returns province-level modifier breakdown (weighted averages)
@@ -354,6 +352,27 @@ static func get_loyalty_breakdown(city: CityState, faction_id: StringName) -> Ar
 		if val != 0:
 			result.append({label = entry.label, value = val})
 	return result
+
+# ── Military Presence Helper ────────────────────────────────
+
+static func _count_military_tags_at_city(city: CityState) -> Dictionary:
+	var tags := {infantry = 0, cavalry = 0, mage = 0, construct = 0, monster = 0}
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.hex_pos != city.hex_pos or army.faction_id != city.faction_id:
+			continue
+		for unit in army.units:
+			var ud := DataManager.get_unit(unit.unit_data_id)
+			if ud == null:
+				continue
+			for tag in ud.tags:
+				if tags.has(tag):
+					tags[tag] += 1
+			if ud.tags.has("monster") or ud.tags.has("beast"):
+				if not ud.tags.has("monster"):
+					tags["monster"] += 1
+
+	return tags
 
 # ── Neighbor Helpers ────────────────────────────────────────
 

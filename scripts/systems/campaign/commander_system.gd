@@ -167,6 +167,11 @@ func get_commander_army_bonuses(commander: CommanderState) -> Dictionary:
 	for item_id in commander.items:
 		var effects := _get_item_effects(item_id)
 		_accumulate_army_bonuses(bonuses, effects, 1)
+	for follower_id in commander.followers:
+		var follower: FollowerData = DataManager.get_follower(follower_id)
+		if follower:
+			_accumulate_army_bonuses(bonuses, follower.bonus_effect, 1)
+			_accumulate_army_bonuses(bonuses, follower.malus_effect, 1)
 	return bonuses
 
 func _accumulate_army_bonuses(bonuses: Dictionary, effects: Dictionary, level: int = 1) -> void:
@@ -192,6 +197,11 @@ func get_commander_city_effects(commander: CommanderState, is_friendly: bool) ->
 	for item_id in commander.items:
 		var effects := _get_item_effects(item_id)
 		_accumulate_city_effects(effects_total, effects, is_friendly, 1)
+	for follower_id in commander.followers:
+		var follower: FollowerData = DataManager.get_follower(follower_id)
+		if follower:
+			_accumulate_city_effects(effects_total, follower.bonus_effect, is_friendly, 1)
+			_accumulate_city_effects(effects_total, follower.malus_effect, is_friendly, 1)
 	return effects_total
 
 func _accumulate_city_effects(total: Dictionary, effects: Dictionary, is_friendly: bool, level: int = 1) -> void:
@@ -225,6 +235,13 @@ func get_scouting_bonus(commander: CommanderState) -> int:
 		var effects := _get_item_effects(item_id)
 		if effects.has("scouting_bonus"):
 			bonus += effects.scouting_bonus
+	for follower_id in commander.followers:
+		var follower: FollowerData = DataManager.get_follower(follower_id)
+		if follower:
+			if follower.bonus_effect.has("scouting_bonus"):
+				bonus += follower.bonus_effect.scouting_bonus
+			if follower.malus_effect.has("scouting_bonus"):
+				bonus += follower.malus_effect.scouting_bonus
 	return bonus
 
 # ── Skill Helpers ─────────────────────────────────────────────
@@ -246,6 +263,11 @@ func _get_available_major_skills(commander: CommanderState) -> Array[CommanderSk
 	return result
 
 # ── AI Skill Selection ────────────────────────────────────────
+
+static func get_max_follower_slots(commander: CommanderState) -> int:
+	if commander.level >= 5:
+		return 2
+	return 1
 
 func ai_auto_pick_major_skill(commander: CommanderState) -> void:
 	var choices := get_major_skill_choices(commander)

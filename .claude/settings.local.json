@@ -18,7 +18,9 @@
       "Bash(pip:*)",
       "Bash(C:/Python313/python.exe:*)",
       "Bash(py -3 -c:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__ide__executeCode",
+      "Bash(/c/Python313/python:*)"
     ]
   }
 }

@@ -74,6 +74,7 @@ var _settlement_preview_panel: PanelContainer = null
 # Fog of war
 var _fog_of_war_enabled := true
 var _fog_overlay_nodes: Dictionary = {} # coord -> Polygon2D
+var _explored_tiles: Dictionary = {} # coord -> true (tiles that have been seen at least once)
 
 @onready var hex_map_layer: Node2D = $HexMapLayer
 @onready var reachable_overlay: Node2D = $OverlayLayer/ReachableOverlay
@@ -108,6 +109,7 @@ func _ready() -> void:
 	EventBus.building_completed.connect(_on_building_completed)
 	EventBus.unit_recruited.connect(_on_unit_recruited)
 	EventBus.shard_claimed.connect(_on_shard_claimed)
+	EventBus.shard_expired.connect(_on_shard_expired)
 
 	_recreate_shard_markers()
 	_create_elderbeast_markers()
@@ -916,6 +918,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_clear_path_overlay()
 
 func _handle_hex_left_click(hex_coord: Vector2i) -> void:
+	var tile_visible := _is_tile_visible(hex_coord)
+
 	# Check for player army at click position (marker hit-test first)
 	var clicked_army := _get_army_at_click(get_global_mouse_position())
 	if clicked_army != &"":
@@ -923,8 +927,8 @@ func _handle_hex_left_click(hex_coord: Vector2i) -> void:
 		if army and army.faction_id == GameManager.state.player_faction_id:
 			_select_army(clicked_army)
 			return
-		elif army:
-			# Enemy army — open inspection panel
+		elif army and tile_visible:
+			# Enemy army — only inspect if in current LOS
 			_show_inspect_army(army)
 			return
 
@@ -934,8 +938,8 @@ func _handle_hex_left_click(hex_coord: Vector2i) -> void:
 		if army_at.faction_id == GameManager.state.player_faction_id:
 			_select_army(army_at.army_id)
 			return
-		else:
-			# Enemy army
+		elif tile_visible:
+			# Enemy army — only inspect if in current LOS
 			_show_inspect_army(army_at)
 			return
 
@@ -944,8 +948,8 @@ func _handle_hex_left_click(hex_coord: Vector2i) -> void:
 	if city_at:
 		if city_at.faction_id == GameManager.state.player_faction_id:
 			_open_city_panel(city_at.city_id)
-		else:
-			# Enemy city — open inspection
+		elif tile_visible:
+			# Enemy city — only inspect if in current LOS
 			_show_inspect_city(city_at)
 		return
 
@@ -1342,7 +1346,7 @@ func _on_battle_dialog_manual() -> void:
 	GameManager.set_meta("battle_attacker", _pending_battle_attacker_id)
 	GameManager.set_meta("battle_defender", _pending_battle_defender_id)
 	GameManager.set_meta("battle_hex_pos", _pending_battle_hex)
-	get_tree().change_scene_to_file("res://scenes/battle/battle_v2.tscn")
+	get_tree().change_scene_to_file("res://scenes/battle/battle_v3.tscn")
 
 func _on_battle_dialog_retreat() -> void:
 	if _battle_dialog:
@@ -1698,6 +1702,11 @@ func _on_shard_claimed(shard_id: StringName, faction_id: StringName) -> void:
 		var shard_value: int = shard.power_level * 5 if shard else 5
 		_show_notification("Shard claimed! +%d Shard Essence" % shard_value)
 
+func _on_shard_expired(shard_id: StringName) -> void:
+	if _shard_markers.has(shard_id):
+		_shard_markers[shard_id].queue_free()
+		_shard_markers.erase(shard_id)
+
 func _create_shard_marker(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm) -> void:
 	var marker := Node2D.new()
 	marker.position = _hex_to_pixel(hex_pos) + Vector2(0, -12)
@@ -2017,9 +2026,19 @@ func _update_fog_of_war() -> void:
 	for coord in _fog_overlay_nodes:
 		var fog: Polygon2D = _fog_overlay_nodes[coord]
 		var visible_tile := _is_tile_visible(coord)
-		fog.visible = not visible_tile
+		if visible_tile:
+			_explored_tiles[coord] = true
+			fog.visible = false
+		elif _explored_tiles.has(coord):
+			# Previously explored but not currently visible — dim fog
+			fog.visible = true
+			fog.color = Color(0.03, 0.02, 0.05, 0.45)
+		else:
+			# Never explored — full fog
+			fog.visible = true
+			fog.color = Color(0.03, 0.02, 0.05, 0.75)
 
-	# Show/hide army markers in fogged tiles
+	# Show/hide army markers — enemy armies only visible in current LOS
 	for army_id in _army_markers:
 		var army: ArmyState = GameManager.state.armies.get(army_id)
 		var marker: Node2D = _army_markers[army_id]
@@ -2030,7 +2049,8 @@ func _update_fog_of_war() -> void:
 		else:
 			marker.visible = _is_tile_visible(army.hex_pos)
 
-	# Show/hide city marker details in fogged tiles
+	# City markers: player cities always visible, enemy cities visible if explored (location only)
+	# but details (level label, towers detail) hidden if not in current LOS
 	for city_id in _city_markers:
 		var city: CityState = GameManager.state.cities.get(city_id)
 		var marker: Node2D = _city_markers[city_id]
@@ -2038,10 +2058,21 @@ func _update_fog_of_war() -> void:
 			continue
 		if city.faction_id == GameManager.state.player_faction_id:
 			marker.visible = true
+			marker.modulate = Color.WHITE
 		else:
-			marker.visible = _is_tile_visible(city.hex_pos)
+			var in_los := _is_tile_visible(city.hex_pos)
+			var explored := _explored_tiles.has(city.hex_pos)
+			if in_los:
+				marker.visible = true
+				marker.modulate = Color.WHITE
+			elif explored:
+				# Show location marker but dimmed (no detail)
+				marker.visible = true
+				marker.modulate = Color(0.5, 0.5, 0.5, 0.6)
+			else:
+				marker.visible = false
 
-	# Show/hide elderbeast markers in fogged tiles
+	# Show/hide elderbeast markers — only in current LOS
 	for beast_id in _elderbeast_markers:
 		var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id)
 		var marker: Node2D = _elderbeast_markers[beast_id]

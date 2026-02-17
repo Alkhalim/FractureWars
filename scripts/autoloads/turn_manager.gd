@@ -55,6 +55,10 @@ func _start_faction_turn() -> void:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		if army.faction_id == faction_id and not army.is_garrison:
 			army.movement_remaining = army.get_max_movement()
+			# Road bonus: +0.6 MP per road level
+			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+			if tile and tile.road_level >= 1:
+				army.movement_remaining += 0.6 * tile.road_level
 			army.has_moved = false
 
 	# Decay temp effects
@@ -121,6 +125,7 @@ func _decay_shards() -> void:
 				to_remove.append(shard_id)
 	for shard_id in to_remove:
 		GameManager.state.active_shards.erase(shard_id)
+		EventBus.shard_expired.emit(shard_id)
 
 func get_current_faction() -> StringName:
 	if current_faction_index < faction_order.size():
@@ -914,6 +919,13 @@ const RANDOM_EVENTS := [
 		"choice_b": "Demand tribute (+30 Iron)",
 		"type": "dispute",
 	},
+	{
+		"title": "Loyal Follower",
+		"text": "A skilled individual pledges service to your cause.",
+		"choice_a": "Accept follower",
+		"choice_b": "Decline",
+		"type": "follower",
+	},
 ]
 
 func _check_random_events(faction_id: StringName) -> void:
@@ -1027,6 +1039,36 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 			else:
 				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 30
 				return "Received +30 Iron (now %d)" % fs.resources.get(Enums.ResourceType.IRON, 0)
+
+		"follower":
+			if choice == "a":
+				var all_followers := DataManager.followers.keys()
+				if all_followers.is_empty():
+					return "No followers available."
+				var follower_id: StringName = all_followers[randi() % all_followers.size()]
+				var follower: FollowerData = DataManager.get_follower(follower_id)
+				if follower == null:
+					return "No followers available."
+				# Try to assign to a commander
+				var target_cmd: CommanderState = null
+				var sel_id: StringName = event.get("selected_army_id", &"")
+				if sel_id != &"" and GameManager.state.armies.has(sel_id):
+					var sel_army: ArmyState = GameManager.state.armies[sel_id]
+					if sel_army.commander and sel_army.commander.followers.size() < CommanderSystem.get_max_follower_slots(sel_army.commander):
+						target_cmd = sel_army.commander
+				if target_cmd == null:
+					var armies := GameManager.get_faction_armies(faction_id)
+					for army in armies:
+						if army.commander and army.commander.followers.size() < CommanderSystem.get_max_follower_slots(army.commander):
+							target_cmd = army.commander
+							break
+				if target_cmd:
+					target_cmd.followers.append(follower_id)
+					return "%s joined %s as a follower." % [follower.display_name, target_cmd.name]
+				else:
+					fs.follower_storage.append(follower_id)
+					return "%s added to follower pool (no commander has room)." % follower.display_name
+			return "The stranger moves on."
 
 	return "Event resolved."
 

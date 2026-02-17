@@ -97,7 +97,25 @@ func calculate_growth(city: CityState) -> int:
 			base_growth += building.population_growth_bonus
 	# Commander influence: friendly commanders within radius boost growth
 	base_growth += _get_commander_growth_bonus(city)
+	# Loyalty penalty on population growth
+	var loyalty_growth_mult := _get_loyalty_growth_multiplier(city.loyalty)
+	if loyalty_growth_mult < 1.0:
+		base_growth = int(float(base_growth) * loyalty_growth_mult)
 	return base_growth
+
+static func _get_loyalty_growth_multiplier(loyalty_value: int) -> float:
+	if loyalty_value >= 50:
+		return 1.0
+	elif loyalty_value >= 25:
+		return 0.85
+	elif loyalty_value >= 0:
+		return 0.6
+	elif loyalty_value >= -25:
+		return 0.3
+	elif loyalty_value >= -50:
+		return 0.1
+	else:
+		return 0.0  # Active revolt: no growth
 
 func _process_upgrade(city: CityState) -> void:
 	if city.upgrade_turns_remaining <= 0:

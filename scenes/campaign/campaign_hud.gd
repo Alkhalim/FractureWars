@@ -60,6 +60,7 @@ var _unit_card_panel: PanelContainer
 var _pending_level_up_commander: CommanderState
 var _pending_event_data: Dictionary
 var _loyalty_panel: PanelContainer
+var _loyalty_panel_city_id: StringName = &""
 var _class_hover_tooltip: PanelContainer
 var _diplomacy_panel: PanelContainer
 var _policies_panel: PanelContainer
@@ -343,14 +344,12 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 
 	hbox.add_child(stats_vbox)
 
-	# Detail "+" button
-	var detail_btn := Button.new()
-	detail_btn.text = "+"
-	detail_btn.custom_minimum_size = Vector2(24, 24)
-	detail_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	detail_btn.add_theme_font_size_override("font_size", 14)
-	detail_btn.pressed.connect(_show_unit_detail.bind(unit, unit_data))
-	hbox.add_child(detail_btn)
+	# Right-click to open detail panel
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+			_show_unit_detail(unit, unit_data)
+	)
 
 	return card
 
@@ -359,17 +358,13 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 		_unit_detail_panel.queue_free()
 		_unit_detail_panel = null
 
-	_unit_detail_panel = _create_centered_dialog(360, 380)
+	_unit_detail_panel = _create_centered_dialog(420, 400)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_unit_detail_panel.add_child(scroll)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 4)
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(vbox)
+	var outer_vbox := VBoxContainer.new()
+	outer_vbox.add_theme_constant_override("separation", 4)
+	outer_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_unit_detail_panel.add_child(outer_vbox)
 
 	# Header with close
 	var header := HBoxContainer.new()
@@ -388,7 +383,62 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 			_unit_detail_panel = null
 	)
 	header.add_child(close_btn)
-	vbox.add_child(header)
+	outer_vbox.add_child(header)
+
+	# Main content: portrait on left, stats on right
+	var content_hbox := HBoxContainer.new()
+	content_hbox.add_theme_constant_override("separation", 10)
+	content_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer_vbox.add_child(content_hbox)
+
+	# Portrait placeholder (80x120)
+	var portrait := PanelContainer.new()
+	portrait.custom_minimum_size = Vector2(80, 120)
+	var portrait_style := StyleBoxFlat.new()
+	var portrait_color := Color(0.3, 0.25, 0.2)
+	for tag in unit_data.tags:
+		if TAG_COLORS.has(tag):
+			portrait_color = TAG_COLORS[tag]
+			break
+	portrait_style.bg_color = portrait_color
+	portrait_style.border_width_left = 2
+	portrait_style.border_width_top = 2
+	portrait_style.border_width_right = 2
+	portrait_style.border_width_bottom = 2
+	portrait_style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	portrait_style.corner_radius_top_left = 4
+	portrait_style.corner_radius_top_right = 4
+	portrait_style.corner_radius_bottom_right = 4
+	portrait_style.corner_radius_bottom_left = 4
+	portrait.add_theme_stylebox_override("panel", portrait_style)
+	var icon_center := CenterContainer.new()
+	portrait.add_child(icon_center)
+	var icon_label := Label.new()
+	icon_label.add_theme_font_size_override("font_size", 36)
+	var primary_tag := unit_data.tags[0] if unit_data.tags.size() > 0 else "infantry"
+	match primary_tag:
+		"infantry": icon_label.text = "\u2694"
+		"cavalry": icon_label.text = "\u265E"
+		"mage": icon_label.text = "\u2726"
+		"ranged": icon_label.text = "\u279B"
+		"construct": icon_label.text = "\u2699"
+		"support": icon_label.text = "\u271A"
+		_: icon_label.text = "\u2694"
+	icon_label.add_theme_color_override("font_color", portrait_color.lightened(0.5))
+	icon_center.add_child(icon_label)
+	content_hbox.add_child(portrait)
+
+	# Right side: scrollable stats
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content_hbox.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 4)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
 
 	# Description
 	if unit_data.description != "":
@@ -451,7 +501,9 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 
 	if unit_data.recruit_cost.size() > 0:
 		var recruit_label := Label.new()
-		recruit_label.text = "  Recruit: " + _format_cost(unit_data.recruit_cost)
+		var detail_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
+		var pop_suffix := "  |  Pop: %d" % detail_pop_cost if detail_pop_cost > 0 else ""
+		recruit_label.text = "  Recruit: " + _format_cost(unit_data.recruit_cost) + pop_suffix
 		recruit_label.add_theme_font_size_override("font_size", 12)
 		recruit_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 		vbox.add_child(recruit_label)
@@ -488,6 +540,9 @@ func _on_army_deselected() -> void:
 func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 	_update_top_bar()
 	end_turn_button.disabled = not TurnManager.is_player_turn
+	# Auto-refresh loyalty panel if open
+	if _loyalty_panel_city_id != &"":
+		_show_loyalty_panel(_loyalty_panel_city_id)
 
 func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
 	# Refresh army panel if the moved army is selected
@@ -1154,12 +1209,12 @@ func _create_city_panel() -> void:
 	city_panel.name = "CityPanel"
 	city_panel.visible = false
 
-	# Position: right side of screen
+	# Position: right side of screen, pushed toward top
 	city_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	city_panel.anchor_left = 1.0
 	city_panel.anchor_right = 1.0
-	city_panel.anchor_top = 0.15
-	city_panel.anchor_bottom = 0.85
+	city_panel.anchor_top = 0.04
+	city_panel.anchor_bottom = 0.72
 	city_panel.offset_left = -380.0
 	city_panel.offset_right = -10.0
 	city_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -1345,12 +1400,10 @@ func _show_city_panel(city_id: StringName) -> void:
 		var can_afford := GameManager.city_system.can_start_upgrade(city)
 		var upgrade_cost := city.get_upgrade_cost()
 		var upgrade_time := city.get_upgrade_time()
-		var cost_parts: Array[String] = []
-		for res_type in upgrade_cost:
-			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-			cost_parts.append("%d %s" % [upgrade_cost[res_type], rname])
+		var fs_upgrade: FactionState = GameManager.state.faction_states.get(city.faction_id)
+
 		var upgrade_btn := Button.new()
-		upgrade_btn.text = "Upgrade to Level %d  (%s, %d turns)" % [city.level + 1, ", ".join(cost_parts), upgrade_time]
+		upgrade_btn.text = "Upgrade to Level %d  (%d turns)" % [city.level + 1, upgrade_time]
 		upgrade_btn.add_theme_font_size_override("font_size", 12)
 		upgrade_btn.disabled = not can_afford
 		if can_afford:
@@ -1363,6 +1416,28 @@ func _show_city_panel(city_id: StringName) -> void:
 				_update_resource_display()
 		)
 		vbox.add_child(upgrade_btn)
+
+		# Cost breakdown with red for unaffordable resources
+		var cost_hbox := HBoxContainer.new()
+		cost_hbox.add_theme_constant_override("separation", 8)
+		var cost_prefix := Label.new()
+		cost_prefix.text = "Cost: "
+		cost_prefix.add_theme_font_size_override("font_size", 11)
+		cost_prefix.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
+		cost_hbox.add_child(cost_prefix)
+		for res_type in upgrade_cost:
+			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+			var amount: int = upgrade_cost[res_type]
+			var have: int = fs_upgrade.resources.get(res_type, 0) if fs_upgrade else 0
+			var cost_label := Label.new()
+			cost_label.text = "%d %s" % [amount, rname]
+			cost_label.add_theme_font_size_override("font_size", 11)
+			if have >= amount:
+				cost_label.add_theme_color_override("font_color", Color(0.6, 0.8, 0.55))
+			else:
+				cost_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
+			cost_hbox.add_child(cost_label)
+		vbox.add_child(cost_hbox)
 
 	# Income preview (player cities only)
 	if is_player_city:
@@ -1480,6 +1555,12 @@ func _show_city_panel(city_id: StringName) -> void:
 			build_btn.pressed.connect(_on_build_pressed.bind(city_id, building_id))
 			build_btn.mouse_entered.connect(_on_building_hover.bind(building_id))
 			build_btn.mouse_exited.connect(_on_building_hover_exit)
+			var captured_bid := building_id
+			var captured_cid := city_id
+			build_btn.gui_input.connect(func(event: InputEvent):
+				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+					_show_building_detail(captured_bid, captured_cid)
+			)
 
 			var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 			if fs and not _can_afford_display(fs, building.build_cost):
@@ -1522,10 +1603,20 @@ func _show_city_panel(city_id: StringName) -> void:
 				recruit_btn.pressed.connect(_on_recruit_pressed.bind(city_id, unit_data_id))
 				recruit_btn.mouse_entered.connect(_show_unit_card.bind(unit_data_id))
 				recruit_btn.mouse_exited.connect(_hide_unit_card)
+				var captured_ud_id := unit_data_id
+				var captured_ud := unit_data
+				recruit_btn.gui_input.connect(func(event: InputEvent):
+					if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+						var dummy_unit := UnitInstance.new()
+						dummy_unit.unit_data_id = captured_ud_id
+						dummy_unit.current_hp = captured_ud.max_hp
+						_show_unit_detail(dummy_unit, captured_ud)
+				)
 
 				var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 				var can_afford := fs != null and _can_afford_display(fs, unit_data.recruit_cost)
-				var has_pop := city.population >= unit_data.squad_size
+				var unit_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
+				var has_pop := city.population >= unit_pop_cost
 				if not can_afford or not has_pop:
 					recruit_btn.disabled = true
 
@@ -1534,7 +1625,7 @@ func _show_city_panel(city_id: StringName) -> void:
 				var cost_parts: Array[String] = []
 				if unit_data.recruit_cost.size() > 0:
 					cost_parts.append(_format_cost(unit_data.recruit_cost))
-				cost_parts.append("Pop: " + str(unit_data.squad_size))
+				cost_parts.append("Pop: " + str(unit_pop_cost))
 				var cost_label := Label.new()
 				cost_label.text = ", ".join(cost_parts) + " | " + str(unit_data.recruit_time) + " turn(s)"
 				cost_label.add_theme_font_size_override("font_size", 11)
@@ -1583,6 +1674,8 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null:
 		return
+
+	_loyalty_panel_city_id = city_id
 
 	# Remove old panel if exists
 	if _loyalty_panel:
@@ -1754,11 +1847,50 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	vbox.add_child(net_label)
 
 	if loyalty_mult < 1.0:
-		var malus_label := Label.new()
-		malus_label.text = "  Income malus: %d%%" % int((1.0 - loyalty_mult) * 100)
-		malus_label.add_theme_font_size_override("font_size", 12)
-		malus_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
-		vbox.add_child(malus_label)
+		var malus_header := Label.new()
+		malus_header.text = "  Income malus (-%d%%):" % int((1.0 - loyalty_mult) * 100)
+		malus_header.add_theme_font_size_override("font_size", 12)
+		malus_header.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+		vbox.add_child(malus_header)
+		# Calculate actual resource losses
+		var region_data: RegionData = DataManager.get_region(city.region_id)
+		var base_income := {}
+		if region_data:
+			var pop_mult := minf(float(city.population) / 100.0, float(city.level))
+			if city.population < 50:
+				pop_mult *= maxf(0.1, float(city.population) / 50.0)
+			for res_type in region_data.base_income:
+				base_income[res_type] = int(region_data.base_income[res_type] * pop_mult)
+		for building_id in city.buildings:
+			var bd: BuildingData = DataManager.get_building(building_id)
+			if bd:
+				for res_type in bd.income_bonus:
+					base_income[res_type] = base_income.get(res_type, 0) + bd.income_bonus[res_type]
+		var income_pcts := LoyaltySystem.calculate_class_percentages(city, faction_id)
+		base_income = LoyaltySystem.apply_class_bonuses(base_income, income_pcts)
+		var loss_parts: Array[String] = []
+		for res_type in base_income:
+			var loss := int(float(base_income[res_type]) * (1.0 - loyalty_mult))
+			if loss > 0:
+				var res_name: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else str(res_type)
+				loss_parts.append("-%d %s" % [loss, res_name])
+		if loss_parts.size() > 0:
+			var loss_label := Label.new()
+			loss_label.text = "    " + ", ".join(loss_parts)
+			loss_label.add_theme_font_size_override("font_size", 11)
+			loss_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+			vbox.add_child(loss_label)
+
+	var growth_mult := CitySystem._get_loyalty_growth_multiplier(city.loyalty)
+	if growth_mult < 1.0:
+		var growth_malus_label := Label.new()
+		if growth_mult <= 0.0:
+			growth_malus_label.text = "  Population growth: HALTED"
+		else:
+			growth_malus_label.text = "  Population growth: -%d%%" % int((1.0 - growth_mult) * 100)
+		growth_malus_label.add_theme_font_size_override("font_size", 12)
+		growth_malus_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+		vbox.add_child(growth_malus_label)
 
 	_add_separator(vbox)
 
@@ -1799,6 +1931,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 
 func _on_loyalty_panel_close() -> void:
 	_on_class_hover_exit()
+	_loyalty_panel_city_id = &""
 	if _loyalty_panel:
 		_loyalty_panel.queue_free()
 		_loyalty_panel = null
@@ -1930,8 +2063,9 @@ func _find_upgrade_for(building_id: StringName) -> BuildingData:
 	return null
 
 func _on_building_label_clicked(event: InputEvent, building_id: StringName, city_id: StringName) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_show_building_detail(building_id, city_id)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			_show_building_detail(building_id, city_id)
 
 func _show_building_detail(building_id: StringName, city_id: StringName) -> void:
 	if _building_detail_panel:
@@ -1941,17 +2075,13 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 	if building == null:
 		return
 
-	_building_detail_panel = _create_centered_dialog(340, 300)
+	_building_detail_panel = _create_centered_dialog(400, 320)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_building_detail_panel.add_child(scroll)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 6)
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(vbox)
+	var outer_vbox := VBoxContainer.new()
+	outer_vbox.add_theme_constant_override("separation", 4)
+	outer_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_building_detail_panel.add_child(outer_vbox)
 
 	# Header with close
 	var header := HBoxContainer.new()
@@ -1970,7 +2100,65 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 			_building_detail_panel = null
 	)
 	header.add_child(close_btn)
-	vbox.add_child(header)
+	outer_vbox.add_child(header)
+
+	# Main content: portrait on left, info on right
+	var content_hbox := HBoxContainer.new()
+	content_hbox.add_theme_constant_override("separation", 10)
+	content_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer_vbox.add_child(content_hbox)
+
+	# Portrait placeholder (80x120) with category color
+	var portrait := PanelContainer.new()
+	portrait.custom_minimum_size = Vector2(80, 120)
+	var portrait_style := StyleBoxFlat.new()
+	var cat_str: String = str(building.category)
+	var cat_color := Color(0.3, 0.25, 0.2)
+	var cat_icon := "B"
+	match cat_str:
+		"military":
+			cat_color = Color(0.5, 0.22, 0.18)
+			cat_icon = "M"
+		"economic":
+			cat_color = Color(0.55, 0.48, 0.2)
+			cat_icon = "E"
+		"cultural":
+			cat_color = Color(0.4, 0.2, 0.5)
+			cat_icon = "C"
+		"defensive":
+			cat_color = Color(0.3, 0.38, 0.5)
+			cat_icon = "D"
+	portrait_style.bg_color = cat_color
+	portrait_style.border_width_left = 2
+	portrait_style.border_width_top = 2
+	portrait_style.border_width_right = 2
+	portrait_style.border_width_bottom = 2
+	portrait_style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	portrait_style.corner_radius_top_left = 4
+	portrait_style.corner_radius_top_right = 4
+	portrait_style.corner_radius_bottom_right = 4
+	portrait_style.corner_radius_bottom_left = 4
+	portrait.add_theme_stylebox_override("panel", portrait_style)
+	var icon_center := CenterContainer.new()
+	portrait.add_child(icon_center)
+	var icon_label := Label.new()
+	icon_label.text = cat_icon
+	icon_label.add_theme_font_size_override("font_size", 36)
+	icon_label.add_theme_color_override("font_color", cat_color.lightened(0.5))
+	icon_center.add_child(icon_label)
+	content_hbox.add_child(portrait)
+
+	# Right side: scrollable content
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content_hbox.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
 
 	# Description
 	var desc := Label.new()
@@ -2133,10 +2321,18 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 		vbox.add_child(range_label)
 
 	var squad_label := Label.new()
-	squad_label.text = "Squad: %d  |  MP: %.1f" % [unit_data.squad_size, unit_data.movement_points]
+	var card_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
+	squad_label.text = "Squad: %d  |  Pop Cost: %d  |  MP: %.1f" % [unit_data.squad_size, card_pop_cost, unit_data.movement_points]
 	squad_label.add_theme_font_size_override("font_size", 11)
 	squad_label.add_theme_color_override("font_color", Color(0.55, 0.72, 0.55))
 	vbox.add_child(squad_label)
+
+	if unit_data.recruit_cost.size() > 0:
+		var recruit_label := Label.new()
+		recruit_label.text = "Recruit: " + _format_cost(unit_data.recruit_cost)
+		recruit_label.add_theme_font_size_override("font_size", 10)
+		recruit_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		vbox.add_child(recruit_label)
 
 	if unit_data.upkeep_cost.size() > 0:
 		var upkeep_label := Label.new()
@@ -2574,6 +2770,56 @@ func _update_commander_panel(army: ArmyState) -> void:
 				equip_btn.pressed.connect(_show_item_swap_panel.bind(cmd, -1))
 				vbox.add_child(equip_btn)
 
+		# Followers section
+		_add_separator(vbox)
+		var max_follower_slots := CommanderSystem.get_max_follower_slots(cmd)
+		var followers_header := Label.new()
+		followers_header.text = "Followers (%d/%d)" % [cmd.followers.size(), max_follower_slots]
+		followers_header.add_theme_font_size_override("font_size", 12)
+		followers_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(followers_header)
+		if cmd.followers.size() > 0:
+			for follower_id in cmd.followers:
+				var follower: FollowerData = DataManager.get_follower(follower_id)
+				if follower == null:
+					continue
+				var f_name_label := Label.new()
+				f_name_label.text = "  " + follower.display_name
+				f_name_label.add_theme_font_size_override("font_size", 11)
+				f_name_label.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+				vbox.add_child(f_name_label)
+				for eff_key in follower.bonus_effect:
+					var bonus_label := Label.new()
+					bonus_label.text = "    +%s %s" % [str(follower.bonus_effect[eff_key]), eff_key.replace("_", " ").capitalize()]
+					bonus_label.add_theme_font_size_override("font_size", 10)
+					bonus_label.add_theme_color_override("font_color", Color(0.4, 0.75, 0.4))
+					vbox.add_child(bonus_label)
+				for eff_key in follower.malus_effect:
+					var malus_label := Label.new()
+					malus_label.text = "    %s %s" % [str(follower.malus_effect[eff_key]), eff_key.replace("_", " ").capitalize()]
+					malus_label.add_theme_font_size_override("font_size", 10)
+					malus_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+					vbox.add_child(malus_label)
+		else:
+			var no_followers := Label.new()
+			no_followers.text = "  (none)"
+			no_followers.add_theme_font_size_override("font_size", 11)
+			no_followers.add_theme_color_override("font_color", Color(0.5, 0.48, 0.42))
+			vbox.add_child(no_followers)
+		# "Assign follower from storage" button
+		if is_player_cmd and cmd.followers.size() < max_follower_slots:
+			var f_fs: FactionState = GameManager.state.faction_states.get(cmd.faction_id)
+			if f_fs and f_fs.follower_storage.size() > 0:
+				var assign_follower_btn := Button.new()
+				assign_follower_btn.text = "  + Assign Follower (%d)" % f_fs.follower_storage.size()
+				assign_follower_btn.add_theme_font_size_override("font_size", 11)
+				var captured_cmd := cmd
+				var captured_army_id := army.army_id
+				assign_follower_btn.pressed.connect(func():
+					_show_follower_assign_panel(captured_cmd, captured_army_id)
+				)
+				vbox.add_child(assign_follower_btn)
+
 	_add_separator(vbox)
 
 	# Army composition
@@ -2827,6 +3073,97 @@ func _on_item_swap_from_storage(commander: CommanderState, item_idx: int, storag
 
 	_close_item_swap_panel()
 	_refresh_commander_panel()
+
+func _show_follower_assign_panel(commander: CommanderState, army_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(commander.faction_id)
+	if fs == null or fs.follower_storage.is_empty():
+		return
+
+	_close_item_swap_panel()
+
+	_item_swap_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.05, 0.08, 0.97)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 8.0
+	style.content_margin_top = 6.0
+	style.content_margin_right = 8.0
+	style.content_margin_bottom = 6.0
+	_item_swap_panel.add_theme_stylebox_override("panel", style)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(260, 0)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_item_swap_panel.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 3)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	var header_row := HBoxContainer.new()
+	var title_lbl := Label.new()
+	title_lbl.text = "Assign Follower"
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_lbl.add_theme_font_size_override("font_size", 12)
+	title_lbl.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header_row.add_child(title_lbl)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(24, 24)
+	close_btn.pressed.connect(_close_item_swap_panel)
+	header_row.add_child(close_btn)
+	vbox.add_child(header_row)
+
+	_add_separator(vbox)
+
+	for fi in fs.follower_storage.size():
+		var fid: StringName = fs.follower_storage[fi]
+		var fdata: FollowerData = DataManager.get_follower(fid)
+		if fdata == null:
+			continue
+		var btn := Button.new()
+		btn.text = fdata.display_name
+		btn.add_theme_font_size_override("font_size", 11)
+		btn.custom_minimum_size = Vector2(240, 26)
+		var captured_fi := fi
+		var captured_cmd := commander
+		var captured_aid := army_id
+		btn.pressed.connect(func():
+			var f_fs: FactionState = GameManager.state.faction_states.get(captured_cmd.faction_id)
+			if f_fs and captured_fi < f_fs.follower_storage.size():
+				var f_id: StringName = f_fs.follower_storage[captured_fi]
+				f_fs.follower_storage.remove_at(captured_fi)
+				captured_cmd.followers.append(f_id)
+			_close_item_swap_panel()
+			_refresh_commander_panel()
+		)
+		vbox.add_child(btn)
+		# Show bonus/malus preview
+		for eff_key in fdata.bonus_effect:
+			var eff_lbl := Label.new()
+			eff_lbl.text = "  +%s %s" % [str(fdata.bonus_effect[eff_key]), eff_key.replace("_", " ").capitalize()]
+			eff_lbl.add_theme_font_size_override("font_size", 10)
+			eff_lbl.add_theme_color_override("font_color", Color(0.4, 0.75, 0.4))
+			vbox.add_child(eff_lbl)
+		for eff_key in fdata.malus_effect:
+			var eff_lbl := Label.new()
+			eff_lbl.text = "  %s %s" % [str(fdata.malus_effect[eff_key]), eff_key.replace("_", " ").capitalize()]
+			eff_lbl.add_theme_font_size_override("font_size", 10)
+			eff_lbl.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+			vbox.add_child(eff_lbl)
+
+	_item_swap_panel.position = Vector2(commander_panel.get_global_rect().end.x + 4, commander_panel.get_global_rect().position.y + 60)
+	add_child(_item_swap_panel)
 
 func _hide_commander_panel() -> void:
 	_close_item_swap_panel()

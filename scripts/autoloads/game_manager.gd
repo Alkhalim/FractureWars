@@ -109,8 +109,17 @@ func _init_armies() -> void:
 	if empire_data and empire_data.starting_regions.size() > 0:
 		var center := MapGenerator.get_region_center(empire_data.starting_regions[0])
 		var army := _create_army(&"empire", center,
-			[&"legionary", &"legionary", &"emberlight_auxilia"])
+			[&"legionary", &"legionary", &"emberlight_auxilia", &"dracarii_riders", &"marching_bastion"])
 		state.armies[army.army_id] = army
+
+		# DEBUG: Spawn a Skulloath test army 2 hexes from empire start
+		var test_neighbors := HexHelper.get_neighbors(center)
+		if test_neighbors.size() > 0:
+			var second_ring := HexHelper.get_neighbors(test_neighbors[0])
+			var test_pos := second_ring[0] if second_ring.size() > 0 else test_neighbors[0]
+			var test_army := _create_army(&"skulloath", test_pos,
+				[&"warband_raider", &"skulloath_raider", &"skulloath_raider", &"bonecaller", &"runebound_wyvern", &"dread_riders"])
+			state.armies[test_army.army_id] = test_army
 
 	# Create Skulloath starting army
 	var skulloath_data: FactionData = DataManager.get_faction(&"skulloath")

@@ -23,6 +23,7 @@ signal battle_resolved(winner_faction: StringName, hex_pos: Vector2i)
 # Shard signals
 signal shardfall_occurred(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm)
 signal shard_claimed(shard_id: StringName, faction_id: StringName)
+signal shard_expired(shard_id: StringName)
 
 # Hex map signals
 signal hex_tile_selected(coord: Vector2i)

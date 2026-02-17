@@ -168,9 +168,9 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -20.0
-offset_top = -230.0
-offset_right = 520.0
+offset_left = 40.0
+offset_top = -260.0
+offset_right = 740.0
 grow_horizontal = 2
 grow_vertical = 0
 theme_override_styles/panel = SubResource("dark_panel")
@@ -214,7 +214,7 @@ horizontal_scroll_mode = 0
 [node name="UnitGrid" type="GridContainer" parent="UILayer/HUD/SelectedArmyPanel/VBox/UnitScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
-columns = 2
+columns = 3
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
 
