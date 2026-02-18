@@ -19,8 +19,78 @@ var _jade_patrol_index: Dictionary = {} # army_id -> int
 # Random event temp effects
 var _temp_effects: Array[Dictionary] = [] # [{faction_id, effect, turns_remaining}]
 
+# Turn log for turn summary panel
+var turn_log: Array[Dictionary] = [] # [{type, text, turn, ...}]
+
+# Event cooldown for random events
+var _event_cooldown: int = 0
+
+func serialize_state() -> Dictionary:
+	return {
+		"faction_order": faction_order.duplicate(),
+		"current_faction_index": current_faction_index,
+		"is_player_turn": is_player_turn,
+		"_ai_settlement_targets": _ai_settlement_targets.duplicate(),
+		"_ai_aggression_cooldown": _ai_aggression_cooldown.duplicate(),
+		"_ai_attack_counters": _ai_attack_counters.duplicate(),
+		"_gladehost_waypoints": _gladehost_waypoints.duplicate(true),
+		"_jade_patrol_index": _jade_patrol_index.duplicate(),
+		"_temp_effects": _temp_effects.duplicate(true),
+		"_event_cooldown": _event_cooldown,
+	}
+
+func deserialize_state(data: Dictionary) -> void:
+	if data.is_empty():
+		return
+	faction_order.assign(data.get("faction_order", []))
+	current_faction_index = data.get("current_faction_index", 0)
+	is_player_turn = data.get("is_player_turn", true)
+	_ai_settlement_targets = data.get("_ai_settlement_targets", {})
+	_ai_aggression_cooldown = data.get("_ai_aggression_cooldown", {})
+	_ai_attack_counters = data.get("_ai_attack_counters", {})
+	_gladehost_waypoints = data.get("_gladehost_waypoints", {})
+	_jade_patrol_index = data.get("_jade_patrol_index", {})
+	_temp_effects = data.get("_temp_effects", [])
+	_event_cooldown = data.get("_event_cooldown", 0)
+
 func _ready() -> void:
 	EventBus.end_turn_pressed.connect(_on_end_turn_pressed)
+	EventBus.battle_resolved.connect(_on_log_battle_resolved)
+	EventBus.city_captured.connect(_on_log_city_captured)
+	EventBus.shardfall_occurred.connect(_on_log_shardfall)
+	EventBus.treaty_created.connect(_on_log_treaty_created)
+	EventBus.army_destroyed.connect(_on_log_army_destroyed)
+
+func _on_log_battle_resolved(winner_faction: StringName, hex_pos: Vector2i) -> void:
+	var fd := DataManager.get_faction(winner_faction)
+	var name := fd.display_name if fd else str(winner_faction)
+	turn_log.append({type = "battle", text = "%s won a battle at (%d, %d)" % [name, hex_pos.x, hex_pos.y]})
+
+func _on_log_city_captured(city_id: StringName, old_owner: StringName, new_owner: StringName) -> void:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	var city_name := city.city_name if city else str(city_id)
+	var fd := DataManager.get_faction(new_owner)
+	var name := fd.display_name if fd else str(new_owner)
+	turn_log.append({type = "capture", text = "%s captured %s" % [name, city_name]})
+
+func _on_log_shardfall(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm) -> void:
+	var realm_names := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
+	var r_name: String = realm_names[realm] if realm < realm_names.size() else "Unknown"
+	turn_log.append({type = "shard", text = "A %s Shard fell at (%d, %d)" % [r_name, hex_pos.x, hex_pos.y]})
+
+func _on_log_treaty_created(treaty_id: StringName, treaty_type: int, faction_a: StringName, faction_b: StringName) -> void:
+	var fa := DataManager.get_faction(faction_a)
+	var fb := DataManager.get_faction(faction_b)
+	var na := fa.display_name if fa else str(faction_a)
+	var nb := fb.display_name if fb else str(faction_b)
+	var type_names := ["Peace", "Alliance", "Trade"]
+	var t_name: String = type_names[treaty_type] if treaty_type < type_names.size() else "Treaty"
+	turn_log.append({type = "treaty", text = "%s and %s formed a %s" % [na, nb, t_name]})
+
+func _on_log_army_destroyed(army_id: StringName, faction_id: StringName) -> void:
+	var fd := DataManager.get_faction(faction_id)
+	var name := fd.display_name if fd else str(faction_id)
+	turn_log.append({type = "army", text = "A %s army was destroyed" % name})
 
 func start_game() -> void:
 	faction_order.clear()
@@ -119,7 +189,17 @@ func _end_round() -> void:
 		GameManager.state.current_year += 1
 
 	_decay_shards()
+	_check_victory_conditions()
 	GameManager.state.current_turn += 1
+
+	# Auto-save at round end (slot 0)
+	GameManager.save_game(0)
+
+	# Clear turn log for next round
+	turn_log.clear()
+
+	if GameManager.state.game_over:
+		return # Don't start next turn if game is over
 
 	current_faction_index = 0
 	_start_faction_turn()
@@ -135,6 +215,94 @@ func _decay_shards() -> void:
 	for shard_id in to_remove:
 		GameManager.state.active_shards.erase(shard_id)
 		EventBus.shard_expired.emit(shard_id)
+
+# ── Victory Conditions ───────────────────────────────────────
+
+func _check_victory_conditions() -> void:
+	if GameManager.state.game_over:
+		return
+
+	var total_regions := DataManager.regions.size()
+	var domination_threshold := int(total_regions * 0.6)
+
+	for faction_id in GameManager.state.faction_states:
+		if faction_id == &"rebels":
+			continue
+		var fs: FactionState = GameManager.state.faction_states[faction_id]
+		if fs.is_defeated:
+			continue
+		var is_player := (faction_id == GameManager.state.player_faction_id)
+
+		# Check Defeat — no cities, no armies (no elderbeasts for Shardhorde)
+		var has_cities := fs.owned_cities.size() > 0
+		var has_armies := false
+		for army_id in GameManager.state.armies:
+			var army: ArmyState = GameManager.state.armies[army_id]
+			if army.faction_id == faction_id and not army.is_garrison:
+				has_armies = true
+				break
+		var has_beasts := false
+		if faction_id == &"shardhorde":
+			for beast_id in GameManager.state.elderbeasts:
+				var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+				if beast.faction_id == faction_id:
+					has_beasts = true
+					break
+			if not has_armies and not has_beasts:
+				fs.is_defeated = true
+				if is_player:
+					_trigger_game_over(faction_id, Enums.VictoryType.DEFEAT, true)
+					return
+				continue
+		elif not has_cities and not has_armies:
+			fs.is_defeated = true
+			if is_player:
+				_trigger_game_over(faction_id, Enums.VictoryType.DEFEAT, true)
+				return
+			continue
+
+		# Check Domination — control 60%+ of regions
+		if fs.owned_regions.size() >= domination_threshold:
+			_trigger_game_over(faction_id, Enums.VictoryType.DOMINATION, is_player)
+			return
+
+		# Check Diplomatic — allied with 2+ factions while having 5+ regions
+		if fs.owned_regions.size() >= 5:
+			var alliance_count := 0
+			for other_id in GameManager.state.faction_states:
+				if other_id == faction_id or other_id == &"rebels":
+					continue
+				var other_fs: FactionState = GameManager.state.faction_states[other_id]
+				if other_fs.is_defeated:
+					continue
+				if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.ALLIED:
+					alliance_count += 1
+			if alliance_count >= 2:
+				_trigger_game_over(faction_id, Enums.VictoryType.DIPLOMATIC, is_player)
+				return
+
+		# Check Shard Ascension — 10+ total shards claimed
+		if fs.owned_shards.size() >= 10:
+			_trigger_game_over(faction_id, Enums.VictoryType.SHARD_ASCENSION, is_player)
+			return
+
+	# Check Elimination — last non-defeated faction standing
+	var alive_factions: Array[StringName] = []
+	for faction_id in GameManager.state.faction_states:
+		if faction_id == &"rebels":
+			continue
+		var fs: FactionState = GameManager.state.faction_states[faction_id]
+		if not fs.is_defeated:
+			alive_factions.append(faction_id)
+	if alive_factions.size() == 1:
+		var winner := alive_factions[0]
+		var is_player := (winner == GameManager.state.player_faction_id)
+		_trigger_game_over(winner, Enums.VictoryType.ELIMINATION, is_player)
+
+func _trigger_game_over(faction_id: StringName, victory_type: int, is_player: bool) -> void:
+	GameManager.state.game_over = true
+	GameManager.state.victory_type = StringName(str(victory_type))
+	EventBus.game_over.emit(faction_id, victory_type, is_player)
 
 func get_current_faction() -> StringName:
 	if current_faction_index < faction_order.size():
@@ -227,6 +395,15 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 	if fs == null:
 		return
 
+	# Per-faction building priorities
+	var faction_build_priorities := {
+		&"empire": [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"tavern", &"market_square", &"temple"],
+		&"skulloath": [&"barracks", &"iron_pit", &"grain_fields", &"market_square", &"lumber_camp_empire"],
+		&"gladehost": [&"barracks", &"tavern", &"grain_fields", &"lumber_camp_empire", &"temple", &"market_square"],
+		&"tainted_jade": [&"barracks", &"iron_pit", &"market_square", &"grain_fields", &"lumber_camp_empire"],
+	}
+	var priority_list: Array = faction_build_priorities.get(faction_id, [&"barracks", &"grain_fields", &"iron_pit", &"market_square"])
+
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
 		if city == null:
@@ -236,9 +413,8 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		if city.build_queue.is_empty():
 			var available := GameManager.city_system.get_available_buildings(city)
 			if available.size() > 0:
-				# Priority: first available building by priority, then upgrades
 				var built := false
-				for priority_id in [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"tavern", &"market_square"]:
+				for priority_id in priority_list:
 					if built:
 						break
 					for b in available:
@@ -247,14 +423,12 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 							built = true
 							break
 				if not built:
-					# Try upgrades for existing buildings
 					for b in available:
 						if b.upgrades_from != &"":
 							if GameManager.city_system.start_building(city_id, b.id):
 								built = true
 								break
 				if not built:
-					# Try any remaining building
 					for b in available:
 						if GameManager.city_system.start_building(city_id, b.id):
 							break
@@ -263,7 +437,7 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		if city.upgrade_turns_remaining <= 0 and GameManager.city_system.can_start_upgrade(city):
 			GameManager.city_system.start_upgrade(city_id)
 
-		# Recruit units with composition awareness
+		# Recruit units with threat-aware composition
 		if city.recruit_queue.is_empty() and city.population > 120:
 			_ai_recruit_with_composition(city, faction_id)
 
@@ -283,8 +457,22 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 					if ud.tags.has(tag):
 						tag_counts[tag] += 1
 
-	# Only recruit aggressively if needed
-	if total_units >= 12:
+	# Threat-relative recruitment: recruit if we have fewer units than any enemy at war
+	var max_enemy_units := 0
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id or other_id == &"rebels":
+			continue
+		if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
+			continue
+		var enemy_units := 0
+		for army_id in GameManager.state.armies:
+			var army: ArmyState = GameManager.state.armies[army_id]
+			if army.faction_id == other_id and not army.is_garrison:
+				enemy_units += army.units.size()
+		max_enemy_units = maxi(max_enemy_units, enemy_units)
+
+	var recruit_threshold := maxi(8, max_enemy_units + 4)
+	if total_units >= recruit_threshold:
 		return
 
 	# Determine what to recruit based on composition gaps
@@ -726,6 +914,7 @@ func _move_elderbeast(beast: ElderbeastState) -> void:
 		if (beast.level == 1 and beast.survival_turns >= 10) or \
 		   (beast.level == 2 and beast.survival_turns >= 25):
 			beast.level += 1
+			beast.apply_level_stats()
 
 	# Move 1 hex toward SHARD_WASTES or DESERT terrain, avoid water
 	var hex_map := GameManager.state.hex_map
@@ -853,18 +1042,31 @@ func _process_elderbeasts() -> void:
 		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 		if beast.faction_id != &"shardhorde":
 			continue
-		# Generate income (50% of equivalent city level)
+
+		# Generate income
 		var income := _get_elderbeast_income(beast)
 		for res_type in income:
-			if fs.resources.has(res_type):
-				fs.resources[res_type] += income[res_type]
-			else:
-				fs.resources[res_type] = income[res_type]
+			fs.resources[res_type] = fs.resources.get(res_type, 0) + income[res_type]
+
+		# Population growth
+		beast.population += 3
+
+		# Process building queue
+		if beast.build_queue.size() > 0:
+			var item: Dictionary = beast.build_queue[0]
+			item.turns_remaining -= 1
+			if item.turns_remaining <= 0:
+				var building_id: StringName = item.building_id
+				beast.build_queue.remove_at(0)
+				beast.buildings.append(building_id)
+				EventBus.building_completed.emit(beast.beast_id, building_id)
+
+		# Reset movement
+		beast.movement_remaining = beast.get_max_movement()
+		beast.has_moved = false
 
 func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:
-	var income: Dictionary = {}
-	income[Enums.ResourceType.GOLD] = 2 * beast.level
-	income[Enums.ResourceType.FOOD] = 3 * beast.level
+	var income: Dictionary = beast.get_base_income()
 	# Building bonuses
 	for building_id in beast.buildings:
 		var building: BuildingData = DataManager.get_building(building_id)
@@ -926,6 +1128,7 @@ const RANDOM_EVENTS := [
 		"choice_a": "Buy (50 Gold)",
 		"choice_b": "Decline",
 		"type": "merchant",
+		"stage": "early",
 	},
 	{
 		"title": "Ancient Ruins",
@@ -933,6 +1136,7 @@ const RANDOM_EVENTS := [
 		"choice_a": "Explore (risk 20% HP)",
 		"choice_b": "Leave them be",
 		"type": "ruins",
+		"stage": "early",
 	},
 	{
 		"title": "Deserters",
@@ -940,6 +1144,7 @@ const RANDOM_EVENTS := [
 		"choice_a": "Accept (free unit)",
 		"choice_b": "Turn them away",
 		"type": "deserters",
+		"stage": "mid",
 	},
 	{
 		"title": "Mysterious Stranger",
@@ -947,6 +1152,7 @@ const RANDOM_EVENTS := [
 		"choice_a": "Accept wisdom (+30 XP)",
 		"choice_b": "Take gold instead (+40 Gold)",
 		"type": "stranger",
+		"stage": "early",
 	},
 	{
 		"title": "Sacred Grove",
@@ -954,6 +1160,7 @@ const RANDOM_EVENTS := [
 		"choice_a": "Bless commander (heal bonus)",
 		"choice_b": "Bless city (growth bonus)",
 		"type": "grove",
+		"stage": "early",
 	},
 	{
 		"title": "Border Dispute",
@@ -961,6 +1168,7 @@ const RANDOM_EVENTS := [
 		"choice_a": "Accept friendship",
 		"choice_b": "Demand tribute (+30 Iron)",
 		"type": "dispute",
+		"stage": "mid",
 	},
 	{
 		"title": "Loyal Follower",
@@ -968,17 +1176,149 @@ const RANDOM_EVENTS := [
 		"choice_a": "Accept follower",
 		"choice_b": "Decline",
 		"type": "follower",
+		"stage": "early",
+	},
+	# New events below
+	{
+		"title": "Plague Outbreak",
+		"text": "A plague has broken out in one of your cities, threatening the population.",
+		"choice_a": "Quarantine (-20 Food, save pop)",
+		"choice_b": "Ignore (spread risk, -30 pop)",
+		"type": "plague",
+		"stage": "mid",
+	},
+	{
+		"title": "Mercenary Company",
+		"text": "A band of mercenaries offers their services. Pay them, or they'll raid your lands.",
+		"choice_a": "Hire (100 Gold, +2 units)",
+		"choice_b": "Refuse (lose 20 Gold to raids)",
+		"type": "mercenary",
+		"stage": "mid",
+	},
+	{
+		"title": "Shard Storm",
+		"text": "A violent shard storm sweeps the wastes, energizing the ley lines.",
+		"choice_a": "Send scouts (+15 Shard Essence)",
+		"choice_b": "Stay safe (no risk)",
+		"type": "shard_storm",
+		"stage": "late",
+	},
+	{
+		"title": "Trade Caravan",
+		"text": "A trade caravan passes through your territory, offering lucrative deals.",
+		"choice_a": "Trade fairly (+50 Gold, +20 Food)",
+		"choice_b": "Raid caravan (+80 Gold, -standing)",
+		"type": "trade_caravan",
+		"stage": "early",
+	},
+	{
+		"title": "Spy Report",
+		"text": "Your spies have gathered intelligence on enemy movements.",
+		"choice_a": "Use intelligence (reveal enemies)",
+		"choice_b": "Sell intelligence (+60 Gold)",
+		"type": "spy_report",
+		"stage": "mid",
+	},
+	{
+		"title": "Natural Disaster",
+		"text": "An earthquake has damaged buildings in one of your cities.",
+		"choice_a": "Rebuild (-60 Gold, -20 Wood)",
+		"choice_b": "Relocate population (-30 pop)",
+		"type": "disaster",
+		"stage": "mid",
+	},
+	{
+		"title": "Religious Revival",
+		"text": "A wave of spiritual fervor sweeps through your realm.",
+		"choice_a": "Embrace it (+20 Tech, divine)",
+		"choice_b": "Channel it (+10 Loyalty)",
+		"type": "revival",
+		"stage": "mid",
+	},
+	{
+		"title": "Tax Revolt",
+		"text": "The peasants are refusing to pay taxes, threatening unrest.",
+		"choice_a": "Concessions (+15 Loyalty, -40 Gold)",
+		"choice_b": "Crackdown (-10 Loyalty, +5 Captives)",
+		"type": "tax_revolt",
+		"stage": "mid",
+	},
+	{
+		"title": "Legendary Commander",
+		"text": "A renowned military leader seeks to join your cause.",
+		"choice_a": "Accept commander (+XP bonus)",
+		"choice_b": "Sell services (+80 Gold)",
+		"type": "legendary_commander",
+		"stage": "late",
+	},
+	{
+		"title": "Ancient Artifact",
+		"text": "An artifact of great power has been unearthed. Its origins are... questionable.",
+		"choice_a": "Keep it (risk: -5 all loyalty)",
+		"choice_b": "Destroy for knowledge (+40 Tech)",
+		"type": "artifact",
+		"stage": "late",
+	},
+	{
+		"title": "Beast Migration",
+		"text": "Wild beasts are migrating toward one of your cities.",
+		"choice_a": "Defend (+20 XP to army)",
+		"choice_b": "Pay tribute (-30 Food)",
+		"type": "beast_migration",
+		"stage": "mid",
+	},
+	{
+		"title": "Harvest Festival",
+		"text": "A bountiful harvest brings joy and celebration to your people.",
+		"choice_a": "Celebrate (+30 Food, +10 Loyalty)",
+		"choice_b": "Celebrate",
+		"type": "harvest",
+		"stage": "early",
+	},
+	{
+		"title": "Diplomatic Marriage",
+		"text": "A noble family from a neighboring faction proposes a political marriage.",
+		"choice_a": "Accept (+15 standing)",
+		"choice_b": "Decline (+5 noble loyalty)",
+		"type": "diplomatic_marriage",
+		"stage": "mid",
 	},
 ]
 
 func _check_random_events(faction_id: StringName) -> void:
 	if GameManager.state.current_turn <= 1:
 		return
-	if randf() > 0.05:
-		return # 5% chance
-	var event: Dictionary = RANDOM_EVENTS[randi() % RANDOM_EVENTS.size()].duplicate()
+	# Cooldown: no events within 3 turns of each other
+	if _event_cooldown > 0:
+		_event_cooldown -= 1
+		return
+	if randf() > 0.12:
+		return # 12% chance per turn
+
+	# Weight events by game stage
+	var turn := GameManager.state.current_turn
+	var stage_preference: String
+	if turn <= 10:
+		stage_preference = "early"
+	elif turn <= 30:
+		stage_preference = "mid"
+	else:
+		stage_preference = "late"
+
+	# Build weighted pool
+	var weighted_pool: Array[Dictionary] = []
+	for ev in RANDOM_EVENTS:
+		var ev_stage: String = ev.get("stage", "early")
+		if ev_stage == stage_preference:
+			weighted_pool.append(ev)
+			weighted_pool.append(ev) # Double weight for matching stage
+		else:
+			weighted_pool.append(ev)
+
+	var event: Dictionary = weighted_pool[randi() % weighted_pool.size()].duplicate()
 	event["faction_id"] = faction_id
 	event["selected_army_id"] = GameManager.state.selected_army_id
+	_event_cooldown = 3
 	EventBus.random_event_triggered.emit(event)
 
 func apply_random_event_choice(event: Dictionary, choice: String) -> String:
@@ -1092,7 +1432,6 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 				var follower: FollowerData = DataManager.get_follower(follower_id)
 				if follower == null:
 					return "No followers available."
-				# Try to assign to a commander
 				var target_cmd: CommanderState = null
 				var sel_id: StringName = event.get("selected_army_id", &"")
 				if sel_id != &"" and GameManager.state.armies.has(sel_id):
@@ -1113,6 +1452,152 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 					return "%s added to follower pool (no commander has room)." % follower.display_name
 			return "The stranger moves on."
 
+		"plague":
+			if choice == "a":
+				fs.resources[Enums.ResourceType.FOOD] = maxi(0, fs.resources.get(Enums.ResourceType.FOOD, 0) - 20)
+				return "Quarantine established. Food reserves depleted but population saved."
+			else:
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						city.population = maxi(20, city.population - 30)
+						break
+				return "The plague spreads. A city lost 30 population."
+
+		"mercenary":
+			if choice == "a":
+				if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 100:
+					fs.resources[Enums.ResourceType.GOLD] -= 100
+					var armies := GameManager.get_faction_armies(faction_id)
+					if armies.size() > 0:
+						_spawn_unit_at_hex(&"legionary", faction_id, armies[0].hex_pos)
+						_spawn_unit_at_hex(&"legionary", faction_id, armies[0].hex_pos)
+					return "Hired mercenaries for 100 Gold. +2 units."
+				return "Not enough gold (need 100)!"
+			else:
+				fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 20)
+				return "Mercenaries raided your lands. Lost 20 Gold."
+
+		"shard_storm":
+			if choice == "a":
+				fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 15
+				return "Scouts braved the storm. +15 Shard Essence."
+			return "You waited out the storm safely."
+
+		"trade_caravan":
+			if choice == "a":
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 50
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 20
+				return "Fair trade. +50 Gold, +20 Food."
+			else:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 80
+				return "Raided the caravan. +80 Gold, but your reputation suffers."
+
+		"spy_report":
+			if choice == "a":
+				return "Intelligence gathered. Enemy positions revealed for 3 turns."
+			else:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 60
+				return "Sold intelligence. +60 Gold."
+
+		"disaster":
+			if choice == "a":
+				fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 60)
+				fs.resources[Enums.ResourceType.WOOD] = maxi(0, fs.resources.get(Enums.ResourceType.WOOD, 0) - 20)
+				return "City rebuilt. -60 Gold, -20 Wood."
+			else:
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						city.population = maxi(20, city.population - 30)
+						break
+				return "Population relocated. -30 population."
+
+		"revival":
+			if choice == "a":
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 20
+				return "Religious revival inspires scholars. +20 Technology."
+			else:
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 3, -100, 100)
+				return "Faith bolsters the people. +3 all class loyalty."
+
+		"tax_revolt":
+			if choice == "a":
+				fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 40)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					capital.class_loyalty["peasants"] = clampi(capital.class_loyalty.get("peasants", 0) + 15, -100, 100)
+				return "Concessions made. -40 Gold, +15 Peasant loyalty."
+			else:
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					capital.class_loyalty["peasants"] = clampi(capital.class_loyalty.get("peasants", 0) - 10, -100, 100)
+				fs.resources[Enums.ResourceType.CAPTIVES] = fs.resources.get(Enums.ResourceType.CAPTIVES, 0) + 5
+				return "Crackdown enforced. -10 Peasant loyalty, +5 Captives."
+
+		"legendary_commander":
+			if choice == "a":
+				var armies := GameManager.get_faction_armies(faction_id)
+				for army in armies:
+					if army.commander:
+						army.commander.xp += 50
+						CommanderSystem._check_level_up(army.commander)
+						return "%s gained +50 XP." % army.commander.name
+				return "No commander to receive the training."
+			else:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 80
+				return "Sold their services. +80 Gold."
+
+		"artifact":
+			if choice == "a":
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] - 5, -100, 100)
+				return "The artifact pulses with dark power. -5 all class loyalty."
+			else:
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 40
+				return "Artifact destroyed for knowledge. +40 Technology."
+
+		"beast_migration":
+			if choice == "a":
+				var armies := GameManager.get_faction_armies(faction_id)
+				for army in armies:
+					if army.commander:
+						army.commander.xp += 20
+						return "Beasts driven off. %s gained +20 XP." % army.commander.name
+				return "Beasts driven off."
+			else:
+				fs.resources[Enums.ResourceType.FOOD] = maxi(0, fs.resources.get(Enums.ResourceType.FOOD, 0) - 30)
+				return "Tribute paid. -30 Food."
+
+		"harvest":
+			# Positive event, both choices are good
+			fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 30
+			var capital := GameManager.policy_system._get_faction_capital(faction_id)
+			if capital:
+				capital.class_loyalty["peasants"] = clampi(capital.class_loyalty.get("peasants", 0) + 10, -100, 100)
+			return "The harvest festival brings joy. +30 Food, +10 Peasant loyalty."
+
+		"diplomatic_marriage":
+			if choice == "a":
+				# Improve standing with a random non-war faction
+				for other_id in GameManager.state.faction_states:
+					if other_id == faction_id or other_id == &"rebels":
+						continue
+					if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
+						GameManager.diplomacy_system.modify_standing(faction_id, other_id, 15)
+						return "Marriage alliance formed. +15 standing with a neighbor."
+				return "No suitable faction for marriage."
+			else:
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					capital.class_loyalty["nobles"] = clampi(capital.class_loyalty.get("nobles", 0) + 5, -100, 100)
+				return "Marriage declined respectfully. +5 Noble loyalty."
+
 	return "Event resolved."
 
 func _decay_temp_effects(faction_id: StringName) -> void:
@@ -1126,7 +1611,15 @@ func _decay_temp_effects(faction_id: StringName) -> void:
 
 # ── Shared AI Helpers ────────────────────────────────────────
 
-func _find_nearest_enemy_army_hex(from: Vector2i, faction_id: StringName) -> Vector2i:
+func _get_army_strength(army: ArmyState) -> int:
+	var strength := 0
+	for unit in army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud:
+			strength += ud.attack + ud.defense
+	return strength
+
+func _find_nearest_enemy_army_hex(from: Vector2i, faction_id: StringName, min_strength: int = 0) -> Vector2i:
 	var best_hex := Vector2i(-1, -1)
 	var best_dist := 9999
 	for army_id in GameManager.state.armies:
@@ -1134,6 +1627,9 @@ func _find_nearest_enemy_army_hex(from: Vector2i, faction_id: StringName) -> Vec
 		if army.faction_id == faction_id:
 			continue
 		if GameManager.get_relation(faction_id, army.faction_id) != Enums.FactionRelation.WAR:
+			continue
+		# Skip targets that are too strong if we have a minimum strength filter
+		if min_strength > 0 and _get_army_strength(army) > min_strength * 2:
 			continue
 		var dist := HexHelper.hex_distance(from, army.hex_pos)
 		if dist < best_dist:

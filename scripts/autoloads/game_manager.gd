@@ -38,8 +38,37 @@ const COMMANDER_NAMES := {
 }
 var _commander_name_counters: Dictionary = {} # faction_id -> int
 
-func new_game() -> void:
+# ── Save / Load ─────────────────────────────────────────────
+
+func save_game(slot: int) -> void:
+	state.serialize_hex_map()
+	state.turn_manager_state = TurnManager.serialize_state()
+	DirAccess.make_dir_recursive_absolute("user://saves")
+	ResourceSaver.save(state, "user://saves/save_%d.tres" % slot)
+	state.hex_map_data = {} # Clear after save to save memory
+	state.turn_manager_state = {}
+
+func load_game(slot: int) -> void:
+	var path := "user://saves/save_%d.tres" % slot
+	if not ResourceLoader.exists(path):
+		return
+	state = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GameState
+	if state == null:
+		return
+	state.deserialize_hex_map()
+	TurnManager.deserialize_state(state.turn_manager_state)
+	state.turn_manager_state = {}
+	movement_system = MovementSystem.new(state.hex_map)
+	current_phase = Enums.GamePhase.CAMPAIGN
+	_commander_name_counters.clear()
+	get_tree().change_scene_to_file("res://scenes/campaign/campaign.tscn")
+
+static func has_save(slot: int) -> bool:
+	return ResourceLoader.exists("user://saves/save_%d.tres" % slot)
+
+func new_game(faction_id: StringName = &"empire") -> void:
 	state = GameState.new()
+	state.player_faction_id = faction_id
 
 	# Generate hex map
 	state.hex_map = MapGenerator.generate_hex_map(DataManager.regions)
@@ -194,7 +223,17 @@ func _generate_commander_name(faction_id: StringName) -> String:
 	return name
 
 func _init_cities() -> void:
+	# Faction-specific starting buildings
+	var faction_starting_buildings := {
+		&"empire": &"cohort_barracks",
+		&"skulloath": &"barracks",
+		&"gladehost": &"barracks",
+		&"tainted_jade": &"barracks",
+	}
+
 	for faction_id in DataManager.factions:
+		if faction_id == &"shardhorde":
+			continue # Shardhorde uses elderbeasts, not cities
 		var faction_data: FactionData = DataManager.factions[faction_id]
 		var fs: FactionState = state.faction_states[faction_id]
 		var is_first_city := true
@@ -209,8 +248,9 @@ func _init_cities() -> void:
 			city.population = 100
 			city.is_capital = is_first_city
 			# Faction-specific starting building
-			if faction_id == &"empire":
-				city.buildings.append(&"cohort_barracks")
+			var starting_building: StringName = faction_starting_buildings.get(faction_id, &"")
+			if starting_building != &"":
+				city.buildings.append(starting_building)
 			city.original_faction_id = faction_id
 			city.loyalty = 50
 			city.class_loyalty = {
@@ -386,6 +426,21 @@ func _init_diplomacy() -> void:
 		var standing_key_ba := str(b) + ":" + str(a)
 		state.diplomacy_state.standing[standing_key_ab] = initial_standing
 		state.diplomacy_state.standing[standing_key_ba] = initial_standing
+
+func get_elderbeast_at_tile(coord: Vector2i) -> ElderbeastState:
+	for beast_id in state.elderbeasts:
+		var beast: ElderbeastState = state.elderbeasts[beast_id]
+		if beast.hex_pos == coord:
+			return beast
+	return null
+
+func get_faction_elderbeasts(faction_id: StringName) -> Array[ElderbeastState]:
+	var result: Array[ElderbeastState] = []
+	for beast_id in state.elderbeasts:
+		var beast: ElderbeastState = state.elderbeasts[beast_id]
+		if beast.faction_id == faction_id:
+			result.append(beast)
+	return result
 
 func get_army_at_tile(coord: Vector2i) -> ArmyState:
 	for army_id in state.armies:

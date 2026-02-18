@@ -67,6 +67,8 @@ func _ready() -> void:
 	is_player_attacker = attacker_faction_id == GameManager.state.player_faction_id
 	player_side = 0
 
+	AudioManager.play_music(&"music_battle")
+
 	# Create simulator
 	simulator = BattleSimulatorV3.new()
 
@@ -87,6 +89,9 @@ func _ready() -> void:
 	else:
 		simulator.setup_attacker_formations(defender_army, def_cmd_bonuses)
 		simulator.setup_defender_formations(attacker_army, atk_cmd_bonuses)
+
+	# Add elderbeast to battle if present at battle hex
+	_add_elderbeasts_to_battle()
 
 	# AI assigns orders for enemy side
 	simulator.assign_ai_orders(1)
@@ -446,6 +451,7 @@ func _on_formation_selected(f: BattleSimulatorV3.BattleFormationV3) -> void:
 func _on_order_button_pressed(order: Enums.BattleOrder) -> void:
 	if selected_formation and selected_formation.side == player_side:
 		selected_formation.current_order = order
+		_update_unit_info(selected_formation)
 		_populate_unit_list()
 		renderer.queue_redraw()
 
@@ -454,6 +460,8 @@ func _on_retreat_all() -> void:
 	for f in player_formations:
 		if not f.is_dead and not f.is_fled:
 			f.current_order = Enums.BattleOrder.RETREAT
+	if selected_formation:
+		_update_unit_info(selected_formation)
 	_populate_unit_list()
 	renderer.queue_redraw()
 
@@ -924,6 +932,9 @@ func _apply_battle_results() -> void:
 					fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
 					_battle_loot[Enums.ResourceType.IRON] = loot_iron
 
+	# Update elderbeast HP from battle damage
+	_apply_elderbeast_battle_results()
+
 	# Commander XP and item drops (use cached refs since remove_army nulls them)
 	if atk_commander:
 		CommanderSystem.grant_battle_xp(atk_commander, def_strength, attacker_alive)
@@ -945,6 +956,39 @@ func _update_army_survivors(army: ArmyState, survivors: Array[BattleSimulatorV3.
 			unit.current_hp = surviving_ids[unit.instance_id]
 			updated_units.append(unit)
 	army.units = updated_units
+
+func _apply_elderbeast_battle_results() -> void:
+	# Find all formations that match elderbeast IDs and update HP
+	var all_formations: Array = []
+	all_formations.append_array(simulator.attacker_formations)
+	all_formations.append_array(simulator.defender_formations)
+	for f in all_formations:
+		if f.unit_data_id != &"elder_ceratops":
+			continue
+		var beast: ElderbeastState = GameManager.state.elderbeasts.get(f.instance_id)
+		if beast == null:
+			continue
+		if f.is_dead:
+			beast.hp = 0
+			GameManager.state.elderbeasts.erase(beast.beast_id)
+			EventBus.elderbeast_destroyed.emit(beast.beast_id, beast.faction_id)
+		else:
+			beast.hp = f.current_hp
+
+func _add_elderbeasts_to_battle() -> void:
+	# Check for elderbeasts at the battle hex or adjacent hexes
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		var dist := HexHelper.hex_distance(beast.hex_pos, battle_hex_pos)
+		if dist > 1:
+			continue # Only at battle hex or adjacent
+		# Determine which side this beast fights on
+		if beast.faction_id == attacker_faction_id:
+			var side := 0 if is_player_attacker else 1
+			simulator.add_elderbeast_to_side(beast, side)
+		elif beast.faction_id == defender_faction_id:
+			var side := 1 if is_player_attacker else 0
+			simulator.add_elderbeast_to_side(beast, side)
 
 func _return_to_campaign() -> void:
 	GameManager.current_phase = Enums.GamePhase.CAMPAIGN

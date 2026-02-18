@@ -396,9 +396,9 @@ func _execute_order_movement(f: BattleFormation) -> Array[Dictionary]:
 
 func _execute_rout_movement(f: BattleFormation) -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
-	# Route toward retreat edge at 1.5x speed
+	# Route toward retreat edge at 2x speed
 	var retreat_dir := Vector2i(0, 1) if f.side == 0 else Vector2i(0, -1)
-	var move_tiles := maxi(1, ceili(f.speed / 2.0))
+	var move_tiles := maxi(2, ceili(f.speed * 0.75))
 	_move_formation(f, retreat_dir, move_tiles)
 	actions.append({"type": "rout", "id": f.instance_id, "to": f.anchor_pos})
 
@@ -610,15 +610,18 @@ func _execute_ranged_attack(f: BattleFormation) -> Array[Dictionary]:
 func _update_morale(f: BattleFormation) -> void:
 	var delta := 0.0
 
-	# Passive recovery
-	delta += 1.0
-	if not _is_in_melee_contact(f):
+	# Routing units get no passive recovery — they keep fleeing until off the map
+	# (only friendly auras can save them)
+	if not f.is_routing:
+		# Passive recovery
 		delta += 1.0
+		if not _is_in_melee_contact(f):
+			delta += 1.0
 
-	# Friendly flank support
-	delta += _count_friendly_flank_support(f) * 1.5
+		# Friendly flank support
+		delta += _count_friendly_flank_support(f) * 1.5
 
-	# Friendly morale auras
+	# Friendly morale auras (can still affect routing units — inspiring leaders)
 	for ally in _get_side_formations(f.side):
 		if ally == f or ally.is_dead:
 			continue
@@ -649,10 +652,10 @@ func _update_morale(f: BattleFormation) -> void:
 	if f.current_morale <= 0.0 and not f.is_routing and f.rally_cooldown <= 0:
 		f.is_routing = true
 
-	# Rally check
-	if f.is_routing and f.current_morale > float(f.base_morale) * 0.2:
+	# Rally check (harder to rally — need more morale since recovery is limited)
+	if f.is_routing and f.current_morale > float(f.base_morale) * 0.3:
 		f.is_routing = false
-		f.rally_cooldown = 5
+		f.rally_cooldown = 8
 
 	if f.rally_cooldown > 0:
 		f.rally_cooldown -= 1

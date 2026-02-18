@@ -279,15 +279,53 @@ func execute_ai_diplomacy(faction_id: StringName) -> void:
 	# Only run every 5 turns
 	if GameManager.state.current_turn % 5 != 0:
 		return
+
+	# Find who we're at war with
+	var my_enemies: Array[StringName] = []
 	for other_id in GameManager.state.faction_states:
 		if other_id == faction_id or other_id == &"rebels":
 			continue
+		if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.WAR:
+			my_enemies.append(other_id)
+
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id or other_id == &"rebels":
+			continue
+		var other_fs: FactionState = GameManager.state.faction_states[other_id]
+		if other_fs.is_defeated:
+			continue
 		var relation := GameManager.get_relation(faction_id, other_id)
+
 		# Exhausted factions propose peace
 		if relation == Enums.FactionRelation.WAR:
 			var exhaustion := _calculate_war_exhaustion(faction_id)
 			if exhaustion >= 0.5:
 				propose_peace(faction_id, other_id)
+
+		# Alliance proposals when sharing an enemy
+		elif relation == Enums.FactionRelation.FRIENDLY or relation == Enums.FactionRelation.NEUTRAL:
+			var shared_enemies := 0
+			for enemy_id in my_enemies:
+				if GameManager.get_relation(other_id, enemy_id) == Enums.FactionRelation.WAR:
+					shared_enemies += 1
+			if shared_enemies > 0 and relation == Enums.FactionRelation.FRIENDLY:
+				var standing := get_standing(faction_id, other_id)
+				if standing >= 20:
+					propose_alliance(faction_id, other_id)
+			# Trade proposals when at peace with positive standing
+			elif relation != Enums.FactionRelation.WAR:
+				var standing := get_standing(faction_id, other_id)
+				if standing >= 10:
+					var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+					if fs:
+						# Offer our surplus for what we need most
+						var my_gold: int = fs.resources.get(Enums.ResourceType.GOLD, 0)
+						var my_iron: int = fs.resources.get(Enums.ResourceType.IRON, 0)
+						if my_gold > 200 and my_iron < 50:
+							propose_trade(faction_id, other_id, Enums.ResourceType.GOLD, 20, Enums.ResourceType.IRON, 10, 5)
+						elif my_iron > 100 and my_gold < 100:
+							propose_trade(faction_id, other_id, Enums.ResourceType.IRON, 10, Enums.ResourceType.GOLD, 20, 5)
+
 		# Friendly factions consider alliances
 		elif relation == Enums.FactionRelation.FRIENDLY:
 			var standing := get_standing(faction_id, other_id)

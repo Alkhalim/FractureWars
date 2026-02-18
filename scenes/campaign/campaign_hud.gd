@@ -78,6 +78,10 @@ var _pending_forsaken_offer: Dictionary = {}
 var _research_panel: PanelContainer
 var _unit_detail_panel: PanelContainer
 var _item_swap_panel: PanelContainer
+var _turn_summary_panel: PanelContainer
+var _diplo_overview_panel: PanelContainer
+var _tutorial_overlay: PanelContainer
+var _advisor_toast: Label
 
 func _ready() -> void:
 	end_turn_button.pressed.connect(_on_end_turn)
@@ -96,6 +100,7 @@ func _ready() -> void:
 	EventBus.forsaken_offer.connect(_on_forsaken_offer_received)
 	EventBus.senate_dilemma.connect(_on_senate_dilemma_received)
 	EventBus.research_completed.connect(_on_research_completed)
+	EventBus.game_over.connect(_on_game_over)
 
 	_create_resource_bar()
 	_create_shard_display()
@@ -103,6 +108,29 @@ func _ready() -> void:
 	_create_city_panel()
 	_create_commander_panel()
 	_update_top_bar()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_F5:
+			GameManager.save_game(1)
+			_show_save_toast("Game saved to Slot 1")
+		elif event.keycode == KEY_F9:
+			if GameManager.has_save(1):
+				GameManager.load_game(1)
+
+func _show_save_toast(text: String) -> void:
+	var toast := Label.new()
+	toast.text = text
+	toast.add_theme_font_size_override("font_size", 14)
+	toast.add_theme_color_override("font_color", Color(0.9, 0.85, 0.5))
+	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast.anchors_preset = Control.PRESET_CENTER_BOTTOM
+	toast.position = Vector2(get_viewport_rect().size.x / 2.0 - 80, get_viewport_rect().size.y - 60)
+	add_child(toast)
+	var tween := create_tween()
+	tween.tween_interval(1.5)
+	tween.tween_property(toast, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(toast.queue_free)
 
 func _on_end_turn() -> void:
 	if TurnManager.is_player_turn:
@@ -187,6 +215,7 @@ func _on_army_selected(army_id: StringName) -> void:
 		_hide_commander_panel()
 		return
 
+	_check_tutorial("army_selected")
 	army_panel.visible = true
 	_update_commander_panel(army)
 
@@ -200,6 +229,22 @@ func _on_army_selected(army_id: StringName) -> void:
 	var max_mp := army.get_max_movement()
 	movement.text = "Movement: %.1f / %.1f" % [army.movement_remaining, max_mp]
 	units_label.text = "Units (%d):" % army.units.size()
+
+	# Add/update Split Army button
+	var split_btn := army_panel.get_node_or_null("VBox/SplitArmyButton")
+	if split_btn:
+		split_btn.queue_free()
+	if army.faction_id == GameManager.state.player_faction_id and army.units.size() >= 2:
+		var btn := Button.new()
+		btn.name = "SplitArmyButton"
+		btn.text = "Split Army"
+		btn.custom_minimum_size = Vector2(0, 28)
+		btn.add_theme_font_size_override("font_size", 11)
+		var captured_id := army_id
+		btn.pressed.connect(func(): _show_army_split_dialog(captured_id))
+		var vbox: VBoxContainer = army_panel.get_node("VBox")
+		vbox.add_child(btn)
+		vbox.move_child(btn, units_label.get_index() + 1)
 
 	# Clear old unit cards
 	for child in unit_list.get_children():
@@ -578,8 +623,15 @@ func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 	# Auto-refresh research panel if open
 	if _research_panel and _research_panel.visible:
 		_refresh_research_panel()
-	# Check for Forsaken offer on player turn
+	# Show turn summary when player turn starts (if there are log entries)
 	if TurnManager.is_player_turn and _faction_id == GameManager.state.player_faction_id:
+		if TurnManager.turn_log.size() > 0:
+			_show_turn_summary()
+		# Tutorial hint on first turn
+		_check_tutorial("turn_start")
+		# Advisor messages
+		_check_advisor_messages()
+		# Check for Forsaken offer on player turn
 		var offer := GameManager.policy_system.check_forsaken_offer(_faction_id, GameManager.state.current_turn)
 		if not offer.is_empty():
 			EventBus.forsaken_offer.emit(_faction_id, offer)
@@ -590,6 +642,7 @@ func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 				call_deferred("_emit_senate_dilemma", _faction_id, dilemma)
 
 func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
+	_check_tutorial("army_moved")
 	# Refresh army panel if the moved army is selected
 	var campaign: Node2D = get_parent().get_parent()
 	if campaign and "selected_army_id" in campaign:
@@ -983,6 +1036,15 @@ func _create_economy_panel() -> void:
 	hbox.add_child(economy_btn)
 	hbox.move_child(economy_btn, end_btn_idx + 3)
 
+	# Overview button (Diplomatic grid)
+	var overview_btn := Button.new()
+	overview_btn.name = "OverviewButton"
+	overview_btn.text = "Overview"
+	overview_btn.custom_minimum_size = Vector2(90, 0)
+	overview_btn.pressed.connect(_show_diplomatic_overview)
+	hbox.add_child(overview_btn)
+	hbox.move_child(overview_btn, end_btn_idx + 4)
+
 	# Create the economy panel itself
 	economy_panel = PanelContainer.new()
 	economy_panel.name = "EconomyPanel"
@@ -1258,6 +1320,7 @@ func _toggle_diplomacy_panel() -> void:
 	if _diplomacy_panel.visible:
 		_diplomacy_panel.visible = false
 	else:
+		_check_tutorial("diplomacy_viewed")
 		_refresh_diplomacy_panel()
 		_diplomacy_panel.visible = true
 
@@ -1479,6 +1542,7 @@ func _toggle_research_panel() -> void:
 	if _research_panel.visible:
 		_research_panel.visible = false
 	else:
+		_check_tutorial("research_viewed")
 		_refresh_research_panel()
 		_research_panel.visible = true
 
@@ -2572,6 +2636,7 @@ func _create_city_panel() -> void:
 	add_child(_building_tooltip)
 
 func _show_city_panel(city_id: StringName) -> void:
+	_check_tutorial("city_viewed")
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null:
 		return
@@ -5027,3 +5092,885 @@ func _create_centered_dialog(width: int, height: int) -> PanelContainer:
 	dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	dialog.grow_vertical = Control.GROW_DIRECTION_BOTH
 	return dialog
+
+# ── Victory / Defeat ────────────────────────────────────────
+
+func _on_game_over(faction_id: StringName, victory_type: int, is_player: bool) -> void:
+	var dialog := _create_centered_dialog(500, 350)
+	add_child(dialog)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 16)
+	dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.add_theme_font_size_override("font_size", 24)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var desc := Label.new()
+	desc.add_theme_font_size_override("font_size", 14)
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc)
+
+	var faction_data := DataManager.get_faction(faction_id)
+	var faction_name := faction_data.display_name if faction_data else str(faction_id)
+
+	var victory_names := {
+		Enums.VictoryType.DOMINATION: "Domination Victory",
+		Enums.VictoryType.DIPLOMATIC: "Diplomatic Victory",
+		Enums.VictoryType.SHARD_ASCENSION: "Shard Ascension Victory",
+		Enums.VictoryType.ELIMINATION: "Elimination Victory",
+		Enums.VictoryType.DEFEAT: "Defeat",
+	}
+	var victory_descs := {
+		Enums.VictoryType.DOMINATION: "%s has conquered over 60%% of the known world through military might.",
+		Enums.VictoryType.DIPLOMATIC: "%s has forged a grand alliance, uniting the fractured lands through diplomacy.",
+		Enums.VictoryType.SHARD_ASCENSION: "%s has collected enough shards to ascend beyond mortal power.",
+		Enums.VictoryType.ELIMINATION: "%s is the last faction standing. All others have been destroyed.",
+		Enums.VictoryType.DEFEAT: "Your faction has been eliminated. The fractured lands continue without you.",
+	}
+
+	if is_player and victory_type != Enums.VictoryType.DEFEAT:
+		title.text = "VICTORY!"
+		title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+	elif is_player:
+		title.text = "DEFEAT"
+		title.add_theme_color_override("font_color", Color(0.85, 0.3, 0.3))
+	else:
+		title.text = faction_name + " Wins!"
+		title.add_theme_color_override("font_color", Color(0.7, 0.6, 0.4))
+
+	var vtype_name: String = victory_names.get(victory_type, "Unknown")
+	var vtype_desc: String = victory_descs.get(victory_type, "%s achieved victory.") % faction_name
+
+	var type_label := Label.new()
+	type_label.text = vtype_name
+	type_label.add_theme_font_size_override("font_size", 16)
+	type_label.add_theme_color_override("font_color", Color(0.85, 0.75, 0.5))
+	type_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(type_label)
+
+	desc.text = vtype_desc
+
+	# Stats
+	var stats_label := Label.new()
+	stats_label.add_theme_font_size_override("font_size", 12)
+	stats_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55))
+	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var turns := GameManager.state.current_turn
+	stats_label.text = "Turns Played: %d" % turns
+	vbox.add_child(stats_label)
+
+	# Buttons
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 20)
+	vbox.add_child(btn_row)
+
+	var menu_btn := Button.new()
+	menu_btn.text = "Return to Menu"
+	menu_btn.custom_minimum_size = Vector2(160, 36)
+	menu_btn.pressed.connect(func():
+		dialog.queue_free()
+		GameManager.current_phase = Enums.GamePhase.MAIN_MENU
+		get_tree().change_scene_to_file("res://scenes/main/main_menu.tscn")
+	)
+	btn_row.add_child(menu_btn)
+
+	var continue_btn := Button.new()
+	continue_btn.text = "Continue Playing"
+	continue_btn.custom_minimum_size = Vector2(160, 36)
+	continue_btn.pressed.connect(func():
+		GameManager.state.game_over = false
+		dialog.queue_free()
+	)
+	btn_row.add_child(continue_btn)
+
+# ── Elderbeast Panel ────────────────────────────────────────
+
+var _elderbeast_panel: PanelContainer
+
+func _show_elderbeast_panel(beast: ElderbeastState) -> void:
+	if _elderbeast_panel:
+		_elderbeast_panel.queue_free()
+
+	_elderbeast_panel = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.08, 0.14, 0.95)
+	style.border_color = Color(0.6, 0.3, 0.7, 0.8)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(12)
+	_elderbeast_panel.add_theme_stylebox_override("panel", style)
+	_elderbeast_panel.anchor_left = 1.0
+	_elderbeast_panel.anchor_right = 1.0
+	_elderbeast_panel.anchor_top = 0.15
+	_elderbeast_panel.offset_left = -320
+	_elderbeast_panel.offset_right = -8
+	_elderbeast_panel.offset_bottom = 500
+	add_child(_elderbeast_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_elderbeast_panel.add_child(vbox)
+
+	# Title
+	var title := Label.new()
+	title.text = beast.name + " (Lv." + str(beast.level) + ")"
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.8, 0.55, 0.9))
+	vbox.add_child(title)
+
+	# HP
+	var hp_label := Label.new()
+	hp_label.text = "HP: %d / %d" % [beast.hp, beast.max_hp]
+	hp_label.add_theme_font_size_override("font_size", 12)
+	hp_label.add_theme_color_override("font_color", Color(0.8, 0.4, 0.4))
+	vbox.add_child(hp_label)
+
+	# Population
+	var pop_label := Label.new()
+	pop_label.text = "Population: %d" % beast.population
+	pop_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(pop_label)
+
+	# Movement
+	var move_label := Label.new()
+	move_label.text = "Movement: %.1f / %.1f" % [beast.movement_remaining, beast.get_max_movement()]
+	move_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(move_label)
+
+	# Buildings
+	var bld_title := Label.new()
+	bld_title.text = "Buildings (%d/%d):" % [beast.buildings.size(), beast.get_max_building_slots()]
+	bld_title.add_theme_font_size_override("font_size", 13)
+	bld_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(bld_title)
+
+	for building_id in beast.buildings:
+		var building: BuildingData = DataManager.get_building(building_id)
+		var bld_label := Label.new()
+		bld_label.text = "  " + (building.display_name if building else str(building_id))
+		bld_label.add_theme_font_size_override("font_size", 11)
+		vbox.add_child(bld_label)
+
+	# Build queue
+	if beast.build_queue.size() > 0:
+		var queue_label := Label.new()
+		var item: Dictionary = beast.build_queue[0]
+		var bld: BuildingData = DataManager.get_building(item.get("building_id", &""))
+		queue_label.text = "Building: %s (%d turns)" % [bld.display_name if bld else "?", item.get("turns_remaining", 0)]
+		queue_label.add_theme_font_size_override("font_size", 11)
+		queue_label.add_theme_color_override("font_color", Color(0.5, 0.7, 0.9))
+		vbox.add_child(queue_label)
+	elif beast.get_available_building_slots() > 0:
+		# Build button
+		var build_btn := Button.new()
+		build_btn.text = "Build..."
+		build_btn.custom_minimum_size = Vector2(0, 28)
+		build_btn.pressed.connect(_show_elderbeast_build_menu.bind(beast))
+		vbox.add_child(build_btn)
+
+	# Recruit queue
+	var recruit_title := Label.new()
+	recruit_title.text = "Recruit Queue:"
+	recruit_title.add_theme_font_size_override("font_size", 13)
+	recruit_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(recruit_title)
+
+	if beast.recruit_queue.size() > 0:
+		var item: Dictionary = beast.recruit_queue[0]
+		var ud := DataManager.get_unit(item.get("unit_data_id", &""))
+		var rq_label := Label.new()
+		rq_label.text = "  %s (%d turns)" % [ud.display_name if ud else "?", item.get("turns_remaining", 0)]
+		rq_label.add_theme_font_size_override("font_size", 11)
+		rq_label.add_theme_color_override("font_color", Color(0.5, 0.7, 0.9))
+		vbox.add_child(rq_label)
+	else:
+		var recruit_btn := Button.new()
+		recruit_btn.text = "Recruit Unit..."
+		recruit_btn.custom_minimum_size = Vector2(0, 28)
+		recruit_btn.pressed.connect(_show_elderbeast_recruit_menu.bind(beast))
+		vbox.add_child(recruit_btn)
+
+	# Income
+	var income := TurnManager._get_elderbeast_income(beast)
+	var income_text := "Income: "
+	var parts: Array[String] = []
+	for res_type in income:
+		if income[res_type] > 0 and res_type < RESOURCE_NAMES.size():
+			parts.append("+%d %s" % [income[res_type], RESOURCE_NAMES[res_type]])
+	income_text += ", ".join(parts) if parts.size() > 0 else "None"
+	var income_label := Label.new()
+	income_label.text = income_text
+	income_label.add_theme_font_size_override("font_size", 11)
+	income_label.add_theme_color_override("font_color", Color(0.6, 0.75, 0.5))
+	vbox.add_child(income_label)
+
+	# Close button
+	var close_btn := Button.new()
+	close_btn.text = "Close"
+	close_btn.pressed.connect(func(): _elderbeast_panel.queue_free(); _elderbeast_panel = null)
+	vbox.add_child(close_btn)
+
+func _show_elderbeast_build_menu(beast: ElderbeastState) -> void:
+	# Restricted building list for elderbeasts (military + some economic)
+	var allowed := [&"barracks", &"grain_fields", &"iron_pit", &"market_square"]
+	var dialog := _create_centered_dialog(350, 300)
+	add_child(dialog)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "BUILD ON " + beast.name.to_upper()
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var any_available := false
+	for building_id in allowed:
+		if beast.buildings.has(building_id):
+			continue
+		var building: BuildingData = DataManager.get_building(building_id)
+		if building == null:
+			continue
+		any_available = true
+		var btn := Button.new()
+		btn.text = building.display_name + " (%d turns)" % building.build_time
+		btn.custom_minimum_size = Vector2(0, 32)
+		var captured_id := building_id
+		var captured_time: int = building.build_time
+		btn.pressed.connect(func():
+			beast.build_queue.append({building_id = captured_id, turns_remaining = captured_time})
+			dialog.queue_free()
+			_show_elderbeast_panel(beast)
+		)
+		vbox.add_child(btn)
+
+	if not any_available:
+		var none_label := Label.new()
+		none_label.text = "No buildings available."
+		none_label.add_theme_font_size_override("font_size", 12)
+		vbox.add_child(none_label)
+
+	var cancel := Button.new()
+	cancel.text = "Cancel"
+	cancel.pressed.connect(func(): dialog.queue_free())
+	vbox.add_child(cancel)
+
+func _show_elderbeast_recruit_menu(beast: ElderbeastState) -> void:
+	var dialog := _create_centered_dialog(350, 300)
+	add_child(dialog)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "RECRUIT AT " + beast.name.to_upper()
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	# Get recruitable units from beast buildings
+	var fs: FactionState = GameManager.state.faction_states.get(beast.faction_id)
+	var available_units: Array[StringName] = []
+	for building_id in beast.buildings:
+		var building: BuildingData = DataManager.get_building(building_id)
+		if building == null:
+			continue
+		for uid in building.unlocks_units:
+			if not available_units.has(uid):
+				var ud := DataManager.get_unit(uid)
+				if ud and ud.faction_id == beast.faction_id:
+					available_units.append(uid)
+
+	for uid in available_units:
+		var ud := DataManager.get_unit(uid)
+		if ud == null:
+			continue
+		var btn := Button.new()
+		var cost_text := ""
+		for res_type in ud.recruit_cost:
+			if res_type < RESOURCE_NAMES.size():
+				cost_text += "%d %s " % [ud.recruit_cost[res_type], RESOURCE_NAMES[res_type]]
+		btn.text = "%s (%s- %d turns)" % [ud.display_name, cost_text, ud.recruit_time]
+		btn.custom_minimum_size = Vector2(0, 32)
+		# Check affordability
+		var can_afford := true
+		if fs:
+			for res_type in ud.recruit_cost:
+				if fs.resources.get(res_type, 0) < ud.recruit_cost[res_type]:
+					can_afford = false
+					break
+		btn.disabled = not can_afford
+		var captured_uid := uid
+		var captured_time: int = ud.recruit_time
+		var captured_cost: Dictionary = ud.recruit_cost.duplicate()
+		btn.pressed.connect(func():
+			if fs:
+				for res_type in captured_cost:
+					fs.resources[res_type] = fs.resources.get(res_type, 0) - captured_cost[res_type]
+			beast.recruit_queue.append({unit_data_id = captured_uid, turns_remaining = captured_time})
+			dialog.queue_free()
+			_show_elderbeast_panel(beast)
+		)
+		vbox.add_child(btn)
+
+	if available_units.is_empty():
+		var none_label := Label.new()
+		none_label.text = "Build a barracks first."
+		none_label.add_theme_font_size_override("font_size", 12)
+		vbox.add_child(none_label)
+
+	var cancel := Button.new()
+	cancel.text = "Cancel"
+	cancel.pressed.connect(func(): dialog.queue_free())
+	vbox.add_child(cancel)
+
+# ── Turn Summary Panel ───────────────────────────────────────
+
+func _show_turn_summary() -> void:
+	if _turn_summary_panel:
+		_turn_summary_panel.queue_free()
+	_turn_summary_panel = _create_centered_dialog(400, 320)
+	add_child(_turn_summary_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	_turn_summary_panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "TURN %d SUMMARY" % GameManager.state.current_turn
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	_add_separator(vbox)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 200)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(scroll)
+
+	var entries := VBoxContainer.new()
+	entries.add_theme_constant_override("separation", 4)
+	entries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(entries)
+
+	var type_colors := {
+		"battle": Color(0.85, 0.35, 0.35),
+		"capture": Color(0.85, 0.65, 0.25),
+		"shard": Color(0.65, 0.35, 0.85),
+		"treaty": Color(0.35, 0.7, 0.9),
+		"army": Color(0.7, 0.4, 0.35),
+	}
+
+	for entry in TurnManager.turn_log:
+		var lbl := Label.new()
+		lbl.text = "  " + entry.get("text", "")
+		lbl.add_theme_font_size_override("font_size", 12)
+		var etype: String = entry.get("type", "")
+		lbl.add_theme_color_override("font_color", type_colors.get(etype, Color(0.75, 0.72, 0.65)))
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		entries.add_child(lbl)
+
+	if TurnManager.turn_log.is_empty():
+		var no_events := Label.new()
+		no_events.text = "  Nothing notable happened."
+		no_events.add_theme_font_size_override("font_size", 12)
+		no_events.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48))
+		entries.add_child(no_events)
+
+	var dismiss := Button.new()
+	dismiss.text = "Continue"
+	dismiss.custom_minimum_size = Vector2(0, 32)
+	dismiss.pressed.connect(func():
+		_turn_summary_panel.queue_free()
+		_turn_summary_panel = null
+	)
+	vbox.add_child(dismiss)
+
+# ── Army Split Dialog ────────────────────────────────────────
+
+func _show_army_split_dialog(army_id: StringName) -> void:
+	var army: ArmyState = GameManager.state.armies.get(army_id)
+	if army == null or army.units.size() < 2:
+		return
+
+	var dialog := _create_centered_dialog(400, 400)
+	add_child(dialog)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "SPLIT ARMY"
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	var info := Label.new()
+	info.text = "Select units to split into a new army:"
+	info.add_theme_font_size_override("font_size", 11)
+	info.add_theme_color_override("font_color", Color(0.65, 0.62, 0.58))
+	vbox.add_child(info)
+
+	_add_separator(vbox)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 240)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(scroll)
+
+	var check_list := VBoxContainer.new()
+	check_list.add_theme_constant_override("separation", 4)
+	check_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(check_list)
+
+	var checkboxes: Array[CheckBox] = []
+	for unit in army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		var cb := CheckBox.new()
+		cb.text = (ud.display_name if ud else str(unit.unit_data_id)) + " (HP: %d/%d)" % [unit.current_hp, ud.max_hp if ud else unit.current_hp]
+		cb.add_theme_font_size_override("font_size", 12)
+		check_list.add_child(cb)
+		checkboxes.append(cb)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(btn_row)
+
+	var confirm := Button.new()
+	confirm.text = "Split Selected"
+	confirm.custom_minimum_size = Vector2(0, 32)
+	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var captured_army_id := army_id
+	confirm.pressed.connect(func():
+		var selected_indices: Array[int] = []
+		for i in checkboxes.size():
+			if checkboxes[i].button_pressed:
+				selected_indices.append(i)
+		if selected_indices.size() == 0 or selected_indices.size() == army.units.size():
+			return # Must select some but not all
+		_execute_army_split(captured_army_id, selected_indices)
+		dialog.queue_free()
+	)
+	btn_row.add_child(confirm)
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "Cancel"
+	cancel_btn.custom_minimum_size = Vector2(0, 32)
+	cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cancel_btn.pressed.connect(func(): dialog.queue_free())
+	btn_row.add_child(cancel_btn)
+
+func _execute_army_split(army_id: StringName, unit_indices: Array[int]) -> void:
+	var army: ArmyState = GameManager.state.armies.get(army_id)
+	if army == null:
+		return
+	# Create new army at same position
+	var new_army := ArmyState.new()
+	new_army.army_id = StringName("army_%d" % (GameManager.state.armies.size() + randi() % 1000))
+	new_army.faction_id = army.faction_id
+	new_army.hex_position = army.hex_position
+	new_army.movement_remaining = 0.0
+
+	# Move selected units (iterate in reverse to preserve indices)
+	var units_to_move: Array[UnitInstance] = []
+	var sorted_indices := unit_indices.duplicate()
+	sorted_indices.sort()
+	sorted_indices.reverse()
+	for idx in sorted_indices:
+		if idx >= 0 and idx < army.units.size():
+			units_to_move.append(army.units[idx])
+			army.units.remove_at(idx)
+	units_to_move.reverse()
+	new_army.units = units_to_move
+
+	GameManager.state.armies[new_army.army_id] = new_army
+
+	# Update army in faction state
+	var fs: FactionState = GameManager.state.faction_states.get(army.faction_id)
+	if fs:
+		fs.army_ids.append(new_army.army_id)
+
+	# Refresh the campaign scene markers
+	var campaign: Node2D = get_parent().get_parent()
+	if campaign and campaign.has_method("_create_army_marker"):
+		campaign._create_army_marker(new_army)
+
+	# Refresh the army panel
+	_on_army_selected(army_id)
+
+# ── Diplomatic Overview ──────────────────────────────────────
+
+func _show_diplomatic_overview() -> void:
+	if _diplo_overview_panel:
+		_diplo_overview_panel.queue_free()
+	_diplo_overview_panel = _create_centered_dialog(520, 420)
+	add_child(_diplo_overview_panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_diplo_overview_panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "DIPLOMATIC OVERVIEW"
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	_add_separator(vbox)
+
+	# Build faction list
+	var all_factions: Array[StringName] = []
+	for fid in GameManager.state.faction_states:
+		all_factions.append(fid)
+
+	# Relations grid
+	var grid := GridContainer.new()
+	grid.columns = all_factions.size() + 1
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	vbox.add_child(grid)
+
+	# Corner cell
+	var corner := Label.new()
+	corner.text = ""
+	corner.custom_minimum_size = Vector2(80, 24)
+	grid.add_child(corner)
+
+	# Column headers
+	for fid in all_factions:
+		var fd := DataManager.get_faction(fid)
+		var col_lbl := Label.new()
+		col_lbl.text = (fd.display_name if fd else str(fid)).substr(0, 8)
+		col_lbl.add_theme_font_size_override("font_size", 10)
+		col_lbl.add_theme_color_override("font_color", fd.color.lightened(0.3) if fd else Color.WHITE)
+		col_lbl.custom_minimum_size = Vector2(70, 24)
+		col_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		grid.add_child(col_lbl)
+
+	# Rows
+	for fid_a in all_factions:
+		var fd_a := DataManager.get_faction(fid_a)
+		var row_lbl := Label.new()
+		row_lbl.text = (fd_a.display_name if fd_a else str(fid_a)).substr(0, 10)
+		row_lbl.add_theme_font_size_override("font_size", 10)
+		row_lbl.add_theme_color_override("font_color", fd_a.color.lightened(0.3) if fd_a else Color.WHITE)
+		row_lbl.custom_minimum_size = Vector2(80, 24)
+		grid.add_child(row_lbl)
+
+		for fid_b in all_factions:
+			var cell := PanelContainer.new()
+			cell.custom_minimum_size = Vector2(70, 24)
+			var cell_style := StyleBoxFlat.new()
+			cell_style.corner_radius_top_left = 2
+			cell_style.corner_radius_top_right = 2
+			cell_style.corner_radius_bottom_left = 2
+			cell_style.corner_radius_bottom_right = 2
+
+			if fid_a == fid_b:
+				cell_style.bg_color = Color(0.25, 0.25, 0.25, 0.5)
+				cell.add_theme_stylebox_override("panel", cell_style)
+				var self_lbl := Label.new()
+				self_lbl.text = "-"
+				self_lbl.add_theme_font_size_override("font_size", 10)
+				self_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				cell.add_child(self_lbl)
+			else:
+				var relation: int = GameManager.get_relation(fid_a, fid_b)
+				var standing: int = GameManager.diplomacy_system.get_standing(fid_a, fid_b)
+				var rel_colors := {
+					0: Color(0.7, 0.15, 0.15, 0.6),
+					1: Color(0.7, 0.45, 0.15, 0.5),
+					2: Color(0.4, 0.4, 0.38, 0.4),
+					3: Color(0.2, 0.55, 0.3, 0.5),
+					4: Color(0.2, 0.35, 0.7, 0.6),
+				}
+				cell_style.bg_color = rel_colors.get(relation, Color(0.3, 0.3, 0.3, 0.4))
+				cell.add_theme_stylebox_override("panel", cell_style)
+				var cell_lbl := Label.new()
+				cell_lbl.text = str(standing)
+				cell_lbl.add_theme_font_size_override("font_size", 10)
+				cell_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				if relation == 0:
+					cell_lbl.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5))
+				elif relation == 4:
+					cell_lbl.add_theme_color_override("font_color", Color(0.6, 0.8, 1.0))
+				cell.add_child(cell_lbl)
+			grid.add_child(cell)
+
+	# Legend
+	_add_separator(vbox)
+	var legend := HBoxContainer.new()
+	legend.add_theme_constant_override("separation", 12)
+	legend.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_child(legend)
+	var legend_items := [
+		["War", Color(0.7, 0.15, 0.15)],
+		["Hostile", Color(0.7, 0.45, 0.15)],
+		["Neutral", Color(0.4, 0.4, 0.38)],
+		["Friendly", Color(0.2, 0.55, 0.3)],
+		["Allied", Color(0.2, 0.35, 0.7)],
+	]
+	for item in legend_items:
+		var lbl := Label.new()
+		lbl.text = item[0]
+		lbl.add_theme_font_size_override("font_size", 9)
+		lbl.add_theme_color_override("font_color", item[1])
+		legend.add_child(lbl)
+
+	# Active treaties
+	_add_separator(vbox)
+	var treaties_title := Label.new()
+	treaties_title.text = "Active Treaties:"
+	treaties_title.add_theme_font_size_override("font_size", 12)
+	treaties_title.add_theme_color_override("font_color", Color(0.8, 0.78, 0.7))
+	vbox.add_child(treaties_title)
+
+	var treaty_scroll := ScrollContainer.new()
+	treaty_scroll.custom_minimum_size = Vector2(0, 80)
+	treaty_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(treaty_scroll)
+
+	var treaty_list := VBoxContainer.new()
+	treaty_list.add_theme_constant_override("separation", 2)
+	treaty_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	treaty_scroll.add_child(treaty_list)
+
+	var treaty_type_names := ["Peace", "Alliance", "Trade"]
+	var any_treaties := false
+	for treaty_id in GameManager.state.diplomacy_state.treaties:
+		var treaty: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+		any_treaties = true
+		var fa := DataManager.get_faction(treaty.faction_a)
+		var fb := DataManager.get_faction(treaty.faction_b)
+		var na := fa.display_name if fa else str(treaty.faction_a)
+		var nb := fb.display_name if fb else str(treaty.faction_b)
+		var t_name: String = treaty_type_names[treaty.treaty_type] if treaty.treaty_type < treaty_type_names.size() else "Treaty"
+		var remaining: int = treaty.turns_remaining
+		var t_lbl := Label.new()
+		if remaining < 0:
+			t_lbl.text = "  %s: %s - %s (permanent)" % [t_name, na, nb]
+		else:
+			t_lbl.text = "  %s: %s - %s (%d turns left)" % [t_name, na, nb, remaining]
+		t_lbl.add_theme_font_size_override("font_size", 11)
+		treaty_list.add_child(t_lbl)
+
+	if not any_treaties:
+		var none_lbl := Label.new()
+		none_lbl.text = "  No active treaties."
+		none_lbl.add_theme_font_size_override("font_size", 11)
+		none_lbl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.45))
+		treaty_list.add_child(none_lbl)
+
+	var close_btn := Button.new()
+	close_btn.text = "Close"
+	close_btn.custom_minimum_size = Vector2(0, 32)
+	close_btn.pressed.connect(func():
+		_diplo_overview_panel.queue_free()
+		_diplo_overview_panel = null
+	)
+	vbox.add_child(close_btn)
+
+# ── Tutorial System ──────────────────────────────────────────
+
+const TUTORIAL_HINTS := [
+	{step = 0, text = "Welcome to FractureWars! Click on your army to select it.", trigger = "turn_start"},
+	{step = 1, text = "Right-click a tile to move your army there.", trigger = "army_selected"},
+	{step = 2, text = "Click on your city to manage buildings and recruitment.", trigger = "army_moved"},
+	{step = 3, text = "Open the Research panel to start researching technologies.", trigger = "city_viewed"},
+	{step = 4, text = "Open the Diplomacy panel to manage relations with other factions.", trigger = "research_viewed"},
+	{step = 5, text = "Press End Turn when you're done. Good luck!", trigger = "diplomacy_viewed"},
+]
+
+func _check_tutorial(trigger: String) -> void:
+	if GameManager.state == null or not GameManager.state.tutorial_enabled:
+		return
+	var step := GameManager.state.tutorial_step
+	if step >= TUTORIAL_HINTS.size():
+		return
+	var hint: Dictionary = TUTORIAL_HINTS[step]
+	if hint.trigger == trigger:
+		_show_tutorial_hint(hint.text)
+		GameManager.state.tutorial_step = step + 1
+
+func _show_tutorial_hint(text: String) -> void:
+	if _tutorial_overlay:
+		_tutorial_overlay.queue_free()
+	_tutorial_overlay = PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.04, 0.08, 0.88)
+	style.border_width_left = 2
+	style.border_width_top = 2
+	style.border_width_right = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.7, 0.55, 0.2, 0.8)
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	style.content_margin_left = 16
+	style.content_margin_top = 12
+	style.content_margin_right = 16
+	style.content_margin_bottom = 12
+	_tutorial_overlay.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_tutorial_overlay.add_child(vbox)
+
+	var hint_label := Label.new()
+	hint_label.text = text
+	hint_label.add_theme_font_size_override("font_size", 14)
+	hint_label.add_theme_color_override("font_color", Color(0.95, 0.9, 0.7))
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint_label.custom_minimum_size = Vector2(350, 0)
+	vbox.add_child(hint_label)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 12)
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_child(btn_row)
+
+	var got_it := Button.new()
+	got_it.text = "Got it"
+	got_it.custom_minimum_size = Vector2(80, 28)
+	got_it.pressed.connect(func():
+		_tutorial_overlay.queue_free()
+		_tutorial_overlay = null
+	)
+	btn_row.add_child(got_it)
+
+	var skip := Button.new()
+	skip.text = "Skip Tutorial"
+	skip.custom_minimum_size = Vector2(100, 28)
+	skip.pressed.connect(func():
+		GameManager.state.tutorial_enabled = false
+		_tutorial_overlay.queue_free()
+		_tutorial_overlay = null
+	)
+	btn_row.add_child(skip)
+
+	# Position at top-center of screen
+	_tutorial_overlay.anchors_preset = Control.PRESET_CENTER_TOP
+	_tutorial_overlay.anchor_left = 0.5
+	_tutorial_overlay.anchor_right = 0.5
+	_tutorial_overlay.anchor_top = 0.0
+	_tutorial_overlay.offset_left = -200
+	_tutorial_overlay.offset_right = 200
+	_tutorial_overlay.offset_top = 50
+	add_child(_tutorial_overlay)
+
+# ── Advisor Messages ─────────────────────────────────────────
+
+func _check_advisor_messages() -> void:
+	if GameManager.state == null:
+		return
+	var player_id := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if fs == null:
+		return
+
+	var messages: Array[String] = []
+
+	# Check low loyalty cities
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.owner_faction_id != player_id:
+			continue
+		for cls_key in city.loyalty:
+			if city.loyalty[cls_key] < -25:
+				messages.append("A city's loyalty is dangerously low!")
+				break
+		if messages.size() > 0:
+			break
+
+	# Check if outnumbered
+	var player_units := 0
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id == player_id:
+			player_units += army.units.size()
+	for faction_id in GameManager.state.faction_states:
+		if faction_id == player_id:
+			continue
+		var enemy_units := 0
+		for army_id in GameManager.state.armies:
+			var army: ArmyState = GameManager.state.armies[army_id]
+			if army.faction_id == faction_id:
+				enemy_units += army.units.size()
+		if enemy_units > player_units and player_units > 0:
+			messages.append("Your armies are outnumbered in the field.")
+			break
+
+	# Check for nearby shardfall
+	for shard_id in GameManager.state.active_shards:
+		var shard: ShardInstance = GameManager.state.active_shards[shard_id]
+		if shard.claimed_by != &"":
+			continue
+		for army_id in GameManager.state.armies:
+			var army: ArmyState = GameManager.state.armies[army_id]
+			if army.faction_id == player_id:
+				if HexHelper.hex_distance(army.hex_position, shard.hex_pos) <= 5:
+					messages.append("A shardfall has occurred nearby!")
+					break
+		if messages.size() > 2:
+			break
+
+	# Check no active research
+	if fs.current_research_id == &"":
+		messages.append("You can research a new technology.")
+
+	# Show the first advisor message as a toast
+	if messages.size() > 0:
+		_show_advisor_toast(messages[0])
+
+func _show_advisor_toast(text: String) -> void:
+	if _advisor_toast:
+		_advisor_toast.queue_free()
+	_advisor_toast = Label.new()
+	_advisor_toast.text = text
+	_advisor_toast.add_theme_font_size_override("font_size", 12)
+	_advisor_toast.add_theme_color_override("font_color", Color(0.85, 0.8, 0.6))
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.1, 0.08, 0.15, 0.85)
+	bg.border_color = Color(0.5, 0.4, 0.2, 0.5)
+	bg.set_border_width_all(1)
+	bg.set_corner_radius_all(4)
+	bg.content_margin_left = 10
+	bg.content_margin_right = 10
+	bg.content_margin_top = 6
+	bg.content_margin_bottom = 6
+	_advisor_toast.add_theme_stylebox_override("normal", bg)
+	_advisor_toast.anchors_preset = Control.PRESET_BOTTOM_RIGHT
+	_advisor_toast.anchor_left = 1.0
+	_advisor_toast.anchor_top = 1.0
+	_advisor_toast.offset_left = -320
+	_advisor_toast.offset_top = -190
+	_advisor_toast.offset_right = -10
+	_advisor_toast.offset_bottom = -160
+	add_child(_advisor_toast)
+	# Auto-dismiss after 5 seconds
+	var tween := create_tween()
+	tween.tween_interval(5.0)
+	tween.tween_property(_advisor_toast, "modulate:a", 0.0, 1.0)
+	tween.tween_callback(func():
+		if _advisor_toast:
+			_advisor_toast.queue_free()
+			_advisor_toast = null
+	)

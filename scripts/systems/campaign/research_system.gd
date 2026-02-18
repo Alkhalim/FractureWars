@@ -134,9 +134,24 @@ func execute_ai_research(faction_id: StringName) -> void:
 	var available := get_available_research(faction_id)
 	if available.is_empty():
 		return
-	# Pick cheapest available research
+
+	# Faction-specific category preferences (higher = more preferred)
+	var category_weights := {
+		&"skulloath": {&"military": 3, &"economy": 1, &"arcane": 1, &"logistics": 1},
+		&"gladehost": {&"military": 1, &"economy": 2, &"arcane": 2, &"logistics": 2},
+		&"tainted_jade": {&"military": 2, &"economy": 2, &"arcane": 3, &"logistics": 1},
+		&"empire": {&"military": 2, &"economy": 2, &"arcane": 1, &"logistics": 2},
+		&"shardhorde": {&"military": 3, &"economy": 1, &"arcane": 2, &"logistics": 1},
+	}
+	var weights: Dictionary = category_weights.get(faction_id, {&"military": 2, &"economy": 2, &"arcane": 1, &"logistics": 1})
+
+	# Score each research by preference weight / cost
 	var best: ResearchData = available[0]
+	var best_score := -999.0
 	for data in available:
-		if data.tech_cost < best.tech_cost:
+		var weight: float = float(weights.get(data.research_category, 1))
+		var score := weight / maxf(1.0, float(data.tech_cost)) * 100.0
+		if score > best_score:
+			best_score = score
 			best = data
 	start_research(faction_id, best.id)

@@ -115,6 +115,7 @@ func _ready() -> void:
 	_create_elderbeast_markers()
 	_build_region_tiles_cache()
 	_create_fog_overlay()
+	_create_minimap()
 	EventBus.elderbeast_moved.connect(_on_elderbeast_moved)
 
 	# Connect settlement placement signal from HUD
@@ -126,6 +127,8 @@ func _ready() -> void:
 	var center_x := HexMapData.MAP_WIDTH * HEX_H_SPACING * 0.5
 	var center_y := HexMapData.MAP_HEIGHT * HEX_V_SPACING * 0.5
 	camera.position = Vector2(center_x, center_y)
+
+	AudioManager.play_music(&"music_campaign")
 
 	if not GameManager.has_meta("game_started"):
 		GameManager.set_meta("game_started", true)
@@ -895,11 +898,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		if camera._did_pan:
 			return  # Camera drag consumed this right-click
-		if selected_army_id != &"":
-			var world_pos := get_global_mouse_position()
-			var hex_coord := _pixel_to_hex(world_pos)
-			if HexHelper.is_valid(hex_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+		var world_pos := get_global_mouse_position()
+		var hex_coord := _pixel_to_hex(world_pos)
+		if HexHelper.is_valid(hex_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			if selected_army_id != &"":
 				_handle_move_command(hex_coord)
+			elif _selected_beast_id != &"":
+				var beast: ElderbeastState = GameManager.state.elderbeasts.get(_selected_beast_id)
+				if beast:
+					_move_elderbeast_to(beast, hex_coord)
 
 	# Fog of war toggle
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
@@ -941,6 +948,13 @@ func _handle_hex_left_click(hex_coord: Vector2i) -> void:
 		elif tile_visible:
 			# Enemy army — only inspect if in current LOS
 			_show_inspect_army(army_at)
+			return
+
+	# Check for elderbeast at hex
+	var beast_at := GameManager.get_elderbeast_at_tile(hex_coord)
+	if beast_at:
+		if beast_at.faction_id == GameManager.state.player_faction_id:
+			_select_elderbeast(beast_at.beast_id)
 			return
 
 	# Check for city at hex
@@ -1108,6 +1122,7 @@ func _deselect_all() -> void:
 	_hide_all_selection_rings()
 	selected_hex = Vector2i(-1, -1)
 	selected_army_id = &""
+	_selected_beast_id = &""
 	GameManager.state.selected_army_id = &""
 	_reachable_tiles.clear()
 	_clear_reachable_overlay()
@@ -1171,6 +1186,7 @@ func _on_army_moved(army_id: StringName, _from_hex: Vector2i, to_hex: Vector2i) 
 			tween.tween_property(marker, "position", target_pos, 0.2)
 	_update_political_overlay()
 	_update_fog_of_war()
+	_update_minimap()
 
 func _on_army_destroyed(army_id: StringName, _faction_id: StringName) -> void:
 	var marker: Node2D = _army_markers.get(army_id)
@@ -1740,6 +1756,7 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 	_create_army_markers()
 	_create_elderbeast_markers()
 	_update_fog_of_war()
+	_update_minimap()
 	_update_city_glow_states()
 	if selected_army_id != &"":
 		var army: ArmyState = GameManager.state.armies.get(selected_army_id)
@@ -2288,3 +2305,204 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 	var screen_pos := pixel_pos - camera.position + get_viewport_rect().size / 2.0
 	_settlement_preview_panel.position = Vector2(screen_pos.x + 30, screen_pos.y - 40)
 	$UILayer/HUD.add_child(_settlement_preview_panel)
+
+# ── Elderbeast Selection & Movement ─────────────────────────
+
+var _selected_beast_id: StringName = &""
+
+func _select_elderbeast(beast_id: StringName) -> void:
+	_deselect_all()
+	_selected_beast_id = beast_id
+	var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id)
+	if beast == null:
+		return
+	# Show selection ring on elderbeast marker
+	if _elderbeast_markers.has(beast_id):
+		var marker: Node2D = _elderbeast_markers[beast_id]
+		for child in marker.get_children():
+			if child.name == "SelectionRing":
+				child.visible = true
+	# Show elderbeast panel in HUD
+	var hud: Control = $UILayer/HUD
+	if hud.has_method("_show_elderbeast_panel"):
+		hud._show_elderbeast_panel(beast)
+
+func _move_elderbeast_to(beast: ElderbeastState, hex_coord: Vector2i) -> void:
+	if beast.has_moved:
+		return
+	var tile := GameManager.state.hex_map.get_tile(hex_coord)
+	if tile == null or tile.terrain == Enums.TerrainType.WATER:
+		return
+	# Check distance - can only move 1 hex at a time
+	var dist := HexHelper.hex_distance(beast.hex_pos, hex_coord)
+	if dist != 1:
+		return
+	# Check no army or beast at target
+	if GameManager.get_elderbeast_at_tile(hex_coord) != null:
+		return
+	var old_pos := beast.hex_pos
+	beast.hex_pos = hex_coord
+	beast.has_moved = true
+	beast.movement_remaining -= 1.0
+	EventBus.elderbeast_moved.emit(beast.beast_id, old_pos, hex_coord)
+
+# ── Minimap ──────────────────────────────────────────────────
+
+const MINIMAP_SIZE := Vector2(180, 130)
+const MINIMAP_MARGIN := Vector2(10, 10)
+var _minimap_panel: PanelContainer
+var _minimap_image: TextureRect
+
+func _create_minimap() -> void:
+	_minimap_panel = PanelContainer.new()
+	_minimap_panel.custom_minimum_size = MINIMAP_SIZE + Vector2(8, 8)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.05, 0.08, 0.85)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.4, 0.35, 0.25, 0.7)
+	style.corner_radius_top_left = 3
+	style.corner_radius_top_right = 3
+	style.corner_radius_bottom_left = 3
+	style.corner_radius_bottom_right = 3
+	style.content_margin_left = 4
+	style.content_margin_top = 4
+	style.content_margin_right = 4
+	style.content_margin_bottom = 4
+	_minimap_panel.add_theme_stylebox_override("panel", style)
+
+	_minimap_image = TextureRect.new()
+	_minimap_image.custom_minimum_size = MINIMAP_SIZE
+	_minimap_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_minimap_panel.add_child(_minimap_image)
+
+	# Position in bottom-right of screen
+	_minimap_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_minimap_panel.anchor_left = 1.0
+	_minimap_panel.anchor_top = 1.0
+	_minimap_panel.anchor_right = 1.0
+	_minimap_panel.anchor_bottom = 1.0
+	_minimap_panel.offset_left = -MINIMAP_SIZE.x - MINIMAP_MARGIN.x - 8
+	_minimap_panel.offset_top = -MINIMAP_SIZE.y - MINIMAP_MARGIN.y - 8
+	_minimap_panel.offset_right = -MINIMAP_MARGIN.x
+	_minimap_panel.offset_bottom = -MINIMAP_MARGIN.y
+
+	# Click to navigate
+	_minimap_image.gui_input.connect(_on_minimap_click)
+
+	$UILayer/HUD.add_child(_minimap_panel)
+	_update_minimap()
+
+func _update_minimap() -> void:
+	if _minimap_image == null:
+		return
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+
+	var w: int = HexMapData.MAP_WIDTH
+	var h: int = HexMapData.MAP_HEIGHT
+	# Each hex becomes ~3x3 pixels for a compact minimap
+	var px_w: int = w * 3
+	var px_h: int = h * 3
+	var img := Image.create(px_w, px_h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.08, 0.07, 0.1, 1.0))
+
+	# Faction color map
+	var faction_colors: Dictionary = {}
+	for fid in GameManager.state.faction_states:
+		var fd := DataManager.get_faction(fid)
+		faction_colors[fid] = fd.color if fd else Color(0.5, 0.5, 0.5)
+
+	# Draw terrain/ownership
+	for x in w:
+		for y in h:
+			var coord := Vector2i(x, y)
+			var tile := hex_map.get_tile(coord)
+			if tile == null:
+				continue
+			var color: Color
+			if tile.owner_faction != &"":
+				color = faction_colors.get(tile.owner_faction, TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3)))
+				color = color.darkened(0.3)
+			else:
+				color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3))
+				color = color.darkened(0.4)
+			var px := x * 3
+			var py := y * 3
+			for dx in 3:
+				for dy in 3:
+					if px + dx < px_w and py + dy < px_h:
+						img.set_pixel(px + dx, py + dy, color)
+
+	# Draw armies as bright dots
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		var px: int = army.hex_position.x * 3 + 1
+		var py: int = army.hex_position.y * 3 + 1
+		var a_color: Color = faction_colors.get(army.faction_id, Color.WHITE).lightened(0.4)
+		if px >= 0 and px < px_w and py >= 0 and py < px_h:
+			img.set_pixel(px, py, a_color)
+			if px + 1 < px_w:
+				img.set_pixel(px + 1, py, a_color)
+			if py + 1 < px_h:
+				img.set_pixel(px, py + 1, a_color)
+
+	# Draw cities as white dots
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		var px: int = city.hex_position.x * 3 + 1
+		var py: int = city.hex_position.y * 3 + 1
+		if px >= 0 and px < px_w and py >= 0 and py < px_h:
+			img.set_pixel(px, py, Color(1.0, 1.0, 0.9))
+
+	# Draw shards as purple dots
+	for shard_id in GameManager.state.active_shards:
+		var shard: ShardInstance = GameManager.state.active_shards[shard_id]
+		var px: int = shard.hex_pos.x * 3 + 1
+		var py: int = shard.hex_pos.y * 3 + 1
+		if px >= 0 and px < px_w and py >= 0 and py < px_h:
+			img.set_pixel(px, py, Color(0.7, 0.3, 0.9))
+
+	# Draw camera viewport indicator
+	var viewport_size := get_viewport_rect().size
+	var cam_top_left := camera.position - viewport_size / 2.0
+	var cam_bottom_right := camera.position + viewport_size / 2.0
+	# Convert world coords to minimap pixels
+	var map_pixel_w := float(w) * HEX_H_SPACING
+	var map_pixel_h := float(h) * HEX_V_SPACING
+	var vp_left: int = clampi(int(cam_top_left.x / map_pixel_w * float(px_w)), 0, px_w - 1)
+	var vp_top: int = clampi(int(cam_top_left.y / map_pixel_h * float(px_h)), 0, px_h - 1)
+	var vp_right: int = clampi(int(cam_bottom_right.x / map_pixel_w * float(px_w)), 0, px_w - 1)
+	var vp_bottom: int = clampi(int(cam_bottom_right.y / map_pixel_h * float(px_h)), 0, px_h - 1)
+	var vp_color := Color(1.0, 1.0, 1.0, 0.6)
+	for px in range(vp_left, vp_right + 1):
+		if vp_top >= 0 and vp_top < px_h:
+			img.set_pixel(px, vp_top, vp_color)
+		if vp_bottom >= 0 and vp_bottom < px_h:
+			img.set_pixel(px, vp_bottom, vp_color)
+	for py in range(vp_top, vp_bottom + 1):
+		if vp_left >= 0 and vp_left < px_w:
+			img.set_pixel(vp_left, py, vp_color)
+		if vp_right >= 0 and vp_right < px_w:
+			img.set_pixel(vp_right, py, vp_color)
+
+	_minimap_image.texture = ImageTexture.create_from_image(img)
+
+func _on_minimap_click(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var local_pos: Vector2 = event.position
+		var minimap_size := _minimap_image.size
+		var hex_map := GameManager.state.hex_map
+		if hex_map == null:
+			return
+		var w: int = HexMapData.MAP_WIDTH
+		var h: int = HexMapData.MAP_HEIGHT
+		var map_pixel_w := float(w) * HEX_H_SPACING
+		var map_pixel_h := float(h) * HEX_V_SPACING
+		var ratio_x := local_pos.x / minimap_size.x
+		var ratio_y := local_pos.y / minimap_size.y
+		camera.position = Vector2(ratio_x * map_pixel_w, ratio_y * map_pixel_h)
+		_update_minimap()

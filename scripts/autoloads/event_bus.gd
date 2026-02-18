@@ -45,6 +45,7 @@ signal random_event_triggered(event_data: Dictionary)
 
 # Elderbeast signals
 signal elderbeast_moved(beast_id: StringName, from_hex: Vector2i, to_hex: Vector2i)
+signal elderbeast_destroyed(beast_id: StringName, faction_id: StringName)
 
 # Army retreat signal
 signal army_retreated(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i, losses: int)
@@ -69,6 +70,9 @@ signal policy_revoked(faction_id: StringName, policy_id: StringName)
 # Senate / Forsaken signals
 signal forsaken_offer(faction_id: StringName, offer: Dictionary)
 signal senate_dilemma(faction_id: StringName, dilemma: Dictionary)
+
+# Victory / defeat signals
+signal game_over(faction_id: StringName, victory_type: int, is_player: bool)
 
 # UI signals
 signal end_turn_pressed()

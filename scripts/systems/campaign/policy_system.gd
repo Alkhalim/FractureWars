@@ -311,34 +311,72 @@ func decline_forsaken_offer(faction_id: StringName) -> void:
 # ── Forsaken Crisis ───────────────────────────────────────────
 
 func _process_forsaken_crisis(faction_id: StringName, fs: FactionState, capital: CityState) -> void:
-	var seats := calculate_senate_seats(faction_id)
-	var forsaken_count: int = seats[3]
-	var has_majority := forsaken_count >= TOTAL_SENATE_SEATS / 2
+	var forsaken_count: int = fs.forsaken_seats
 
-	if not has_majority:
-		fs.forsaken_crisis_stage = 0
+	# Determine crisis stage from seat thresholds
+	var new_stage := 0
+	if forsaken_count >= 50: # Majority — Stage 3 Collapse
+		new_stage = 3
+	elif forsaken_count >= 35: # ~44% — Stage 2 Crisis
+		new_stage = 2
+	elif forsaken_count >= 20: # 25% — Stage 1 Tension
+		new_stage = 1
+
+	var old_stage := fs.forsaken_crisis_stage
+	fs.forsaken_crisis_stage = new_stage
+
+	# Stage 0: Normal — no effects
+	if new_stage == 0:
 		return
 
-	fs.forsaken_crisis_stage += 1
+	# Stage 1 (Tension): Senate paralyzed, -10% income
+	# Senate paralysis is handled in can_enact_policy() check
+	# Income penalty applied during city income calculation via get_forsaken_income_penalty()
 
+	# Stage 2 (Crisis): Loyalty penalty + random sabotage
+	if new_stage >= 2:
+		# -5 loyalty per turn to all classes in all cities
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city:
+				for cls in city.class_loyalty:
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 5, -100, 100)
+		# 15% chance of sabotage event
+		if randf() < 0.15:
+			_apply_forsaken_sabotage(faction_id, fs)
+
+	# Stage 3 (Collapse): First time reaching stage 3, emit crisis dilemma
+	if new_stage == 3 and old_stage < 3:
+		EventBus.forsaken_offer.emit(faction_id, {type = "crisis_dilemma", stage = 3})
+
+func get_forsaken_income_penalty(faction_id: StringName) -> float:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return 0.0
 	match fs.forsaken_crisis_stage:
-		1:
-			# "Whispers of Corruption" — loyalty drop, senate paralyzed
-			if capital:
-				for cls in capital.class_loyalty:
-					capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] - 5, -100, 100)
-		3:
-			# "The Forsaken Demand" — dilemma handled by UI via signal
-			EventBus.forsaken_offer.emit(faction_id, {type = "crisis_dilemma", stage = 3})
-		6:
-			# "Civil Unrest" — capital loyalty crashes
-			if capital:
-				capital.loyalty = -50
-			# Random army deserts if still Forsaken majority
-			var armies := GameManager.get_faction_armies(faction_id)
-			if armies.size() > 0:
-				var victim: ArmyState = armies[randi() % armies.size()]
-				GameManager.remove_army(victim.army_id)
+		1: return 0.10 # -10% income
+		2: return 0.15 # -15% income
+		3: return 0.30 # -30% income
+	return 0.0
+
+func _apply_forsaken_sabotage(faction_id: StringName, fs: FactionState) -> void:
+	# Random sabotage: destroy a building or desert units
+	var sabotage_roll := randf()
+	if sabotage_roll < 0.5:
+		# Building destroyed in random city
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city and city.buildings.size() > 0:
+				var destroyed := city.buildings[randi() % city.buildings.size()]
+				city.buildings.erase(destroyed)
+				break
+	else:
+		# Units desert from random army
+		var armies := GameManager.get_faction_armies(faction_id)
+		if armies.size() > 0:
+			var victim: ArmyState = armies[randi() % armies.size()]
+			if victim.units.size() > 1:
+				victim.units.remove_at(randi() % victim.units.size())
 
 func purge_forsaken_senate(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
