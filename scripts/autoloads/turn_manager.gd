@@ -1210,9 +1210,9 @@ func _get_beast_tiles(beast: ElderbeastState) -> Array[Vector2i]:
 	return tiles
 
 const ELDERBEAST_BASE_INCOME := {
-	1: {Enums.ResourceType.GOLD: 5, Enums.ResourceType.FOOD: 8, Enums.ResourceType.WOOD: 3},
-	2: {Enums.ResourceType.GOLD: 10, Enums.ResourceType.FOOD: 15, Enums.ResourceType.WOOD: 6},
-	3: {Enums.ResourceType.GOLD: 18, Enums.ResourceType.FOOD: 25, Enums.ResourceType.WOOD: 10},
+	1: {Enums.ResourceType.GOLD: 6, Enums.ResourceType.FOOD: 8, Enums.ResourceType.WOOD: 3},
+	2: {Enums.ResourceType.GOLD: 11, Enums.ResourceType.FOOD: 15, Enums.ResourceType.WOOD: 6},
+	3: {Enums.ResourceType.GOLD: 19, Enums.ResourceType.FOOD: 25, Enums.ResourceType.WOOD: 10},
 }
 
 func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:
@@ -1239,6 +1239,13 @@ func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:
 			continue
 		for res_type in building.income_bonus:
 			income[res_type] = income.get(res_type, 0) + building.income_bonus[res_type]
+
+	# Debt penalty: 66% income when faction gold is negative
+	var fs: FactionState = GameManager.state.faction_states.get(beast.faction_id)
+	if fs and fs.resources.get(Enums.ResourceType.GOLD, 0) < 0:
+		for res_type in income:
+			income[res_type] = int(income[res_type] * 0.66)
+
 	return income
 
 # ── Healing & Replenishment ──────────────────────────────────

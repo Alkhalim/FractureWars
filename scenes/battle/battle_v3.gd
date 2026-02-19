@@ -103,6 +103,9 @@ func _ready() -> void:
 		simulator.setup_attacker_formations(defender_army, def_cmd_bonuses)
 		simulator.setup_defender_formations(attacker_army, atk_cmd_bonuses)
 
+	# Set debt penalty flag on formations
+	_apply_debt_flags()
+
 	# Apply building bonuses to elderbeast formations (stats, ranged, aura, spawning)
 	_apply_elderbeast_building_bonuses()
 
@@ -1501,6 +1504,17 @@ func _apply_elderbeast_battle_results() -> void:
 		else:
 			# Beast survived — sync HP back
 			beast.hp = beast_unit.current_hp
+
+func _apply_debt_flags() -> void:
+	# Check if each side's faction is in gold debt and flag their formations
+	for faction_id in [attacker_faction_id, defender_faction_id]:
+		var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+		var in_debt := fs != null and fs.resources.get(Enums.ResourceType.GOLD, 0) < 0
+		if not in_debt:
+			continue
+		var formations: Array = simulator.attacker_formations if faction_id == attacker_faction_id else simulator.defender_formations
+		for f in formations:
+			f.faction_in_debt = true
 
 func _apply_elderbeast_building_bonuses() -> void:
 	# Apply building bonuses to elderbeast formations in battle

@@ -54,7 +54,9 @@ static func get_entity_radius(f: BattleFormationV3) -> float:
 			return 27.0    # Marching Bastion etc
 		return 15.0
 	if f.tags.has("cavalry"):
-		return 5.0         # Mounted units (30% smaller than before)
+		if f.tags.has("beast"):
+			return 4.5     # Beast cavalry (raptors) — 10% smaller
+		return 5.0         # Mounted units
 	return 2.5             # Infantry / ranged / mage
 
 var attacker_formations: Array[BattleFormationV3] = []
@@ -166,6 +168,9 @@ class BattleFormationV3:
 	var spawn_unit_data_id: StringName = &""  # Unit to spawn mid-battle
 	var spawn_interval: int = 0           # Ticks between spawns
 	var spawn_counter: int = 0            # Current spawn countdown
+
+	# Debt penalty: faction has negative gold
+	var faction_in_debt: bool = false
 
 	func take_damage(amount: int) -> int:
 		var entities_before := entities_alive
@@ -527,7 +532,7 @@ func _update_entity_world_positions(f: BattleFormationV3, use_lerp: bool = false
 			f.entity_positions[i] = f.entity_positions[i].lerp(f.entity_target_positions[i] + jitter, entity_lerp)
 
 		# Anti-overlap: push apart entities that are too close to friendly entities
-		if f.in_melee_contact and limit > 1:
+		if limit > 1:
 			var min_dist := get_entity_radius(f) * 2.0
 			for i in limit:
 				for j in range(i + 1, limit):
@@ -564,6 +569,39 @@ func _get_nearby_formations(pos: Vector2) -> Array:
 			if spatial_grid.has(cell):
 				result.append_array(spatial_grid[cell])
 	return result
+
+func _resolve_cross_formation_overlap() -> void:
+	var all_formations: Array[BattleFormationV3] = []
+	all_formations.append_array(attacker_formations)
+	all_formations.append_array(defender_formations)
+	for i in all_formations.size():
+		var f1 := all_formations[i]
+		if f1.is_dead or f1.is_fled:
+			continue
+		var r1 := get_entity_radius(f1)
+		for j in range(i + 1, all_formations.size()):
+			var f2 := all_formations[j]
+			if f2.is_dead or f2.is_fled:
+				continue
+			# Skip pairs both in melee contact (fighting is expected close contact)
+			if f1.in_melee_contact and f2.in_melee_contact:
+				if f1.side != f2.side:
+					continue
+			var r2 := get_entity_radius(f2)
+			var min_dist := r1 + r2
+			# Quick bounding check between formation centers
+			if f1.position.distance_to(f2.position) > min_dist * float(maxi(f1.entities_alive, f2.entities_alive)) + 50.0:
+				continue
+			var lim1 := mini(f1.entities_alive, f1.entity_positions.size())
+			var lim2 := mini(f2.entities_alive, f2.entity_positions.size())
+			for a in lim1:
+				for b in lim2:
+					var diff := f1.entity_positions[a] - f2.entity_positions[b]
+					var d := diff.length()
+					if d < min_dist and d > 0.01:
+						var push := diff.normalized() * (min_dist - d) * 0.5
+						f1.entity_positions[a] += push
+						f2.entity_positions[b] -= push
 
 # --- Tick Simulation ---
 
@@ -669,6 +707,9 @@ func simulate_tick() -> Array[Dictionary]:
 		if f.is_dead or f.is_fled:
 			continue
 		_update_entity_world_positions(f, true)
+
+	# Cross-formation entity anti-overlap
+	_resolve_cross_formation_overlap()
 
 	# Rebuild spatial grid after movement
 	_rebuild_spatial_grid()
@@ -1230,10 +1271,16 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	if total_contact < 0.01:
 		return {"damage": 0, "morale_damage": 0.0, "contact": 0.0, "flank": 0.0, "rear": 0.0}
 
-	# Cap contact to reasonable amount
-	total_contact = minf(total_contact, float(mini(attacker.entities_alive, defender.entities_alive)))
+	# Cap contact: limited by how many attacker entities are in range (not defender count)
+	# This allows many small units to swarm a single large target
+	total_contact = minf(total_contact, float(attacker.entities_alive))
 
-	var per_tile_dps := maxf(1.0, float(attacker.attack) - float(defender.defense) * 0.5)
+	# Percentage-based defense: armor reduces damage proportionally, never to zero
+	# Formula: attack^2 / (attack + defense * 0.5)
+	# Examples: atk 8 vs def 30 → 2.78 dps; atk 40 vs def 8 → 36.4 dps
+	var atk_f := float(attacker.attack)
+	var def_f := float(defender.defense) * 0.5
+	var per_tile_dps := maxf(0.5, atk_f * atk_f / (atk_f + def_f))
 
 	# Endurance-based damage reduction: below 50% endurance, damage drops
 	var atk_endurance_ratio := attacker.current_endurance / attacker.max_endurance if attacker.max_endurance > 0.0 else 1.0
@@ -1256,16 +1303,16 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 		var hp_ratio := float(attacker.current_hp) / float(attacker.max_hp)
 		per_tile_dps *= lerpf(0.4, 1.0, hp_ratio)
 
-	# Terrain defense bonus
+	# Terrain defense bonus (percentage reduction on top)
 	var terrain_def := BattleTerrainGen.get_defense_bonus(get_terrain_at(defender.position))
 	if terrain_def > 0:
-		per_tile_dps = maxf(1.0, per_tile_dps - terrain_def * 0.3)
+		per_tile_dps *= maxf(0.5, 1.0 - terrain_def * 0.05)
 
 	# Infantry vs infantry: reduce damage to make clashes longer and less explosive
 	if attacker.tags.has("infantry") and defender.tags.has("infantry"):
 		per_tile_dps *= 0.55
 
-	var total_damage := int(per_tile_dps * total_contact * randf_range(0.85, 1.15) * TICK_SCALE)
+	var total_damage := maxi(1, int(per_tile_dps * total_contact * randf_range(0.85, 1.15) * TICK_SCALE))
 
 	# Stance modifiers
 	if attacker.stance == Enums.UnitStance.AGGRESSIVE:
@@ -1298,6 +1345,10 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 				total_damage = int(total_damage * impact_mult)
 		else:
 			attacker.impact_applied = true
+
+	# Debt penalty: 15% less damage when faction is in debt
+	if attacker.faction_in_debt:
+		total_damage = int(total_damage * 0.85)
 
 	# Morale damage from flanks/rear (scaled for tick rate)
 	var morale_dmg := (flank_contact * 1.5 + rear_contact * 3.0) * TICK_SCALE
@@ -1369,7 +1420,10 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	if f.faction_id == &"empire":
 		miss_chance += 0.20
 
-	var dmg_per_entity := maxf(0.5, float(f.attack) * 0.6 - float(target.defense) * 0.3)
+	# Percentage-based ranged defense: attack * 0.6 scaled by armor
+	var ranged_atk := float(f.attack) * 0.6
+	var ranged_def := float(target.defense) * 0.3
+	var dmg_per_entity := maxf(0.5, ranged_atk * ranged_atk / (ranged_atk + ranged_def))
 	# Endurance-based ranged damage reduction
 	var ranged_end_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
 	if ranged_end_ratio < 0.5:
@@ -1407,6 +1461,10 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 				proj_data["faction_id"] = f.faction_id
 				proj_data["speed_var"] = randf_range(0.8, 1.3)
 			visual_projs.append(proj_data)
+
+	# Debt penalty: 15% less damage when faction is in debt
+	if f.faction_in_debt:
+		total_damage = int(total_damage * 0.85)
 
 	if total_damage > 0:
 		f.damage_dealt += total_damage

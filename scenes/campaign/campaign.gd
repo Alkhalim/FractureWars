@@ -77,6 +77,9 @@ var _building_tile_mode := false
 var _building_tile_valid: Array[Vector2i] = []
 var _building_tile_overlays: Array[Node2D] = []
 
+# Elderbeast terrain depletion overlay
+var _beast_terrain_overlays: Array[Node2D] = []
+
 # Fog of war
 var _fog_of_war_enabled := true
 var _fog_overlay_nodes: Dictionary = {} # coord -> Polygon2D
@@ -1222,7 +1225,7 @@ func _select_army(army_id: StringName) -> void:
 		if city_at and city_at.faction_id == GameManager.state.player_faction_id:
 			_open_city_panel(city_at.city_id)
 
-	# Show elderbeast panel if army escorts a beast
+	# Show elderbeast panel and terrain overlay if army escorts a beast
 	if army and army.elderbeast_id != &"":
 		_selected_beast_id = army.elderbeast_id
 		var beast: ElderbeastState = GameManager.state.elderbeasts.get(army.elderbeast_id)
@@ -1230,6 +1233,7 @@ func _select_army(army_id: StringName) -> void:
 			var hud: Control = $UILayer/HUD
 			if hud.has_method("_show_elderbeast_panel"):
 				hud._show_elderbeast_panel(beast)
+			_show_beast_terrain_overlay(beast)
 
 func _select_hex(hex_coord: Vector2i) -> void:
 	selected_hex = hex_coord
@@ -1248,6 +1252,7 @@ func _deselect_all() -> void:
 	_reachable_tiles.clear()
 	_clear_reachable_overlay()
 	_clear_path_overlay()
+	_clear_beast_terrain_overlay()
 	EventBus.army_deselected.emit()
 	EventBus.hex_tile_deselected.emit()
 
@@ -2591,6 +2596,30 @@ func _select_elderbeast(beast_id: StringName) -> void:
 	var hud: Control = $UILayer/HUD
 	if hud.has_method("_show_elderbeast_panel"):
 		hud._show_elderbeast_panel(beast)
+	_show_beast_terrain_overlay(beast)
+
+func _show_beast_terrain_overlay(beast: ElderbeastState) -> void:
+	_clear_beast_terrain_overlay()
+	var hex_poly := _make_hex_polygon(HEX_RADIUS * 0.88)
+	var tiles: Array[Vector2i] = [beast.hex_pos]
+	for n in HexHelper.get_neighbors(beast.hex_pos):
+		if HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			tiles.append(n)
+	for tile_pos in tiles:
+		var depletion_mult := beast.get_depletion_multiplier(tile_pos)
+		# Green (full yield) → Red (depleted), lerp based on multiplier
+		var color := Color(0.15, 0.8, 0.25, 0.35).lerp(Color(0.8, 0.2, 0.15, 0.35), 1.0 - depletion_mult)
+		var polygon := Polygon2D.new()
+		polygon.polygon = hex_poly
+		polygon.position = _hex_to_pixel(tile_pos)
+		polygon.color = color
+		reachable_overlay.add_child(polygon)
+		_beast_terrain_overlays.append(polygon)
+
+func _clear_beast_terrain_overlay() -> void:
+	for node in _beast_terrain_overlays:
+		node.queue_free()
+	_beast_terrain_overlays.clear()
 
 # ── Minimap ──────────────────────────────────────────────────
 

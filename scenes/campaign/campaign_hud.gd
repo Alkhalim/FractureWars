@@ -866,6 +866,23 @@ static func _create_resource_icon(res_type: int, icon_size: float = 16.0) -> Sub
 			])
 			fat.color = Color(0.75, 0.5, 0.4, 0.5)
 			root.add_child(fat)
+		4:  # Shard Essence - purple crystal
+			var crystal := Polygon2D.new()
+			crystal.polygon = PackedVector2Array([
+				Vector2(0, -6 * s), Vector2(4 * s, -1 * s),
+				Vector2(3 * s, 5 * s), Vector2(-3 * s, 5 * s),
+				Vector2(-4 * s, -1 * s)
+			])
+			crystal.color = Color(0.6, 0.3, 0.85)
+			root.add_child(crystal)
+			# Inner glow facet
+			var facet := Polygon2D.new()
+			facet.polygon = PackedVector2Array([
+				Vector2(0, -3.5 * s), Vector2(2 * s, 0),
+				Vector2(0, 3 * s), Vector2(-2 * s, 0)
+			])
+			facet.color = Color(0.8, 0.5, 1.0, 0.5)
+			root.add_child(facet)
 		5:  # Wood - crossed logs with bark detail
 			for angle in [0.4, -0.4]:
 				var log := Polygon2D.new()
@@ -951,8 +968,11 @@ func _create_resource_bar() -> void:
 	_resource_tooltip.add_child(tooltip_label)
 	add_child(_resource_tooltip)
 
-	# Build individual resource items
-	for res_type in [0, 1, 2, 3, 5, 6]:
+	# Build individual resource items (include Shard Essence for Shardhorde)
+	var _res_types := [0, 1, 2, 3, 5, 6]
+	if GameManager.state.player_faction_id == &"shardhorde":
+		_res_types = [0, 1, 2, 3, 4, 5, 6]
+	for res_type in _res_types:
 		var item_vbox := VBoxContainer.new()
 		item_vbox.add_theme_constant_override("separation", 0)
 		item_vbox.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -1038,8 +1058,8 @@ func _calculate_projected_income() -> Dictionary:
 				if ud:
 					for res in ud.upkeep_cost:
 						income[res] = income.get(res, 0) - ud.upkeep_cost[res]
-			# Commander upkeep
-			if army.commander != null:
+			# Commander upkeep (skip for elderbeast armies)
+			if army.commander != null and army.elderbeast_id == &"":
 				var level_mult := 1.0 + (army.commander.level - 1) * 0.5
 				for res_type in CommanderSystem.COMMANDER_UPKEEP:
 					var cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
@@ -1272,7 +1292,10 @@ func _update_resource_display() -> void:
 
 	var projected := _calculate_projected_income()
 
-	for res_type in [0, 1, 2, 3, 5, 6]:
+	var _display_types := [0, 1, 2, 3, 5, 6]
+	if GameManager.state.player_faction_id == &"shardhorde":
+		_display_types = [0, 1, 2, 3, 4, 5, 6]
+	for res_type in _display_types:
 		var item: Dictionary = _resource_items.get(res_type, {})
 		if item.is_empty():
 			continue

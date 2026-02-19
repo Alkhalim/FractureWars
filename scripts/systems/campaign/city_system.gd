@@ -81,6 +81,11 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		if senate_wood_pct != 0 and income.has(Enums.ResourceType.WOOD):
 			income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * senate_wood_pct / 100.0)
 
+	# Debt penalty: buildings produce 66% income when faction gold is negative
+	if fs.resources.get(Enums.ResourceType.GOLD, 0) < 0:
+		for res_type in income:
+			income[res_type] = int(income[res_type] * 0.66)
+
 	# Faction-specific income modifiers
 	_apply_faction_income_modifier(income, faction_id, fs, city)
 
@@ -463,8 +468,8 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 			for res_type in unit_data.upkeep_cost:
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= int(unit_data.upkeep_cost[res_type] * terrain_mult)
-		# Commander upkeep (only while assigned to army)
-		if army.commander != null:
+		# Commander upkeep (only while assigned to army; skip for elderbeast armies)
+		if army.commander != null and army.elderbeast_id == &"":
 			var level_mult := 1.0 + (army.commander.level - 1) * 0.5
 			for res_type in CommanderSystem.COMMANDER_UPKEEP:
 				var cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)

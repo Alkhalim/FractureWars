@@ -39,8 +39,8 @@ const REALM_MODIFIERS := {
 # Power level -> number of units (power 3 adds an alpha with 2x HP)
 const POWER_COMPOSITION := {
 	1: 2,
-	2: 3,
-	3: 4, # + 1 alpha at index 0
+	2: 4,
+	3: 5, # + 1 alpha at index 0 = 6 total
 }
 
 func spawn_guardian_army(shard: ShardInstance) -> ArmyState:

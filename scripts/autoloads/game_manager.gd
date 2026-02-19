@@ -222,7 +222,7 @@ func _init_factions() -> void:
 		fs.faction_data_id = faction_id
 		if faction_id == &"shardhorde":
 			fs.resources = {
-				Enums.ResourceType.GOLD: 80,
+				Enums.ResourceType.GOLD: 100,
 				Enums.ResourceType.IRON: 50,
 				Enums.ResourceType.FOOD: 150,
 				Enums.ResourceType.TECHNOLOGY: 15,
@@ -844,8 +844,8 @@ func _try_claim_shard(hex_pos: Vector2i, faction_id: StringName) -> void:
 			var fs: FactionState = state.faction_states.get(faction_id)
 			if fs:
 				fs.owned_shards.append(shard_id)
-				# Award Shard Essence based on power_level
-				var shard_value: int = shard.power_level * 5
+				# Award Shard Essence based on power_level (15 base + 5 per extra power)
+				var shard_value: int = 15 + (shard.power_level - 1) * 5
 				fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + shard_value
 			EventBus.shard_claimed.emit(shard_id, faction_id)
 			break
