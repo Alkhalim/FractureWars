@@ -20,6 +20,7 @@ const COLOR_PLAYER := Color(0.25, 0.5, 0.9, 1)
 const COLOR_ENEMY := Color(0.8, 0.25, 0.2, 1)
 const COLOR_SELECTED := Color(0.95, 0.85, 0.3, 1)
 const COLOR_ROUTING_TINT := Color(0.4, 0.4, 0.4, 1)
+const COLOR_BAR_OUTLINE := Color(0.6, 0.55, 0.4, 0.5)
 
 func _draw() -> void:
 	if battle_scene == null:
@@ -36,10 +37,13 @@ func _draw() -> void:
 	if battle_scene.current_phase == battle_scene.Phase.SETUP:
 		_draw_deploy_zones(sim)
 
-	# 3. Draw entities for each formation
+	# 3. Draw dead soldier marks (faint outlines where soldiers fell)
+	_draw_dead_marks(sim)
+
+	# 4. Draw entities for each formation
 	_draw_formations(sim)
 
-	# 4. Draw field border
+	# 5. Draw field border
 	draw_rect(Rect2(0, 0, BattleSimulatorV3.FIELD_WIDTH, BattleSimulatorV3.FIELD_HEIGHT),
 		Color(0.55, 0.42, 0.2, 0.8), false, 2.0)
 
@@ -110,9 +114,10 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 		# Facing arrow at formation center
 		_draw_facing_arrow(f, base_color)
 
-		# HP bar below formation, morale bar below that
+		# HP bar below formation, morale bar below that, resource bars below those
 		_draw_hp_bar(f)
 		_draw_morale_bar(f)
+		_draw_resource_bars(f)
 
 		# Routing indicator
 		if f.is_routing:
@@ -123,6 +128,21 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 		draw_string(ThemeDB.fallback_font, f.position + Vector2(-30, -28),
 			f.display_name.left(8), HORIZONTAL_ALIGNMENT_CENTER, 60, 9,
 			Color(0.9, 0.85, 0.7, 0.8) if is_player else Color(0.9, 0.7, 0.65, 0.8))
+
+func _draw_dead_marks(sim: BattleSimulatorV3) -> void:
+	var all_formations: Array[BattleSimulatorV3.BattleFormationV3] = []
+	all_formations.append_array(sim.attacker_formations)
+	all_formations.append_array(sim.defender_formations)
+
+	for f in all_formations:
+		if f.dead_entity_positions.size() == 0:
+			continue
+		var is_player: bool = f.side == battle_scene.player_side
+		var base_color: Color = COLOR_PLAYER if is_player else COLOR_ENEMY
+		var mark_color := Color(base_color.r, base_color.g, base_color.b, 0.15)
+		var radius := BattleSimulatorV3.get_entity_radius(f)
+		for pos in f.dead_entity_positions:
+			draw_circle(pos, radius, mark_color)
 
 func _draw_facing_arrow(f: BattleSimulatorV3.BattleFormationV3, base_color: Color) -> void:
 	var facing := f.get_facing_vector()
@@ -136,10 +156,10 @@ func _draw_facing_arrow(f: BattleSimulatorV3.BattleFormationV3, base_color: Colo
 func _draw_morale_bar(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	var bounds := _get_formation_bounds(f)
 	var bar_width := maxf(30.0, bounds.size.x)
-	var bar_height := 2.5
+	var bar_height := 3.0
 	var bar_x := bounds.position.x
-	# Position below the HP bar (HP bar is at bounds.bottom + 2, height 2.5)
-	var bar_y := bounds.position.y + bounds.size.y + 2 + 2.5 + 1.5
+	# Position below the HP bar (HP bar is at bounds.bottom + 2, height 3.0)
+	var bar_y := bounds.position.y + bounds.size.y + 2 + 3.0 + 1.5
 
 	draw_rect(Rect2(bar_x, bar_y, bar_width, bar_height), Color(0.15, 0.12, 0.1, 0.8))
 
@@ -151,11 +171,12 @@ func _draw_morale_bar(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	elif morale_ratio < 0.6:
 		morale_color = Color(1, 1, 1, 0.65)
 	draw_rect(Rect2(bar_x, bar_y, fill_width, bar_height), morale_color)
+	draw_rect(Rect2(bar_x, bar_y, bar_width, bar_height), COLOR_BAR_OUTLINE, false, 1.0)
 
 func _draw_hp_bar(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	var bounds := _get_formation_bounds(f)
 	var bar_width := maxf(30.0, bounds.size.x)
-	var bar_height := 2.5
+	var bar_height := 3.0
 	var bar_x := bounds.position.x
 	var bar_y := bounds.position.y + bounds.size.y + 2
 
@@ -169,6 +190,7 @@ func _draw_hp_bar(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	elif hp_ratio < 0.6:
 		hp_color = Color(0.85, 0.65, 0.2)
 	draw_rect(Rect2(bar_x, bar_y, fill_width, bar_height), hp_color)
+	draw_rect(Rect2(bar_x, bar_y, bar_width, bar_height), COLOR_BAR_OUTLINE, false, 1.0)
 
 func _get_formation_bounds(f: BattleSimulatorV3.BattleFormationV3) -> Rect2:
 	if f.entity_positions.size() == 0:
@@ -187,3 +209,51 @@ func _get_formation_bounds(f: BattleSimulatorV3.BattleFormationV3) -> Rect2:
 		max_y = maxf(max_y, p.y)
 
 	return Rect2(min_x - 5, min_y - 5, max_x - min_x + 10, max_y - min_y + 10)
+
+func _draw_resource_bars(f: BattleSimulatorV3.BattleFormationV3) -> void:
+	var bounds := _get_formation_bounds(f)
+	var bar_width := maxf(30.0, bounds.size.x)
+	var bar_height := 2.5
+	var bar_x := bounds.position.x
+	# Start below HP bar (3.0) + gap (1.5) + morale bar (3.0) + gap (1.5)
+	var base_y := bounds.position.y + bounds.size.y + 2 + 3.0 + 1.5 + 3.0 + 1.5
+	var bar_idx := 0
+	var bg_color := Color(0.15, 0.12, 0.1, 0.6)
+
+	# Endurance bar (yellow) — all units
+	if f.max_endurance > 0.0:
+		var y := base_y + bar_idx * (bar_height + 1.0)
+		draw_rect(Rect2(bar_x, y, bar_width, bar_height), bg_color)
+		var ratio := clampf(f.current_endurance / f.max_endurance, 0.0, 1.0)
+		var fill := bar_width * ratio
+		var color := Color(0.9, 0.82, 0.25, 0.85)
+		if ratio < 0.3:
+			color = Color(0.7, 0.55, 0.15, 0.6)
+		draw_rect(Rect2(bar_x, y, fill, bar_height), color)
+		draw_rect(Rect2(bar_x, y, bar_width, bar_height), COLOR_BAR_OUTLINE, false, 1.0)
+		bar_idx += 1
+
+	# Ammo bar (beige) — ranged non-mage units only
+	if f.max_ammo > 0:
+		var y := base_y + bar_idx * (bar_height + 1.0)
+		draw_rect(Rect2(bar_x, y, bar_width, bar_height), bg_color)
+		var ratio := clampf(float(f.current_ammo) / float(f.max_ammo), 0.0, 1.0)
+		var fill := bar_width * ratio
+		var color := Color(0.82, 0.75, 0.55, 0.85)
+		if ratio < 0.3:
+			color = Color(0.65, 0.55, 0.35, 0.6)
+		draw_rect(Rect2(bar_x, y, fill, bar_height), color)
+		draw_rect(Rect2(bar_x, y, bar_width, bar_height), COLOR_BAR_OUTLINE, false, 1.0)
+		bar_idx += 1
+
+	# Mana bar (blue) — mage units only
+	if f.max_mana > 0.0:
+		var y := base_y + bar_idx * (bar_height + 1.0)
+		draw_rect(Rect2(bar_x, y, bar_width, bar_height), bg_color)
+		var ratio := clampf(f.current_mana / f.max_mana, 0.0, 1.0)
+		var fill := bar_width * ratio
+		var color := Color(0.3, 0.45, 0.9, 0.85)
+		if ratio < 0.3:
+			color = Color(0.2, 0.3, 0.65, 0.6)
+		draw_rect(Rect2(bar_x, y, fill, bar_height), color)
+		draw_rect(Rect2(bar_x, y, bar_width, bar_height), COLOR_BAR_OUTLINE, false, 1.0)

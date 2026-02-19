@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shard_crawler"
+display_name = "Shard Crawler"
+description = "A massive crystalline arthropod bred for siege warfare. Its mandibles crack stone and its armored carapace deflects arrows."
+faction_id = &"shardhorde"
+max_hp = 450
+attack = 18
+defense = 16
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 8
+movement_points = 2.0
+upkeep_cost = {0: 10, 3: 5}
+recruit_cost = {0: 200, 1: 80, 3: 50, 4: 15}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {1: 0.15}
+tags = Array[String](["monster", "beast", "melee"])
+base_morale = 75
+morale_aura = -3
+fear_radius = 4
+captive_chance = 0.0

@@ -6,13 +6,13 @@
 script = ExtResource("1")
 id = &"labor_camp"
 display_name = "Labor Camp I"
-description = "A facility for integrating captive populations into the workforce. Converts captives to peasants over time."
+description = "A crude facility for putting captive populations to work. Cheap to build but offers no population growth."
 faction_id = &"empire"
 category = &"economic"
-build_cost = {0: 300, 1: 20, 5: 60}
-build_time = 2
+build_cost = {0: 100, 1: 10, 5: 20}
+build_time = 1
 income_bonus = {5: 5, 1: 5}
-population_growth_bonus = 3
+population_growth_bonus = 0
 defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])

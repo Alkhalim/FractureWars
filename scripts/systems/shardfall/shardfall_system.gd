@@ -10,6 +10,7 @@ const REALM_COLORS := [
 	Color(0.25, 0.5, 0.9),    # Mortal - blue
 ]
 
+var guardian_system: ShardGuardianSystem = ShardGuardianSystem.new()
 var turns_since_last_fall: int = 0
 var base_chance: float = 0.3
 var escalation: float = 0.05
@@ -45,6 +46,12 @@ func _trigger_shardfall() -> void:
 	shard.turns_remaining = 8
 
 	GameManager.state.active_shards[shard.shard_id] = shard
+
+	# Spawn guardian army to protect the shard
+	var army := guardian_system.spawn_guardian_army(shard)
+	if army:
+		shard.guardian_army_id = army.army_id
+		GameManager.state.armies[army.army_id] = army
 
 	EventBus.shardfall_occurred.emit(shard.shard_id, hex_pos, realm)
 

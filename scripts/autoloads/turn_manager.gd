@@ -62,15 +62,15 @@ func _ready() -> void:
 	EventBus.army_destroyed.connect(_on_log_army_destroyed)
 
 func _on_log_battle_resolved(winner_faction: StringName, hex_pos: Vector2i) -> void:
-	var fd := DataManager.get_faction(winner_faction)
-	var name := fd.display_name if fd else str(winner_faction)
+	var fd: FactionData = DataManager.get_faction(winner_faction)
+	var name: String = fd.display_name if fd else str(winner_faction)
 	turn_log.append({type = "battle", text = "%s won a battle at (%d, %d)" % [name, hex_pos.x, hex_pos.y]})
 
 func _on_log_city_captured(city_id: StringName, old_owner: StringName, new_owner: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
-	var city_name := city.city_name if city else str(city_id)
-	var fd := DataManager.get_faction(new_owner)
-	var name := fd.display_name if fd else str(new_owner)
+	var city_name: String = city.get_display_name() if city else str(city_id)
+	var fd: FactionData = DataManager.get_faction(new_owner)
+	var name: String = fd.display_name if fd else str(new_owner)
 	turn_log.append({type = "capture", text = "%s captured %s" % [name, city_name]})
 
 func _on_log_shardfall(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm) -> void:
@@ -79,17 +79,17 @@ func _on_log_shardfall(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Rea
 	turn_log.append({type = "shard", text = "A %s Shard fell at (%d, %d)" % [r_name, hex_pos.x, hex_pos.y]})
 
 func _on_log_treaty_created(treaty_id: StringName, treaty_type: int, faction_a: StringName, faction_b: StringName) -> void:
-	var fa := DataManager.get_faction(faction_a)
-	var fb := DataManager.get_faction(faction_b)
-	var na := fa.display_name if fa else str(faction_a)
-	var nb := fb.display_name if fb else str(faction_b)
+	var fa: FactionData = DataManager.get_faction(faction_a)
+	var fb: FactionData = DataManager.get_faction(faction_b)
+	var na: String = fa.display_name if fa else str(faction_a)
+	var nb: String = fb.display_name if fb else str(faction_b)
 	var type_names := ["Peace", "Alliance", "Trade"]
 	var t_name: String = type_names[treaty_type] if treaty_type < type_names.size() else "Treaty"
 	turn_log.append({type = "treaty", text = "%s and %s formed a %s" % [na, nb, t_name]})
 
 func _on_log_army_destroyed(army_id: StringName, faction_id: StringName) -> void:
-	var fd := DataManager.get_faction(faction_id)
-	var name := fd.display_name if fd else str(faction_id)
+	var fd: FactionData = DataManager.get_faction(faction_id)
+	var name: String = fd.display_name if fd else str(faction_id)
 	turn_log.append({type = "army", text = "A %s army was destroyed" % name})
 
 func start_game() -> void:
@@ -119,8 +119,14 @@ func _start_faction_turn() -> void:
 	if faction_id == &"shardhorde":
 		_process_elderbeasts()
 
+	# Process unique faction mechanics
+	_process_faction_mechanic(faction_id)
+
 	# Heal armies in settlements/friendly territory
 	_heal_armies_in_settlements(faction_id)
+
+	# Terrain attrition: damage/heal armies based on terrain they occupy
+	_apply_terrain_attrition(faction_id)
 
 	# Grant passive XP to commanders
 	_grant_passive_commander_xp(faction_id)
@@ -135,6 +141,7 @@ func _start_faction_turn() -> void:
 			if tile and tile.road_level >= 1:
 				army.movement_remaining += 0.6 * tile.road_level
 			army.has_moved = false
+			army.battle_exhausted = false
 
 	# Decay temp effects
 	_decay_temp_effects(faction_id)
@@ -150,8 +157,9 @@ func _start_faction_turn() -> void:
 		_execute_ai_settlement_building(faction_id)
 		GameManager.diplomacy_system.execute_ai_diplomacy(faction_id)
 		GameManager.research_system.execute_ai_research(faction_id)
-		_ai_handle_forsaken_offer(faction_id)
-		_ai_handle_senate_dilemma(faction_id)
+		if faction_id == &"empire":
+			_ai_handle_forsaken_offer(faction_id)
+			_ai_handle_senate_dilemma(faction_id)
 		if faction_id == &"shardhorde":
 			_execute_shardhorde_ai()
 		elif faction_id == &"gladehost":
@@ -195,8 +203,9 @@ func _end_round() -> void:
 	# Auto-save at round end (slot 0)
 	GameManager.save_game(0)
 
-	# Clear turn log for next round
+	# Clear turn log and per-turn diplomacy tracking for next round
 	turn_log.clear()
+	GameManager.diplomacy_system.reset_gifts_this_turn()
 
 	if GameManager.state.game_over:
 		return # Don't start next turn if game is over
@@ -213,6 +222,9 @@ func _decay_shards() -> void:
 			if shard.turns_remaining <= 0:
 				to_remove.append(shard_id)
 	for shard_id in to_remove:
+		var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+		if shard and shard.guardian_army_id != &"":
+			GameManager.remove_army(shard.guardian_army_id)
 		GameManager.state.active_shards.erase(shard_id)
 		EventBus.shard_expired.emit(shard_id)
 
@@ -226,12 +238,12 @@ func _check_victory_conditions() -> void:
 	var domination_threshold := int(total_regions * 0.6)
 
 	for faction_id in GameManager.state.faction_states:
-		if faction_id == &"rebels":
+		if GameManager.is_npc_faction(faction_id):
 			continue
 		var fs: FactionState = GameManager.state.faction_states[faction_id]
 		if fs.is_defeated:
 			continue
-		var is_player := (faction_id == GameManager.state.player_faction_id)
+		var is_player: bool = (faction_id == GameManager.state.player_faction_id)
 
 		# Check Defeat — no cities, no armies (no elderbeasts for Shardhorde)
 		var has_cities := fs.owned_cities.size() > 0
@@ -270,7 +282,7 @@ func _check_victory_conditions() -> void:
 		if fs.owned_regions.size() >= 5:
 			var alliance_count := 0
 			for other_id in GameManager.state.faction_states:
-				if other_id == faction_id or other_id == &"rebels":
+				if other_id == faction_id or GameManager.is_npc_faction(other_id):
 					continue
 				var other_fs: FactionState = GameManager.state.faction_states[other_id]
 				if other_fs.is_defeated:
@@ -289,7 +301,7 @@ func _check_victory_conditions() -> void:
 	# Check Elimination — last non-defeated faction standing
 	var alive_factions: Array[StringName] = []
 	for faction_id in GameManager.state.faction_states:
-		if faction_id == &"rebels":
+		if GameManager.is_npc_faction(faction_id):
 			continue
 		var fs: FactionState = GameManager.state.faction_states[faction_id]
 		if not fs.is_defeated:
@@ -349,7 +361,19 @@ func _grant_passive_commander_xp(faction_id: StringName) -> void:
 	for army_id in GameManager.state.armies:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		if army.faction_id == faction_id and army.commander:
-			CommanderSystem.grant_passive_xp(army.commander)
+			var context: Array[StringName] = []
+			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+			if tile:
+				context.append(StringName("terrain_" + Enums.TerrainType.keys()[tile.terrain].to_lower()))
+			var city := GameManager.city_system.get_city_at_hex(army.hex_pos)
+			if city:
+				context.append(&"in_city")
+			if army.elderbeast_id != &"":
+				context.append(&"elderbeast")
+			var base_xp := 2
+			if city and city.faction_id == army.faction_id:
+				base_xp += 3  # 5 total when garrisoned in own city
+			CommanderSystem.grant_passive_xp(army.commander, context, base_xp)
 
 # ── AI Commander Assignment ──────────────────────────────────
 
@@ -395,14 +419,15 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 	if fs == null:
 		return
 
-	# Per-faction building priorities
+	# Per-faction building priorities — using each faction's own buildings
 	var faction_build_priorities := {
-		&"empire": [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"tavern", &"market_square", &"temple"],
-		&"skulloath": [&"barracks", &"iron_pit", &"grain_fields", &"market_square", &"lumber_camp_empire"],
-		&"gladehost": [&"barracks", &"tavern", &"grain_fields", &"lumber_camp_empire", &"temple", &"market_square"],
-		&"tainted_jade": [&"barracks", &"iron_pit", &"market_square", &"grain_fields", &"lumber_camp_empire"],
+		&"empire": [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"market_square", &"tavern", &"scriptorium_empire", &"village_gathering_place"],
+		&"skulloath": [&"raiders_den", &"herders_camp", &"bone_workshop", &"ancestor_shrine", &"trade_post_skulloath", &"steppe_watchtower", &"blood_altar", &"pale_waif_altar", &"beast_pens"],
+		&"gladehost": [&"ranger_outpost", &"harvest_clearing", &"rootwood_lodge", &"sacred_grove", &"seasonal_shrine", &"grove_ironworks", &"forest_market", &"embassy_grove", &"living_fortress", &"beastkeepers_glade"],
+		&"tainted_jade": [&"serpent_pit", &"vine_shelter", &"jade_forge", &"root_altar", &"thrall_quarters", &"jade_market", &"jungle_traps", &"taint_suppressor", &"hunting_ground"],
+		&"shardhorde": [&"crystal_nursery", &"shard_conduit", &"crystal_forge", &"shard_harvester", &"chitin_walls"],
 	}
-	var priority_list: Array = faction_build_priorities.get(faction_id, [&"barracks", &"grain_fields", &"iron_pit", &"market_square"])
+	var priority_list: Array = faction_build_priorities.get(faction_id, [&"cohort_barracks", &"grain_fields", &"iron_pit", &"market_square"])
 
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
@@ -438,7 +463,7 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 			GameManager.city_system.start_upgrade(city_id)
 
 		# Recruit units with threat-aware composition
-		if city.recruit_queue.is_empty() and city.population > 120:
+		if city.recruit_queue.is_empty() and GameManager.city_system.get_province_population(city) > 120:
 			_ai_recruit_with_composition(city, faction_id)
 
 func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> void:
@@ -460,7 +485,7 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 	# Threat-relative recruitment: recruit if we have fewer units than any enemy at war
 	var max_enemy_units := 0
 	for other_id in GameManager.state.faction_states:
-		if other_id == faction_id or other_id == &"rebels":
+		if other_id == faction_id or GameManager.is_npc_faction(other_id):
 			continue
 		if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
 			continue
@@ -821,62 +846,34 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 func _execute_shardhorde_ai() -> void:
 	var faction_id := &"shardhorde"
 
-	# Move elderbeasts
+	# Elderbeasts move WITH their armies — level up based on survival
 	for beast_id in GameManager.state.elderbeasts:
 		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 		if beast.faction_id != faction_id:
 			continue
-		_move_elderbeast(beast)
+		beast.survival_turns += 1
+		if beast.level < 3:
+			if (beast.level == 1 and beast.survival_turns >= 10) or \
+			   (beast.level == 2 and beast.survival_turns >= 25):
+				beast.level += 1
+				beast.apply_level_stats()
+				_sync_elderbeast_unit_data(beast)
 
-	# Move armies
+	# Move armies (elderbeasts attached to armies move automatically via move_army_along_path)
 	var armies := GameManager.get_faction_armies(faction_id)
 	for army in armies:
 		if army.movement_remaining <= 0:
 			continue
 
-		# Check if this is an escort army - stay adjacent to beast
-		var is_escort := false
-		for beast_id in GameManager.state.elderbeasts:
-			var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
-			if beast.escort_army_id == army.army_id:
-				is_escort = true
-				var dist_to_beast := HexHelper.hex_distance(army.hex_pos, beast.hex_pos)
-				if dist_to_beast > 1:
-					# Move to adjacent tile near beast
-					var best_neighbor := Vector2i(-1, -1)
-					var best_dist := 9999
-					for n in HexHelper.get_neighbors(beast.hex_pos):
-						if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-							continue
-						var tile := GameManager.state.hex_map.get_tile(n)
-						if tile == null or tile.terrain == Enums.TerrainType.WATER:
-							continue
-						if GameManager.movement_system._is_tile_blocked(n, faction_id, army.army_id):
-							continue
-						var d := HexHelper.hex_distance(army.hex_pos, n)
-						if d < best_dist:
-							best_dist = d
-							best_neighbor = n
-					if best_neighbor != Vector2i(-1, -1):
-						var path := GameManager.movement_system.find_path(
-							army.hex_pos, best_neighbor, faction_id, INF, army.army_id)
-						if path.size() > 0:
-							GameManager.move_army_along_path(army.army_id, path)
-							if not GameManager.state.armies.has(army.army_id):
-								beast.escort_army_id = &""
-				break
+		# Armies with elderbeasts prefer shard wastes / desert tiles
+		var has_beast := army.elderbeast_id != &""
 
-		if is_escort:
-			continue
-
-		# Raiding armies: attack nearby enemies within 6 hexes of nearest beast
-		var nearest_beast_pos := _get_nearest_beast_pos(army.hex_pos)
+		# Attack nearby enemies
 		var target_hex := _find_nearest_enemy_army_hex(army.hex_pos, faction_id)
 		if target_hex != Vector2i(-1, -1):
-			var dist_to_beast := 999
-			if nearest_beast_pos != Vector2i(-1, -1):
-				dist_to_beast = HexHelper.hex_distance(target_hex, nearest_beast_pos)
-			if dist_to_beast <= 6:
+			# Armies with beasts attack within 6 hexes, raiding armies go further
+			var max_range := 6 if has_beast else 10
+			if HexHelper.hex_distance(army.hex_pos, target_hex) <= max_range:
 				var path := GameManager.movement_system.find_path(
 					army.hex_pos, target_hex, faction_id, INF)
 				if path.size() > 0:
@@ -887,19 +884,26 @@ func _execute_shardhorde_ai() -> void:
 						return
 				continue
 
-		# Wander near beasts
-		if nearest_beast_pos != Vector2i(-1, -1):
-			var dist := HexHelper.hex_distance(army.hex_pos, nearest_beast_pos)
-			if dist > 5:
-				# Too far, move back toward beast
-				var path := GameManager.movement_system.find_path(
-					army.hex_pos, nearest_beast_pos, faction_id, INF)
-				if path.size() > 0:
-					GameManager.move_army_along_path(army.army_id, path)
-					if not GameManager.state.armies.has(army.army_id):
-						continue
-					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-						return
+		# Beast armies wander toward shard wastes
+		if has_beast:
+			_move_beast_army_toward_wastes(army)
+		else:
+			# Raiding armies without beasts seek enemies or wander
+			var nearest_beast_pos := _get_nearest_beast_pos(army.hex_pos)
+			if nearest_beast_pos != Vector2i(-1, -1):
+				var dist := HexHelper.hex_distance(army.hex_pos, nearest_beast_pos)
+				if dist > 5:
+					var path := GameManager.movement_system.find_path(
+						army.hex_pos, nearest_beast_pos, faction_id, INF)
+					if path.size() > 0:
+						GameManager.move_army_along_path(army.army_id, path)
+						if not GameManager.state.armies.has(army.army_id):
+							continue
+						if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+							return
+
+	# Build on elderbeasts
+	_shardhorde_ai_build()
 
 	# Recruit at elderbeasts
 	_shardhorde_recruit()
@@ -907,22 +911,14 @@ func _execute_shardhorde_ai() -> void:
 	await get_tree().create_timer(0.5).timeout
 	_end_current_faction_turn()
 
-func _move_elderbeast(beast: ElderbeastState) -> void:
-	beast.survival_turns += 1
-	# Level up based on survival
-	if beast.level < 3:
-		if (beast.level == 1 and beast.survival_turns >= 10) or \
-		   (beast.level == 2 and beast.survival_turns >= 25):
-			beast.level += 1
-			beast.apply_level_stats()
-
-	# Move 1 hex toward SHARD_WASTES or DESERT terrain, avoid water
+func _move_beast_army_toward_wastes(army: ArmyState) -> void:
+	# Move the army (and its attached elderbeast) toward shard wastes / desert
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
 		return
 
-	var neighbors := HexHelper.get_neighbors(beast.hex_pos)
-	var best_hex := beast.hex_pos
+	var neighbors := HexHelper.get_neighbors(army.hex_pos)
+	var best_hex := army.hex_pos
 	var best_score := -999
 
 	for n in neighbors:
@@ -930,18 +926,6 @@ func _move_elderbeast(beast: ElderbeastState) -> void:
 			continue
 		var tile := hex_map.get_tile(n)
 		if tile == null or tile.terrain == Enums.TerrainType.WATER:
-			continue
-		# Skip tiles occupied by any army
-		if GameManager.get_armies_at_tile(n).size() > 0:
-			continue
-		# Skip tiles with other elderbeasts
-		var has_beast := false
-		for bid in GameManager.state.elderbeasts:
-			var b: ElderbeastState = GameManager.state.elderbeasts[bid]
-			if b.beast_id != beast.beast_id and b.hex_pos == n:
-				has_beast = true
-				break
-		if has_beast:
 			continue
 		var score := 0
 		if tile.terrain == Enums.TerrainType.SHARD_WASTES:
@@ -955,16 +939,14 @@ func _move_elderbeast(beast: ElderbeastState) -> void:
 			var relation := GameManager.get_relation(&"shardhorde", tile.owner_faction)
 			if relation == Enums.FactionRelation.WAR:
 				score -= 10
-		# Random wander factor
 		score += randi() % 3
 		if score > best_score:
 			best_score = score
 			best_hex = n
 
-	if best_hex != beast.hex_pos:
-		var old_pos := beast.hex_pos
-		beast.hex_pos = best_hex
-		EventBus.elderbeast_moved.emit(beast.beast_id, old_pos, best_hex)
+	if best_hex != army.hex_pos:
+		var path: Array[Vector2i] = [best_hex]
+		GameManager.move_army_along_path(army.army_id, path)
 
 func _get_nearest_beast_pos(from: Vector2i) -> Vector2i:
 	var best := Vector2i(-1, -1)
@@ -976,6 +958,65 @@ func _get_nearest_beast_pos(from: Vector2i) -> Vector2i:
 			best_dist = d
 			best = beast.hex_pos
 	return best
+
+# Terrain requirements for Shardhorde beast buildings (mirrors campaign_hud constant)
+const _AI_BEAST_TERRAIN := {
+	&"shard_conduit": [Enums.TerrainType.PLAINS, Enums.TerrainType.FOREST, Enums.TerrainType.JUNGLE, Enums.TerrainType.SWAMP],
+	&"shard_harvester": [Enums.TerrainType.SHARD_WASTES, Enums.TerrainType.DESERT, Enums.TerrainType.MOUNTAINS],
+	&"crystal_forge": [Enums.TerrainType.MOUNTAINS, Enums.TerrainType.FOREST],
+	&"resonance_core": [Enums.TerrainType.SHARD_WASTES, Enums.TerrainType.DESERT],
+	&"resonance_amplifier": [Enums.TerrainType.SHARD_WASTES],
+}
+
+# AI building priority: military first to unlock units, then economic
+const _AI_BEAST_BUILD_PRIORITY := [
+	&"crystal_nursery", &"shard_harvester", &"shard_conduit", &"crystal_forge",
+	&"chitin_walls", &"hive_spire", &"resonance_core",
+	&"elder_breeding_ground", &"resonance_amplifier",
+]
+
+func _shardhorde_ai_build() -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(&"shardhorde")
+	if fs == null:
+		return
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		if beast.faction_id != &"shardhorde":
+			continue
+		if beast.build_queue.size() > 0 or beast.get_available_building_slots() <= 0:
+			continue
+		# Get nearby terrains
+		var nearby_terrains: Array[int] = []
+		var tiles := _get_beast_tiles(beast)
+		for tile_pos in tiles:
+			var tile := GameManager.state.hex_map.get_tile(tile_pos)
+			if tile and not nearby_terrains.has(tile.terrain):
+				nearby_terrains.append(tile.terrain)
+		# Try buildings in priority order
+		for bid in _AI_BEAST_BUILD_PRIORITY:
+			if beast.buildings.has(bid):
+				continue
+			var building: BuildingData = DataManager.get_building(bid)
+			if building == null:
+				continue
+			if building.required_capital_level > beast.level:
+				continue
+			if building.upgrades_from != &"" and not beast.buildings.has(building.upgrades_from):
+				continue
+			var terrain_req: Array = _AI_BEAST_TERRAIN.get(bid, [])
+			if terrain_req.size() > 0:
+				var ok := false
+				for t in terrain_req:
+					if nearby_terrains.has(t):
+						ok = true
+						break
+				if not ok:
+					continue
+			if not _can_afford_faction(fs, building.build_cost):
+				continue
+			_deduct_faction_cost(fs, building.build_cost)
+			beast.build_queue.append({building_id = bid, turns_remaining = building.build_time})
+			break
 
 func _shardhorde_recruit() -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(&"shardhorde")
@@ -995,18 +1036,39 @@ func _shardhorde_recruit() -> void:
 				# Spawn unit at beast location
 				_spawn_unit_at_hex(unit_data_id, &"shardhorde", beast.hex_pos)
 			continue
-		# Start new recruitment
-		if not beast.buildings.has(&"barracks"):
-			continue
-		# Recruit crystal_swarmling (cheapest)
-		var uid := &"crystal_swarmling"
-		var udata := DataManager.get_unit(uid)
-		if udata == null:
-			continue
-		if not _can_afford_faction(fs, udata.recruit_cost):
-			continue
-		_deduct_faction_cost(fs, udata.recruit_cost)
-		beast.recruit_queue.append({unit_data_id = uid, turns_remaining = udata.recruit_time})
+		# Recruit based on beast level and available buildings
+		var recruit_pool: Array[StringName] = [&"crystal_swarmling"]
+		for building_id in beast.buildings:
+			var building: BuildingData = DataManager.get_building(building_id)
+			if building and building.unlocks_units.size() > 0:
+				for uid in building.unlocks_units:
+					if not recruit_pool.has(uid):
+						recruit_pool.append(uid)
+		# Unit unlocks come entirely from buildings — no level-based overrides
+		# Pick the best affordable unit
+		var best_uid: StringName = &""
+		var best_score := 0
+		for uid in recruit_pool:
+			var udata := DataManager.get_unit(uid)
+			if udata == null:
+				continue
+			if not _can_afford_faction(fs, udata.recruit_cost):
+				continue
+			var score := udata.attack + udata.defense
+			if score > best_score:
+				best_score = score
+				best_uid = uid
+		if best_uid == &"":
+			# Fall back to cheapest
+			for uid in recruit_pool:
+				var udata := DataManager.get_unit(uid)
+				if udata and _can_afford_faction(fs, udata.recruit_cost):
+					best_uid = uid
+					break
+		if best_uid != &"":
+			var udata := DataManager.get_unit(best_uid)
+			_deduct_faction_cost(fs, udata.recruit_cost)
+			beast.recruit_queue.append({unit_data_id = best_uid, turns_remaining = udata.recruit_time})
 
 func _spawn_unit_at_hex(unit_data_id: StringName, faction_id: StringName, hex_pos: Vector2i) -> void:
 	var unit_data := DataManager.get_unit(unit_data_id)
@@ -1034,19 +1096,77 @@ func _spawn_unit_at_hex(unit_data_id: StringName, faction_id: StringName, hex_po
 
 # ── Elderbeast Processing ────────────────────────────────────
 
+func _sync_elderbeast_hp_to_unit(beast: ElderbeastState) -> void:
+	# Keep the UnitInstance in the army in sync with beast HP
+	if beast.escort_army_id == &"" or beast.unit_instance_id == &"":
+		return
+	var army: ArmyState = GameManager.state.armies.get(beast.escort_army_id)
+	if army == null:
+		return
+	for unit in army.units:
+		if unit.instance_id == beast.unit_instance_id:
+			unit.current_hp = beast.hp
+			break
+
+func _sync_elderbeast_unit_data(beast: ElderbeastState) -> void:
+	# Update the UnitInstance in the escort army when beast levels up
+	if beast.escort_army_id == &"" or beast.unit_instance_id == &"":
+		return
+	var army: ArmyState = GameManager.state.armies.get(beast.escort_army_id)
+	if army == null:
+		return
+	for unit in army.units:
+		if unit.instance_id == beast.unit_instance_id:
+			unit.unit_data_id = beast.get_unit_data_id()
+			# Keep current HP (don't reset to max on level up)
+			break
+
 func _process_elderbeasts() -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(&"shardhorde")
 	if fs == null:
 		return
+
+	# Collect all tiles currently in range of any beast (for depletion recovery)
+	var active_tiles: Dictionary = {} # Vector2i -> true
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		if beast.faction_id != &"shardhorde":
+			continue
+		active_tiles[beast.hex_pos] = true
+		for n in HexHelper.get_neighbors(beast.hex_pos):
+			if HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				active_tiles[n] = true
+
+	var current_turn: int = GameManager.state.current_turn
+
 	for beast_id in GameManager.state.elderbeasts:
 		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 		if beast.faction_id != &"shardhorde":
 			continue
 
-		# Generate income
+		# Decrement injured timer
+		if beast.injured_turns > 0:
+			beast.injured_turns -= 1
+
+		# Generate income BEFORE incrementing depletion (so turn 1 starts at full yield)
 		var income := _get_elderbeast_income(beast)
 		for res_type in income:
 			fs.resources[res_type] = fs.resources.get(res_type, 0) + income[res_type]
+
+		# Increment depletion for tiles in range (after income so first turn is unpenalized)
+		var tiles_in_range := _get_beast_tiles(beast)
+		for tile_pos in tiles_in_range:
+			beast.tile_depletion[tile_pos] = beast.tile_depletion.get(tile_pos, 0) + 1
+
+		# Recover depletion for tiles NOT in range of any beast
+		# Only recover every 2 turns so depleted tiles take ~12 turns to regenerate
+		if current_turn % 2 == 0:
+			var keys_to_check: Array = beast.tile_depletion.keys()
+			for tile_pos in keys_to_check:
+				if not active_tiles.has(tile_pos):
+					beast.tile_depletion[tile_pos] = maxi(0, beast.tile_depletion[tile_pos] - 1)
+					if beast.tile_depletion[tile_pos] <= 0:
+						beast.tile_depletion.erase(tile_pos)
 
 		# Population growth
 		beast.population += 3
@@ -1061,20 +1181,64 @@ func _process_elderbeasts() -> void:
 				beast.buildings.append(building_id)
 				EventBus.building_completed.emit(beast.beast_id, building_id)
 
-		# Reset movement
+		# Sync elderbeast HP to its UnitInstance
+		_sync_elderbeast_hp_to_unit(beast)
+
+		# Reset movement (injured beasts get 0)
 		beast.movement_remaining = beast.get_max_movement()
 		beast.has_moved = false
 
+# Terrain-based income yields per tile type
+const TERRAIN_INCOME := {
+	Enums.TerrainType.PLAINS: {Enums.ResourceType.FOOD: 2, Enums.ResourceType.GOLD: 1},
+	Enums.TerrainType.FOREST: {Enums.ResourceType.FOOD: 1, Enums.ResourceType.WOOD: 2},
+	Enums.TerrainType.MOUNTAINS: {Enums.ResourceType.IRON: 2, Enums.ResourceType.GOLD: 1},
+	Enums.TerrainType.DESERT: {Enums.ResourceType.GOLD: 1, Enums.ResourceType.SHARD_ESSENCE: 1},
+	Enums.TerrainType.SWAMP: {Enums.ResourceType.FOOD: 1, Enums.ResourceType.CAPTIVES: 1},
+	Enums.TerrainType.COAST: {Enums.ResourceType.GOLD: 2, Enums.ResourceType.FOOD: 1},
+	Enums.TerrainType.TUNDRA: {Enums.ResourceType.IRON: 1, Enums.ResourceType.FOOD: 1},
+	Enums.TerrainType.SHARD_WASTES: {Enums.ResourceType.SHARD_ESSENCE: 3},
+	Enums.TerrainType.JUNGLE: {Enums.ResourceType.FOOD: 2, Enums.ResourceType.WOOD: 1},
+	# WATER: nothing
+}
+
+func _get_beast_tiles(beast: ElderbeastState) -> Array[Vector2i]:
+	var tiles: Array[Vector2i] = [beast.hex_pos]
+	for n in HexHelper.get_neighbors(beast.hex_pos):
+		if HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			tiles.append(n)
+	return tiles
+
+const ELDERBEAST_BASE_INCOME := {
+	1: {Enums.ResourceType.GOLD: 5, Enums.ResourceType.FOOD: 8, Enums.ResourceType.WOOD: 3},
+	2: {Enums.ResourceType.GOLD: 10, Enums.ResourceType.FOOD: 15, Enums.ResourceType.WOOD: 6},
+	3: {Enums.ResourceType.GOLD: 18, Enums.ResourceType.FOOD: 25, Enums.ResourceType.WOOD: 10},
+}
+
 func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:
-	var income: Dictionary = beast.get_base_income()
-	# Building bonuses
+	var income: Dictionary = {}
+	# Base income (scales with level, not affected by depletion)
+	var base: Dictionary = ELDERBEAST_BASE_INCOME.get(beast.level, ELDERBEAST_BASE_INCOME[1])
+	for res_type in base:
+		income[res_type] = income.get(res_type, 0) + base[res_type]
+	# Terrain-based income from beast hex + 6 neighbors
+	var tiles := _get_beast_tiles(beast)
+	for tile_pos in tiles:
+		var tile := GameManager.state.hex_map.get_tile(tile_pos)
+		if tile == null:
+			continue
+		var yields: Dictionary = TERRAIN_INCOME.get(tile.terrain, {})
+		var mult: float = beast.get_depletion_multiplier(tile_pos)
+		for res_type in yields:
+			income[res_type] = income.get(res_type, 0) + maxi(1, roundi(yields[res_type] * mult))
+
+	# Building income bonuses (full value, not halved — terrain is the base now)
 	for building_id in beast.buildings:
 		var building: BuildingData = DataManager.get_building(building_id)
 		if building == null:
 			continue
 		for res_type in building.income_bonus:
-			var bonus: int = building.income_bonus[res_type] / 2 # 50%
-			income[res_type] = income.get(res_type, 0) + maxi(1, bonus)
+			income[res_type] = income.get(res_type, 0) + building.income_bonus[res_type]
 	return income
 
 # ── Healing & Replenishment ──────────────────────────────────
@@ -1095,11 +1259,15 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 			cmd_heal = bonuses.get("heal_per_turn", 0)
 
 		if city_at and city_at.faction_id == faction_id:
+			# Moonwell: armies at Gladehost cities with moonwell heal 50% faster
+			var moonwell_mult := 1.0
+			if city_at.buildings.has(&"moonwell"):
+				moonwell_mult = 1.5
 			for unit in army.units:
 				var unit_data := DataManager.get_unit(unit.unit_data_id)
 				if unit_data == null:
 					continue
-				var heal_amount := int(unit_data.max_hp * 0.15) + cmd_heal
+				var heal_amount := int(unit_data.max_hp * 0.15 * moonwell_mult) + cmd_heal
 				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
 				if unit_data.squad_size > 1 and unit_data.hp_per_soldier > 0:
 					if unit.current_hp < unit_data.max_hp:
@@ -1118,6 +1286,125 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 				if unit_data == null:
 					continue
 				unit.current_hp = mini(unit.current_hp + cmd_heal, unit_data.max_hp)
+
+# ── Terrain Attrition ───────────────────────────────────────
+
+func _apply_terrain_attrition(faction_id: StringName) -> void:
+	var fd: FactionData = DataManager.get_faction(faction_id)
+	var is_nature := fd and fd.realm_affinity == Enums.Realm.NATURE
+	var is_void := fd and fd.realm_affinity == Enums.Realm.VOID
+
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id != faction_id or army.is_garrison:
+			continue
+
+		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+		if tile == null:
+			continue
+
+		# Skip attrition in cities (sheltered)
+		if GameManager.city_system.get_city_at_hex(army.hex_pos) != null:
+			continue
+
+		match tile.terrain:
+			Enums.TerrainType.SHARD_WASTES:
+				# Light damage to all — void-aligned take less
+				var dmg_pct := 0.02 if is_void else 0.05
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
+						unit.current_hp = maxi(1, unit.current_hp - dmg)
+
+			Enums.TerrainType.DESERT:
+				# Moderate damage — void-aligned take less, nature takes more
+				var dmg_pct := 0.03
+				if is_void:
+					dmg_pct = 0.01
+				elif is_nature:
+					dmg_pct = 0.05
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
+						unit.current_hp = maxi(1, unit.current_hp - dmg)
+
+			Enums.TerrainType.JUNGLE:
+				# Nature-aligned units heal, others take upkeep penalty
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud == null:
+						continue
+					if is_nature:
+						# Heal 3% max HP
+						var heal := maxi(1, int(ud.max_hp * 0.03))
+						unit.current_hp = mini(unit.current_hp + heal, ud.max_hp)
+					else:
+						# Non-nature: light damage from hostile vegetation
+						var dmg := maxi(1, int(ud.max_hp * 0.02))
+						unit.current_hp = maxi(1, unit.current_hp - dmg)
+
+			Enums.TerrainType.TUNDRA:
+				# Cold attrition — light damage, nature-aligned take more
+				var dmg_pct := 0.02
+				if is_nature:
+					dmg_pct = 0.04
+				elif is_void:
+					dmg_pct = 0.01
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
+						unit.current_hp = maxi(1, unit.current_hp - dmg)
+
+			Enums.TerrainType.SWAMP:
+				# Disease attrition — hurts everyone except constructs
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud and not ud.tags.has("construct"):
+						var dmg := maxi(1, int(ud.max_hp * 0.03))
+						unit.current_hp = maxi(1, unit.current_hp - dmg)
+
+	# Remove dead units (HP <= 0 shouldn't happen since we floor at 1, but clean up 0-hp units)
+	_clean_dead_units(faction_id)
+
+func _clean_dead_units(faction_id: StringName) -> void:
+	var armies_to_remove: Array[StringName] = []
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id != faction_id:
+			continue
+		# Remove units at 1 HP that would realistically be dead from sustained attrition
+		# (units don't die from attrition alone — they just get weakened)
+	# No auto-removal: attrition weakens but doesn't kill. Units die in battle.
+
+# ── Terrain Upkeep Modifier ─────────────────────────────────
+
+func get_terrain_upkeep_modifier(army: ArmyState) -> float:
+	# Returns a multiplier for upkeep cost based on army terrain
+	var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+	if tile == null:
+		return 1.0
+
+	var fd: FactionData = DataManager.get_faction(army.faction_id)
+	var is_nature := fd and fd.realm_affinity == Enums.Realm.NATURE
+
+	match tile.terrain:
+		Enums.TerrainType.JUNGLE:
+			return 0.8 if is_nature else 1.3 # Nature saves, others pay more
+		Enums.TerrainType.DESERT:
+			return 1.2 # Everyone pays more in desert (water/supply issues)
+		Enums.TerrainType.SHARD_WASTES:
+			return 1.25 # Hazardous environment
+		Enums.TerrainType.MOUNTAINS:
+			return 1.15 # Difficult supply lines
+		Enums.TerrainType.TUNDRA:
+			return 1.2 # Cold requires more supplies
+		Enums.TerrainType.SWAMP:
+			return 1.15
+
+	return 1.0
 
 # ── Random Events ────────────────────────────────────────────
 
@@ -1165,10 +1452,11 @@ const RANDOM_EVENTS := [
 	{
 		"title": "Border Dispute",
 		"text": "A neighboring faction's emissary arrives with an offer of goodwill.",
-		"choice_a": "Accept friendship",
-		"choice_b": "Demand tribute (+30 Iron)",
+		"choice_a": "Accept friendship (+5 standing)",
+		"choice_b": "Demand tribute (+30 Iron, -10 standing)",
 		"type": "dispute",
 		"stage": "mid",
+		"requires_weak_neighbor": true,
 	},
 	{
 		"title": "Loyal Follower",
@@ -1305,9 +1593,15 @@ func _check_random_events(faction_id: StringName) -> void:
 	else:
 		stage_preference = "late"
 
+	# Find a weaker non-war neighbor (for events that need one)
+	var weak_neighbor_id: StringName = _find_weak_neighbor(faction_id)
+
 	# Build weighted pool
 	var weighted_pool: Array[Dictionary] = []
 	for ev in RANDOM_EVENTS:
+		# Skip events requiring a weak neighbor if none exists
+		if ev.get("requires_weak_neighbor", false) and weak_neighbor_id == &"":
+			continue
 		var ev_stage: String = ev.get("stage", "early")
 		if ev_stage == stage_preference:
 			weighted_pool.append(ev)
@@ -1315,11 +1609,42 @@ func _check_random_events(faction_id: StringName) -> void:
 		else:
 			weighted_pool.append(ev)
 
+	if weighted_pool.is_empty():
+		return
+
 	var event: Dictionary = weighted_pool[randi() % weighted_pool.size()].duplicate()
 	event["faction_id"] = faction_id
 	event["selected_army_id"] = GameManager.state.selected_army_id
+
+	# Inject target faction for dispute events
+	if event.get("requires_weak_neighbor", false) and weak_neighbor_id != &"":
+		event["target_faction_id"] = weak_neighbor_id
+		var target_fd: FactionData = DataManager.get_faction(weak_neighbor_id)
+		var target_name: String = target_fd.display_name if target_fd else str(weak_neighbor_id)
+		event["text"] = "An emissary from %s arrives at your border, seeking to negotiate." % target_name
+		event["choice_b"] = "Demand tribute from %s (+30 Iron, -10 standing)" % target_name
+
 	_event_cooldown = 3
 	EventBus.random_event_triggered.emit(event)
+
+func _find_weak_neighbor(faction_id: StringName) -> StringName:
+	var my_strength := GameManager.diplomacy_system._calculate_faction_strength(faction_id)
+	var candidates: Array[StringName] = []
+	for fid in GameManager.state.faction_states:
+		if fid == faction_id or GameManager.is_npc_faction(fid):
+			continue
+		var fs: FactionState = GameManager.state.faction_states[fid]
+		if fs.is_defeated:
+			continue
+		var relation := GameManager.get_relation(faction_id, fid)
+		if relation == Enums.FactionRelation.WAR:
+			continue
+		var their_strength := GameManager.diplomacy_system._calculate_faction_strength(fid)
+		if their_strength < my_strength:
+			candidates.append(fid)
+	if candidates.is_empty():
+		return &""
+	return candidates[randi() % candidates.size()]
 
 func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 	var faction_id: StringName = event.get("faction_id", &"")
@@ -1371,8 +1696,8 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 						unit_id = &"grove_warden"
 					elif faction_id == &"tainted_jade":
 						unit_id = &"jade_fang"
-					var ud := DataManager.get_unit(unit_id)
-					var unit_name := ud.display_name if ud else str(unit_id)
+					var ud: UnitData = DataManager.get_unit(unit_id)
+					var unit_name: String = ud.display_name if ud else str(unit_id)
 					_spawn_unit_at_hex(unit_id, faction_id, armies[0].hex_pos)
 					return "Gained unit: %s" % unit_name
 				return "No army to receive the deserters."
@@ -1417,11 +1742,18 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 				})
 				return "Growth Blessing: +3 population growth in all cities (10 turns)"
 		"dispute":
+			var target_fid: StringName = event.get("target_faction_id", &"")
+			var target_fd: FactionData = DataManager.get_faction(target_fid) if target_fid != &"" else null
+			var target_name: String = target_fd.display_name if target_fd else "a neighboring faction"
 			if choice == "a":
-				return "Relations improved with a neighboring faction."
+				if target_fid != &"":
+					GameManager.diplomacy_system.modify_standing(faction_id, target_fid, 5)
+				return "Relations improved with %s. (+5 standing)" % target_name
 			else:
 				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 30
-				return "Received +30 Iron (now %d)" % fs.resources.get(Enums.ResourceType.IRON, 0)
+				if target_fid != &"":
+					GameManager.diplomacy_system.modify_standing(faction_id, target_fid, -10)
+				return "Demanded tribute from %s. +30 Iron, -10 standing with %s." % [target_name, target_name]
 
 		"follower":
 			if choice == "a":
@@ -1468,10 +1800,11 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 			if choice == "a":
 				if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 100:
 					fs.resources[Enums.ResourceType.GOLD] -= 100
+					var merc_unit := _get_faction_basic_infantry(faction_id)
 					var armies := GameManager.get_faction_armies(faction_id)
 					if armies.size() > 0:
-						_spawn_unit_at_hex(&"legionary", faction_id, armies[0].hex_pos)
-						_spawn_unit_at_hex(&"legionary", faction_id, armies[0].hex_pos)
+						_spawn_unit_at_hex(merc_unit, faction_id, armies[0].hex_pos)
+						_spawn_unit_at_hex(merc_unit, faction_id, armies[0].hex_pos)
 					return "Hired mercenaries for 100 Gold. +2 units."
 				return "Not enough gold (need 100)!"
 			else:
@@ -1586,7 +1919,7 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 			if choice == "a":
 				# Improve standing with a random non-war faction
 				for other_id in GameManager.state.faction_states:
-					if other_id == faction_id or other_id == &"rebels":
+					if other_id == faction_id or GameManager.is_npc_faction(other_id):
 						continue
 					if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
 						GameManager.diplomacy_system.modify_standing(faction_id, other_id, 15)
@@ -1743,3 +2076,362 @@ func _deduct_faction_cost(fs: FactionState, cost: Dictionary) -> void:
 	for res_type in cost:
 		if fs.resources.has(res_type):
 			fs.resources[res_type] -= cost[res_type]
+
+func _get_faction_basic_infantry(faction_id: StringName) -> StringName:
+	match faction_id:
+		&"empire": return &"legionary"
+		&"skulloath": return &"warband_raider"
+		&"gladehost": return &"grove_warden"
+		&"tainted_jade": return &"jade_fang"
+		&"shardhorde": return &"crystal_swarmling"
+		_: return &"legionary"
+
+# ── Unique Faction Mechanics ────────────────────────────────
+
+func _process_faction_mechanic(faction_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null or fs.is_defeated:
+		return
+	match faction_id:
+		&"skulloath":
+			_process_skulloath_corruption(fs)
+		&"tainted_jade":
+			_process_tainted_jade_taint(fs)
+		&"gladehost":
+			_process_gladehost_seasons(fs)
+		&"shardhorde":
+			_process_shardhorde_resonance(fs)
+
+# ── Skulloath: Corruption Duality ──────────────────────────
+# Traditional path (0-30): food/loyalty/diplomacy bonuses, population growth
+# Balanced (31-60): No strong bonus/penalty
+# Demonic path (61-80): attack bonus, captive generation, shard synergy, loyalty penalty
+# Deep corruption (81-100): huge attack, void shard immunity, massive loyalty/diplo penalty
+
+func _process_skulloath_corruption(fs: FactionState) -> void:
+	# Corruption drifts based on buildings
+	var drift := 0
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null:
+			continue
+		for building_id in city.buildings:
+			if building_id in [&"herders_camp", &"steppe_pastures", &"ancestor_shrine", &"spirit_lodge", &"trade_post_skulloath", &"steppe_watchtower"]:
+				drift -= 1
+			elif building_id in [&"pale_waif_altar", &"void_sanctum", &"blood_altar", &"demon_gate"]:
+				drift += 2
+			elif building_id in [&"bone_workshop", &"war_forge", &"beast_pens"]:
+				drift += 0 # neutral buildings don't affect corruption
+
+	# Winning battles in desert/wastes terrain slightly raises corruption (void exposure)
+	# (tracked via captive gains — proxy for battle activity)
+	var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+	if captives >= 10:
+		drift += 1 # Captive sacrifices feed the Pale Waif
+
+	fs.corruption = clampi(fs.corruption + drift, 0, 100)
+
+	# Apply corruption effects
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null or not city.is_capital:
+			continue
+		if fs.corruption <= 30:
+			# Traditional: stable pastoralist society
+			for cls in city.class_loyalty:
+				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+			# Population growth bonus from herding lifestyle
+			city.population += 2
+		elif fs.corruption >= 81:
+			# Deep corruption: captives auto-convert to food (sacrifice rituals)
+			if captives > 0:
+				var converted := mini(captives, 5)
+				fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + converted * 8
+			for cls in city.class_loyalty:
+				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 3, -100, 100)
+		elif fs.corruption >= 61:
+			# High corruption: captive-to-iron conversion (demonic forging)
+			if captives > 0:
+				var converted := mini(captives, 3)
+				fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + converted * 5
+			for cls in city.class_loyalty:
+				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 1, -100, 100)
+
+	# High corruption: diplomatic penalty
+	if fs.corruption >= 61:
+		var penalty := -1 if fs.corruption < 81 else -2
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"skulloath" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			var fd: FactionData = DataManager.get_faction(other_id)
+			if fd and fd.realm_affinity != Enums.Realm.VOID:
+				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, penalty)
+
+	# Traditional path: diplomacy bonus with non-war factions
+	if fs.corruption <= 30:
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"skulloath" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			if GameManager.get_relation(&"skulloath", other_id) != Enums.FactionRelation.WAR:
+				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, 1)
+
+# ── Tainted Jade: Anti-Magic / Taint Power ─────────────────
+# Taint power from shard destruction + captive sacrifice + jungle building chains
+# Grants defense, shard suppression, anti-magic aura, captive economy
+# Passively grows taint from captive labor (thrall quarters process captives)
+
+func _process_tainted_jade_taint(fs: FactionState) -> void:
+	# Taint power sources: captive processing generates taint residue
+	var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+	var has_thrall_quarters := false
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city and city.buildings.has(&"thrall_quarters"):
+			has_thrall_quarters = true
+			break
+
+	if has_thrall_quarters and captives >= 5:
+		# Thrall labor: consume captives for taint power + resources
+		var processed := mini(captives / 5, 3) # Up to 3 batches of 5
+		fs.resources[Enums.ResourceType.CAPTIVES] = captives - processed * 5
+		fs.taint_power += processed * 3
+		fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + processed * 4
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + processed * 3
+
+	# Natural decay (reduced if cities are in jungle terrain)
+	var jungle_cities := 0
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city:
+			var tile := GameManager.state.hex_map.get_tile(city.hex_pos)
+			if tile and tile.terrain == Enums.TerrainType.JUNGLE:
+				jungle_cities += 1
+	# Less decay if rooted in jungle (taint is sustained by the land)
+	var decay := maxi(1, 2 - jungle_cities)
+	if fs.taint_power > 0:
+		fs.taint_power = maxi(fs.taint_power - decay, 0)
+
+	# High taint: accelerate enemy shard decay
+	if fs.taint_power >= 50:
+		for shard_id in GameManager.state.active_shards:
+			var shard: ShardInstance = GameManager.state.active_shards[shard_id]
+			if shard.claimed_by != &"tainted_jade" and shard.claimed_by != &"" and shard.turns_remaining > 0:
+				shard.turns_remaining = maxi(shard.turns_remaining - 1, 1)
+
+	# Taint power 30+: diplomatic bonus with other anti-shard factions
+	# (factions respect Tainted Jade's shard-suppression efforts)
+	if fs.taint_power >= 30:
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"tainted_jade" or GameManager.is_npc_faction(other_id) or other_id == &"shardhorde":
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			# Small standing bonus with non-shard factions
+			if other_fs.owned_shards.size() <= 2:
+				GameManager.diplomacy_system.modify_standing(&"tainted_jade", other_id, 1)
+
+	# Very high taint: population growth penalty (the land itself is scarred)
+	if fs.taint_power >= 70:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city:
+				city.population = maxi(20, city.population - 1)
+
+# ── Gladehost: Seasonal Cycle ──────────────────────────────
+# Season derived from month: 0-2 Spring, 3-5 Summer, 6-7 Autumn, 8-9 Winter
+# Harmony affects seasonal bonus strength, diplomacy, and building effectiveness
+# Forest/Jungle tiles in owned territory boost harmony recovery
+
+func get_current_season() -> int:
+	var month: int = GameManager.state.current_month
+	if month <= 2:
+		return 0 # Spring
+	elif month <= 5:
+		return 1 # Summer
+	elif month <= 7:
+		return 2 # Autumn
+	else:
+		return 3 # Winter
+
+func get_season_name(season: int) -> String:
+	match season:
+		0: return "Spring"
+		1: return "Summer"
+		2: return "Autumn"
+		3: return "Winter"
+		_: return "Unknown"
+
+func _process_gladehost_seasons(fs: FactionState) -> void:
+	# Harmony adjusts based on building count and territory nature
+	var total_buildings := 0
+	var nature_tiles := 0 # Forest/Jungle tiles in owned territory
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city:
+			total_buildings += city.buildings.size()
+
+	# Count nature tiles in owned regions
+	for region_id in fs.owned_regions:
+		var region_tiles := GameManager.state.hex_map.get_region_tiles(region_id)
+		for coord in region_tiles:
+			var tile := GameManager.state.hex_map.get_tile(coord)
+			if tile and (tile.terrain == Enums.TerrainType.FOREST or tile.terrain == Enums.TerrainType.JUNGLE):
+				nature_tiles += 1
+
+	# Target: ~3 buildings per city is balanced. More = lower harmony
+	var target := fs.owned_cities.size() * 3
+	if total_buildings > target:
+		fs.harmony = maxi(fs.harmony - (total_buildings - target), 20)
+	elif total_buildings < target:
+		fs.harmony = mini(fs.harmony + 1, 100)
+
+	# Nature tiles in territory help recover harmony (+1 per 10 nature tiles, max +3)
+	var nature_bonus := mini(nature_tiles / 10, 3)
+	fs.harmony = mini(fs.harmony + nature_bonus, 100)
+
+	# Seasonal loyalty and population effects
+	var season := get_current_season()
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null or not city.is_capital:
+			continue
+
+		# Harmony loyalty
+		if fs.harmony >= 70:
+			for cls in city.class_loyalty:
+				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
+		elif fs.harmony <= 35:
+			for cls in city.class_loyalty:
+				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 2, -100, 100)
+
+		# Seasonal population effects
+		match season:
+			0: # Spring: birth season
+				city.population += 3 if fs.harmony >= 50 else 1
+			3: # Winter: population suffers if harmony is low
+				if fs.harmony < 40:
+					city.population = maxi(20, city.population - 2)
+
+	# High harmony: diplomacy bonus with all factions (Gladehost is seen as balanced)
+	var has_embassy := false
+	var has_seasonal_shrine := false
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city:
+			if city.buildings.has(&"embassy_grove"):
+				has_embassy = true
+			if city.buildings.has(&"seasonal_shrine"):
+				has_seasonal_shrine = true
+
+	if fs.harmony >= 75 or has_embassy:
+		var diplo_bonus := 1
+		if has_embassy:
+			diplo_bonus += 1 # Embassy Grove doubles diplomacy gain
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"gladehost" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			if GameManager.get_relation(&"gladehost", other_id) != Enums.FactionRelation.WAR:
+				GameManager.diplomacy_system.modify_standing(&"gladehost", other_id, diplo_bonus)
+
+	# Seasonal shrine: +2 harmony per shrine, boosts seasonal income effects
+	if has_seasonal_shrine:
+		fs.harmony = mini(fs.harmony + 2, 100)
+
+# ── Shardhorde: Shard Resonance ────────────────────────────
+# Consuming shards grants temporary buffs. Elderbeasts grow faster near shard wastes.
+# Active resonance heals elderbeasts and boosts recruitment speed.
+# Shard wastes territory generates passive shard essence.
+
+func _process_shardhorde_resonance(fs: FactionState) -> void:
+	# Decay resonance buffs
+	var to_remove: Array = []
+	for realm_key in fs.shard_resonance:
+		fs.shard_resonance[realm_key] -= 1
+		if fs.shard_resonance[realm_key] <= 0:
+			to_remove.append(realm_key)
+	for key in to_remove:
+		fs.shard_resonance.erase(key)
+
+	# Active resonance heals elderbeasts
+	if fs.shard_resonance.size() > 0:
+		for beast_id in GameManager.state.elderbeasts:
+			var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+			if beast.faction_id == &"shardhorde" and beast.hp < beast.max_hp:
+				beast.hp = mini(beast.hp + 20 * fs.shard_resonance.size(), beast.max_hp)
+
+	# Elderbeasts on shard wastes gain survival turns faster (level up sooner)
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		if beast.faction_id != &"shardhorde":
+			continue
+		var tile := GameManager.state.hex_map.get_tile(beast.hex_pos)
+		if tile and tile.terrain == Enums.TerrainType.SHARD_WASTES:
+			beast.survival_turns += 1 # Double growth rate on shard wastes
+
+	# Shard wastes in owned territory passively generate shard essence
+	var wastes_count := 0
+	for region_id in fs.owned_regions:
+		var region_tiles := GameManager.state.hex_map.get_region_tiles(region_id)
+		for coord in region_tiles:
+			var tile := GameManager.state.hex_map.get_tile(coord)
+			if tile and tile.terrain == Enums.TerrainType.SHARD_WASTES:
+				wastes_count += 1
+	if wastes_count > 0:
+		var essence_gain := mini(wastes_count / 5, 8)
+		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + essence_gain
+
+# Called when Shardhorde consumes a shard (from campaign HUD or AI)
+func consume_shard_for_resonance(faction_id: StringName, shard_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return
+	var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+	if shard == null or shard.claimed_by != faction_id:
+		return
+	fs.owned_shards.erase(shard_id)
+	GameManager.state.active_shards.erase(shard_id)
+	# Grant resonance buff: 5 turns of realm bonus (10 if Resonance Amplifier built)
+	var resonance_duration := 5
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		if beast.faction_id == faction_id:
+			if beast.buildings.has(&"resonance_amplifier"):
+				resonance_duration = 10
+				break
+	fs.shard_resonance[shard.realm] = resonance_duration
+	# Consuming shards also heals nearby elderbeasts immediately
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		if beast.faction_id == faction_id:
+			beast.hp = mini(beast.hp + 50, beast.max_hp)
+
+# Called when Tainted Jade destroys a shard
+func destroy_shard_for_taint(faction_id: StringName, shard_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return
+	var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+	if shard == null or shard.claimed_by != faction_id:
+		return
+	fs.owned_shards.erase(shard_id)
+	GameManager.state.active_shards.erase(shard_id)
+	fs.taint_power += shard.power_level * 10
+	# Destroying shards also grants tech (studying what you destroy)
+	fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 5

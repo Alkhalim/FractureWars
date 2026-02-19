@@ -10,3 +10,4 @@ description = "Maximizes economic output wherever they go."
 category = &"economy"
 is_minor = true
 effects = {"city_gold_bonus": 1}
+context_tags = Array[StringName]([&"in_city"])

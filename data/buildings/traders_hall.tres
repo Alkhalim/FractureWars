@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"traders_hall"
+display_name = "Trader's Hall II"
+description = "A permanent trading hall where foreign merchants are welcomed with cautious hospitality. Fair dealing is expected — and enforced."
+faction_id = &"gladehost"
+category = &"economic"
+build_cost = {0: 280, 5: 60}
+build_time = 3
+income_bonus = {0: 60}
+population_growth_bonus = 7
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"forest_market"
+class_loyalty_bonus = {"artisans": 2, "nobles": 2}

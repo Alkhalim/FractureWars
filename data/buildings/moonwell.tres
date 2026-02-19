@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moonwell"
+display_name = "Moonwell III"
+description = "A pool of crystalline water reflecting starlight even at noon. Armies resting near this city heal faster and gain morale. Requires the Ancestral Oak."
+faction_id = &"gladehost"
+category = &"cultural"
+build_cost = {0: 480, 5: 80, 1: 30}
+build_time = 4
+income_bonus = {2: 20, 3: 10}
+population_growth_bonus = 5
+required_capital_level = 3
+upgrades_from = &"ancestral_oak"
+class_loyalty_bonus = {"peasants": 3, "artisans": 1, "scholars": 4, "nobles": 2}

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"serpent_pit"
+display_name = "Serpent Pit I"
+description = "Warriors train in sunken fighting pits alongside venomous serpents. Those who survive are swift, fearless, and thoroughly dangerous."
+faction_id = &"tainted_jade"
+category = &"military"
+build_cost = {0: 130, 1: 15, 5: 25}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"jade_fang", &"jungle_stalker"])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": -3, "nobles": 2}

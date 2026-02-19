@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"root_sentinel"
+display_name = "Root Sentinel"
+description = "Ancient trees awakened by druidic rites. They move slowly but each step shakes the earth. In defense of the grove, they are immovable."
+faction_id = &"gladehost"
+max_hp = 700
+attack = 14
+defense = 20
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 700
+tiles_per_entity = 6
+movement_points = 2.0
+upkeep_cost = {0: 6, 5: 4}
+recruit_cost = {0: 250, 5: 100}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {1: 0.25}
+realm_bonuses = {3: 0.2}
+tags = Array[String](["construct", "melee"])
+base_morale = 100
+morale_aura = 5
+fear_radius = 4
+captive_chance = 0.0

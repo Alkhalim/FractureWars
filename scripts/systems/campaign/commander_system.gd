@@ -25,7 +25,8 @@ func _load_resources_from_dir(path: String, target: Dictionary) -> void:
 
 # ── XP & Level-Up ────────────────────────────────────────────
 
-func grant_battle_xp(commander: CommanderState, enemy_strength: int, won: bool) -> void:
+func grant_battle_xp(commander: CommanderState, enemy_strength: int, won: bool, context: Array[StringName] = []) -> void:
+	commander.level_up_context = context
 	# Base XP: 15 for a win, 5 for a loss. Scaling capped so large battles
 	# don't rocket through multiple levels at once.
 	var xp_gain := (15 if won else 5) + mini(enemy_strength / 25, 40)
@@ -37,8 +38,9 @@ func grant_battle_xp(commander: CommanderState, enemy_strength: int, won: bool) 
 			break
 		levels_gained += 1
 
-func grant_passive_xp(commander: CommanderState) -> void:
-	commander.xp += 2
+func grant_passive_xp(commander: CommanderState, context: Array[StringName] = [], amount: int = 2) -> void:
+	commander.level_up_context = context
+	commander.xp += amount
 	_check_level_up(commander)
 
 func _try_level_up(commander: CommanderState) -> bool:
@@ -56,6 +58,7 @@ func _check_level_up(commander: CommanderState) -> void:
 
 func _apply_level_up(commander: CommanderState) -> void:
 	# Minor skill: either level up an existing one or gain a new one
+	var context := commander.level_up_context
 	var existing_minor: Array[StringName] = []
 	for sid in commander.skill_levels:
 		var skill: CommanderSkill = skills.get(sid)
@@ -63,32 +66,66 @@ func _apply_level_up(commander: CommanderState) -> void:
 			existing_minor.append(sid)
 	var new_minor := _get_available_minor_skills(commander)
 
-	if existing_minor.size() > 0 and (new_minor.is_empty() or randf() < 0.5):
+	# Bias toward gaining new skill if a contextual match exists
+	var new_chance := 0.5
+	if new_minor.size() > 0:
+		for s in new_minor:
+			if _matches_context(s, context):
+				new_chance = 0.6
+				break
+
+	if existing_minor.size() > 0 and (new_minor.is_empty() or randf() >= new_chance):
 		# Level up a random existing minor skill
 		var sid: StringName = existing_minor.pick_random()
 		commander.skill_levels[sid] = mini(commander.skill_levels[sid] + 1, 10)
 	elif new_minor.size() > 0:
-		# Gain a new minor skill at level 1
-		commander.skill_levels[new_minor.pick_random().id] = 1
+		# Gain a new minor skill at level 1 (weighted by context)
+		var picked := _weighted_pick_minor(new_minor, context)
+		commander.skill_levels[picked.id] = 1
 
 	EventBus.commander_level_up.emit(commander)
 
 func get_major_skill_choices(commander: CommanderState) -> Array[Dictionary]:
-	var choices: Array[Dictionary] = []
+	var all_choices: Array[Dictionary] = []
 	# Existing major skills that can be leveled up
 	for skill_id in commander.skill_levels:
 		var level: int = commander.skill_levels[skill_id]
 		if level < 10:
 			var skill: CommanderSkill = skills.get(skill_id)
 			if skill and not skill.is_minor:
-				choices.append({"skill_id": skill_id, "is_levelup": true, "current_level": level})
+				all_choices.append({"skill_id": skill_id, "is_levelup": true, "current_level": level})
 	# New major skills not yet learned
 	for skill_id in skills:
 		var skill: CommanderSkill = skills[skill_id]
 		if not skill.is_minor and not commander.skill_levels.has(skill_id):
-			choices.append({"skill_id": skill_id, "is_levelup": false, "current_level": 0})
-	choices.shuffle()
-	return choices.slice(0, 3)
+			all_choices.append({"skill_id": skill_id, "is_levelup": false, "current_level": 0})
+
+	var context := commander.level_up_context
+
+	# Separate into contextual matches and general
+	var contextual: Array[Dictionary] = []
+	var general: Array[Dictionary] = []
+	for choice in all_choices:
+		var skill: CommanderSkill = skills.get(choice.skill_id)
+		if skill and _matches_context(skill, context):
+			contextual.append(choice)
+		else:
+			general.append(choice)
+
+	contextual.shuffle()
+	general.shuffle()
+
+	var result: Array[Dictionary] = []
+	# Slot 1: contextual pick (if available)
+	if contextual.size() > 0:
+		result.append(contextual.pop_front())
+	# Fill remaining slots from general pool, then overflow contextual
+	var remaining := general + contextual
+	remaining.shuffle()
+	while result.size() < 3 and remaining.size() > 0:
+		result.append(remaining.pop_front())
+
+	return result
 
 func choose_major_skill(commander: CommanderState, skill_id: StringName) -> void:
 	if commander.skill_levels.has(skill_id):
@@ -106,6 +143,8 @@ static func get_max_item_slots(commander: CommanderState) -> int:
 	return 3
 
 func apply_item_drop(commander: CommanderState, defeated_faction: StringName) -> String:
+	if commander.is_elderbeast:
+		return ""
 	var base_chance := 0.3
 	if commander.items.size() == 0:
 		base_chance = 0.6
@@ -255,6 +294,34 @@ func get_scouting_bonus(commander: CommanderState) -> int:
 			if follower.malus_effect.has("scouting_bonus"):
 				bonus += follower.malus_effect.scouting_bonus
 	return bonus
+
+# ── Context Helpers ───────────────────────────────────────────
+
+func _matches_context(skill: CommanderSkill, context: Array[StringName]) -> bool:
+	for tag in skill.context_tags:
+		if context.has(tag):
+			return true
+	return false
+
+func _weighted_pick_minor(available: Array[CommanderSkill], context: Array[StringName]) -> CommanderSkill:
+	var weights: Array[float] = []
+	for skill in available:
+		var w := 1.0
+		for tag in skill.context_tags:
+			if context.has(tag):
+				w = 3.0
+				break
+		weights.append(w)
+	var total := 0.0
+	for w in weights:
+		total += w
+	var roll := randf() * total
+	var cumulative := 0.0
+	for i in available.size():
+		cumulative += weights[i]
+		if roll <= cumulative:
+			return available[i]
+	return available[available.size() - 1]
 
 # ── Skill Helpers ─────────────────────────────────────────────
 

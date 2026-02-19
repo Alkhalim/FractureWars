@@ -8,6 +8,135 @@ var diplomacy_system: DiplomacySystem = DiplomacySystem.new()
 var research_system: ResearchSystem = ResearchSystem.new()
 var policy_system: PolicySystem = PolicySystem.new()
 
+func _ready() -> void:
+	_setup_global_theme()
+
+# ── UI Theme ─────────────────────────────────────────────────
+# All three source images are 1536x1024. We use region_rect to crop
+# to the visible element, then NinePatch margins on the cropped region.
+# Adjust region_rect / margins here if borders look misaligned.
+
+const _BTN_REGION := Rect2(55, 320, 1426, 384)    # Visible button area (wider crop)
+const _BTN_MARGIN := 22                            # Border thickness in cropped region
+const _FRAME_REGION := Rect2(5, 5, 1526, 1014)    # Panel frame incl. glow
+const _FRAME_TEX_MARGIN := Vector4(90, 80, 90, 85) # L T R B — glow + gold border
+const _FRAME_EXPAND := Vector4(80, 70, 80, 75)    # L T R B — push gold border to panel edge
+const _FRAME_CONTENT := Vector4(45, 40, 45, 40)   # L T R B — text padding inside border
+const _NOTIF_REGION := Rect2(20, 5, 1496, 1014)
+const _NOTIF_TEX_MARGIN := Vector4(220, 270, 220, 190) # L T R B — columns + eagle + medallion
+const _NOTIF_EXPAND := Vector4(25, 20, 25, 20)
+const _NOTIF_CONTENT := Vector4(240, 290, 240, 210)
+
+var _btn_texture: Texture2D
+var _frame_texture: Texture2D
+var _notif_texture: Texture2D
+
+func _setup_global_theme() -> void:
+	_btn_texture = load("res://assets/sprites/ui/button1.png") as Texture2D
+	_frame_texture = load("res://assets/sprites/ui/frame1.png") as Texture2D
+	_notif_texture = load("res://assets/sprites/ui/notification1.png") as Texture2D
+
+	var theme := Theme.new()
+
+	# ── Button styles ──
+	if _btn_texture:
+		var normal := _make_btn_style(Color.WHITE)
+		theme.set_stylebox("normal", "Button", normal)
+		theme.set_stylebox("hover", "Button", _make_btn_style(Color(1.25, 1.2, 1.1)))
+		theme.set_stylebox("pressed", "Button", _make_btn_style(Color(0.75, 0.7, 0.65)))
+		theme.set_stylebox("disabled", "Button", _make_btn_style(Color(0.5, 0.48, 0.45, 0.7)))
+		theme.set_stylebox("focus", "Button", _make_btn_style(Color(1.15, 1.12, 1.05)))
+
+	# Button font — brighter colors + outline for readability on marble
+	theme.set_color("font_color", "Button", Color(0.95, 0.9, 0.75))
+	theme.set_color("font_hover_color", "Button", Color(1.0, 0.97, 0.82))
+	theme.set_color("font_pressed_color", "Button", Color(0.75, 0.7, 0.55))
+	theme.set_color("font_disabled_color", "Button", Color(0.5, 0.45, 0.4))
+	theme.set_color("font_outline_color", "Button", Color(0.0, 0.0, 0.0, 0.9))
+	theme.set_color("font_shadow_color", "Button", Color(0.0, 0.0, 0.0, 0.6))
+	theme.set_constant("outline_size", "Button", 3)
+	theme.set_constant("shadow_offset_x", "Button", 1)
+	theme.set_constant("shadow_offset_y", "Button", 2)
+	theme.set_font_size("font_size", "Button", 15)
+
+	# ── Label readability — subtle outline on all labels ──
+	theme.set_color("font_outline_color", "Label", Color(0.0, 0.0, 0.0, 0.7))
+	theme.set_constant("outline_size", "Label", 2)
+	theme.set_color("font_shadow_color", "Label", Color(0.0, 0.0, 0.0, 0.45))
+	theme.set_constant("shadow_offset_x", "Label", 1)
+	theme.set_constant("shadow_offset_y", "Label", 1)
+
+	# ── PanelContainer style (frame1) ──
+	if _frame_texture:
+		theme.set_stylebox("panel", "PanelContainer", make_panel_style())
+
+	get_tree().root.theme = theme
+
+func _make_btn_style(modulate: Color) -> StyleBoxTexture:
+	var s := StyleBoxTexture.new()
+	s.texture = _btn_texture
+	s.region_rect = _BTN_REGION
+	s.texture_margin_left = _BTN_MARGIN
+	s.texture_margin_top = _BTN_MARGIN
+	s.texture_margin_right = _BTN_MARGIN
+	s.texture_margin_bottom = _BTN_MARGIN
+	s.content_margin_left = 24
+	s.content_margin_right = 24
+	s.content_margin_top = 16
+	s.content_margin_bottom = 16
+	s.modulate_color = modulate
+	return s
+
+## Creates a panel style using frame1.png. Gold border aligns with panel edge;
+## glow extends beyond via expand_margin. Falls back to simple flat style if missing.
+func make_panel_style() -> StyleBox:
+	if _frame_texture == null:
+		var flat := StyleBoxFlat.new()
+		flat.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+		flat.border_color = Color(0.55, 0.42, 0.2, 0.8)
+		flat.set_border_width_all(2)
+		flat.set_corner_radius_all(6)
+		flat.set_content_margin_all(12)
+		return flat
+	var s := StyleBoxTexture.new()
+	s.texture = _frame_texture
+	s.region_rect = _FRAME_REGION
+	s.texture_margin_left = _FRAME_TEX_MARGIN.x
+	s.texture_margin_top = _FRAME_TEX_MARGIN.y
+	s.texture_margin_right = _FRAME_TEX_MARGIN.z
+	s.texture_margin_bottom = _FRAME_TEX_MARGIN.w
+	s.expand_margin_left = _FRAME_EXPAND.x
+	s.expand_margin_top = _FRAME_EXPAND.y
+	s.expand_margin_right = _FRAME_EXPAND.z
+	s.expand_margin_bottom = _FRAME_EXPAND.w
+	s.content_margin_left = _FRAME_CONTENT.x
+	s.content_margin_top = _FRAME_CONTENT.y
+	s.content_margin_right = _FRAME_CONTENT.z
+	s.content_margin_bottom = _FRAME_CONTENT.w
+	return s
+
+## Creates an ornate notification style using notification1.png (columns + eagle).
+## Falls back to panel style if missing.
+func make_notification_style() -> StyleBox:
+	if _notif_texture == null:
+		return make_panel_style()
+	var s := StyleBoxTexture.new()
+	s.texture = _notif_texture
+	s.region_rect = _NOTIF_REGION
+	s.texture_margin_left = _NOTIF_TEX_MARGIN.x
+	s.texture_margin_top = _NOTIF_TEX_MARGIN.y
+	s.texture_margin_right = _NOTIF_TEX_MARGIN.z
+	s.texture_margin_bottom = _NOTIF_TEX_MARGIN.w
+	s.expand_margin_left = _NOTIF_EXPAND.x
+	s.expand_margin_top = _NOTIF_EXPAND.y
+	s.expand_margin_right = _NOTIF_EXPAND.z
+	s.expand_margin_bottom = _NOTIF_EXPAND.w
+	s.content_margin_left = _NOTIF_CONTENT.x
+	s.content_margin_top = _NOTIF_CONTENT.y
+	s.content_margin_right = _NOTIF_CONTENT.z
+	s.content_margin_bottom = _NOTIF_CONTENT.w
+	return s
+
 # Commander name lists per faction
 const COMMANDER_NAMES := {
 	&"empire": [
@@ -76,6 +205,7 @@ func new_game(faction_id: StringName = &"empire") -> void:
 
 	_init_factions()
 	_init_rebels_faction()
+	_init_shard_guardians_faction()
 	_init_regions()
 	_init_cities()
 	_init_elderbeasts()
@@ -96,7 +226,7 @@ func _init_factions() -> void:
 				Enums.ResourceType.IRON: 50,
 				Enums.ResourceType.FOOD: 150,
 				Enums.ResourceType.TECHNOLOGY: 15,
-				Enums.ResourceType.SHARD_ESSENCE: 0,
+				Enums.ResourceType.SHARD_ESSENCE: 20,
 				Enums.ResourceType.WOOD: 40,
 				Enums.ResourceType.CAPTIVES: 0,
 			}
@@ -112,6 +242,9 @@ func _init_factions() -> void:
 			}
 		state.faction_states[faction_id] = fs
 
+static func is_npc_faction(faction_id: StringName) -> bool:
+	return faction_id == &"rebels" or faction_id == &"shard_guardians"
+
 func _init_rebels_faction() -> void:
 	var fs := FactionState.new()
 	fs.faction_data_id = &"rebels"
@@ -125,6 +258,20 @@ func _init_rebels_faction() -> void:
 		Enums.ResourceType.CAPTIVES: 0,
 	}
 	state.faction_states[&"rebels"] = fs
+
+func _init_shard_guardians_faction() -> void:
+	var fs := FactionState.new()
+	fs.faction_data_id = &"shard_guardians"
+	fs.resources = {
+		Enums.ResourceType.GOLD: 0,
+		Enums.ResourceType.IRON: 0,
+		Enums.ResourceType.FOOD: 0,
+		Enums.ResourceType.TECHNOLOGY: 0,
+		Enums.ResourceType.SHARD_ESSENCE: 0,
+		Enums.ResourceType.WOOD: 0,
+		Enums.ResourceType.CAPTIVES: 0,
+	}
+	state.faction_states[&"shard_guardians"] = fs
 
 func _init_regions() -> void:
 	# Assign starting regions to factions via hex map tile ownership
@@ -144,21 +291,12 @@ func _init_armies() -> void:
 			[&"legionary", &"legionary", &"emberlight_auxilia", &"dracarii_riders", &"marching_bastion"])
 		state.armies[army.army_id] = army
 
-		# DEBUG: Spawn a Skulloath test army 2 hexes from empire start
-		var test_neighbors := HexHelper.get_neighbors(center)
-		if test_neighbors.size() > 0:
-			var second_ring := HexHelper.get_neighbors(test_neighbors[0])
-			var test_pos := second_ring[0] if second_ring.size() > 0 else test_neighbors[0]
-			var test_army := _create_army(&"skulloath", test_pos,
-				[&"warband_raider", &"skulloath_raider", &"skulloath_raider", &"bonecaller", &"runebound_wyvern", &"dread_riders"])
-			state.armies[test_army.army_id] = test_army
-
 	# Create Skulloath starting army
 	var skulloath_data: FactionData = DataManager.get_faction(&"skulloath")
 	if skulloath_data and skulloath_data.starting_regions.size() > 0:
 		var center := MapGenerator.get_region_center(skulloath_data.starting_regions[0])
 		var army := _create_army(&"skulloath", center,
-			[&"warband_raider", &"skulloath_raider", &"runebound_wyvern", &"bonecaller"])
+			[&"warband_raider", &"warband_raider", &"steppe_rider", &"skulloath_raider", &"bonecaller", &"runebound_wyvern", &"dread_riders"])
 		state.armies[army.army_id] = army
 
 	# Create Gladehost starting army
@@ -166,7 +304,7 @@ func _init_armies() -> void:
 	if gladehost_data and gladehost_data.starting_regions.size() > 0:
 		var center := MapGenerator.get_region_center(gladehost_data.starting_regions[0])
 		var army := _create_army(&"gladehost", center,
-			[&"grove_warden", &"grove_warden", &"thornbow_scout"])
+			[&"grove_warden", &"grove_warden", &"thornbow_scout", &"thornbow_scout", &"stag_rider", &"dryad"])
 		state.armies[army.army_id] = army
 
 	# Create Tainted Jade starting army
@@ -174,26 +312,41 @@ func _init_armies() -> void:
 	if jade_data and jade_data.starting_regions.size() > 0:
 		var center := MapGenerator.get_region_center(jade_data.starting_regions[0])
 		var army := _create_army(&"tainted_jade", center,
-			[&"jade_fang", &"jade_fang", &"coatl_shaman"])
+			[&"jade_fang", &"jade_fang", &"jungle_stalker", &"serpent_guardian", &"coatl_shaman"])
 		state.armies[army.army_id] = army
 
-	# Create Shardhorde starting armies (near elderbeasts)
+	# Create Shardhorde starting armies (with elderbeasts attached)
 	var shard_data: FactionData = DataManager.get_faction(&"shardhorde")
 	if shard_data and shard_data.starting_regions.size() > 0:
-		# Main escort army near first elderbeast
 		var beast_ids := state.elderbeasts.keys()
 		if beast_ids.size() >= 1:
 			var beast1: ElderbeastState = state.elderbeasts[beast_ids[0]]
 			var escort := _create_army(&"shardhorde", beast1.hex_pos,
 				[&"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling", &"crystalback_raptor"])
+			escort.elderbeast_id = beast1.beast_id
 			state.armies[escort.army_id] = escort
 			beast1.escort_army_id = escort.army_id
+			_add_elderbeast_to_army(beast1, escort)
+			# Elderbeast as army general
+			beast1.commander = _create_commander(&"shardhorde")
+			beast1.commander.name = beast1.name
+			beast1.commander.is_elderbeast = true
+			escort.commander = beast1.commander
+			escort.commander_name = beast1.commander.name
 		if beast_ids.size() >= 2:
 			var beast2: ElderbeastState = state.elderbeasts[beast_ids[1]]
 			var raider := _create_army(&"shardhorde", beast2.hex_pos,
 				[&"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling"])
+			raider.elderbeast_id = beast2.beast_id
 			state.armies[raider.army_id] = raider
 			beast2.escort_army_id = raider.army_id
+			_add_elderbeast_to_army(beast2, raider)
+			# Elderbeast as army general
+			beast2.commander = _create_commander(&"shardhorde")
+			beast2.commander.name = beast2.name
+			beast2.commander.is_elderbeast = true
+			raider.commander = beast2.commander
+			raider.commander_name = beast2.commander.name
 
 func _create_army(faction_id: StringName, hex_pos: Vector2i, unit_ids: Array) -> ArmyState:
 	var army := ArmyState.new()
@@ -213,6 +366,21 @@ func _create_army(faction_id: StringName, hex_pos: Vector2i, unit_ids: Array) ->
 	army.movement_remaining = army.get_max_movement()
 	return army
 
+func _add_elderbeast_to_army(beast: ElderbeastState, army: ArmyState) -> void:
+	var unit_data := DataManager.get_unit(beast.get_unit_data_id())
+	if unit_data == null:
+		return
+	var instance := UnitInstance.new()
+	instance.instance_id = beast.beast_id # Use beast_id as instance_id for easy lookup
+	instance.unit_data_id = unit_data.id
+	instance.current_hp = beast.hp
+	beast.unit_instance_id = instance.instance_id
+	army.units.insert(0, instance)
+	# Set elderbeast commander as army general
+	if beast.commander:
+		army.commander = beast.commander
+		army.commander_name = beast.commander.name
+
 func _generate_commander_name(faction_id: StringName) -> String:
 	var names: Array = COMMANDER_NAMES.get(faction_id, [])
 	if names.is_empty():
@@ -226,9 +394,9 @@ func _init_cities() -> void:
 	# Faction-specific starting buildings
 	var faction_starting_buildings := {
 		&"empire": &"cohort_barracks",
-		&"skulloath": &"barracks",
-		&"gladehost": &"barracks",
-		&"tainted_jade": &"barracks",
+		&"skulloath": &"raiders_den",
+		&"gladehost": &"ranger_outpost",
+		&"tainted_jade": &"serpent_pit",
 	}
 
 	for faction_id in DataManager.factions:
@@ -297,7 +465,7 @@ func _init_elderbeasts() -> void:
 	beast1.level = 1
 	beast1.hp = 500
 	beast1.max_hp = 500
-	beast1.buildings.append(&"barracks")
+	# Elderbeasts recruit all faction units directly — no barracks needed
 	state.elderbeasts[beast1.beast_id] = beast1
 
 	# Create second elderbeast empty
@@ -332,17 +500,23 @@ func _init_commander_pools() -> void:
 	for faction_id in state.faction_states:
 		var fs: FactionState = state.faction_states[faction_id]
 		var cmd := _create_commander(faction_id)
-		# Auto-assign the first commander to the first army of this faction
+		# Auto-assign the first commander to the first army without one
 		var armies := get_faction_armies(faction_id)
-		if armies.size() > 0:
-			armies[0].commander = cmd
-			armies[0].commander_name = cmd.name
-		else:
+		var assigned := false
+		for army in armies:
+			if army.commander == null:
+				army.commander = cmd
+				army.commander_name = cmd.name
+				assigned = true
+				break
+		if not assigned:
 			fs.commander_pool.append(cmd)
 
 func assign_commander_to_army(army_id: StringName, commander_id: StringName) -> bool:
 	var army: ArmyState = state.armies.get(army_id)
 	if army == null or army.commander != null:
+		return false
+	if army.elderbeast_id != &"":
 		return false
 	var fs: FactionState = state.faction_states.get(army.faction_id)
 	if fs == null:
@@ -358,6 +532,8 @@ func assign_commander_to_army(army_id: StringName, commander_id: StringName) -> 
 func unassign_commander_from_army(army_id: StringName) -> bool:
 	var army: ArmyState = state.armies.get(army_id)
 	if army == null or army.commander == null:
+		return false
+	if army.elderbeast_id != &"":
 		return false
 	var fs: FactionState = state.faction_states.get(army.faction_id)
 	if fs == null:
@@ -390,8 +566,8 @@ func _init_diplomacy() -> void:
 	state.diplomacy[&"gladehost:tainted_jade"] = Enums.FactionRelation.WAR
 	state.diplomacy[&"tainted_jade:gladehost"] = Enums.FactionRelation.WAR
 	# Shardhorde relations
-	state.diplomacy[&"shardhorde:skulloath"] = Enums.FactionRelation.WAR
-	state.diplomacy[&"skulloath:shardhorde"] = Enums.FactionRelation.WAR
+	state.diplomacy[&"shardhorde:skulloath"] = Enums.FactionRelation.HOSTILE
+	state.diplomacy[&"skulloath:shardhorde"] = Enums.FactionRelation.HOSTILE
 	state.diplomacy[&"shardhorde:empire"] = Enums.FactionRelation.HOSTILE
 	state.diplomacy[&"empire:shardhorde"] = Enums.FactionRelation.HOSTILE
 	state.diplomacy[&"shardhorde:gladehost"] = Enums.FactionRelation.HOSTILE
@@ -403,6 +579,11 @@ func _init_diplomacy() -> void:
 		if faction_id != &"rebels":
 			state.diplomacy[StringName(str(&"rebels") + ":" + str(faction_id))] = Enums.FactionRelation.WAR
 			state.diplomacy[StringName(str(faction_id) + ":" + str(&"rebels"))] = Enums.FactionRelation.WAR
+	# Shard Guardians at WAR with all factions
+	for faction_id in state.faction_states:
+		if faction_id != &"shard_guardians":
+			state.diplomacy[StringName(str(&"shard_guardians") + ":" + str(faction_id))] = Enums.FactionRelation.WAR
+			state.diplomacy[StringName(str(faction_id) + ":" + str(&"shard_guardians"))] = Enums.FactionRelation.WAR
 
 	# Initialize diplomacy standing from starting relations
 	for key in state.diplomacy:
@@ -460,7 +641,10 @@ func get_armies_at_tile(coord: Vector2i) -> Array[ArmyState]:
 func get_enemies_at_tile(coord: Vector2i, my_faction: StringName) -> Array[ArmyState]:
 	var result: Array[ArmyState] = []
 	for army in get_armies_at_tile(coord):
-		if army.faction_id != my_faction and get_relation(my_faction, army.faction_id) == Enums.FactionRelation.WAR:
+		if army.faction_id == my_faction:
+			continue
+		var relation := get_relation(my_faction, army.faction_id)
+		if relation == Enums.FactionRelation.WAR or relation == Enums.FactionRelation.HOSTILE:
 			result.append(army)
 	return result
 
@@ -567,6 +751,11 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 	var army: ArmyState = state.armies.get(army_id)
 	if army == null or path.is_empty():
 		return
+	# Injured elderbeast prevents army movement
+	if army.elderbeast_id != &"":
+		var beast: ElderbeastState = state.elderbeasts.get(army.elderbeast_id)
+		if beast and beast.is_injured():
+			return
 
 	for tile_coord in path:
 		var cost := state.hex_map.get_movement_cost(tile_coord, army.faction_id)
@@ -580,6 +769,13 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 		army.hex_pos = tile_coord
 		army.movement_remaining -= cost
 		army.has_moved = true
+		# Sync elderbeast position with army
+		if army.elderbeast_id != &"":
+			var beast: ElderbeastState = state.elderbeasts.get(army.elderbeast_id)
+			if beast:
+				var old_beast_pos := beast.hex_pos
+				beast.hex_pos = tile_coord
+				EventBus.elderbeast_moved.emit(beast.beast_id, old_beast_pos, tile_coord)
 		EventBus.army_moved.emit(army_id, from_pos, tile_coord)
 
 		# Check for battle
@@ -636,6 +832,11 @@ func _check_siege_departure(army: ArmyState) -> void:
 		city_system.break_siege(city_at.city_id)
 
 func _try_claim_shard(hex_pos: Vector2i, faction_id: StringName) -> void:
+	# Block claiming if shard guardian army still alive at this hex
+	for army_id in state.armies:
+		var army: ArmyState = state.armies[army_id]
+		if army.faction_id == &"shard_guardians" and army.hex_pos == hex_pos:
+			return
 	for shard_id in state.active_shards:
 		var shard: ShardInstance = state.active_shards[shard_id]
 		if shard.hex_pos == hex_pos and shard.claimed_by == &"":

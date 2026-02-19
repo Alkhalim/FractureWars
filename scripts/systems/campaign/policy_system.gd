@@ -104,8 +104,9 @@ func process_policies(faction_id: StringName) -> void:
 					break
 	for policy_id in to_revoke:
 		revoke_policy(faction_id, policy_id)
-	# Process Forsaken crisis
-	_process_forsaken_crisis(faction_id, fs, capital)
+	# Process Forsaken crisis (Empire only)
+	if faction_id == &"empire":
+		_process_forsaken_crisis(faction_id, fs, capital)
 	# Decrement category cooldowns
 	var expired: Array[int] = []
 	for category in fs.policy_cooldowns:

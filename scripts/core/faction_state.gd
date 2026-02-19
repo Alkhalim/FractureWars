@@ -21,8 +21,22 @@ extends Resource
 @export var active_policies: Array[StringName] = []
 @export var policy_cooldowns: Dictionary = {} # category (int) -> turns remaining
 
-# Senate / Forsaken
+# Senate / Forsaken (Empire unique)
 @export var forsaken_seats: int = 3
 @export var forsaken_next_offer_turn: int = 5
 @export var forsaken_crisis_stage: int = 0
 @export var senate_dilemma_next_turn: int = 8
+
+# Skulloath unique: Corruption duality (0-100)
+# Low = traditional (food/loyalty bonus), High = demonic (military bonus, loyalty penalty)
+@export var corruption: int = 20
+
+# Tainted Jade unique: Taint Power (accumulated from destroying shards)
+@export var taint_power: int = 0
+
+# Gladehost unique: Harmony level (0-100)
+# High harmony = strong seasonal bonuses, drops when over-building
+@export var harmony: int = 75
+
+# Shardhorde unique: Shard Resonance buffs (shard realm -> turns remaining)
+@export var shard_resonance: Dictionary = {}

@@ -21,7 +21,21 @@
       "Bash(python:*)",
       "mcp__ide__executeCode",
       "Bash(/c/Python313/python:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(grep:*)",
+      "Bash(git -C \"/d/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars\" ls-files)",
+      "Bash(echo:*)",
+      "Bash(dir:*)",
+      "Bash(/usr/bin/cat \"D:/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars/scripts/resources/building_data.gd\")",
+      "Bash(test:*)",
+      "Bash(git -C \"D:/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars\" ls-files:*)",
+      "Bash(git -C \"/d/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars\" log --oneline -5)",
+      "Bash(git -C \"/d/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars\" diff HEAD -- scripts/enums/enums.gd)",
+      "Bash(git -C \"D:/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars\" status --short)",
+      "Bash(bash -c 'cat \"\"D:/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars/data/skills/hardy.tres\"\"')",
+      "Bash(/usr/bin/grep:*)",
+      "Bash(command -v:*)",
+      "Bash(command -v sed:*)"
     ]
   }
 }

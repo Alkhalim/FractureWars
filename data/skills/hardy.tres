@@ -10,3 +10,4 @@ description = "Toughened by years of campaigning."
 category = &"combat"
 is_minor = true
 effects = {"army_defense_bonus": 1}
+context_tags = Array[StringName]([&"was_defender", &"terrain_mountains", &"terrain_tundra"])

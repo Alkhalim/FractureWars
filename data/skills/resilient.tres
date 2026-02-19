@@ -10,3 +10,4 @@ description = "Quickly recovers from setbacks."
 category = &"combat"
 is_minor = true
 effects = {"heal_per_turn": 5}
+context_tags = Array[StringName]([&"terrain_desert", &"terrain_swamp", &"was_defender"])

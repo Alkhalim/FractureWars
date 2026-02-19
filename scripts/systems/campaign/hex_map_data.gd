@@ -17,14 +17,14 @@ class TileState:
 const TERRAIN_COSTS := {
 	Enums.TerrainType.PLAINS: 1.0,
 	Enums.TerrainType.FOREST: 2.0,
-	Enums.TerrainType.MOUNTAINS: 3.0,
-	Enums.TerrainType.DESERT: 2.0,
+	Enums.TerrainType.MOUNTAINS: 4.2,
+	Enums.TerrainType.DESERT: 1.5,
 	Enums.TerrainType.SWAMP: 3.0,
 	Enums.TerrainType.COAST: 1.0,
 	Enums.TerrainType.TUNDRA: 2.0,
-	Enums.TerrainType.SHARD_WASTES: 4.0,
+	Enums.TerrainType.SHARD_WASTES: 3.0,
 	Enums.TerrainType.WATER: INF,
-	Enums.TerrainType.JUNGLE: 3.0,
+	Enums.TerrainType.JUNGLE: 2.7,
 }
 
 func get_tile(coord: Vector2i) -> TileState:
@@ -36,6 +36,32 @@ func get_movement_cost(coord: Vector2i, faction_id: StringName) -> float:
 		return INF
 
 	var base_cost: float = TERRAIN_COSTS.get(tile.terrain, 1.0)
+
+	# Faction terrain affinity — factions move faster in aligned terrain
+	var fd: FactionData = DataManager.get_faction(faction_id)
+	if fd:
+		if fd.realm_affinity == Enums.Realm.VOID:
+			# Void factions: -0.5 in Shard Wastes and Desert
+			if tile.terrain == Enums.TerrainType.SHARD_WASTES:
+				base_cost -= 0.5
+			elif tile.terrain == Enums.TerrainType.DESERT:
+				base_cost -= 0.3
+		elif fd.realm_affinity == Enums.Realm.NATURE:
+			# Nature factions: -0.5 in Jungle and Forest
+			if tile.terrain == Enums.TerrainType.JUNGLE:
+				base_cost -= 0.5
+			elif tile.terrain == Enums.TerrainType.FOREST:
+				base_cost -= 0.4
+		elif fd.realm_affinity == Enums.Realm.MORTAL:
+			# Mortal factions: -0.3 on Plains and Coast (civilized lands)
+			if tile.terrain == Enums.TerrainType.PLAINS:
+				base_cost -= 0.2
+		elif fd.realm_affinity == Enums.Realm.ELEMENTAL:
+			# Elemental factions: -0.4 in Mountains and Tundra
+			if tile.terrain == Enums.TerrainType.MOUNTAINS:
+				base_cost -= 0.6
+			elif tile.terrain == Enums.TerrainType.TUNDRA:
+				base_cost -= 0.3
 
 	# Road modifier
 	if tile.road_level == 1:

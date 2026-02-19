@@ -10,3 +10,4 @@ description = "Unyielding resolve that inspires unbreakable defense."
 category = &"combat"
 is_minor = false
 effects = {"army_defense_bonus": 5, "heal_per_turn": 10}
+context_tags = Array[StringName]([&"was_defender", &"battle_lost"])

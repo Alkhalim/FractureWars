@@ -10,3 +10,4 @@ description = "Ever watchful of distant threats."
 category = &"logistics"
 is_minor = true
 effects = {"scouting_bonus": 1}
+context_tags = Array[StringName]([&"terrain_forest", &"terrain_jungle"])

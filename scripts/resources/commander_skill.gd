@@ -7,3 +7,4 @@ extends Resource
 @export var category: StringName # "combat", "economy", "logistics", "magic"
 @export var is_minor: bool = false # true = auto-assigned on level up
 @export var effects: Dictionary = {} # effect_type -> value
+@export var context_tags: Array[StringName] = []

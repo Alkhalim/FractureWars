@@ -9,7 +9,8 @@ extends Resource
 @export var population: int = 100
 @export var growth_points: int = 0 # accumulates toward next level
 @export var buildings: Array[StringName] = [] # building_data_ids
-@export var build_queue: Array[Dictionary] = [] # [{building_id, turns_remaining}]
+@export var building_tiles: Dictionary = {} # building_id -> Vector2i (hex tile where building is placed)
+@export var build_queue: Array[Dictionary] = [] # [{building_id, turns_remaining, tile_pos}]
 @export var recruit_queue: Array[Dictionary] = [] # [{unit_data_id, turns_remaining}]
 @export var is_under_siege: bool = false
 @export var siege_faction: StringName = &""
@@ -50,10 +51,31 @@ func get_max_building_slots() -> int:
 func get_available_building_slots() -> int:
 	return get_max_building_slots() - buildings.size()
 
+func get_occupied_tiles() -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for bid in building_tiles:
+		var pos = building_tiles[bid]
+		if pos is Vector2i and not result.has(pos):
+			result.append(pos)
+	# Also count tiles reserved by build queue
+	for item in build_queue:
+		if item.has("tile_pos"):
+			var tpos = item.tile_pos
+			if tpos is Vector2i and not result.has(tpos):
+				result.append(tpos)
+	return result
+
 func get_growth_threshold() -> int:
 	if level - 1 < GROWTH_THRESHOLDS.size():
 		return GROWTH_THRESHOLDS[level - 1]
 	return -1 # max level
+
+func get_population_cap() -> int:
+	var threshold := get_growth_threshold()
+	if threshold > 0:
+		return int(threshold * 1.5)
+	# Max level — cap at 150% of the last threshold
+	return int(GROWTH_THRESHOLDS[GROWTH_THRESHOLDS.size() - 1] * 1.5)
 
 func is_upgrade_available() -> bool:
 	if upgrade_turns_remaining > 0:

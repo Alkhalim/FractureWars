@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"beastkeepers_glade"
+display_name = "Beastkeeper's Glade I"
+description = "A sheltered clearing where rangers bond with the forest's great beasts. Trust is earned over years — there are no shortcuts."
+faction_id = &"gladehost"
+category = &"military"
+build_cost = {0: 160, 5: 40, 3: 40}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 0
+unlocks_units = Array[StringName]([&"bear_companion"])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 1}

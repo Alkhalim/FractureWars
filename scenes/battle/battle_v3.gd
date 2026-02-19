@@ -24,6 +24,8 @@ var player_side: int = 0
 var is_player_attacker: bool = false
 var _battle_loot: Dictionary = {}
 var _magic_projs: Array[Dictionary] = []
+var _impact_marks: Node2D
+const MAX_IMPACT_MARKS := 200
 
 # Simulation state
 var sim_speed: float = 0.1
@@ -48,6 +50,17 @@ var speed_label: Label
 var tick_label: Label
 var pause_btn: Button
 
+# Strength meter and roster UI
+var strength_meter_panel: PanelContainer
+var strength_bar_player: ColorRect
+var strength_bar_enemy: ColorRect
+var strength_label: Label
+var roster_panel: PanelContainer
+var player_roster_container: VBoxContainer
+var enemy_roster_container: VBoxContainer
+var _player_power_initial: float = 0.0
+var _enemy_power_initial: float = 0.0
+
 func _ready() -> void:
 	var attacker_id: StringName = GameManager.get_meta("battle_attacker")
 	var defender_id: StringName = GameManager.get_meta("battle_defender")
@@ -67,7 +80,7 @@ func _ready() -> void:
 	is_player_attacker = attacker_faction_id == GameManager.state.player_faction_id
 	player_side = 0
 
-	AudioManager.play_music(&"music_battle")
+	AudioManager.play_faction_music(GameManager.state.player_faction_id, &"battle")
 
 	# Create simulator
 	simulator = BattleSimulatorV3.new()
@@ -90,8 +103,8 @@ func _ready() -> void:
 		simulator.setup_attacker_formations(defender_army, def_cmd_bonuses)
 		simulator.setup_defender_formations(attacker_army, atk_cmd_bonuses)
 
-	# Add elderbeast to battle if present at battle hex
-	_add_elderbeasts_to_battle()
+	# Apply building bonuses to elderbeast formations (stats, ranged, aura, spawning)
+	_apply_elderbeast_building_bonuses()
 
 	# AI assigns orders for enemy side
 	simulator.assign_ai_orders(1)
@@ -106,6 +119,12 @@ func _build_scene() -> void:
 	renderer = $BattleRenderer
 	renderer.set_script(preload("res://scenes/battle/battle_renderer_v3.gd"))
 	renderer.set("battle_scene", self)
+
+	# Impact marks layer (below effects, persists for battle duration)
+	_impact_marks = Node2D.new()
+	_impact_marks.name = "ImpactMarks"
+	_impact_marks.z_index = 1
+	add_child(_impact_marks)
 
 	# Effects layer for floating damage numbers, projectiles
 	effects_layer = Node2D.new()
@@ -220,6 +239,114 @@ func _build_ui() -> void:
 
 	ui_layer.add_child(order_panel)
 
+	# --- Strength Meter (Top Right) ---
+	strength_meter_panel = _create_panel()
+	strength_meter_panel.name = "StrengthMeterPanel"
+	strength_meter_panel.anchor_left = 1
+	strength_meter_panel.anchor_right = 1
+	strength_meter_panel.anchor_top = 0
+	strength_meter_panel.anchor_bottom = 0
+	strength_meter_panel.offset_left = -320
+	strength_meter_panel.offset_right = -4
+	strength_meter_panel.offset_top = 4
+	strength_meter_panel.offset_bottom = 90
+	strength_meter_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+
+	var meter_vbox := VBoxContainer.new()
+	meter_vbox.add_theme_constant_override("separation", 3)
+	strength_meter_panel.add_child(meter_vbox)
+
+	strength_label = Label.new()
+	strength_label.text = "BATTLE STRENGTH"
+	strength_label.add_theme_font_size_override("font_size", 11)
+	strength_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	strength_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	meter_vbox.add_child(strength_label)
+
+	var bar_bg := ColorRect.new()
+	bar_bg.custom_minimum_size = Vector2(280, 16)
+	bar_bg.color = Color(0.15, 0.12, 0.1, 0.9)
+	bar_bg.name = "BarBG"
+	meter_vbox.add_child(bar_bg)
+
+	strength_bar_player = ColorRect.new()
+	strength_bar_player.color = Color(0.25, 0.65, 0.35, 0.9)
+	strength_bar_player.position = Vector2.ZERO
+	strength_bar_player.size = Vector2(140, 16)
+	bar_bg.add_child(strength_bar_player)
+
+	strength_bar_enemy = ColorRect.new()
+	strength_bar_enemy.color = Color(0.75, 0.25, 0.2, 0.9)
+	strength_bar_enemy.position = Vector2(140, 0)
+	strength_bar_enemy.size = Vector2(140, 16)
+	bar_bg.add_child(strength_bar_enemy)
+
+	# Commander bonuses info under strength meter
+	var player_army := attacker_army if is_player_attacker else defender_army
+	var enemy_army_ref := defender_army if is_player_attacker else attacker_army
+	var player_bonuses := CommanderSystem.get_commander_army_bonuses(player_army.commander)
+	var enemy_bonuses := CommanderSystem.get_commander_army_bonuses(enemy_army_ref.commander)
+
+	var cmd_vbox := VBoxContainer.new()
+	cmd_vbox.add_theme_constant_override("separation", 1)
+	meter_vbox.add_child(cmd_vbox)
+
+	_add_commander_bonus_line(cmd_vbox, player_army.commander, player_bonuses, Color(0.6, 0.8, 0.65))
+	_add_commander_bonus_line(cmd_vbox, enemy_army_ref.commander, enemy_bonuses, Color(0.8, 0.6, 0.55))
+
+	ui_layer.add_child(strength_meter_panel)
+
+	# --- Army Roster (Right Side) ---
+	roster_panel = _create_panel()
+	roster_panel.name = "RosterPanel"
+	roster_panel.anchor_left = 1
+	roster_panel.anchor_right = 1
+	roster_panel.anchor_top = 0
+	roster_panel.anchor_bottom = 1
+	roster_panel.offset_left = -320
+	roster_panel.offset_right = -4
+	roster_panel.offset_top = 96
+	roster_panel.offset_bottom = -4
+	roster_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+
+	var roster_scroll := ScrollContainer.new()
+	roster_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	roster_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	roster_panel.add_child(roster_scroll)
+
+	var roster_vbox := VBoxContainer.new()
+	roster_vbox.add_theme_constant_override("separation", 2)
+	roster_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	roster_scroll.add_child(roster_vbox)
+
+	var player_title := Label.new()
+	player_title.text = "YOUR FORCES"
+	player_title.add_theme_font_size_override("font_size", 12)
+	player_title.add_theme_color_override("font_color", Color(0.25, 0.75, 0.4))
+	player_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	roster_vbox.add_child(player_title)
+
+	player_roster_container = VBoxContainer.new()
+	player_roster_container.add_theme_constant_override("separation", 1)
+	roster_vbox.add_child(player_roster_container)
+
+	var roster_sep := HSeparator.new()
+	roster_sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	roster_vbox.add_child(roster_sep)
+
+	var enemy_title := Label.new()
+	enemy_title.text = "ENEMY FORCES"
+	enemy_title.add_theme_font_size_override("font_size", 12)
+	enemy_title.add_theme_color_override("font_color", Color(0.85, 0.3, 0.25))
+	enemy_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	roster_vbox.add_child(enemy_title)
+
+	enemy_roster_container = VBoxContainer.new()
+	enemy_roster_container.add_theme_constant_override("separation", 1)
+	roster_vbox.add_child(enemy_roster_container)
+
+	ui_layer.add_child(roster_panel)
+
 	# --- Unit Info Panel (Bottom Left) ---
 	unit_info_panel = _create_panel()
 	unit_info_panel.name = "UnitInfoPanel"
@@ -327,6 +454,179 @@ func _populate_unit_list() -> void:
 		var captured_f := f
 		btn.pressed.connect(_on_formation_selected.bind(captured_f))
 		unit_list_container.add_child(btn)
+
+	_update_roster()
+	_update_strength_meter()
+
+func _update_roster() -> void:
+	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
+	var enemy_formations := simulator.defender_formations if player_side == 0 else simulator.attacker_formations
+	_rebuild_roster_side(player_roster_container, player_formations, true)
+	_rebuild_roster_side(enemy_roster_container, enemy_formations, false)
+
+func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimulatorV3.BattleFormationV3], is_player: bool) -> void:
+	for child in container.get_children():
+		child.queue_free()
+	for f in formations:
+		var row := VBoxContainer.new()
+		row.add_theme_constant_override("separation", 0)
+
+		var is_dead := f.is_dead or f.is_fled
+
+		# Name + HP text
+		var name_hbox := HBoxContainer.new()
+		name_hbox.add_theme_constant_override("separation", 4)
+		var name_lbl := Label.new()
+		name_lbl.text = f.display_name
+		name_lbl.add_theme_font_size_override("font_size", 11)
+		if is_dead:
+			name_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35))
+		elif is_player:
+			name_lbl.add_theme_color_override("font_color", Color(0.8, 0.85, 0.75))
+		else:
+			name_lbl.add_theme_color_override("font_color", Color(0.85, 0.75, 0.7))
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_hbox.add_child(name_lbl)
+
+		# HP numbers + entity count
+		var hp_text := "%d/%d HP  %d/%d" % [maxi(0, f.current_hp), f.max_hp, f.entities_alive, f.total_entities]
+		var hp_lbl := Label.new()
+		hp_lbl.text = hp_text
+		hp_lbl.add_theme_font_size_override("font_size", 9)
+		hp_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35) if is_dead else Color(0.65, 0.6, 0.55))
+		name_hbox.add_child(hp_lbl)
+		row.add_child(name_hbox)
+
+		# HP bar
+		var bar_bg := ColorRect.new()
+		bar_bg.custom_minimum_size = Vector2(280, 6)
+		bar_bg.color = Color(0.2, 0.18, 0.15, 0.8) if not is_dead else Color(0.15, 0.13, 0.12, 0.5)
+		row.add_child(bar_bg)
+
+		if not is_dead and f.max_hp > 0:
+			var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
+			var bar_fill := ColorRect.new()
+			bar_fill.size = Vector2(280.0 * hp_ratio, 6)
+			bar_fill.position = Vector2.ZERO
+			if hp_ratio > 0.6:
+				bar_fill.color = Color(0.25, 0.65, 0.35) if is_player else Color(0.7, 0.25, 0.2)
+			elif hp_ratio > 0.3:
+				bar_fill.color = Color(0.75, 0.65, 0.2)
+			else:
+				bar_fill.color = Color(0.8, 0.3, 0.2)
+			bar_bg.add_child(bar_fill)
+
+		if is_dead:
+			row.modulate = Color(0.6, 0.55, 0.5, 0.6)
+
+		# Right-click opens unit card, left-click selects (player only)
+		# Ensure child controls pass mouse events through to the row
+		name_hbox.mouse_filter = Control.MOUSE_FILTER_PASS
+		name_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+		hp_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+		bar_bg.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.mouse_filter = Control.MOUSE_FILTER_STOP
+		var captured_f := f
+		row.gui_input.connect(_on_roster_row_input.bind(captured_f, is_player))
+
+		container.add_child(row)
+
+func _on_roster_row_input(event: InputEvent, f: BattleSimulatorV3.BattleFormationV3, is_player: bool) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT and is_player and not f.is_dead and not f.is_fled:
+			_on_formation_selected(f)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			_update_unit_info(f)
+
+func _add_commander_bonus_line(container: VBoxContainer, commander: CommanderState, bonuses: Dictionary, color: Color) -> void:
+	if commander == null:
+		return
+	var parts: Array[String] = []
+	var atk: int = bonuses.get("attack_bonus", 0)
+	var def: int = bonuses.get("defense_bonus", 0)
+	var spd: int = bonuses.get("speed_bonus", 0)
+	var heal: int = bonuses.get("heal_per_turn", 0)
+	if atk != 0:
+		parts.append("ATK %+d" % atk)
+	if def != 0:
+		parts.append("DEF %+d" % def)
+	if spd != 0:
+		parts.append("SPD %+d" % spd)
+	if heal != 0:
+		parts.append("HEAL %+d" % heal)
+	var bonus_text := ", ".join(parts) if parts.size() > 0 else "no bonuses"
+	var lbl := Label.new()
+	lbl.text = "%s (Lv%d): %s" % [commander.name, commander.level, bonus_text]
+	lbl.add_theme_font_size_override("font_size", 10)
+	lbl.add_theme_color_override("font_color", color)
+	container.add_child(lbl)
+
+func _calc_formation_power(f: BattleSimulatorV3.BattleFormationV3) -> float:
+	# Power = HP_ratio * (attack + defense * 0.5 + speed * 0.3) * entities_alive
+	# This weights offensive capability, survivability, and remaining manpower
+	if f.is_dead or f.is_fled or f.max_hp <= 0:
+		return 0.0
+	var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
+	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.3
+	if f.attack_range > 1:
+		stat_value += float(f.attack_range) * 0.4  # Ranged units are more valuable
+	return hp_ratio * stat_value * float(f.entities_alive)
+
+func _calc_formation_power_max(f: BattleSimulatorV3.BattleFormationV3) -> float:
+	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.3
+	if f.attack_range > 1:
+		stat_value += float(f.attack_range) * 0.4
+	return stat_value * float(f.total_entities)
+
+func _update_strength_meter() -> void:
+	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
+	var enemy_formations := simulator.defender_formations if player_side == 0 else simulator.attacker_formations
+
+	var player_power := 0.0
+	var enemy_power := 0.0
+
+	for f in player_formations:
+		player_power += _calc_formation_power(f)
+	for f in enemy_formations:
+		enemy_power += _calc_formation_power(f)
+
+	if _player_power_initial <= 0.0:
+		for f in player_formations:
+			_player_power_initial += _calc_formation_power_max(f)
+	if _enemy_power_initial <= 0.0:
+		for f in enemy_formations:
+			_enemy_power_initial += _calc_formation_power_max(f)
+
+	if _player_power_initial + _enemy_power_initial <= 0.0:
+		return
+
+	var bar_bg_node := strength_meter_panel.find_child("BarBG", true, false) as ColorRect
+	if bar_bg_node == null:
+		return
+	var bar_width: float = bar_bg_node.custom_minimum_size.x
+
+	# Proportional power: how much combat power each side has
+	var total_current := player_power + enemy_power
+	var player_ratio := 0.5
+	if total_current > 0.0:
+		player_ratio = player_power / total_current
+	var enemy_ratio := 1.0 - player_ratio
+
+	strength_bar_player.size = Vector2(bar_width * player_ratio, 16)
+	strength_bar_player.position = Vector2.ZERO
+	strength_bar_enemy.size = Vector2(bar_width * enemy_ratio, 16)
+	strength_bar_enemy.position = Vector2(bar_width * player_ratio, 0)
+
+	# Color intensity based on remaining power
+	var p_pct := player_power / maxf(1.0, _player_power_initial)
+	var e_pct := enemy_power / maxf(1.0, _enemy_power_initial)
+	strength_bar_player.color = Color(0.25, 0.65, 0.35, 0.9) if p_pct > 0.4 else Color(0.75, 0.55, 0.2, 0.9)
+	strength_bar_enemy.color = Color(0.75, 0.25, 0.2, 0.9) if e_pct > 0.4 else Color(0.6, 0.2, 0.15, 0.7)
+
+	# Update label with percentage
+	var player_pct_text := "%d%%" % int(p_pct * 100)
+	var enemy_pct_text := "%d%%" % int(e_pct * 100)
+	strength_label.text = "YOU %s  |  ENEMY %s" % [player_pct_text, enemy_pct_text]
 
 func _create_panel() -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -531,6 +831,21 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	order_label.add_theme_color_override("font_color", Color(0.65, 0.7, 0.8))
 	vbox.add_child(order_label)
 
+	# Resource bars info
+	var res_parts: Array[String] = []
+	if f.max_endurance > 0.0:
+		res_parts.append("END:%d%%" % int(f.current_endurance / f.max_endurance * 100.0))
+	if f.max_ammo > 0:
+		res_parts.append("AMMO:%d/%d" % [f.current_ammo, f.max_ammo])
+	if f.max_mana > 0.0:
+		res_parts.append("MANA:%d%%" % int(f.current_mana / f.max_mana * 100.0))
+	if res_parts.size() > 0:
+		var res_label := Label.new()
+		res_label.text = " ".join(res_parts)
+		res_label.add_theme_font_size_override("font_size", 11)
+		res_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.55))
+		vbox.add_child(res_label)
+
 	unit_info_panel.add_child(vbox)
 	unit_info_panel.visible = true
 
@@ -580,6 +895,8 @@ func _process(delta: float) -> void:
 			if simulator.is_finished:
 				break
 		_clear_magic_projectiles()
+		_update_roster()
+		_update_strength_meter()
 		skip_to_end = false
 		is_simulating = false
 		_show_result()
@@ -594,6 +911,8 @@ func _process(delta: float) -> void:
 		var actions := simulator.simulate_tick()
 		_process_visual_actions(actions)
 		tick_label.text = "Tick: %d" % simulator.tick_count
+		_update_roster()
+		_update_strength_meter()
 		renderer.queue_redraw()
 
 		if simulator.is_finished:
@@ -622,6 +941,10 @@ func _process_visual_actions(actions: Array[Dictionary]) -> void:
 					_spawn_projectile(action.attacker, r_def_id)
 				if r_dmg > 0:
 					_spawn_damage_number(r_def_id, r_dmg)
+			"aura_damage":
+				_spawn_aura_damage_number(action.target, action.damage)
+			"spawn":
+				pass # Spawned unit will be rendered on next redraw
 
 func _spawn_damage_number(formation_id: StringName, damage: int) -> void:
 	var pos := Vector2.ZERO
@@ -643,6 +966,24 @@ func _spawn_damage_number(formation_id: StringName, damage: int) -> void:
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.8)
 	tween.tween_callback(label.queue_free)
 
+func _spawn_aura_damage_number(formation_id: StringName, damage: int) -> void:
+	var pos := Vector2.ZERO
+	for f in simulator.attacker_formations + simulator.defender_formations:
+		if f.instance_id == formation_id:
+			pos = f.position
+			break
+	var label := Label.new()
+	label.text = str(damage)
+	label.position = pos + Vector2(randf_range(-8, 8), -6)
+	label.add_theme_font_size_override("font_size", 10)
+	label.add_theme_color_override("font_color", Color(0.7, 0.3, 0.9))
+	label.z_index = 10
+	effects_layer.add_child(label)
+	var tween := create_tween()
+	tween.tween_property(label, "position:y", label.position.y - 18, 0.6)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.6)
+	tween.tween_callback(label.queue_free)
+
 func _spawn_projectile_from_pos(from_pos: Vector2, to_pos: Vector2, is_hit: bool) -> void:
 	var proj := ColorRect.new()
 	proj.size = Vector2(3, 3)
@@ -651,9 +992,14 @@ func _spawn_projectile_from_pos(from_pos: Vector2, to_pos: Vector2, is_hit: bool
 	proj.z_index = 10
 	effects_layer.add_child(proj)
 
+	var dir := (to_pos - from_pos).normalized()
+	var mark_alpha := 0.4 if is_hit else 0.2
 	var tween := create_tween()
 	tween.tween_property(proj, "position", to_pos, 0.3)
-	tween.tween_callback(proj.queue_free)
+	tween.tween_callback(func():
+		proj.queue_free()
+		_spawn_arrow_mark(to_pos, dir, mark_alpha)
+	)
 
 func _spawn_projectile(attacker_id: StringName, defender_id: StringName) -> void:
 	var from_pos := Vector2.ZERO
@@ -733,8 +1079,17 @@ func _update_magic_projectiles(delta: float) -> void:
 		p.elapsed += delta
 		var t: float = p.elapsed / p.duration
 		if t >= 1.0:
+			# Spawn crater mark at impact position
+			var impact_pos: Vector2 = p.to
 			if is_instance_valid(p.node):
+				var magic_col: Color = Color(0.4, 0.6, 1.0, 0.25)
+				# Extract color from the teardrop body child (index 1)
+				if p.node.get_child_count() > 1:
+					var body_node = p.node.get_child(1)
+					if body_node is Polygon2D:
+						magic_col = Color(body_node.color.r, body_node.color.g, body_node.color.b, 0.25)
 				p.node.queue_free()
+				_spawn_crater_mark(impact_pos, magic_col)
 			_magic_projs.remove_at(i)
 			i -= 1
 			continue
@@ -768,6 +1123,40 @@ func _clear_magic_projectiles() -> void:
 			p.node.queue_free()
 	_magic_projs.clear()
 
+# --- Impact Marks ---
+
+func _spawn_arrow_mark(pos: Vector2, dir: Vector2, alpha: float) -> void:
+	var mark := Polygon2D.new()
+	var half_len := 2.0
+	mark.polygon = PackedVector2Array([
+		Vector2(-half_len, 0), Vector2(half_len, 0)
+	])
+	mark.color = Color(0.35, 0.25, 0.15, alpha)
+	mark.position = pos
+	mark.rotation = dir.angle()
+	mark.z_index = 1
+	_impact_marks.add_child(mark)
+	_enforce_mark_limit()
+
+func _spawn_crater_mark(pos: Vector2, color: Color) -> void:
+	var mark := Polygon2D.new()
+	var pts := PackedVector2Array()
+	for k in 6:
+		var a := TAU * float(k) / 6.0
+		pts.append(Vector2(cos(a), sin(a)) * 3.0)
+	mark.polygon = pts
+	mark.color = color
+	mark.position = pos
+	mark.z_index = 1
+	_impact_marks.add_child(mark)
+	_enforce_mark_limit()
+
+func _enforce_mark_limit() -> void:
+	while _impact_marks.get_child_count() > MAX_IMPACT_MARKS:
+		var oldest := _impact_marks.get_child(0)
+		oldest.queue_free()
+		_impact_marks.remove_child(oldest)
+
 # --- Result ---
 
 func _show_result() -> void:
@@ -782,9 +1171,19 @@ func _show_result() -> void:
 
 	var title := Label.new()
 	var player_won := simulator.winner_side == player_side
-	title.text = "VICTORY!" if player_won else "DEFEAT!"
-	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3) if player_won else Color(0.85, 0.3, 0.2))
+	var is_stalemate := simulator.winner_side == -1
+	if is_stalemate:
+		title.text = "STALEMATE!"
+		title.add_theme_font_size_override("font_size", 22)
+		title.add_theme_color_override("font_color", Color(0.7, 0.65, 0.45))
+	elif player_won:
+		title.text = "VICTORY!"
+		title.add_theme_font_size_override("font_size", 22)
+		title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+	else:
+		title.text = "DEFEAT!"
+		title.add_theme_font_size_override("font_size", 22)
+		title.add_theme_color_override("font_color", Color(0.85, 0.3, 0.2))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
@@ -849,8 +1248,27 @@ func _show_result() -> void:
 	result_panel.visible = true
 
 func _on_continue() -> void:
-	_apply_battle_results()
-	_return_to_campaign()
+	# Fade music out
+	AudioManager.stop_music()
+
+	# Create fullscreen black overlay and fade in
+	var fade_rect := ColorRect.new()
+	fade_rect.color = Color(0, 0, 0, 0)
+	fade_rect.anchor_left = 0
+	fade_rect.anchor_top = 0
+	fade_rect.anchor_right = 1
+	fade_rect.anchor_bottom = 1
+	fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$UILayer.add_child(fade_rect)
+	# Ensure it renders on top of everything
+	fade_rect.z_index = 100
+
+	var tween := create_tween()
+	tween.tween_property(fade_rect, "color:a", 1.0, 2.0)
+	tween.tween_callback(func():
+		_apply_battle_results()
+		_return_to_campaign()
+	)
 
 func _apply_battle_results() -> void:
 	var atk_strength := attacker_army.get_total_strength()
@@ -862,6 +1280,10 @@ func _apply_battle_results() -> void:
 	else:
 		_update_army_survivors(defender_army, simulator.get_surviving_formations(0))
 		_update_army_survivors(attacker_army, simulator.get_surviving_formations(1))
+
+	# Handle elderbeast survival BEFORE removing dead armies
+	# This may re-add the beast unit to an army if it "flees" with 1 HP
+	_apply_elderbeast_battle_results()
 
 	var attacker_alive := attacker_army.units.size() > 0
 	var defender_alive := defender_army.units.size() > 0
@@ -892,6 +1314,14 @@ func _apply_battle_results() -> void:
 		GameManager.remove_army(defender_army.army_id)
 		defender_alive = false
 
+	# Stalemate: both armies survive — separate and exhaust
+	if attacker_alive and defender_alive:
+		attacker_army.battle_exhausted = true
+		attacker_army.movement_remaining = 0.0
+		defender_army.battle_exhausted = true
+		defender_army.movement_remaining = 0.0
+		_separate_armies_after_stalemate()
+
 	if attacker_alive and not defender_alive:
 		EventBus.battle_resolved.emit(attacker_faction_id, battle_hex_pos)
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
@@ -899,11 +1329,15 @@ func _apply_battle_results() -> void:
 			GameManager.city_system.start_siege(city_at.city_id, attacker_faction_id)
 		elif city_at and city_at.faction_id == attacker_faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
+		# Auto-claim shard after defeating guardians
+		GameManager._try_claim_shard(battle_hex_pos, attacker_faction_id)
 	elif defender_alive and not attacker_alive:
 		EventBus.battle_resolved.emit(defender_faction_id, battle_hex_pos)
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 		if city_at and city_at.faction_id == defender_faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
+		# Auto-claim shard after defeating guardians
+		GameManager._try_claim_shard(battle_hex_pos, defender_faction_id)
 
 	# Battle loot
 	_battle_loot.clear()
@@ -932,16 +1366,47 @@ func _apply_battle_results() -> void:
 					fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
 					_battle_loot[Enums.ResourceType.IRON] = loot_iron
 
-	# Update elderbeast HP from battle damage
-	_apply_elderbeast_battle_results()
+	# Build battle context for context-aware skill selection
+	var base_context: Array[StringName] = []
+	var tile := GameManager.state.hex_map.get_tile(battle_hex_pos)
+	if tile:
+		base_context.append(StringName("terrain_" + Enums.TerrainType.keys()[tile.terrain].to_lower()))
+	if GameManager.city_system.get_city_at_hex(battle_hex_pos):
+		base_context.append(&"in_city")
+
+	# Collect faced unit tags from both sides
+	var def_faced_tags: Dictionary = {}
+	for f in simulator.defender_formations:
+		for tag in f.tags:
+			if tag in ["cavalry", "ranged", "mage", "infantry", "beast"]:
+				def_faced_tags[tag] = true
+	var atk_faced_tags: Dictionary = {}
+	for f in simulator.attacker_formations:
+		for tag in f.tags:
+			if tag in ["cavalry", "ranged", "mage", "infantry", "beast"]:
+				atk_faced_tags[tag] = true
+
+	var atk_context: Array[StringName] = base_context.duplicate()
+	atk_context.append(&"was_attacker")
+	atk_context.append(&"battle_won" if attacker_alive else &"battle_lost")
+	atk_context.append(StringName("enemy_" + defender_faction_id))
+	for tag in def_faced_tags:
+		atk_context.append(StringName("faced_" + tag))
+
+	var def_context: Array[StringName] = base_context.duplicate()
+	def_context.append(&"was_defender")
+	def_context.append(&"battle_won" if defender_alive else &"battle_lost")
+	def_context.append(StringName("enemy_" + attacker_faction_id))
+	for tag in atk_faced_tags:
+		def_context.append(StringName("faced_" + tag))
 
 	# Commander XP and item drops (use cached refs since remove_army nulls them)
 	if atk_commander:
-		CommanderSystem.grant_battle_xp(atk_commander, def_strength, attacker_alive)
+		CommanderSystem.grant_battle_xp(atk_commander, def_strength, attacker_alive, atk_context)
 		if attacker_alive and not defender_alive:
 			CommanderSystem.apply_item_drop(atk_commander, defender_faction_id)
 	if def_commander:
-		CommanderSystem.grant_battle_xp(def_commander, atk_strength, defender_alive)
+		CommanderSystem.grant_battle_xp(def_commander, atk_strength, defender_alive, def_context)
 		if defender_alive and not attacker_alive:
 			CommanderSystem.apply_item_drop(def_commander, attacker_faction_id)
 
@@ -957,38 +1422,154 @@ func _update_army_survivors(army: ArmyState, survivors: Array[BattleSimulatorV3.
 			updated_units.append(unit)
 	army.units = updated_units
 
+func _separate_armies_after_stalemate() -> void:
+	# Move each army 1 tile away from the other
+	var atk_pos := attacker_army.hex_pos
+	var def_pos := defender_army.hex_pos
+	var hex_map := GameManager.state.hex_map
+
+	# Find a valid neighbor tile for the attacker that's farther from the defender
+	var best_atk := atk_pos
+	var best_atk_dist := 0
+	for neighbor in HexHelper.get_neighbors(atk_pos):
+		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			continue
+		var tile := hex_map.get_tile(neighbor) if hex_map else null
+		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		var dist := HexHelper.hex_distance(neighbor, def_pos)
+		if dist > best_atk_dist:
+			best_atk_dist = dist
+			best_atk = neighbor
+
+	# Find a valid neighbor tile for the defender that's farther from the attacker
+	var best_def := def_pos
+	var best_def_dist := 0
+	for neighbor in HexHelper.get_neighbors(def_pos):
+		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			continue
+		var tile := hex_map.get_tile(neighbor) if hex_map else null
+		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		var dist := HexHelper.hex_distance(neighbor, atk_pos)
+		if dist > best_def_dist:
+			best_def_dist = dist
+			best_def = neighbor
+
+	attacker_army.hex_pos = best_atk
+	defender_army.hex_pos = best_def
+
 func _apply_elderbeast_battle_results() -> void:
-	# Find all formations that match elderbeast IDs and update HP
+	# Sync elderbeast HP from battle formations and handle survival mechanic
+	for army in [attacker_army, defender_army]:
+		if army.elderbeast_id == &"":
+			continue
+		var beast: ElderbeastState = GameManager.state.elderbeasts.get(army.elderbeast_id)
+		if beast == null:
+			continue
+
+		# Find the elderbeast's UnitInstance in the army
+		var beast_unit: UnitInstance = null
+		for unit in army.units:
+			if unit.instance_id == beast.unit_instance_id:
+				beast_unit = unit
+				break
+
+		if beast_unit == null:
+			# Beast was killed in battle (removed from units by _update_army_survivors)
+			# Check if other units survived or fled
+			var other_units_alive: bool = army.units.size() > 0
+			if other_units_alive and not beast.is_injured():
+				# Beast flees with 1 HP and becomes injured for 3 turns
+				beast.hp = 1
+				beast.injured_turns = 3
+				beast.movement_remaining = 0.0
+				# Re-add the beast UnitInstance to the army
+				var unit_data := DataManager.get_unit(beast.get_unit_data_id())
+				if unit_data:
+					var instance := UnitInstance.new()
+					instance.instance_id = beast.unit_instance_id
+					instance.unit_data_id = unit_data.id
+					instance.current_hp = 1
+					army.units.insert(0, instance)
+			else:
+				# Beast dies outright (injured and attacked, or entire army wiped)
+				beast.hp = 0
+				GameManager.state.elderbeasts.erase(beast.beast_id)
+				EventBus.elderbeast_destroyed.emit(beast.beast_id, beast.faction_id)
+				army.elderbeast_id = &""
+		else:
+			# Beast survived — sync HP back
+			beast.hp = beast_unit.current_hp
+
+func _apply_elderbeast_building_bonuses() -> void:
+	# Apply building bonuses to elderbeast formations in battle
 	var all_formations: Array = []
 	all_formations.append_array(simulator.attacker_formations)
 	all_formations.append_array(simulator.defender_formations)
 	for f in all_formations:
-		if f.unit_data_id != &"elder_ceratops":
+		if not f.tags.has("beast"):
 			continue
-		var beast: ElderbeastState = GameManager.state.elderbeasts.get(f.instance_id)
-		if beast == null:
-			continue
-		if f.is_dead:
-			beast.hp = 0
-			GameManager.state.elderbeasts.erase(beast.beast_id)
-			EventBus.elderbeast_destroyed.emit(beast.beast_id, beast.faction_id)
-		else:
-			beast.hp = f.current_hp
+		# Find the corresponding elderbeast
+		for beast_id in GameManager.state.elderbeasts:
+			var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+			if beast.unit_instance_id != f.instance_id:
+				continue
 
-func _add_elderbeasts_to_battle() -> void:
-	# Check for elderbeasts at the battle hex or adjacent hexes
-	for beast_id in GameManager.state.elderbeasts:
-		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
-		var dist := HexHelper.hex_distance(beast.hex_pos, battle_hex_pos)
-		if dist > 1:
-			continue # Only at battle hex or adjacent
-		# Determine which side this beast fights on
-		if beast.faction_id == attacker_faction_id:
-			var side := 0 if is_player_attacker else 1
-			simulator.add_elderbeast_to_side(beast, side)
-		elif beast.faction_id == defender_faction_id:
-			var side := 1 if is_player_attacker else 0
-			simulator.add_elderbeast_to_side(beast, side)
+			# T1: Chitin Walls — +8 defense
+			if beast.buildings.has(&"chitin_walls"):
+				f.defense += 8
+
+			# T1: Feeding Tendrils — HP regen (2 HP/tick)
+			if beast.buildings.has(&"shard_conduit"):
+				f.hp_regen_per_tick += 2.0
+
+			# T1: Chitin Forge — +10 attack
+			if beast.buildings.has(&"crystal_forge"):
+				f.attack += 10
+
+			# T1: Brood Chamber — +60 max HP
+			if beast.buildings.has(&"crystal_nursery"):
+				f.max_hp += 60
+				f.current_hp += 60
+				f.front_entity_hp += 60
+
+			# T1: Crystal Tap — +25 fear radius
+			if beast.buildings.has(&"shard_harvester"):
+				f.fear_radius += 25
+
+			# T2: Resonance Spire — adds ranged attack (range 3, mana-based)
+			if beast.buildings.has(&"resonance_core"):
+				if f.attack_range < 3:
+					f.attack_range = 3
+					if not f.tags.has("ranged"):
+						f.tags.append("ranged")
+					f.ranged_cooldown_max = 10
+					f.max_ammo = 0 # Unlimited crystal shots (uses mana instead)
+					f.max_mana = BattleSimulatorV3.MANA_MAX
+					f.current_mana = BattleSimulatorV3.MANA_MAX
+					f.fire_deploy_timer = 8
+					f.is_deployed = false
+
+			# T2: War Crest — +12 morale aura
+			if beast.buildings.has(&"hive_spire"):
+				f.morale_aura += 12
+
+			# T3: Shard Heart — damage aura + stronger ranged
+			if beast.buildings.has(&"resonance_amplifier"):
+				f.damage_aura_radius = 120.0
+				f.damage_aura_damage = 3.0
+				if f.attack_range >= 3:
+					f.attack_range = 5
+					f.attack += 8
+
+			# T3: Apex Den — spawns crystal swarmlings every 120 ticks
+			if beast.buildings.has(&"elder_breeding_ground"):
+				f.spawn_unit_data_id = &"crystal_swarmling"
+				f.spawn_interval = 120
+				f.spawn_counter = 120
+
+			break
 
 func _return_to_campaign() -> void:
 	GameManager.current_phase = Enums.GamePhase.CAMPAIGN

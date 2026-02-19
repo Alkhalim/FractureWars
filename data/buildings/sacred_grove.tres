@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sacred_grove"
+display_name = "Sacred Grove I"
+description = "A circle of ancient oaks where druids study the ways of nature. Knowledge is gathered through observation, never domination."
+faction_id = &"gladehost"
+category = &"cultural"
+build_cost = {0: 80, 5: 30}
+build_time = 2
+income_bonus = {2: 10}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 2, "nobles": 1}

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"steppe_watchtower"
+display_name = "Steppe Watchtower I"
+description = "Tall wooden towers on the open steppe provide early warning of approaching enemies. Reduces siege capture time against this city."
+faction_id = &"skulloath"
+category = &"defensive"
+build_cost = {0: 100, 5: 50}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 0
+defense_bonus = 5
+required_capital_level = 1
+required_terrain = -1
+class_loyalty_bonus = {"peasants": 1, "nobles": 1}

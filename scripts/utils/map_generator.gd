@@ -156,77 +156,111 @@ static func _assign_terrain(map: HexMapData) -> void:
 		tile.terrain = _terrain_for_region(tile.region_id, hash_val)
 
 static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.TerrainType:
-	# Eternal Plains: mostly plains with some forest
+	var h10 := hash_val % 10 # 0-9 for fine-grained distribution
+
+	# ── Eternal Plains (center) — fertile heartland with rivers and groves ──
 	if region_id in ZONE_ETERNAL_PLAINS:
-		if region_id == &"sainkhu_groves" or region_id == &"verdant_glade":
-			if hash_val % 3 == 0:
-				return Enums.TerrainType.PLAINS
+		if region_id == &"sainkhu_groves":
+			# Dense ancient forest with clearings and streams
+			if h10 <= 1: return Enums.TerrainType.PLAINS # clearings
+			if h10 == 2: return Enums.TerrainType.SWAMP # river banks
 			return Enums.TerrainType.FOREST
-		# Metropoleia and Sunburst Valley: plains-dominant
-		if hash_val % 5 == 0:
-			return Enums.TerrainType.FOREST
+		if region_id == &"verdant_glade":
+			# Mixed forest-plains with gentle hills
+			if h10 <= 3: return Enums.TerrainType.FOREST
+			if h10 == 4: return Enums.TerrainType.MOUNTAINS # foothills
+			return Enums.TerrainType.PLAINS
+		if region_id == &"metropoleia":
+			# Imperial heartland — mostly open, scattered groves
+			if h10 <= 1: return Enums.TerrainType.FOREST
+			if h10 == 2: return Enums.TerrainType.COAST # river delta
+			return Enums.TerrainType.PLAINS
+		# Sunburst Valley — warm plains with desert edge transition
+		if h10 <= 1: return Enums.TerrainType.FOREST
+		if h10 == 2: return Enums.TerrainType.DESERT # dry eastern edge
 		return Enums.TerrainType.PLAINS
 
-	# Frozen Lands: tundra and mountains
+	# ── Frozen Lands (north) — harsh mountains, frozen forests, tundra ──
 	if region_id in ZONE_FROZEN_LANDS:
 		if region_id == &"thundercrest_peaks":
-			if hash_val % 4 == 0:
-				return Enums.TerrainType.TUNDRA
+			# Towering mountain range with ice fields
+			if h10 <= 1: return Enums.TerrainType.TUNDRA # frozen valleys
+			if h10 == 2: return Enums.TerrainType.SHARD_WASTES # exposed crystal veins
 			return Enums.TerrainType.MOUNTAINS
 		if region_id == &"moonspear_citadel":
-			if hash_val % 3 == 0:
-				return Enums.TerrainType.MOUNTAINS
+			# Tundra plateau with scattered peaks and frozen forest
+			if h10 <= 1: return Enums.TerrainType.MOUNTAINS
+			if h10 == 2: return Enums.TerrainType.FOREST # frozen pine groves
+			if h10 == 3: return Enums.TerrainType.PLAINS # sheltered valleys
 			return Enums.TerrainType.TUNDRA
-		# Nightfall Sanctum
-		if hash_val % 4 == 0:
-			return Enums.TerrainType.MOUNTAINS
-		if hash_val % 3 == 0:
-			return Enums.TerrainType.FOREST
+		# Nightfall Sanctum — dark forests and mountain passes
+		if h10 <= 2: return Enums.TerrainType.MOUNTAINS
+		if h10 <= 4: return Enums.TerrainType.FOREST # dark pine forest
+		if h10 == 5: return Enums.TerrainType.SWAMP # frozen bogs
 		return Enums.TerrainType.TUNDRA
 
-	# Southern Reach: jungle and swamp
+	# ── Southern Reach (south) — dense jungle, misty swamps, hidden temples ──
 	if region_id in ZONE_SOUTHERN_REACH:
 		if region_id == &"misthaven_refuge":
-			if hash_val % 3 == 0:
-				return Enums.TerrainType.JUNGLE
+			# Vast wetlands with deep pools and mangroves
+			if h10 <= 1: return Enums.TerrainType.JUNGLE # mangrove edges
+			if h10 == 2: return Enums.TerrainType.FOREST # raised land
+			if h10 == 3: return Enums.TerrainType.COAST # coastal marshes
 			return Enums.TerrainType.SWAMP
 		if region_id == &"xotchis_sanctuary":
-			if hash_val % 5 == 0:
-				return Enums.TerrainType.SWAMP
+			# Heart of the jungle — towering canopy with ancient ruins
+			if h10 <= 1: return Enums.TerrainType.SWAMP # jungle pools
+			if h10 == 2: return Enums.TerrainType.MOUNTAINS # temple ruins on hillsides
+			if h10 == 3: return Enums.TerrainType.FOREST # transitional forest
 			return Enums.TerrainType.JUNGLE
-		# Coatlanli Jungle
-		if hash_val % 4 == 0:
-			return Enums.TerrainType.SWAMP
+		# Coatlanli Jungle — deep jungle with volcanic mountains
+		if h10 <= 1: return Enums.TerrainType.SWAMP
+		if h10 == 2: return Enums.TerrainType.MOUNTAINS # volcanic ridge
+		if h10 == 3: return Enums.TerrainType.FOREST
 		return Enums.TerrainType.JUNGLE
 
-	# Torgalun Desert: desert with some mountains
+	# ── Torgalun Desert (west) — vast dunes, oases, mountain passes ──
 	if region_id in ZONE_TORGALUN_DESERT:
 		if region_id == &"duststorm_valley":
-			if hash_val % 5 == 0:
-				return Enums.TerrainType.MOUNTAINS
+			# Desert basin ringed by mountains
+			if h10 <= 1: return Enums.TerrainType.MOUNTAINS # basin walls
+			if h10 == 2: return Enums.TerrainType.PLAINS # oasis
+			if h10 == 3: return Enums.TerrainType.SHARD_WASTES # wind-exposed crystals
 			return Enums.TerrainType.DESERT
 		if region_id == &"great_pyramid":
+			# Ancient monument in endless sand
+			if h10 == 0: return Enums.TerrainType.PLAINS # irrigated fields
+			if h10 == 1: return Enums.TerrainType.MOUNTAINS # buried ruins
 			return Enums.TerrainType.DESERT
-		# Bataarbad and Whispering Dunes
-		if hash_val % 6 == 0:
-			return Enums.TerrainType.PLAINS
+		if region_id == &"bataarbad_expanse":
+			# Steppe transition: desert meeting plains
+			if h10 <= 1: return Enums.TerrainType.PLAINS # nomad camps
+			if h10 == 2: return Enums.TerrainType.TUNDRA # cold desert nights
+			if h10 == 3: return Enums.TerrainType.MOUNTAINS # buttes
+			return Enums.TerrainType.DESERT
+		# Whispering Dunes — deep sand sea
+		if h10 == 0: return Enums.TerrainType.COAST # coastal dunes
+		if h10 == 1: return Enums.TerrainType.PLAINS # dried riverbed
 		return Enums.TerrainType.DESERT
 
-	# Wasteland: shard wastes and mountains
+	# ── Wasteland (east) — shard-scarred landscape, crystalline wastes ──
 	if region_id in ZONE_WASTELAND:
 		if region_id == &"dragonspire_mountains":
-			if hash_val % 3 == 0:
-				return Enums.TerrainType.SHARD_WASTES
+			# Crystallized mountain range with shard veins
+			if h10 <= 1: return Enums.TerrainType.SHARD_WASTES # exposed crystal
+			if h10 == 2: return Enums.TerrainType.TUNDRA # high altitude
+			if h10 == 3: return Enums.TerrainType.DESERT # rain shadow
 			return Enums.TerrainType.MOUNTAINS
 		if region_id == &"altaban_barrens":
-			if hash_val % 4 == 0:
-				return Enums.TerrainType.MOUNTAINS
-			if hash_val % 3 == 0:
-				return Enums.TerrainType.DESERT
+			# Broken landscape: shattered plains, scattered peaks, sand
+			if h10 <= 1: return Enums.TerrainType.MOUNTAINS # jagged remnants
+			if h10 <= 3: return Enums.TerrainType.DESERT # dry flats
+			if h10 == 4: return Enums.TerrainType.PLAINS # rare fertile patch
 			return Enums.TerrainType.SHARD_WASTES
-		# Tsagan Badlands
-		if hash_val % 5 == 0:
-			return Enums.TerrainType.MOUNTAINS
+		# Tsagan Badlands — deep wasteland, most corrupted
+		if h10 <= 1: return Enums.TerrainType.MOUNTAINS # crystallized pillars
+		if h10 == 2: return Enums.TerrainType.DESERT # ash flats
+		if h10 == 3: return Enums.TerrainType.SWAMP # toxic pools
 		return Enums.TerrainType.SHARD_WASTES
 
 	return Enums.TerrainType.PLAINS

@@ -10,3 +10,4 @@ description = "Combines martial prowess with mystical insight."
 category = &"magic"
 is_minor = false
 effects = {"army_attack_bonus": 2, "scouting_bonus": 2}
+context_tags = Array[StringName]([&"terrain_shard_wastes", &"elderbeast"])

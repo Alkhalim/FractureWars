@@ -191,19 +191,23 @@ static func get_class_percentage_breakdown(city: CityState, faction_id: StringNa
 # Each modifier has weights: {peasants, artisans, scholars, nobles, captives}
 const CLASS_NAMES := ["peasants", "artisans", "scholars", "nobles", "captives"]
 
-const W_BASE_STABILITY := {peasants = 2, artisans = 2, scholars = 2, nobles = 2, captives = 1}
-const W_SAME_CULTURE := {peasants = 2, artisans = 1, scholars = 4, nobles = 3, captives = 1}
+const W_BASE_STABILITY := {peasants = 1, artisans = 1, scholars = 1, nobles = 1, captives = 0}
+const W_SAME_CULTURE := {peasants = 2, artisans = 1, scholars = 3, nobles = 2, captives = 1}
 const W_HIGH_POP := {peasants = 1, artisans = 1, scholars = 0, nobles = 0, captives = 0}
 const W_FRIENDLY_NEIGHBORS := {peasants = 1, artisans = 1, scholars = 1, nobles = 2, captives = 0}
-const W_LONG_OWNERSHIP := {peasants = 2, artisans = 1, scholars = 1, nobles = 1, captives = 1}
-const W_CULTURAL_MISMATCH := {peasants = -2, artisans = -1, scholars = -4, nobles = -3, captives = -1}
-const W_CAPTURED_ACUTE := {peasants = -6, artisans = -5, scholars = -8, nobles = -10, captives = -3}
-const W_CAPTURED_LINGER := {peasants = -3, artisans = -2, scholars = -4, nobles = -5, captives = -2}
-const W_CAPTURED_FADING := {peasants = -1, artisans = -1, scholars = -2, nobles = -3, captives = -1}
+const W_LONG_OWNERSHIP := {peasants = 1, artisans = 1, scholars = 1, nobles = 1, captives = 0}
+const W_CULTURAL_MISMATCH := {peasants = -3, artisans = -2, scholars = -5, nobles = -4, captives = -1}
+const W_CAPTURED_ACUTE := {peasants = -8, artisans = -6, scholars = -10, nobles = -12, captives = -4}
+const W_CAPTURED_LINGER := {peasants = -4, artisans = -3, scholars = -5, nobles = -6, captives = -2}
+const W_CAPTURED_FADING := {peasants = -2, artisans = -1, scholars = -3, nobles = -4, captives = -1}
 const W_WAR_NEIGHBOR := {peasants = -3, artisans = -2, scholars = -1, nobles = -1, captives = 0}
-const W_UNDER_SIEGE := {peasants = -6, artisans = -5, scholars = -5, nobles = -4, captives = -2}
-const W_LOW_POP := {peasants = -2, artisans = -1, scholars = 0, nobles = 0, captives = 0}
-const W_HIGH_CAPTIVE_RATIO := {peasants = -2, artisans = 0, scholars = -4, nobles = 3, captives = 1}
+const W_UNDER_SIEGE := {peasants = -8, artisans = -6, scholars = -6, nobles = -5, captives = -3}
+const W_LOW_POP := {peasants = -3, artisans = -2, scholars = 0, nobles = 0, captives = 0}
+const W_HIGH_CAPTIVE_RATIO := {peasants = -3, artisans = -1, scholars = -5, nobles = 3, captives = 1}
+# High loyalty decay — classes naturally drift toward 0 when loyalty is very high
+const W_HIGH_LOYALTY_DECAY := {peasants = -1, artisans = -1, scholars = -2, nobles = -2, captives = 0}
+# Population pressure — large populations have competing interests
+const W_POPULATION_PRESSURE := {peasants = -1, artisans = -1, scholars = -1, nobles = -1, captives = 0}
 
 # Military presence
 const W_INFANTRY_PRESENCE := {peasants = 2, artisans = 0, scholars = 0, nobles = 0, captives = -1}
@@ -258,15 +262,33 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 	if faction and region and faction.realm_affinity == region.realm_influence:
 		result.append({label = "Same Realm Culture", weights = W_SAME_CULTURE, multiplier = 1})
 
-	# Per-building class loyalty bonuses
+	# Per-building class loyalty bonuses — grouped by category
+	var building_category_totals: Dictionary = {} # category_name -> {peasants, artisans, ...}
 	for city_in_prov in get_province_cities(region_id, faction_id):
 		for building_id in city_in_prov.buildings:
 			var building: BuildingData = DataManager.get_building(building_id)
 			if building and not building.class_loyalty_bonus.is_empty():
-				var bw := {peasants = 0, artisans = 0, scholars = 0, nobles = 0, captives = 0}
+				var cat: String = str(building.category) if building.category != &"" else "other"
+				if not building_category_totals.has(cat):
+					building_category_totals[cat] = {peasants = 0, artisans = 0, scholars = 0, nobles = 0, captives = 0}
 				for cls in building.class_loyalty_bonus:
-					bw[cls] = building.class_loyalty_bonus[cls]
-				result.append({label = building.display_name, weights = bw, multiplier = 1})
+					building_category_totals[cat][cls] += building.class_loyalty_bonus[cls]
+	var category_labels := {
+		"military": "Military Buildings",
+		"economic": "Economic Buildings",
+		"cultural": "Cultural Buildings",
+		"defensive": "Defensive Buildings",
+	}
+	for cat in building_category_totals:
+		var bw: Dictionary = building_category_totals[cat]
+		var has_nonzero := false
+		for cls in bw:
+			if bw[cls] != 0:
+				has_nonzero = true
+				break
+		if has_nonzero:
+			var label_text: String = category_labels.get(cat, cat.capitalize() + " Buildings")
+			result.append({label = label_text, weights = bw, multiplier = 1})
 
 	# High population
 	if province_pop >= 300:
@@ -309,6 +331,25 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 	# Low population
 	if province_pop < 100:
 		result.append({label = "Low Population", weights = W_LOW_POP, multiplier = 1})
+
+	# High loyalty decay — complacency only for the class with the highest loyalty
+	var max_class_loyalty := 0
+	var max_class_name := &""
+	for cls in CLASS_NAMES:
+		var val: int = city.class_loyalty.get(cls, 0)
+		if val > max_class_loyalty:
+			max_class_loyalty = val
+			max_class_name = cls
+	if max_class_loyalty > 60 and max_class_name != &"":
+		var decay_mult := int((max_class_loyalty - 60) / 20) + 1  # 1 at 61-80, 2 at 81-100
+		var targeted_weights := {peasants = 0, artisans = 0, scholars = 0, nobles = 0, captives = 0}
+		targeted_weights[max_class_name] = W_HIGH_LOYALTY_DECAY.get(max_class_name, -1)
+		result.append({label = "Complacency Decay (%s)" % max_class_name.capitalize(), weights = targeted_weights, multiplier = decay_mult})
+
+	# Population pressure — large cities have competing interests
+	if province_pop >= 200:
+		var pressure_mult := int(province_pop / 200)  # 1 at 200, 2 at 400, etc.
+		result.append({label = "Population Pressure", weights = W_POPULATION_PRESSURE, multiplier = pressure_mult})
 
 	# Missing building type penalties
 	if _count_buildings_by_category(region_id, faction_id, &"economic") == 0:

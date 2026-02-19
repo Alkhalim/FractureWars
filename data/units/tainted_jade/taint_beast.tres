@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"taint_beast"
+display_name = "Taint Beast"
+description = "A jungle predator warped by generations of exposure to the old magic's residue. Its hide seeps venom and its roar curdles courage."
+faction_id = &"tainted_jade"
+max_hp = 1400
+attack = 20
+defense = 6
+speed = 7
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 8
+movement_points = 4.5
+upkeep_cost = {0: 8, 3: 4}
+recruit_cost = {0: 180, 3: 60}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {9: 0.2}
+realm_bonuses = {3: 0.1}
+tags = Array[String](["monster", "beast", "melee", "fast"])
+base_morale = 65
+morale_aura = -4
+fear_radius = 4
+captive_chance = 0.0

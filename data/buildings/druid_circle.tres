@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"druid_circle"
+display_name = "Druid Circle II"
+description = "Standing stones blessed by generations of druids. Here the seasons are tracked, rites are performed, and the forest's voice is heard."
+faction_id = &"gladehost"
+category = &"cultural"
+build_cost = {0: 260, 5: 50}
+build_time = 3
+income_bonus = {2: 22}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([&"dryad"])
+required_capital_level = 2
+upgrades_from = &"sacred_grove"
+class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 3, "nobles": 1}

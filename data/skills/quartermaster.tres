@@ -10,3 +10,4 @@ description = "Expert in supply lines and fortifications."
 category = &"logistics"
 is_minor = false
 effects = {"recruit_speed_bonus": 2, "city_defense_bonus": 3}
+context_tags = Array[StringName]([&"in_city", &"was_defender"])

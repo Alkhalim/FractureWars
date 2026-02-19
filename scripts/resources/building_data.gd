@@ -17,3 +17,4 @@ extends Resource
 @export var required_terrain: int = -1 # Enums.TerrainType value, -1 = no terrain requirement
 @export var class_loyalty_bonus: Dictionary = {} # class_name -> int bonus per turn
 @export var upgrades_from: StringName = &"" # Building ID this upgrades from (empty = base building)
+@export var requires_capital: bool = false # If true, can only be built in the faction's capital city

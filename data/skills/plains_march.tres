@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"plains_march"
+display_name = "Plains March"
+description = "Moves swiftly across open ground."
+category = &"logistics"
+is_minor = true
+effects = {"army_movement_bonus": 0.3}
+context_tags = Array[StringName]([&"terrain_plains"])

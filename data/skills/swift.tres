@@ -10,3 +10,4 @@ description = "Quick to react and redeploy."
 category = &"logistics"
 is_minor = true
 effects = {"army_movement_bonus": 0.5}
+context_tags = Array[StringName]([&"terrain_plains", &"terrain_desert"])

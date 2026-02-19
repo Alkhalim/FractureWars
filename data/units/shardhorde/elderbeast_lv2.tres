@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"elderbeast_lv2"
+display_name = "Elderbeast"
+description = "A mature elderbeast, its crystal growths now massive and battle-hardened. Stronger, tougher, and radiating shard energy that empowers nearby swarmlings."
+faction_id = &"shardhorde"
+max_hp = 750
+attack = 55
+defense = 40
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+movement_points = 2.0
+upkeep_cost = {3: 8}
+recruit_cost = {}
+recruit_time = 0
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "beast", "melee"])
+base_morale = 90
+tiles_per_entity = 8
+captive_chance = 0.0
+morale_aura = 15
+fear_radius = 100

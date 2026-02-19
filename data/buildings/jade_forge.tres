@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"jade_forge"
+display_name = "Jade Forge I"
+description = "Thrall laborers work the smelters under watchful eyes. The jade-tinted metal they produce is unnaturally hard."
+faction_id = &"tainted_jade"
+category = &"economic"
+build_cost = {0: 100, 5: 20}
+build_time = 2
+income_bonus = {1: 30}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"artisans": 1, "captives": -3}

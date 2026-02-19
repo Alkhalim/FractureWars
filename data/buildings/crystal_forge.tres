@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystal_forge"
+display_name = "Chitin Forge"
+description = "A smoldering organ where raw iron and timber are melted down and fused with chitin to produce the horde's crude but resilient equipment. Requires nearby mountains or forests."
+faction_id = &"shardhorde"
+category = &"economic"
+build_cost = {0: 80, 3: 30}
+build_time = 2
+income_bonus = {1: 15, 5: 8}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {}

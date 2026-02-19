@@ -10,3 +10,4 @@ description = "A master of battlefield strategy."
 category = &"combat"
 is_minor = false
 effects = {"army_attack_bonus": 3, "army_defense_bonus": 2}
+context_tags = Array[StringName]([&"battle_won"])

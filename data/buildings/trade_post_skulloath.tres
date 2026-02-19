@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"trade_post_skulloath"
+display_name = "Trade Post I"
+description = "A rough marketplace where raided goods change hands, captives are sold, and clan debts are settled."
+faction_id = &"skulloath"
+category = &"economic"
+build_cost = {0: 110, 5: 40}
+build_time = 2
+income_bonus = {0: 25}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"artisans": 1, "nobles": 1}

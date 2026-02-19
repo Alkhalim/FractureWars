@@ -10,6 +10,9 @@ extends Resource
 @export var items: Array[StringName] = []
 @export var followers: Array[StringName] = []  # follower_data_ids
 @export var influence_radius: int = 3
+@export var is_elderbeast: bool = false
+
+var level_up_context: Array[StringName] = []
 
 const XP_THRESHOLDS := [0, 50, 120, 220, 350, 520, 730, 1000, 1350, 1800]
 

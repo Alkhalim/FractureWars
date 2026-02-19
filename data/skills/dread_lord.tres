@@ -10,3 +10,4 @@ description = "Their very presence saps enemy morale and productivity."
 category = &"combat"
 is_minor = false
 effects = {"enemy_city_growth_penalty": -3, "enemy_army_morale_penalty": -2}
+context_tags = Array[StringName]([&"battle_won", &"was_attacker"])

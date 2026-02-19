@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"guardian_eagle"
+display_name = "Guardian Eagle"
+description = "A flock of shard-mutated eagles guarding a crystal shard."
+faction_id = &"shard_guardians"
+max_hp = 400
+attack = 14
+defense = 4
+speed = 10
+attack_range = 1
+squad_size = 6
+hp_per_soldier = 67
+movement_points = 0.0
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast"])
+base_morale = 85
+captive_chance = 0.0

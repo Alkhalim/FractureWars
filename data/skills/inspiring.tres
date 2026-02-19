@@ -10,3 +10,4 @@ description = "Their presence uplifts the populace."
 category = &"economy"
 is_minor = true
 effects = {"city_growth_bonus": 2}
+context_tags = Array[StringName]([&"in_city"])

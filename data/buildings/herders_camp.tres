@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"herders_camp"
+display_name = "Herder's Camp I"
+description = "Traditional grazing grounds where the clans tend their herds. The old way — honest and sustaining."
+faction_id = &"skulloath"
+category = &"economic"
+build_cost = {0: 60, 5: 30}
+build_time = 2
+income_bonus = {3: 14, 5: 10}
+population_growth_bonus = 5
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 2}

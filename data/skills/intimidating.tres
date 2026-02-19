@@ -10,3 +10,4 @@ description = "Strikes fear into the hearts of enemies."
 category = &"combat"
 is_minor = true
 effects = {"enemy_army_morale_penalty": -1}
+context_tags = Array[StringName]([&"battle_won", &"was_attacker"])

@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"elderbeast_lv1"
+display_name = "Elderbeast"
+description = "A living mountain of crystal and chitin. The Shardhorde's mobile settlement, carrying buildings and brood chambers on its back. Immensely durable."
+faction_id = &"shardhorde"
+max_hp = 500
+attack = 40
+defense = 30
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+movement_points = 2.0
+upkeep_cost = {3: 5}
+recruit_cost = {}
+recruit_time = 0
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "beast", "melee"])
+base_morale = 90
+tiles_per_entity = 8
+captive_chance = 0.0
+morale_aura = 10
+fear_radius = 80

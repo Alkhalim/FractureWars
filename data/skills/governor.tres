@@ -10,3 +10,4 @@ description = "An expert administrator and city planner."
 category = &"economy"
 is_minor = false
 effects = {"city_gold_bonus": 3, "city_growth_bonus": 5}
+context_tags = Array[StringName]([&"in_city"])

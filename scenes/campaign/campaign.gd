@@ -56,6 +56,7 @@ var _region_tiles_cache: Dictionary = {} # region_id -> Array[Vector2i]
 var _city_panel_open := false
 var _selected_city_id: StringName = &""
 var _elderbeast_markers: Dictionary = {} # beast_id -> Node2D
+var _building_tile_markers: Array[Node2D] = [] # building markers on hex tiles
 
 # Pre-battle dialog state
 var _pending_battle_attacker_id: StringName = &""
@@ -70,6 +71,11 @@ var _settlement_parent_city_id: StringName = &""
 var _settlement_valid_tiles: Array[Vector2i] = []
 var _settlement_overlay_nodes: Array[Node2D] = []
 var _settlement_preview_panel: PanelContainer = null
+
+# Building tile placement mode
+var _building_tile_mode := false
+var _building_tile_valid: Array[Vector2i] = []
+var _building_tile_overlays: Array[Node2D] = []
 
 # Fog of war
 var _fog_of_war_enabled := true
@@ -95,6 +101,7 @@ func _ready() -> void:
 	_create_region_labels()
 	_update_political_overlay()
 	_create_city_markers()
+	_create_building_tile_markers()
 	_create_army_markers()
 
 	EventBus.army_moved.connect(_on_army_moved)
@@ -110,6 +117,7 @@ func _ready() -> void:
 	EventBus.unit_recruited.connect(_on_unit_recruited)
 	EventBus.shard_claimed.connect(_on_shard_claimed)
 	EventBus.shard_expired.connect(_on_shard_expired)
+	EventBus.battle_resolved.connect(_on_battle_resolved_sfx)
 
 	_recreate_shard_markers()
 	_create_elderbeast_markers()
@@ -122,13 +130,21 @@ func _ready() -> void:
 	var hud: Control = $UILayer/HUD
 	if hud.has_signal("settlement_placement_requested"):
 		hud.settlement_placement_requested.connect(_on_settlement_placement_requested)
+	if hud.has_signal("building_tile_selection_requested"):
+		hud.building_tile_selection_requested.connect(_on_building_tile_selection_requested)
+	if hud.has_signal("building_queued"):
+		hud.building_queued.connect(_create_building_tile_markers)
 
-	# Position camera at map center
-	var center_x := HexMapData.MAP_WIDTH * HEX_H_SPACING * 0.5
-	var center_y := HexMapData.MAP_HEIGHT * HEX_V_SPACING * 0.5
-	camera.position = Vector2(center_x, center_y)
+	# Position camera on player's capital, fallback to map center
+	var _cam_target := Vector2(HexMapData.MAP_WIDTH * HEX_H_SPACING * 0.5, HexMapData.MAP_HEIGHT * HEX_V_SPACING * 0.5)
+	for cid in GameManager.state.cities:
+		var c: CityState = GameManager.state.cities[cid]
+		if c.faction_id == GameManager.state.player_faction_id and c.is_capital:
+			_cam_target = _hex_to_pixel(c.hex_pos)
+			break
+	camera.position = _cam_target
 
-	AudioManager.play_music(&"music_campaign")
+	AudioManager.play_faction_music(GameManager.state.player_faction_id, &"campaign")
 
 	if not GameManager.has_meta("game_started"):
 		GameManager.set_meta("game_started", true)
@@ -636,6 +652,84 @@ func _create_city_marker(city: CityState) -> void:
 	city_markers_node.add_child(marker)
 	_city_markers[city.city_id] = marker
 
+# ── Building tile markers ────────────────────────────────────
+
+const BUILDING_CATEGORY_COLORS := {
+	&"economic": Color(0.85, 0.75, 0.2, 0.7),   # gold
+	&"military": Color(0.8, 0.2, 0.15, 0.7),     # red
+	&"defensive": Color(0.25, 0.45, 0.8, 0.7),   # blue
+	&"cultural": Color(0.6, 0.25, 0.7, 0.7),     # purple
+}
+
+func _create_building_tile_markers() -> void:
+	for node in _building_tile_markers:
+		if is_instance_valid(node):
+			node.queue_free()
+	_building_tile_markers.clear()
+
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		var faction_data: FactionData = DataManager.get_faction(city.faction_id)
+		var faction_color: Color = faction_data.color if faction_data else Color.WHITE
+
+		# Draw markers for completed buildings
+		for bid in city.building_tiles:
+			var tile_pos: Vector2i = city.building_tiles[bid]
+			var building: BuildingData = DataManager.get_building(bid)
+			_add_building_tile_marker(tile_pos, building, faction_color, false)
+
+		# Draw markers for buildings under construction
+		for item in city.build_queue:
+			if item.has("tile_pos"):
+				var building: BuildingData = DataManager.get_building(item.building_id)
+				_add_building_tile_marker(item.tile_pos, building, faction_color, true)
+
+func _add_building_tile_marker(tile_pos: Vector2i, building: BuildingData, faction_color: Color, under_construction: bool) -> void:
+	var pixel_pos := _hex_to_pixel(tile_pos)
+	var marker := Node2D.new()
+	marker.position = pixel_pos
+
+	# Category-colored diamond shape at center of hex
+	var cat_color: Color = BUILDING_CATEGORY_COLORS.get(
+		building.category if building else &"economic",
+		Color(0.5, 0.5, 0.5, 0.7)
+	)
+	if under_construction:
+		cat_color.a = 0.35 # fainter for buildings in progress
+
+	# Small diamond (rotated square)
+	var diamond := Polygon2D.new()
+	var s := 5.0
+	diamond.polygon = PackedVector2Array([
+		Vector2(0, -s), Vector2(s, 0), Vector2(0, s), Vector2(-s, 0)
+	])
+	diamond.color = cat_color
+	marker.add_child(diamond)
+
+	# Faction-colored ring around the diamond
+	var ring := Line2D.new()
+	ring.width = 1.0
+	ring.default_color = Color(faction_color.r, faction_color.g, faction_color.b, 0.6 if not under_construction else 0.3)
+	var ring_r := 7.0
+	var ring_pts := PackedVector2Array()
+	for i in 8:
+		var angle := TAU * i / 8.0
+		ring_pts.append(Vector2(cos(angle) * ring_r, sin(angle) * ring_r))
+	ring_pts.append(ring_pts[0]) # close the loop
+	ring.points = ring_pts
+	marker.add_child(ring)
+
+	# Construction scaffolding indicator (small lines)
+	if under_construction:
+		var scaffold := Line2D.new()
+		scaffold.width = 1.0
+		scaffold.default_color = Color(0.7, 0.6, 0.3, 0.5)
+		scaffold.points = PackedVector2Array([Vector2(-4, -3), Vector2(0, -7), Vector2(4, -3)])
+		marker.add_child(scaffold)
+
+	city_markers_node.add_child(marker)
+	_building_tile_markers.append(marker)
+
 # ── Elderbeast markers ────────────────────────────────────────
 
 func _create_elderbeast_markers() -> void:
@@ -718,9 +812,15 @@ func _create_elderbeast_marker(beast: ElderbeastState) -> void:
 func _on_elderbeast_moved(beast_id: StringName, _from_hex: Vector2i, to_hex: Vector2i) -> void:
 	var marker: Node2D = _elderbeast_markers.get(beast_id)
 	if marker:
-		var target_pos := _hex_to_pixel(to_hex)
-		var tween := create_tween()
-		tween.tween_property(marker, "position", target_pos, 0.3)
+		var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id)
+		var is_player := beast and beast.faction_id == GameManager.state.player_faction_id
+		if is_player or _is_tile_visible(to_hex):
+			var target_pos := _hex_to_pixel(to_hex)
+			var tween := create_tween()
+			tween.tween_property(marker, "position", target_pos, 0.3)
+		else:
+			marker.position = _hex_to_pixel(to_hex)
+	_update_fog_of_war()
 
 func _animate_siege_ring(ring: Polygon2D) -> void:
 	var tween := create_tween().set_loops()
@@ -729,6 +829,7 @@ func _animate_siege_ring(ring: Polygon2D) -> void:
 
 func _refresh_city_markers() -> void:
 	_create_city_markers()
+	_create_building_tile_markers()
 	_update_city_glow_states()
 
 func _update_city_glow_states() -> void:
@@ -872,6 +973,21 @@ func _unhandled_input(event: InputEvent) -> void:
 				_show_settlement_preview(hex_coord)
 		return
 
+	# Building tile placement mode input handling
+	if _building_tile_mode:
+		if event is InputEventMouseButton and event.pressed:
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				var world_pos := get_global_mouse_position()
+				var hex_coord := _pixel_to_hex(world_pos)
+				if _building_tile_valid.has(hex_coord):
+					_cancel_building_tile_overlays()
+					$UILayer/HUD.confirm_building_tile(hex_coord)
+					_create_building_tile_markers()
+			elif event.button_index == MOUSE_BUTTON_RIGHT:
+				_cancel_building_tile_overlays()
+				$UILayer/HUD.cancel_building_tile()
+		return
+
 	# LEFT CLICK — select / deselect
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var world_pos := get_global_mouse_position()
@@ -903,10 +1019,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if HexHelper.is_valid(hex_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 			if selected_army_id != &"":
 				_handle_move_command(hex_coord)
-			elif _selected_beast_id != &"":
-				var beast: ElderbeastState = GameManager.state.elderbeasts.get(_selected_beast_id)
-				if beast:
-					_move_elderbeast_to(beast, hex_coord)
 
 	# Fog of war toggle
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
@@ -974,7 +1086,7 @@ func _handle_hex_left_click(hex_coord: Vector2i) -> void:
 
 func _handle_move_command(hex_coord: Vector2i) -> void:
 	var army: ArmyState = GameManager.state.armies.get(selected_army_id)
-	if army == null or army.movement_remaining <= 0:
+	if army == null or army.movement_remaining <= 0 or army.battle_exhausted:
 		return
 	if _reachable_tiles.has(hex_coord):
 		_move_army_to(army, hex_coord)
@@ -1110,6 +1222,15 @@ func _select_army(army_id: StringName) -> void:
 		if city_at and city_at.faction_id == GameManager.state.player_faction_id:
 			_open_city_panel(city_at.city_id)
 
+	# Show elderbeast panel if army escorts a beast
+	if army and army.elderbeast_id != &"":
+		_selected_beast_id = army.elderbeast_id
+		var beast: ElderbeastState = GameManager.state.elderbeasts.get(army.elderbeast_id)
+		if beast:
+			var hud: Control = $UILayer/HUD
+			if hud.has_method("_show_elderbeast_panel"):
+				hud._show_elderbeast_panel(beast)
+
 func _select_hex(hex_coord: Vector2i) -> void:
 	selected_hex = hex_coord
 	selected_army_id = &""
@@ -1133,6 +1254,11 @@ func _deselect_all() -> void:
 func _hide_all_selection_rings() -> void:
 	for army_id in _army_markers:
 		var marker: Node2D = _army_markers[army_id]
+		var ring := marker.get_node_or_null("SelectionRing")
+		if ring:
+			ring.visible = false
+	for beast_id in _elderbeast_markers:
+		var marker: Node2D = _elderbeast_markers[beast_id]
 		var ring := marker.get_node_or_null("SelectionRing")
 		if ring:
 			ring.visible = false
@@ -1175,17 +1301,32 @@ func _clear_path_overlay() -> void:
 
 # ── Signal handlers ───────────────────────────────────────────
 
-func _on_army_moved(army_id: StringName, _from_hex: Vector2i, to_hex: Vector2i) -> void:
+func _on_army_moved(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i) -> void:
+	var army: ArmyState = GameManager.state.armies.get(army_id)
+	var is_player_army := army and army.faction_id == GameManager.state.player_faction_id
+	var from_visible := _is_tile_visible(from_hex)
+	var to_visible := _is_tile_visible(to_hex)
+
+	# Only play march sound if player's own army or movement visible in LOS
+	if is_player_army or from_visible or to_visible:
+		AudioManager.play_sfx(&"march")
+
 	# If we're animating player movement, the animation handles marker position.
-	# This handles AI army movement and any other external army_moved signals.
+	# For other armies: only animate if destination is visible to the player.
 	if not _is_animating_move:
 		var marker: Node2D = _army_markers.get(army_id)
 		if marker:
-			var target_pos := _hex_to_pixel(to_hex)
-			var tween := create_tween()
-			tween.tween_property(marker, "position", target_pos, 0.2)
-	_update_political_overlay()
+			if is_player_army or to_visible:
+				var target_pos := _hex_to_pixel(to_hex)
+				var tween := create_tween()
+				tween.tween_property(marker, "position", target_pos, 0.2)
+			else:
+				# Snap position silently (marker is hidden by fog anyway)
+				marker.position = _hex_to_pixel(to_hex)
+
+	# Update fog BEFORE visuals so markers get correct visibility
 	_update_fog_of_war()
+	_update_political_overlay()
 	_update_minimap()
 
 func _on_army_destroyed(army_id: StringName, _faction_id: StringName) -> void:
@@ -1520,6 +1661,14 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 		GameManager.remove_army(defender_id)
 		def_alive = false
 
+	# Stalemate: both armies survive — separate and exhaust
+	if atk_alive and def_alive:
+		attacker_army.battle_exhausted = true
+		attacker_army.movement_remaining = 0.0
+		defender_army.battle_exhausted = true
+		defender_army.movement_remaining = 0.0
+		_separate_armies_stalemate(attacker_army, defender_army)
+
 	# Handle siege consequences (same as manual battle)
 	if atk_alive and not def_alive:
 		EventBus.battle_resolved.emit(attacker_army.faction_id, hex_pos)
@@ -1534,13 +1683,31 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 		if city_at and city_at.faction_id == defender_army.faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
 
+	# Build battle context for context-aware skill selection
+	var base_ctx: Array[StringName] = []
+	var ctx_tile := GameManager.state.hex_map.get_tile(hex_pos)
+	if ctx_tile:
+		base_ctx.append(StringName("terrain_" + Enums.TerrainType.keys()[ctx_tile.terrain].to_lower()))
+	if GameManager.city_system.get_city_at_hex(hex_pos):
+		base_ctx.append(&"in_city")
+
+	var atk_ctx: Array[StringName] = base_ctx.duplicate()
+	atk_ctx.append(&"was_attacker")
+	atk_ctx.append(&"battle_won" if atk_alive else &"battle_lost")
+	atk_ctx.append(StringName("enemy_" + defender_army.faction_id))
+
+	var def_ctx: Array[StringName] = base_ctx.duplicate()
+	def_ctx.append(&"was_defender")
+	def_ctx.append(&"battle_won" if def_alive else &"battle_lost")
+	def_ctx.append(StringName("enemy_" + attacker_army.faction_id))
+
 	# Commander XP and item drops (use pre-battle strengths)
 	if attacker_army.commander:
-		CommanderSystem.grant_battle_xp(attacker_army.commander, def_strength_pre, atk_alive)
+		CommanderSystem.grant_battle_xp(attacker_army.commander, def_strength_pre, atk_alive, atk_ctx)
 		if atk_alive and not def_alive:
 			CommanderSystem.apply_item_drop(attacker_army.commander, defender_army.faction_id)
 	if defender_army.commander:
-		CommanderSystem.grant_battle_xp(defender_army.commander, atk_strength_pre, def_alive)
+		CommanderSystem.grant_battle_xp(defender_army.commander, atk_strength_pre, def_alive, def_ctx)
 		if def_alive and not atk_alive:
 			CommanderSystem.apply_item_drop(defender_army.commander, attacker_army.faction_id)
 
@@ -1748,8 +1915,40 @@ func _apply_auto_battle_results(army: ArmyState, survivors: Array[BattleSimulato
 			updated_units.append(unit)
 	army.units = updated_units
 
+func _separate_armies_stalemate(army_a: ArmyState, army_b: ArmyState) -> void:
+	var hex_map := GameManager.state.hex_map
+	# Move army_a away from army_b
+	var best_a := army_a.hex_pos
+	var best_a_dist := 0
+	for neighbor in HexHelper.get_neighbors(army_a.hex_pos):
+		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			continue
+		var tile := hex_map.get_tile(neighbor) if hex_map else null
+		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		var dist := HexHelper.hex_distance(neighbor, army_b.hex_pos)
+		if dist > best_a_dist:
+			best_a_dist = dist
+			best_a = neighbor
+	# Move army_b away from army_a
+	var best_b := army_b.hex_pos
+	var best_b_dist := 0
+	for neighbor in HexHelper.get_neighbors(army_b.hex_pos):
+		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			continue
+		var tile := hex_map.get_tile(neighbor) if hex_map else null
+		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		var dist := HexHelper.hex_distance(neighbor, army_a.hex_pos)
+		if dist > best_b_dist:
+			best_b_dist = dist
+			best_b = neighbor
+	army_a.hex_pos = best_a
+	army_b.hex_pos = best_b
+
 func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 	if faction_id == GameManager.state.player_faction_id:
+		AudioManager.play_sfx(&"turn_chime")
 		_show_notification("Your turn - Turn " + str(GameManager.state.current_turn))
 	# Refresh markers
 	_refresh_city_markers()
@@ -1769,13 +1968,16 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 
 func _on_shardfall_occurred(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm) -> void:
 	_create_shard_marker(shard_id, hex_pos, realm)
-	var realm_name := ShardfallSystem.get_realm_name(realm)
-	var tile := GameManager.state.hex_map.get_tile(hex_pos)
-	var region_name := ""
-	if tile:
-		var region := DataManager.get_region(tile.region_id)
-		region_name = region.display_name if region else str(tile.region_id)
-	_show_notification("SHARDFALL! A " + realm_name + " shard has fallen in " + region_name + "!")
+	_create_army_markers() # Refresh to show guardian army
+	if _is_tile_visible(hex_pos):
+		AudioManager.play_sfx(&"shard_claim")
+		var realm_name := ShardfallSystem.get_realm_name(realm)
+		var tile := GameManager.state.hex_map.get_tile(hex_pos)
+		var region_name := ""
+		if tile:
+			var region := DataManager.get_region(tile.region_id)
+			region_name = region.display_name if region else str(tile.region_id)
+		_show_notification("SHARDFALL! A " + realm_name + " shard has fallen in " + region_name + "! Guardians protect it.")
 
 func _on_shard_claimed(shard_id: StringName, faction_id: StringName) -> void:
 	if _shard_markers.has(shard_id):
@@ -1784,7 +1986,7 @@ func _on_shard_claimed(shard_id: StringName, faction_id: StringName) -> void:
 	if faction_id == GameManager.state.player_faction_id:
 		var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
 		var shard_value: int = shard.power_level * 5 if shard else 5
-		_show_notification("Shard claimed! +%d Shard Essence" % shard_value)
+		_show_notification("Shard claimed! +%d Shards" % shard_value)
 
 func _on_shard_expired(shard_id: StringName) -> void:
 	if _shard_markers.has(shard_id):
@@ -1855,8 +2057,8 @@ func _recreate_shard_markers() -> void:
 func _on_city_captured(city_id: StringName, _old_owner: StringName, new_owner: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city:
-		var faction := DataManager.get_faction(new_owner)
-		var fname := faction.display_name if faction else str(new_owner)
+		var faction: FactionData = DataManager.get_faction(new_owner)
+		var fname: String = faction.display_name if faction else str(new_owner)
 		_show_notification(fname + " captured " + city.get_display_name() + "!")
 	_refresh_city_markers()
 	_update_political_overlay()
@@ -1864,8 +2066,8 @@ func _on_city_captured(city_id: StringName, _old_owner: StringName, new_owner: S
 func _on_siege_started(city_id: StringName, faction_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city:
-		var faction := DataManager.get_faction(faction_id)
-		var fname := faction.display_name if faction else str(faction_id)
+		var faction: FactionData = DataManager.get_faction(faction_id)
+		var fname: String = faction.display_name if faction else str(faction_id)
 		_show_notification(fname + " is besieging " + city.get_display_name() + "!")
 	_refresh_city_markers()
 
@@ -1878,16 +2080,22 @@ func _on_siege_broken(city_id: StringName) -> void:
 func _on_building_completed(city_id: StringName, building_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city and city.faction_id == GameManager.state.player_faction_id:
-		var building := DataManager.get_building(building_id)
-		var bname := building.display_name if building else str(building_id)
+		AudioManager.play_sfx(&"build_complete")
+		var building: BuildingData = DataManager.get_building(building_id)
+		var bname: String = building.display_name if building else str(building_id)
 		_show_notification(bname + " completed in " + city.get_display_name())
 	_update_city_glow_states()
+	_create_building_tile_markers()
+
+func _on_battle_resolved_sfx(_winner_faction: StringName, hex_pos: Vector2i) -> void:
+	if _is_tile_visible(hex_pos):
+		AudioManager.play_sfx(&"battle_hit")
 
 func _on_unit_recruited(city_id: StringName, unit_data_id: StringName, _army_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city and city.faction_id == GameManager.state.player_faction_id:
-		var unit_data := DataManager.get_unit(unit_data_id)
-		var uname := unit_data.display_name if unit_data else str(unit_data_id)
+		var unit_data: UnitData = DataManager.get_unit(unit_data_id)
+		var uname: String = unit_data.display_name if unit_data else str(unit_data_id)
 		_show_notification(uname + " recruited in " + city.get_display_name())
 	_create_army_markers()
 
@@ -2236,6 +2444,58 @@ func _handle_settlement_click(hex_coord: Vector2i) -> void:
 		_create_city_markers()
 		_show_notification("Settlement founded!")
 
+# ── Building Tile Placement Mode ──────────────────────────────
+
+func _on_building_tile_selection_requested(city_id: StringName, building_id: StringName, valid_tiles: Array) -> void:
+	_building_tile_mode = true
+	_building_tile_valid.clear()
+	for t in valid_tiles:
+		_building_tile_valid.append(t as Vector2i)
+
+	var hex_map := GameManager.state.hex_map
+	var city: CityState = GameManager.state.cities.get(city_id)
+
+	# Get all neighbor tiles of the city to show red/green
+	var all_neighbors: Array[Vector2i] = []
+	if city:
+		for neighbor in HexHelper.get_neighbors(city.hex_pos):
+			if HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				all_neighbors.append(neighbor)
+
+	# Show green overlay on valid tiles, red on invalid neighbors
+	var hex_poly := _make_hex_polygon(HEX_RADIUS * 0.88)
+	for coord in all_neighbors:
+		var pixel_pos := _hex_to_pixel(coord)
+		var polygon := Polygon2D.new()
+		polygon.polygon = hex_poly
+		polygon.position = pixel_pos
+		if _building_tile_valid.has(coord):
+			polygon.color = Color(0.15, 0.8, 0.25, 0.4)  # Green = valid
+		else:
+			polygon.color = Color(0.8, 0.2, 0.15, 0.3)  # Red = invalid
+		reachable_overlay.add_child(polygon)
+		_building_tile_overlays.append(polygon)
+
+	# Also highlight any valid tiles that aren't direct neighbors (e.g. upgrade tiles)
+	for coord in _building_tile_valid:
+		if not all_neighbors.has(coord):
+			var pixel_pos := _hex_to_pixel(coord)
+			var polygon := Polygon2D.new()
+			polygon.polygon = hex_poly
+			polygon.position = pixel_pos
+			polygon.color = Color(0.15, 0.8, 0.25, 0.4)
+			reachable_overlay.add_child(polygon)
+			_building_tile_overlays.append(polygon)
+
+	_show_notification("Click a GREEN tile to place the building (Right-click to cancel)")
+
+func _cancel_building_tile_overlays() -> void:
+	_building_tile_mode = false
+	_building_tile_valid.clear()
+	for node in _building_tile_overlays:
+		node.queue_free()
+	_building_tile_overlays.clear()
+
 func _show_settlement_preview(hex_coord: Vector2i) -> void:
 	if _settlement_preview_panel:
 		_settlement_preview_panel.queue_free()
@@ -2248,7 +2508,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 	if income.is_empty():
 		return
 
-	var resource_names := ["Gold", "Iron", "Technology", "Food", "Shard Essence", "Wood"]
+	var resource_names := ["Gold", "Iron", "Technology", "Food", "Shards", "Wood"]
 
 	_settlement_preview_panel = PanelContainer.new()
 	var style := StyleBoxFlat.new()
@@ -2311,44 +2571,30 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 var _selected_beast_id: StringName = &""
 
 func _select_elderbeast(beast_id: StringName) -> void:
-	_deselect_all()
-	_selected_beast_id = beast_id
 	var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id)
 	if beast == null:
 		return
-	# Show selection ring on elderbeast marker
+	# Elderbeasts travel with armies — find and select the escort army
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.elderbeast_id == beast_id:
+			_select_army(army_id)
+			return
+	# Fallback: no army attached — just show the elderbeast panel
+	_deselect_all()
+	_selected_beast_id = beast_id
 	if _elderbeast_markers.has(beast_id):
 		var marker: Node2D = _elderbeast_markers[beast_id]
 		for child in marker.get_children():
 			if child.name == "SelectionRing":
 				child.visible = true
-	# Show elderbeast panel in HUD
 	var hud: Control = $UILayer/HUD
 	if hud.has_method("_show_elderbeast_panel"):
 		hud._show_elderbeast_panel(beast)
 
-func _move_elderbeast_to(beast: ElderbeastState, hex_coord: Vector2i) -> void:
-	if beast.has_moved:
-		return
-	var tile := GameManager.state.hex_map.get_tile(hex_coord)
-	if tile == null or tile.terrain == Enums.TerrainType.WATER:
-		return
-	# Check distance - can only move 1 hex at a time
-	var dist := HexHelper.hex_distance(beast.hex_pos, hex_coord)
-	if dist != 1:
-		return
-	# Check no army or beast at target
-	if GameManager.get_elderbeast_at_tile(hex_coord) != null:
-		return
-	var old_pos := beast.hex_pos
-	beast.hex_pos = hex_coord
-	beast.has_moved = true
-	beast.movement_remaining -= 1.0
-	EventBus.elderbeast_moved.emit(beast.beast_id, old_pos, hex_coord)
-
 # ── Minimap ──────────────────────────────────────────────────
 
-const MINIMAP_SIZE := Vector2(180, 130)
+const MINIMAP_SIZE := Vector2(354, 220)
 const MINIMAP_MARGIN := Vector2(10, 10)
 var _minimap_panel: PanelContainer
 var _minimap_image: TextureRect
@@ -2384,9 +2630,9 @@ func _create_minimap() -> void:
 	_minimap_panel.anchor_top = 1.0
 	_minimap_panel.anchor_right = 1.0
 	_minimap_panel.anchor_bottom = 1.0
-	_minimap_panel.offset_left = -MINIMAP_SIZE.x - MINIMAP_MARGIN.x - 8
+	_minimap_panel.offset_left = -380.0
 	_minimap_panel.offset_top = -MINIMAP_SIZE.y - MINIMAP_MARGIN.y - 8
-	_minimap_panel.offset_right = -MINIMAP_MARGIN.x
+	_minimap_panel.offset_right = -10.0
 	_minimap_panel.offset_bottom = -MINIMAP_MARGIN.y
 
 	# Click to navigate
@@ -2440,8 +2686,8 @@ func _update_minimap() -> void:
 	# Draw armies as bright dots
 	for army_id in GameManager.state.armies:
 		var army: ArmyState = GameManager.state.armies[army_id]
-		var px: int = army.hex_position.x * 3 + 1
-		var py: int = army.hex_position.y * 3 + 1
+		var px: int = army.hex_pos.x * 3 + 1
+		var py: int = army.hex_pos.y * 3 + 1
 		var a_color: Color = faction_colors.get(army.faction_id, Color.WHITE).lightened(0.4)
 		if px >= 0 and px < px_w and py >= 0 and py < px_h:
 			img.set_pixel(px, py, a_color)
@@ -2453,8 +2699,8 @@ func _update_minimap() -> void:
 	# Draw cities as white dots
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
-		var px: int = city.hex_position.x * 3 + 1
-		var py: int = city.hex_position.y * 3 + 1
+		var px: int = city.hex_pos.x * 3 + 1
+		var py: int = city.hex_pos.y * 3 + 1
 		if px >= 0 and px < px_w and py >= 0 and py < px_h:
 			img.set_pixel(px, py, Color(1.0, 1.0, 0.9))
 

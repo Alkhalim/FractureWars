@@ -13,12 +13,32 @@ const LOOSE_SPACING := 18.0
 const ENGAGE_RADIUS := 20.0
 const SPATIAL_CELL_SIZE := 40.0
 const CHARGE_DAMAGE_MULT := 1.5
+const SPRINT_SPEED_MULT := 1.4       # Speed boost during infantry sprint
+const HEAVY_IMPACT_MULT := 1.3       # Impact damage bonus for heavy infantry
+const MEDIUM_IMPACT_MULT := 1.15     # Impact damage bonus for medium infantry
 const RANGED_PX_PER_RANGE := 48.0
 const DEATH_PROXIMITY := 120.0
 const ROUT_SPEED_MULT := 1.5
 const BASE_MOVE_SPEED := 0.3  # Pixels per tick per speed point (scaled for 10 ticks/sec)
 const TICK_SCALE := 0.2       # Damage/morale scale factor for high tick rate
 const FORCE_ADVANCE_TICK := 600  # After this tick, attacker forced to advance
+
+# Endurance system
+const ENDURANCE_MAX := 100.0
+const ENDURANCE_DRAIN_SPRINT := 2.0     # Per tick while sprinting
+const ENDURANCE_DRAIN_ADVANCE := 0.3    # Per tick while advancing
+const ENDURANCE_DRAIN_MELEE := 1.0      # Per tick in melee combat
+const ENDURANCE_DRAIN_CHARGE := 1.5     # Per tick while charging
+const ENDURANCE_DRAIN_SHOOT := 0.5      # Per volley fired
+const ENDURANCE_REGEN_IDLE := 0.6       # Per tick when idle (no combat/sprint/shooting)
+
+# Mana system
+const MANA_MAX := 100.0
+const MANA_COST_SPELL := 18.0           # Per spell cast
+const MANA_REGEN := 0.4                 # Per tick (permanent)
+
+# Ammo system
+const AMMO_PER_ENTITY := 5             # Volleys per archer
 
 # Deploy zones
 const DEPLOY_BOTTOM_Y := 900.0  # Attacker zone: y 900-1200
@@ -53,6 +73,7 @@ var terrain_grid_w: int = 40
 var terrain_grid_h: int = 30
 
 # Spatial hash grid for proximity queries
+var _battle_hex_pos: Vector2i = Vector2i.ZERO
 var spatial_grid: Dictionary = {}  # Vector2i -> Array[BattleFormationV3]
 
 # Track which pairs made first contact this tick (for charge bonus)
@@ -114,12 +135,37 @@ class BattleFormationV3:
 	var was_in_melee_contact: bool = false
 	var first_contact_tick: int = -1  # Tick when first melee contact happened
 	var momentum: float = 0.0        # Cavalry acceleration (0.0 to 1.0)
+	var is_sprinting: bool = false    # Infantry sprint before contact
+	var impact_applied: bool = false  # Whether first-contact impact was already applied
+
+	# Dead entity tracking — positions where soldiers fell
+	var dead_entity_positions: PackedVector2Array = PackedVector2Array()
 
 	# Ranged attack cooldown
 	var ranged_cooldown_max: int = 5   # Ticks between ranged attacks
 	var ranged_cooldown_timer: int = 0 # Current cooldown counter
 	var fire_deploy_timer: int = 0     # Ticks remaining before unit can fire after stopping
 	var is_deployed: bool = false      # True when stationary and ready to fire
+
+	# Resource bars
+	var max_endurance: float = 100.0
+	var current_endurance: float = 100.0
+	var is_idle_this_tick: bool = true  # Track if unit did nothing combat-related this tick
+
+	var max_mana: float = 0.0          # 0 = not a mage
+	var current_mana: float = 0.0
+
+	var max_ammo: int = 0              # 0 = not a ranged unit (or is mage)
+	var current_ammo: int = 0
+	var fired_this_tick: bool = false   # Track if ranged attack happened this tick
+
+	# Beast special abilities (set by building bonuses)
+	var hp_regen_per_tick: float = 0.0    # HP restored per tick
+	var damage_aura_radius: float = 0.0   # Pixel radius for damage aura
+	var damage_aura_damage: float = 0.0   # Damage per tick to enemies in aura
+	var spawn_unit_data_id: StringName = &""  # Unit to spawn mid-battle
+	var spawn_interval: int = 0           # Ticks between spawns
+	var spawn_counter: int = 0            # Current spawn countdown
 
 	func take_damage(amount: int) -> int:
 		var entities_before := entities_alive
@@ -128,6 +174,10 @@ class BattleFormationV3:
 			while remaining_damage > 0 and entities_alive > 0:
 				if front_entity_hp <= remaining_damage:
 					remaining_damage -= front_entity_hp
+					# Record position of dying entity before decrementing
+					var dying_idx := entities_alive - 1
+					if dying_idx >= 0 and dying_idx < entity_positions.size():
+						dead_entity_positions.append(entity_positions[dying_idx])
 					entities_alive -= 1
 					if entities_alive > 0:
 						front_entity_hp = hp_per_entity
@@ -140,6 +190,11 @@ class BattleFormationV3:
 		else:
 			current_hp = maxi(0, current_hp - amount)
 			if current_hp <= 0:
+				# Single-entity death — record position
+				if entity_positions.size() > 0:
+					dead_entity_positions.append(entity_positions[0])
+				elif position != Vector2.ZERO:
+					dead_entity_positions.append(position)
 				entities_alive = 0
 		if current_hp <= 0:
 			is_dead = true
@@ -153,6 +208,7 @@ class BattleFormationV3:
 # --- Setup ---
 
 func setup_terrain(campaign_terrain: Enums.TerrainType, hex_pos: Vector2i) -> void:
+	_battle_hex_pos = hex_pos
 	terrain_grid_w = ceili(FIELD_WIDTH / terrain_cell_size)
 	terrain_grid_h = ceili(FIELD_HEIGHT / terrain_cell_size)
 	var seed_val := hex_pos.x * 1000 + hex_pos.y
@@ -219,6 +275,33 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	var def_bonus: int = cmd_bonuses.get("defense_bonus", 0)
 	f.attack = ud.attack + atk_bonus
 	f.defense = ud.defense + def_bonus
+
+	# Faction mechanic combat bonuses
+	var fs: FactionState = GameManager.state.faction_states.get(ud.faction_id)
+	if fs:
+		# Skulloath: high corruption = attack bonus
+		if ud.faction_id == &"skulloath":
+			if fs.corruption >= 81:
+				f.attack += int(f.attack * 0.25)
+			elif fs.corruption >= 61:
+				f.attack += int(f.attack * 0.15)
+		# Tainted Jade: taint power = defense bonus
+		elif ud.faction_id == &"tainted_jade":
+			if fs.taint_power >= 50:
+				f.defense += int(f.defense * 0.15)
+			elif fs.taint_power >= 20:
+				f.defense += int(f.defense * 0.10)
+		# Gladehost: high harmony = morale bonus (applied below in morale section)
+		elif ud.faction_id == &"gladehost":
+			pass
+		# Shardhorde: active resonance buffs boost attack per matching realm
+		elif ud.faction_id == &"shardhorde":
+			for realm_key in fs.shard_resonance:
+				# Void resonance: +10% attack to all. Others: +5% attack
+				if realm_key == Enums.Realm.VOID:
+					f.attack += int(f.attack * 0.10)
+				else:
+					f.attack += int(f.attack * 0.05)
 	f.speed = ud.speed
 	f.attack_range = ud.attack_range
 	f.max_hp = unit.current_hp
@@ -240,7 +323,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 		f.front_entity_hp = unit.current_hp
 
 	f.base_morale = ud.base_morale
-	f.current_morale = float(ud.base_morale)
+	# Gladehost harmony: +10 base morale when harmony >= 70
+	if fs and ud.faction_id == &"gladehost" and fs.harmony >= 70:
+		f.base_morale += 10
+	f.current_morale = float(f.base_morale)
 	f.morale_aura = ud.morale_aura
 	f.fear_radius = ud.fear_radius
 	f.captive_chance = ud.captive_chance
@@ -249,7 +335,7 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	if ud.tags.has("mage"):
 		f.ranged_cooldown_max = 12
 	elif ud.tags.has("ranged"):
-		f.ranged_cooldown_max = 5
+		f.ranged_cooldown_max = 7
 
 	if ud.tags.has("ranged") or ud.tags.has("mage"):
 		f.stance = Enums.UnitStance.DEFENSIVE
@@ -258,50 +344,51 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	elif ud.tags.has("cavalry") or ud.tags.has("fast"):
 		f.stance = Enums.UnitStance.AGGRESSIVE
 
-	return f
+	# Resource bars
+	f.max_endurance = ENDURANCE_MAX
+	f.current_endurance = ENDURANCE_MAX
+	if ud.tags.has("mage"):
+		f.max_mana = MANA_MAX
+		f.current_mana = MANA_MAX
+	if ud.tags.has("ranged") and not ud.tags.has("mage"):
+		f.max_ammo = AMMO_PER_ENTITY
+		f.current_ammo = AMMO_PER_ENTITY
 
-func create_elderbeast_formation(beast: ElderbeastState, side: int) -> BattleFormationV3:
-	var f := BattleFormationV3.new()
-	f.instance_id = beast.beast_id
-	f.unit_data_id = &"elder_ceratops"
-	f.display_name = beast.name
-	f.faction_id = beast.faction_id
-	f.side = side
-	f.tags = ["beast", "monster", "melee"]
-	# Stats scale with level
-	f.attack = 25 + beast.level * 10
-	f.defense = 20 + beast.level * 10
-	f.speed = 2
-	f.attack_range = 0
-	f.max_hp = beast.hp
-	f.current_hp = beast.hp
-	f.move_speed = f.speed * BASE_MOVE_SPEED
-	f.hp_per_entity = beast.hp
-	f.total_entities = 1
-	f.entities_alive = 1
-	f.front_entity_hp = beast.hp
-	f.base_morale = 90
-	f.current_morale = 90.0
-	f.morale_aura = 10
-	f.fear_radius = 80
-	f.captive_chance = 0.0
-	f.formation_shape = Enums.FormationShape.SINGLE
-	return f
+	# Shard guardian realm combat modifiers
+	if ud.faction_id == &"shard_guardians":
+		var realm_mods := ShardGuardianSystem.get_realm_mods_for_shard_at(_battle_hex_pos)
+		if not realm_mods.is_empty():
+			f.attack = int(float(f.attack) * realm_mods.get("atk_mult", 1.0))
+			f.defense = int(float(f.defense) * realm_mods.get("def_mult", 1.0))
+			f.speed = int(float(f.speed) * realm_mods.get("spd_mult", 1.0))
+			f.move_speed = f.speed * BASE_MOVE_SPEED
+			# Realm specials
+			if realm_mods.has("morale_bonus"):
+				f.base_morale += realm_mods["morale_bonus"]
+				f.current_morale = float(f.base_morale)
+			if realm_mods.has("fear_radius"):
+				f.fear_radius += realm_mods["fear_radius"]
+			if realm_mods.has("attack_range"):
+				f.attack_range += realm_mods["attack_range"]
+				if f.attack_range > 1 and not f.tags.has("ranged"):
+					f.tags.append("ranged")
+					f.ranged_cooldown_max = 8
+					f.max_ammo = AMMO_PER_ENTITY
+					f.current_ammo = AMMO_PER_ENTITY
+					f.fire_deploy_timer = 5
+					f.is_deployed = false
+			if realm_mods.has("hp_regen"):
+				f.hp_regen_per_tick = realm_mods["hp_regen"]
 
-func add_elderbeast_to_side(beast: ElderbeastState, side: int) -> void:
-	var f := create_elderbeast_formation(beast, side)
-	var formations := defender_formations if side == 1 else attacker_formations
-	# Place behind existing formations
-	var y_pos := DEPLOY_TOP_Y - 50.0 if side == 1 else DEPLOY_BOTTOM_Y + 150.0
-	f.position = Vector2(FIELD_WIDTH / 2.0, y_pos)
-	f.rotation = 0.0 if side == 0 else PI
-	_assign_formation_shape(f)
-	_generate_formation_offsets(f)
-	_update_entity_world_positions(f)
-	formations.append(f)
+	return f
 
 func _assign_formation_shape(f: BattleFormationV3) -> void:
-	if f.tags.has("cavalry") and f.tags.has("fast"):
+	if f.tags.has("beast") or f.tags.has("monster"):
+		if f.total_entities <= 3:
+			f.formation_shape = Enums.FormationShape.SINGLE
+		else:
+			f.formation_shape = Enums.FormationShape.BLOCK
+	elif f.tags.has("cavalry") and f.tags.has("fast"):
 		f.formation_shape = Enums.FormationShape.WEDGE
 	elif f.tags.has("cavalry"):
 		f.formation_shape = Enums.FormationShape.WEDGE
@@ -309,11 +396,6 @@ func _assign_formation_shape(f: BattleFormationV3) -> void:
 		f.formation_shape = Enums.FormationShape.LOOSE_LINE
 	elif f.tags.has("construct"):
 		f.formation_shape = Enums.FormationShape.BLOCK
-	elif f.tags.has("monster") or f.tags.has("beast"):
-		if f.total_entities <= 3:
-			f.formation_shape = Enums.FormationShape.SINGLE
-		else:
-			f.formation_shape = Enums.FormationShape.BLOCK
 	elif f.tags.has("infantry"):
 		f.formation_shape = Enums.FormationShape.LINE
 	else:
@@ -422,16 +504,39 @@ func _update_entity_world_positions(f: BattleFormationV3, use_lerp: bool = false
 	if use_lerp and f.entity_positions.size() == limit:
 		# Row-based lerp: front entities react faster, creating a ripple effect
 		var max_i := float(maxi(limit - 1, 1))
+		var is_cavalry := f.tags.has("cavalry")
 		for i in limit:
 			# Front entities (low index) have higher lerp = move first
-			var row_factor := 1.0 - float(i) / max_i * 0.6
-			# Much slower lerp in melee to prevent shuffling and overlap
-			var base_lerp := 0.06 if f.in_melee_contact else 0.25
+			var row_factor := 1.0 - float(i) / max_i * 0.5
+			var base_lerp: float
+			if f.in_melee_contact:
+				# Cavalry breaks formation fast; infantry advances steadily toward enemies
+				base_lerp = 0.18 if is_cavalry else 0.14
+			elif f.was_in_melee_contact:
+				base_lerp = 0.12
+			elif f.is_sprinting:
+				# Sprinting: entities stay tight but move fast
+				base_lerp = 0.20
+			else:
+				base_lerp = 0.25
 			var entity_lerp := base_lerp * row_factor
-			# Small per-tick jitter for lifelike soldier wobble (reduced in melee to prevent shuffling)
-			var jitter_strength := 0.1 if f.in_melee_contact else 0.8
-			var jitter := Vector2(randf_range(-jitter_strength, jitter_strength), randf_range(-jitter_strength, jitter_strength))
+			# No jitter during melee or sprint — clean purposeful movement
+			var jitter := Vector2.ZERO
+			if not f.in_melee_contact and not f.is_sprinting:
+				jitter = Vector2(randf_range(-0.8, 0.8), randf_range(-0.8, 0.8))
 			f.entity_positions[i] = f.entity_positions[i].lerp(f.entity_target_positions[i] + jitter, entity_lerp)
+
+		# Anti-overlap: push apart entities that are too close to friendly entities
+		if f.in_melee_contact and limit > 1:
+			var min_dist := get_entity_radius(f) * 2.0
+			for i in limit:
+				for j in range(i + 1, limit):
+					var diff := f.entity_positions[i] - f.entity_positions[j]
+					var d := diff.length()
+					if d > 0.1 and d < min_dist:
+						var push := diff.normalized() * (min_dist - d) * 0.3
+						f.entity_positions[i] += push
+						f.entity_positions[j] -= push
 	else:
 		# Snap directly (initial placement or size change)
 		f.entity_positions = f.entity_target_positions.duplicate()
@@ -472,14 +577,34 @@ func simulate_tick() -> Array[Dictionary]:
 
 	# Track previous melee state, then reset
 	for f in all:
+		# Reset impact when leaving melee so next charge/sprint gets a fresh impact
+		if f.was_in_melee_contact and not f.in_melee_contact:
+			f.impact_applied = false
+			f.first_contact_tick = -1
 		f.was_in_melee_contact = f.in_melee_contact
 		f.in_melee_contact = false
+		f.is_idle_this_tick = true
+		f.fired_this_tick = false
 
 	# Force attacker advance after prolonged battle
 	if tick_count >= FORCE_ADVANCE_TICK:
 		for f in attacker_formations:
 			if not f.is_dead and not f.is_fled and not f.is_routing:
 				f.current_order = Enums.BattleOrder.ADVANCE
+
+	# Auto-advance ranged units that can no longer fire (out of ammo/mana)
+	for f in all:
+		if f.is_dead or f.is_fled or f.is_routing:
+			continue
+		if f.attack_range <= 1:
+			continue
+		var depleted := false
+		if f.max_ammo > 0 and f.current_ammo <= 0:
+			depleted = true
+		if f.max_mana > 0.0 and f.current_mana < MANA_COST_SPELL * 0.3:
+			depleted = true
+		if depleted and f.current_order in [Enums.BattleOrder.HOLD, Enums.BattleOrder.ADVANCE]:
+			f.current_order = Enums.BattleOrder.ADVANCE
 
 	# Phase 1: Movement
 	_rebuild_spatial_grid()
@@ -490,26 +615,33 @@ func simulate_tick() -> Array[Dictionary]:
 			actions.append_array(_execute_rout_movement(f))
 			continue
 		if _check_melee_contact(f):
+			if f.first_contact_tick < 0:
+				f.first_contact_tick = tick_count
 			f.in_melee_contact = true
+			f.is_sprinting = false
+			f.is_idle_this_tick = false
+			f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_MELEE)
 			_apply_melee_spread(f)
 			if f.tags.has("cavalry") or f.tags.has("infantry"):
 				_loosen_melee_formation(f)
-			# Slowly advance formation center toward nearest enemy (close the gap)
+			# Advance formation center toward nearest enemy to close gaps
 			var melee_target := _find_target(f)
 			if melee_target != null:
 				var close_dir := f.position.direction_to(melee_target.position)
-				var close_speed := f.move_speed * 0.15
+				var close_speed := f.move_speed * 0.6
 				if f.tags.has("cavalry"):
-					close_speed = f.move_speed * 0.3
+					close_speed = f.move_speed * 0.8
+				if f.current_order == Enums.BattleOrder.CHARGE:
+					close_speed = f.move_speed * 1.2
 				f.position += close_dir * close_speed
 				f.position.x = clampf(f.position.x, 20.0, FIELD_WIDTH - 20.0)
 				f.position.y = clampf(f.position.y, 20.0, FIELD_HEIGHT - 20.0)
 			continue
 		# If was in melee but lost contact, aggressively close the gap
 		if f.was_in_melee_contact:
-			# All multi-entity units reform when disengaging
+			# Gradually reform formation when disengaging (lerp offsets toward ideal)
 			if f.tags.has("cavalry") or f.tags.has("infantry"):
-				_generate_formation_offsets(f)
+				_reform_formation_gradual(f)
 			var target := _find_target(f)
 			if target != null:
 				var dir := f.position.direction_to(target.position)
@@ -583,6 +715,45 @@ func simulate_tick() -> Array[Dictionary]:
 				_generate_formation_offsets(f)
 		_update_entity_world_positions(f, true)
 
+	# Phase 5b: Resource regeneration (endurance, mana)
+	for f in all:
+		if f.is_dead or f.is_fled:
+			continue
+		# Endurance regen: only when idle (not fighting, sprinting, or shooting)
+		if f.is_idle_this_tick:
+			f.current_endurance = minf(f.max_endurance, f.current_endurance + ENDURANCE_REGEN_IDLE)
+		# Mana regen: permanent but slow
+		if f.max_mana > 0.0:
+			f.current_mana = minf(f.max_mana, f.current_mana + MANA_REGEN)
+
+	# Phase 5c: Beast special abilities (regen, damage aura, spawning)
+	for f in all:
+		if f.is_dead or f.is_fled:
+			continue
+		# HP regeneration
+		if f.hp_regen_per_tick > 0.0 and f.current_hp < f.max_hp:
+			f.current_hp = mini(f.max_hp, f.current_hp + roundi(f.hp_regen_per_tick))
+			f.front_entity_hp = f.current_hp if f.total_entities == 1 else f.front_entity_hp
+		# Damage aura
+		if f.damage_aura_radius > 0.0 and f.damage_aura_damage > 0.0:
+			var enemies := defender_formations if f.side == 0 else attacker_formations
+			for e in enemies:
+				if e.is_dead or e.is_fled:
+					continue
+				if f.position.distance_to(e.position) <= f.damage_aura_radius:
+					var aura_dmg := roundi(f.damage_aura_damage * TICK_SCALE)
+					if aura_dmg > 0:
+						e.take_damage(aura_dmg)
+						actions.append({"type": "aura_damage", "source": f.instance_id, "target": e.instance_id, "damage": aura_dmg})
+		# Unit spawning
+		if f.spawn_interval > 0 and f.spawn_unit_data_id != &"":
+			f.spawn_counter -= 1
+			if f.spawn_counter <= 0:
+				f.spawn_counter = f.spawn_interval
+				var spawned := _spawn_unit_from_beast(f)
+				if spawned:
+					actions.append({"type": "spawn", "source": f.instance_id, "spawned": spawned.instance_id})
+
 	# Phase 6: Victory check
 	_check_victory()
 
@@ -604,8 +775,13 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 	if target == null:
 		return actions
 
-	# Ranged/mage units stop moving when a target is in range
-	if f.attack_range > 1 and not f.in_melee_contact:
+	# Ranged/mage units stop moving when a target is in range — but only if they can still fire
+	var can_fire := true
+	if f.max_ammo > 0 and f.current_ammo <= 0:
+		can_fire = false # Out of ammo
+	if f.max_mana > 0.0 and f.current_mana < MANA_COST_SPELL * 0.3:
+		can_fire = false # Out of mana
+	if f.attack_range > 1 and not f.in_melee_contact and can_fire:
 		var dist := f.position.distance_to(target.position)
 		var range_px := f.attack_range * RANGED_PX_PER_RANGE
 		if dist <= range_px:
@@ -625,21 +801,32 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 	var terrain_mod := BattleTerrainGen.get_speed_modifier(get_terrain_at(f.position))
 	var effective_speed := f.move_speed * maxf(0.2, terrain_mod)
 
+	# Endurance-based speed penalty: below 50% endurance, speed drops linearly
+	var endurance_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
+	if endurance_ratio < 0.5:
+		effective_speed *= lerpf(0.5, 1.0, endurance_ratio * 2.0)
+
 	# Single-entity units (dragons, constructs) slow down when damaged
 	if f.total_entities == 1 and f.max_hp > 0:
 		var hp_ratio := float(f.current_hp) / float(f.max_hp)
 		effective_speed *= lerpf(0.3, 1.0, hp_ratio)
 
-	# Weight-based slowdown near enemies
+	# Infantry sprint: accelerate for the last stretch before contact
 	var target_dist := f.position.distance_to(target.position)
-	var engage_threshold := ENGAGE_RADIUS * 4.0
-	if target_dist < engage_threshold:
-		var weight_factor := 0.7  # Default infantry slows down
-		if f.tags.has("cavalry") or f.tags.has("fast"):
-			weight_factor = 0.9
-		elif f.tags.has("construct") or f.tags.has("monster"):
-			weight_factor = 0.95
-		effective_speed *= weight_factor
+	f.is_sprinting = false
+	if f.tags.has("infantry") and not f.in_melee_contact and f.current_endurance > 15.0:
+		# Light infantry (fast or speed >= 5): longer sprint distance
+		# Heavy infantry (defense >= 8 or construct): shorter but harder hitting
+		var sprint_dist := 80.0
+		if f.tags.has("fast") or f.speed >= 5:
+			sprint_dist = 130.0
+		elif f.defense >= 8:
+			sprint_dist = 55.0
+		if target_dist < sprint_dist and target_dist > ENGAGE_RADIUS:
+			f.is_sprinting = true
+			f.is_idle_this_tick = false
+			f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_SPRINT)
+			effective_speed *= SPRINT_SPEED_MULT
 
 	# Cavalry momentum bonus (up to 80% faster at full momentum)
 	if f.tags.has("cavalry") and f.momentum > 0.0:
@@ -651,6 +838,9 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 			f.position += dir * effective_speed
 			_rotate_toward_smooth(f, target.position)
 			actions.append({"type": "move", "id": f.instance_id, "to": f.position})
+			if not f.is_sprinting: # Sprint drain already applied above
+				f.is_idle_this_tick = false
+				f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_ADVANCE)
 
 		Enums.BattleOrder.HOLD:
 			_rotate_toward_smooth(f, target.position)
@@ -667,6 +857,8 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 			f.position += diag * effective_speed
 			_rotate_toward_smooth(f, target.position)
 			actions.append({"type": "move", "id": f.instance_id, "to": f.position})
+			f.is_idle_this_tick = false
+			f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_ADVANCE)
 
 		Enums.BattleOrder.FLANK_RIGHT:
 			var fwd := f.position.direction_to(target.position)
@@ -675,12 +867,16 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 			f.position += diag * effective_speed
 			_rotate_toward_smooth(f, target.position)
 			actions.append({"type": "move", "id": f.instance_id, "to": f.position})
+			f.is_idle_this_tick = false
+			f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_ADVANCE)
 
 		Enums.BattleOrder.CHARGE:
 			var dir := f.position.direction_to(target.position)
 			f.position += dir * effective_speed * 2.0
 			_rotate_toward_smooth(f, target.position)
 			actions.append({"type": "charge", "id": f.instance_id, "to": f.position})
+			f.is_idle_this_tick = false
+			f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_CHARGE)
 
 		Enums.BattleOrder.RETREAT:
 			var retreat_y := FIELD_HEIGHT if f.side == 0 else 0.0
@@ -688,6 +884,8 @@ func _execute_order_movement(f: BattleFormationV3) -> Array[Dictionary]:
 			var dir := f.position.direction_to(retreat_target)
 			f.position += dir * effective_speed
 			actions.append({"type": "retreat", "id": f.instance_id, "to": f.position})
+			f.is_idle_this_tick = false
+			f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_ADVANCE)
 
 	# Clamp to field bounds
 	f.position.x = clampf(f.position.x, 20.0, FIELD_WIDTH - 20.0)
@@ -737,7 +935,13 @@ func _check_melee_contact(f: BattleFormationV3) -> bool:
 			continue
 		var quick_dist := (get_entity_radius(f) + get_entity_radius(other) + 12.0) * 3.0
 		if f.position.distance_to(other.position) < quick_dist:
-			if _entities_in_contact(f, other) > 0:
+			var contact := _entities_in_contact(f, other)
+			if contact <= 0:
+				continue
+			# Require meaningful contact: at least 2 entity pairs or single-entity units
+			if f.total_entities <= 1 or other.total_entities <= 1:
+				return true
+			if contact >= 2:
 				return true
 	return false
 
@@ -748,10 +952,9 @@ func _apply_melee_spread(f: BattleFormationV3) -> void:
 		return
 
 	var enemies := _get_side_formations(1 - f.side)
-	var max_drift := ENTITY_SPACING * 3.0
-	# Cavalry wedge needs more drift to connect rear riders
+	var max_drift := ENTITY_SPACING * 5.0
 	if f.tags.has("cavalry"):
-		max_drift = ENTITY_SPACING * 5.0
+		max_drift = ENTITY_SPACING * 8.0
 
 	for i in limit:
 		var epos: Vector2 = f.entity_target_positions[i]
@@ -787,12 +990,11 @@ func _apply_melee_spread(f: BattleFormationV3) -> void:
 
 		if nearest_dist < 999999.0:
 			var drift_dir := (nearest_pos - epos).normalized()
-			var drift_amount := 0.3 * f.move_speed
-			# Cavalry closes faster to bring rear riders into contact
+			# Infantry closes purposefully; cavalry sweeps around
+			var drift_amount := 0.7 * f.move_speed
 			if f.tags.has("cavalry"):
-				drift_amount = 0.6 * f.move_speed
+				drift_amount = 1.0 * f.move_speed
 			var new_target := epos + drift_dir * drift_amount
-			# Cap distance from formation center
 			if new_target.distance_to(f.position) <= max_drift:
 				f.entity_target_positions[i] = new_target
 
@@ -836,7 +1038,12 @@ func _loosen_melee_formation(f: BattleFormationV3) -> void:
 	var limit := mini(f.entities_alive, f.entity_local_offsets.size())
 	var enemies := _get_side_formations(1 - f.side)
 	var engage_dist := get_entity_radius(f) * 2.0 + 15.0
-	var max_spread := ENTITY_SPACING * get_entity_radius(f) / 4.0 * 4.0
+	# Infantry loosens to reach enemies; cavalry breaks wider to surround
+	var max_spread := ENTITY_SPACING * get_entity_radius(f) * 2.5
+	var drift_amount := 0.6 * f.move_speed
+	if f.tags.has("cavalry"):
+		max_spread = ENTITY_SPACING * get_entity_radius(f) * 3.0
+		drift_amount = 1.2 * f.move_speed
 	var cos_r := cos(-f.rotation)
 	var sin_r := sin(-f.rotation)
 
@@ -860,7 +1067,6 @@ func _loosen_melee_formation(f: BattleFormationV3) -> void:
 
 		# Calculate desired drift in world space toward the nearest enemy
 		var drift_dir := (nearest_enemy - world_pos).normalized()
-		var drift_amount := 0.4
 
 		# Convert drift to local space
 		var local_drift := Vector2(
@@ -872,6 +1078,20 @@ func _loosen_melee_formation(f: BattleFormationV3) -> void:
 		# Limit distance from formation center to prevent entities drifting too far
 		if new_offset.length() <= max_spread:
 			f.entity_local_offsets[i] = new_offset
+
+func _reform_formation_gradual(f: BattleFormationV3) -> void:
+	# Gradually lerp offsets back toward ideal formation shape instead of snapping
+	var ideal_offsets := PackedVector2Array()
+	# Generate ideal offsets into a temp array
+	var old_offsets := f.entity_local_offsets.duplicate()
+	_generate_formation_offsets(f)
+	ideal_offsets = f.entity_local_offsets.duplicate()
+	# Restore current offsets and lerp toward ideal
+	f.entity_local_offsets = old_offsets
+	var limit := mini(f.entities_alive, mini(old_offsets.size(), ideal_offsets.size()))
+	var reform_speed := 0.08 if f.tags.has("cavalry") else 0.05
+	for i in limit:
+		f.entity_local_offsets[i] = f.entity_local_offsets[i].lerp(ideal_offsets[i], reform_speed)
 
 func _entities_in_contact(f1: BattleFormationV3, f2: BattleFormationV3) -> int:
 	var count := 0
@@ -908,6 +1128,10 @@ func _find_all_contact_pairs() -> Array[Array]:
 			var contact := _entities_in_contact(f, other)
 			if contact > 0:
 				checked[key] = true
+				if f.first_contact_tick < 0:
+					f.first_contact_tick = tick_count
+				if other.first_contact_tick < 0:
+					other.first_contact_tick = tick_count
 				f.in_melee_contact = true
 				other.in_melee_contact = true
 				pairs.append([f, other, contact])
@@ -1011,6 +1235,11 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 
 	var per_tile_dps := maxf(1.0, float(attacker.attack) - float(defender.defense) * 0.5)
 
+	# Endurance-based damage reduction: below 50% endurance, damage drops
+	var atk_endurance_ratio := attacker.current_endurance / attacker.max_endurance if attacker.max_endurance > 0.0 else 1.0
+	if atk_endurance_ratio < 0.5:
+		per_tile_dps *= lerpf(0.5, 1.0, atk_endurance_ratio * 2.0)
+
 	# Ranged/mage units fight weakly in melee
 	if attacker.tags.has("mage"):
 		per_tile_dps *= 0.3
@@ -1032,6 +1261,10 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	if terrain_def > 0:
 		per_tile_dps = maxf(1.0, per_tile_dps - terrain_def * 0.3)
 
+	# Infantry vs infantry: reduce damage to make clashes longer and less explosive
+	if attacker.tags.has("infantry") and defender.tags.has("infantry"):
+		per_tile_dps *= 0.55
+
 	var total_damage := int(per_tile_dps * total_contact * randf_range(0.85, 1.15) * TICK_SCALE)
 
 	# Stance modifiers
@@ -1040,9 +1273,31 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	if defender.stance == Enums.UnitStance.DEFENSIVE:
 		total_damage = int(total_damage * 0.8)
 
-	# Charge bonus on first contact
+	# Charge bonus on first contact (cavalry order)
 	if attacker.current_order == Enums.BattleOrder.CHARGE:
 		total_damage = int(total_damage * CHARGE_DAMAGE_MULT)
+
+	# Impact bonus — first few ticks of each melee engagement (resets on disengage)
+	if not attacker.impact_applied and attacker.first_contact_tick >= 0:
+		var ticks_in := tick_count - attacker.first_contact_tick
+		if ticks_in <= 3:
+			var impact_mult := 1.0
+			if attacker.tags.has("monster") or attacker.tags.has("beast"):
+				impact_mult = HEAVY_IMPACT_MULT  # Heavy creatures hit hard
+			elif attacker.tags.has("cavalry"):
+				impact_mult = HEAVY_IMPACT_MULT if attacker.momentum > 0.5 else MEDIUM_IMPACT_MULT
+			elif attacker.tags.has("construct"):
+				impact_mult = HEAVY_IMPACT_MULT
+			elif attacker.tags.has("infantry"):
+				# Infantry impact is lighter — prolonged grinding, not explosive bursts
+				if attacker.defense >= 8:
+					impact_mult = MEDIUM_IMPACT_MULT
+				else:
+					impact_mult = 1.0
+			if impact_mult > 1.0:
+				total_damage = int(total_damage * impact_mult)
+		else:
+			attacker.impact_applied = true
 
 	# Morale damage from flanks/rear (scaled for tick rate)
 	var morale_dmg := (flank_contact * 1.5 + rear_contact * 3.0) * TICK_SCALE
@@ -1064,6 +1319,14 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	if not f.is_deployed:
 		return actions
 
+	# Ammo check for archers (non-mage ranged)
+	if f.max_ammo > 0 and f.current_ammo <= 0:
+		return actions
+
+	# Mana check for mages
+	if f.max_mana > 0.0 and f.current_mana < MANA_COST_SPELL * 0.3:
+		return actions # Too low to cast
+
 	# Cooldown check: skip if not ready to fire
 	if f.ranged_cooldown_timer > 0:
 		f.ranged_cooldown_timer -= 1
@@ -1078,8 +1341,25 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	if dist > range_px:
 		return actions
 
-	# Reset cooldown after firing
-	f.ranged_cooldown_timer = f.ranged_cooldown_max
+	# Consume ammo or mana
+	if f.max_ammo > 0:
+		f.current_ammo -= 1
+	if f.max_mana > 0.0:
+		f.current_mana = maxf(0.0, f.current_mana - MANA_COST_SPELL)
+
+	# Reset cooldown after firing — mana affects mage cooldown
+	var cooldown := f.ranged_cooldown_max
+	if f.max_mana > 0.0:
+		var mana_ratio := f.current_mana / f.max_mana
+		if mana_ratio < 0.5:
+			# At 50% mana: 1.3x cooldown, at 0%: 2.5x cooldown
+			cooldown = int(float(cooldown) * lerpf(2.5, 1.3, mana_ratio * 2.0))
+	f.ranged_cooldown_timer = cooldown
+
+	# Mark as not idle (shooting uses endurance)
+	f.is_idle_this_tick = false
+	f.fired_this_tick = true
+	f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_SHOOT)
 
 	# Per-entity firing with miss chance
 	# Mages are less accurate than archers; Empire units are generally inaccurate
@@ -1090,6 +1370,10 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 		miss_chance += 0.20
 
 	var dmg_per_entity := maxf(0.5, float(f.attack) * 0.6 - float(target.defense) * 0.3)
+	# Endurance-based ranged damage reduction
+	var ranged_end_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
+	if ranged_end_ratio < 0.5:
+		dmg_per_entity *= lerpf(0.6, 1.0, ranged_end_ratio * 2.0)
 	var total_damage := 0
 	var hit_count := 0
 	var miss_count := 0
@@ -1254,6 +1538,59 @@ func assign_ai_orders(side: int) -> void:
 			f.current_order = Enums.BattleOrder.ADVANCE
 		else:
 			f.current_order = Enums.BattleOrder.ADVANCE
+
+# --- Beast Spawning ---
+
+func _spawn_unit_from_beast(beast_f: BattleFormationV3) -> BattleFormationV3:
+	var ud: UnitData = DataManager.get_unit(beast_f.spawn_unit_data_id)
+	if ud == null:
+		return null
+	var f := BattleFormationV3.new()
+	f.instance_id = StringName("spawn_%d_%d" % [tick_count, beast_f.side])
+	f.unit_data_id = ud.id
+	f.display_name = ud.display_name + " (spawned)"
+	f.faction_id = beast_f.faction_id
+	f.side = beast_f.side
+	f.tags = ud.tags.duplicate()
+	f.attack = ud.attack
+	f.defense = ud.defense
+	f.speed = ud.speed
+	f.attack_range = ud.attack_range
+	f.max_hp = ud.max_hp
+	f.current_hp = ud.max_hp
+	f.move_speed = f.speed * BASE_MOVE_SPEED
+	if ud.hp_per_soldier > 0 and ud.squad_size > 1:
+		f.hp_per_entity = ud.hp_per_soldier
+		f.total_entities = ud.squad_size
+		f.entities_alive = ud.squad_size
+		f.front_entity_hp = ud.hp_per_soldier
+	else:
+		f.hp_per_entity = ud.max_hp
+		f.total_entities = 1
+		f.entities_alive = 1
+		f.front_entity_hp = ud.max_hp
+	f.base_morale = ud.base_morale
+	f.current_morale = float(f.base_morale)
+	f.morale_aura = ud.morale_aura
+	f.fear_radius = ud.fear_radius
+	f.captive_chance = ud.captive_chance
+	f.max_endurance = ENDURANCE_MAX
+	f.current_endurance = ENDURANCE_MAX
+	if ud.tags.has("ranged") and not ud.tags.has("mage"):
+		f.max_ammo = AMMO_PER_ENTITY
+		f.current_ammo = AMMO_PER_ENTITY
+	# Spawn behind the beast
+	var offset_y := -60.0 if beast_f.side == 0 else 60.0
+	f.position = beast_f.position + Vector2(randf_range(-40, 40), offset_y)
+	f.position.x = clampf(f.position.x, 40.0, FIELD_WIDTH - 40.0)
+	f.position.y = clampf(f.position.y, 40.0, FIELD_HEIGHT - 40.0)
+	f.rotation = beast_f.rotation
+	_assign_formation_shape(f)
+	_generate_formation_offsets(f)
+	_update_entity_world_positions(f)
+	var formations := attacker_formations if beast_f.side == 0 else defender_formations
+	formations.append(f)
+	return f
 
 # --- Victory Check ---
 

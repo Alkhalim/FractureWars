@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shard_harvester"
+display_name = "Crystal Tap"
+description = "Crystalline drill-roots bore into mineral-rich ground, extracting shard essence from wastes, deserts, and mountain stone. The horde's primary source of crystal energy."
+faction_id = &"shardhorde"
+category = &"economic"
+build_cost = {0: 80, 1: 20}
+build_time = 2
+income_bonus = {4: 10, 0: 5}
+population_growth_bonus = 2
+required_capital_level = 1
