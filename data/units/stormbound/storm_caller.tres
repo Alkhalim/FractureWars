@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"storm_caller"
+display_name = "Storm Caller"
+description = "Lightning mages who rain destruction from afar."
+faction_id = &"stormbound"
+max_hp = 600
+attack = 16
+defense = 3
+speed = 4
+attack_range = 7
+squad_size = 40
+hp_per_soldier = 15
+movement_points = 3.0
+upkeep_cost = {0: 5, 3: 1}
+recruit_cost = {0: 80, 2: 10}
+recruit_time = 3
+population_cost = 8
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["ranged", "support"])
+base_morale = 55

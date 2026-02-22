@@ -80,7 +80,7 @@ func _test_terrain_gen_all_types() -> void:
 	_begin_test("terrain_gen_all_campaign_types")
 	var campaign_types: Array[Enums.TerrainType] = [
 		Enums.TerrainType.PLAINS, Enums.TerrainType.FOREST, Enums.TerrainType.MOUNTAINS,
-		Enums.TerrainType.DESERT, Enums.TerrainType.SWAMP, Enums.TerrainType.COAST,
+		Enums.TerrainType.DESERT, Enums.TerrainType.SWAMP, Enums.TerrainType.WETLANDS,
 		Enums.TerrainType.TUNDRA, Enums.TerrainType.SHARD_WASTES, Enums.TerrainType.WATER,
 		Enums.TerrainType.JUNGLE,
 	]

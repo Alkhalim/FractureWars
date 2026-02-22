@@ -1,57 +1,73 @@
 class_name MapGenerator
 
 # Generates a hex map (HexMapData) with terrain, regions, and realm influence.
-# Grid: 50 columns x 35 rows of hex tiles.
-# Continental layout based on lore document:
-#   Center: Eternal Plains (Imperial Core)
-#   North: Frozen Lands (Northern Highlands)
-#   South: Southern Reach (Jungle Belt)
-#   West: Torgalun Desert (Divine Plateau)
-#   East: Wasteland (Fracture Zone)
-#   Water borders around the continent edges
+# Grid: 65 columns x 45 rows of hex tiles.
+# Continental layout — five geographic arcs:
+#   West:   Empire (Eternal Plains, Sunburst Valley, Aurentis)
+#           + Gladehost (Sainkhu Groves, Verdant Glade, Orisyl)
+#   North:  Moonspear (Iskar, Nightfall Sanctum, Asdrol)
+#           + Thunderswarm (Dragonspire Mountains, Thundercrest Peaks, Skalvar)
+#   South:  Tainted Jade (Coatlantli, Southern Reach, Xotchi)
+#   Center: Skulloath (Bataarbad, Altaban, Tsagan)
+#           + Cinderguard (Duststorm Valley, Ashenmark, Valkarn)
+#   East:   Forsaken (Orenthal, Morvane, Weeping Barrows)
+#           + Ivoryscar (Qareth, Torgalun Desert, Whispering Dunes)
 
-# Region seed positions (in hex grid coordinates)
-# Spread more evenly for balanced region sizes
+# Region seed positions (in hex grid coordinates) — scaled for 65x45 grid
 const REGION_SEEDS := {
-	# Eternal Plains (center) - rows ~10-22, cols ~17-30
-	&"metropoleia":          Vector2i(24, 15),
-	&"sainkhu_groves":       Vector2i(18, 18),
-	&"sunburst_valley":      Vector2i(30, 13),
-	&"verdant_glade":        Vector2i(24, 21),
+	# ── Western Civilized Basin ──
+	&"eternal_plains":       Vector2i(17, 18),
+	&"sunburst_valley":      Vector2i(22, 13),
+	&"aurentis":             Vector2i(12, 14),
+	&"sainkhu_groves":       Vector2i(12, 24),
+	&"verdant_glade":        Vector2i(18, 28),
+	&"orisyl":               Vector2i(8, 19),
 
-	# Frozen Lands (north) - rows ~2-10, cols ~18-32
-	&"nightfall_sanctum":    Vector2i(20, 5),
-	&"moonspear_citadel":    Vector2i(30, 6),
-	&"thundercrest_peaks":   Vector2i(25, 3),
+	# ── Northern Divine & Storm Belt ──
+	&"iskar":                Vector2i(22, 5),
+	&"nightfall_sanctum":    Vector2i(29, 6),
+	&"asdrol":               Vector2i(16, 9),
+	&"dragonspire_mountains": Vector2i(40, 5),
+	&"thundercrest_peaks":   Vector2i(47, 8),
+	&"skalvar":              Vector2i(35, 10),
 
-	# Southern Reach (south) - rows ~24-32, cols ~16-28
-	&"coatlanli_jungle":     Vector2i(18, 28),
-	&"misthaven_refuge":     Vector2i(27, 30),
-	&"xotchis_sanctuary":    Vector2i(22, 25),
+	# ── Southern Emerald Reach ──
+	&"coatlantli":           Vector2i(23, 36),
+	&"southern_reach":       Vector2i(31, 39),
+	&"xotchi":               Vector2i(16, 33),
 
-	# Torgalun Desert (west) - rows ~8-26, cols ~4-16
-	&"bataarbad_expanse":    Vector2i(8, 14),
-	&"duststorm_valley":     Vector2i(14, 10),
-	&"great_pyramid":        Vector2i(10, 21),
-	&"whispering_dunes":     Vector2i(5, 20),
+	# ── Central Steppe & Ash March ──
+	&"bataarbad":            Vector2i(29, 21),
+	&"altaban":              Vector2i(34, 26),
+	&"tsagan":               Vector2i(26, 27),
+	&"duststorm_valley":     Vector2i(39, 18),
+	&"ashenmark":            Vector2i(44, 23),
+	&"valkarn":              Vector2i(42, 13),
 
-	# Wasteland (east) - rows ~8-24, cols ~34-46
-	&"altaban_barrens":      Vector2i(39, 15),
-	&"dragonspire_mountains": Vector2i(36, 8),
-	&"tsagan_badlands":      Vector2i(40, 23),
+	# ── Eastern Ruin & Shard Frontier ──
+	&"orenthal":             Vector2i(51, 18),
+	&"morvane":              Vector2i(53, 26),
+	&"weeping_barrows":      Vector2i(48, 32),
+	&"qareth":               Vector2i(57, 14),
+	&"torgalun_desert":      Vector2i(59, 23),
+	&"whispering_dunes":     Vector2i(56, 32),
 }
 
-# Continental zone definitions: which regions belong to each zone
-const ZONE_ETERNAL_PLAINS := [&"metropoleia", &"sainkhu_groves", &"sunburst_valley", &"verdant_glade"]
-const ZONE_FROZEN_LANDS := [&"nightfall_sanctum", &"moonspear_citadel", &"thundercrest_peaks"]
-const ZONE_SOUTHERN_REACH := [&"coatlanli_jungle", &"misthaven_refuge", &"xotchis_sanctuary"]
-const ZONE_TORGALUN_DESERT := [&"bataarbad_expanse", &"duststorm_valley", &"great_pyramid", &"whispering_dunes"]
-const ZONE_WASTELAND := [&"altaban_barrens", &"dragonspire_mountains", &"tsagan_badlands"]
+# Continental zone definitions
+const ZONE_WEST_EMPIRE := [&"eternal_plains", &"sunburst_valley", &"aurentis"]
+const ZONE_WEST_GLADEHOST := [&"sainkhu_groves", &"verdant_glade", &"orisyl"]
+const ZONE_NORTH_MOONSPEAR := [&"iskar", &"nightfall_sanctum", &"asdrol"]
+const ZONE_NORTH_THUNDERSWARM := [&"dragonspire_mountains", &"thundercrest_peaks", &"skalvar"]
+const ZONE_SOUTH_JADE := [&"coatlantli", &"southern_reach", &"xotchi"]
+const ZONE_CENTER_SKULLOATH := [&"bataarbad", &"altaban", &"tsagan"]
+const ZONE_CENTER_CINDERGUARD := [&"duststorm_valley", &"ashenmark", &"valkarn"]
+const ZONE_EAST_FORSAKEN := [&"orenthal", &"morvane", &"weeping_barrows"]
+const ZONE_EAST_IVORYSCAR := [&"qareth", &"torgalun_desert", &"whispering_dunes"]
 
 static func generate_hex_map(regions: Dictionary) -> HexMapData:
 	var map := HexMapData.new()
 
-	# 1. Create all tiles - water by default (land is carved out)
+	# 1. Create all tiles - water by default
 	_init_tiles(map)
 
 	# 2. Carve landmass shape
@@ -60,13 +76,13 @@ static func generate_hex_map(regions: Dictionary) -> HexMapData:
 	# 3. Assign regions via Voronoi from seeds
 	_assign_regions(map, regions)
 
-	# 4. Assign terrain based on continental zone
+	# 4. Assign terrain based on zone
 	_assign_terrain(map)
 
 	# 5. Set realm influence from region data
 	_assign_realm_influence(map, regions)
 
-	# 6. Fix terrain pockets - ensure all land tiles are reachable
+	# 6. Fix terrain pockets
 	_fix_terrain_pockets(map)
 
 	return map
@@ -79,56 +95,85 @@ static func _init_tiles(map: HexMapData) -> void:
 			map.tiles[Vector2i(col, row)] = tile
 
 static func _carve_landmass(map: HexMapData) -> void:
-	# Create a continent shape: oval-ish landmass with irregular edges
-	# Center of the continent
-	var cx := 24.0
-	var cy := 17.0
+	# Asymmetric continent built from multiple overlapping landmass blobs,
+	# peninsulas, bays, and irregular coastline noise.
+	# Each blob is an ellipse: {cx, cy, rx, ry, weight}
+	# Higher weight = stronger contribution to land formation
+	var blobs := [
+		# Main continent body — off-center, slightly NW-biased
+		{cx = 30.0, cy = 20.0, rx = 22.0, ry = 14.0, w = 1.0},
+		# Western heartland (Empire/Gladehost) — bulges south-west
+		{cx = 14.0, cy = 20.0, rx = 12.0, ry = 13.0, w = 0.8},
+		# Northern ridge (Moonspear/Thunderswarm) — wide but narrow
+		{cx = 32.0, cy = 8.0, rx = 20.0, ry = 7.0, w = 0.7},
+		# Eastern arm (Forsaken/Ivoryscar) — long peninsula reaching east
+		{cx = 52.0, cy = 22.0, rx = 12.0, ry = 14.0, w = 0.75},
+		# Southern jungle (Tainted Jade) — teardrop hanging south
+		{cx = 24.0, cy = 35.0, rx = 13.0, ry = 9.0, w = 0.7},
+		# Central steppe bridge connecting west to east
+		{cx = 38.0, cy = 18.0, rx = 14.0, ry = 8.0, w = 0.6},
+		# NE highlands (Thunderswarm/Cinderguard connection)
+		{cx = 44.0, cy = 12.0, rx = 10.0, ry = 8.0, w = 0.65},
+		# SE barren hook (Weeping Barrows / Whispering Dunes)
+		{cx = 50.0, cy = 30.0, rx = 10.0, ry = 8.0, w = 0.6},
+	]
+
+	# Bays / indentations — these subtract from the land (negative weight)
+	var bays := [
+		# Western bay between Empire and Gladehost
+		{cx = 8.0, cy = 17.0, rx = 5.0, ry = 4.0, w = 0.4},
+		# Southern bay splitting jungle from steppe
+		{cx = 30.0, cy = 32.0, rx = 6.0, ry = 4.0, w = 0.35},
+		# Northern inlet between Moonspear and Thunderswarm
+		{cx = 34.0, cy = 4.0, rx = 7.0, ry = 3.0, w = 0.3},
+		# Eastern strait separating Forsaken from Ivoryscar
+		{cx = 55.0, cy = 19.0, rx = 3.0, ry = 6.0, w = 0.25},
+		# NW coastal indent
+		{cx = 10.0, cy = 10.0, rx = 5.0, ry = 5.0, w = 0.35},
+	]
 
 	for col in range(HexMapData.MAP_WIDTH):
 		for row in range(HexMapData.MAP_HEIGHT):
-			# Normalized distance from center (elliptical)
-			var dx := (float(col) - cx) / 22.0 # horizontal radius ~22
-			var dy := (float(row) - cy) / 15.0 # vertical radius ~15
+			# Calculate land strength from all blobs
+			var land_val := 0.0
+			for blob in blobs:
+				var dx: float = (float(col) - blob.cx) / blob.rx
+				var dy: float = (float(row) - blob.cy) / blob.ry
+				var d: float = dx * dx + dy * dy
+				if d < 1.0:
+					land_val += blob.w * (1.0 - d)
 
-			# Base ellipse distance
-			var dist := dx * dx + dy * dy
+			# Subtract bays
+			for bay in bays:
+				var dx: float = (float(col) - bay.cx) / bay.rx
+				var dy: float = (float(row) - bay.cy) / bay.ry
+				var d: float = dx * dx + dy * dy
+				if d < 1.0:
+					land_val -= bay.w * (1.0 - d)
 
-			# Add noise for irregular coastline
-			var noise_val := _hash_coord(col, row) % 100 / 100.0 * 0.25
-			dist += noise_val
-
-			# Extend the continent in certain directions for the lore layout
-			# West extension for Torgalun Desert
-			if col < 16 and row > 8 and row < 26:
-				dist *= 0.75
-			# East extension for Wasteland
-			if col > 32 and row > 6 and row < 26:
-				dist *= 0.7
-			# South extension for Southern Reach
-			if row > 22 and col > 14 and col < 30:
-				dist *= 0.75
-			# North extension for Frozen Lands
-			if row < 12 and col > 16 and col < 34:
-				dist *= 0.8
+			# Multi-octave noise for irregular, natural-looking coastline
+			var noise1 := _hash_coord(col, row) % 100 / 100.0 * 0.15
+			var noise2 := _hash_coord(col * 3 + 7, row * 3 + 13) % 100 / 100.0 * 0.08
+			var noise3 := _hash_coord(col * 7 + 31, row * 5 + 17) % 100 / 100.0 * 0.05
+			land_val -= (noise1 + noise2 + noise3)
 
 			# Land threshold
-			if dist < 1.0:
+			if land_val > 0.12:
 				var tile := map.get_tile(Vector2i(col, row))
 				if tile:
-					tile.terrain = Enums.TerrainType.PLAINS # Placeholder, overwritten by zone terrain
+					tile.terrain = Enums.TerrainType.PLAINS
 
-			# Coast tiles: just outside the landmass
-			if dist >= 1.0 and dist < 1.15:
+			# Wetlands: coastal fringe
+			elif land_val > 0.04:
 				var tile := map.get_tile(Vector2i(col, row))
 				if tile:
-					tile.terrain = Enums.TerrainType.COAST
+					tile.terrain = Enums.TerrainType.WETLANDS
 
 static func _assign_regions(map: HexMapData, regions: Dictionary) -> void:
-	# Assign each land tile to nearest region seed (Voronoi)
 	for coord in map.tiles:
 		var tile: HexMapData.TileState = map.tiles[coord]
 		if tile.terrain == Enums.TerrainType.WATER:
-			continue # Water tiles don't belong to regions
+			continue
 
 		var min_dist := 9999
 		var closest_region: StringName = &""
@@ -147,7 +192,7 @@ static func _assign_regions(map: HexMapData, regions: Dictionary) -> void:
 static func _assign_terrain(map: HexMapData) -> void:
 	for coord in map.tiles:
 		var tile: HexMapData.TileState = map.tiles[coord]
-		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.COAST:
+		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.WETLANDS:
 			continue
 		if tile.region_id == &"":
 			continue
@@ -156,112 +201,171 @@ static func _assign_terrain(map: HexMapData) -> void:
 		tile.terrain = _terrain_for_region(tile.region_id, hash_val)
 
 static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.TerrainType:
-	var h10 := hash_val % 10 # 0-9 for fine-grained distribution
+	var h10 := hash_val % 10
 
-	# ── Eternal Plains (center) — fertile heartland with rivers and groves ──
-	if region_id in ZONE_ETERNAL_PLAINS:
-		if region_id == &"sainkhu_groves":
-			# Dense ancient forest with clearings and streams
-			if h10 <= 1: return Enums.TerrainType.PLAINS # clearings
-			if h10 == 2: return Enums.TerrainType.SWAMP # river banks
-			return Enums.TerrainType.FOREST
-		if region_id == &"verdant_glade":
-			# Mixed forest-plains with gentle hills
-			if h10 <= 3: return Enums.TerrainType.FOREST
-			if h10 == 4: return Enums.TerrainType.MOUNTAINS # foothills
-			return Enums.TerrainType.PLAINS
-		if region_id == &"metropoleia":
-			# Imperial heartland — mostly open, scattered groves
+	# ── Western Civilized Basin — Empire ──
+	if region_id in ZONE_WEST_EMPIRE:
+		if region_id == &"eternal_plains":
+			# Imperial heartland — open fields, scattered groves, rivers
 			if h10 <= 1: return Enums.TerrainType.FOREST
-			if h10 == 2: return Enums.TerrainType.COAST # river delta
+			if h10 == 2: return Enums.TerrainType.WETLANDS
 			return Enums.TerrainType.PLAINS
-		# Sunburst Valley — warm plains with desert edge transition
-		if h10 <= 1: return Enums.TerrainType.FOREST
-		if h10 == 2: return Enums.TerrainType.DESERT # dry eastern edge
+		if region_id == &"sunburst_valley":
+			# Warm valley with forest edges
+			if h10 <= 1: return Enums.TerrainType.FOREST
+			if h10 == 2: return Enums.TerrainType.DESERT
+			return Enums.TerrainType.PLAINS
+		# Aurentis — western province, rolling hills
+		if h10 <= 2: return Enums.TerrainType.FOREST
+		if h10 == 3: return Enums.TerrainType.MOUNTAINS
 		return Enums.TerrainType.PLAINS
 
-	# ── Frozen Lands (north) — harsh mountains, frozen forests, tundra ──
-	if region_id in ZONE_FROZEN_LANDS:
-		if region_id == &"thundercrest_peaks":
-			# Towering mountain range with ice fields
-			if h10 <= 1: return Enums.TerrainType.TUNDRA # frozen valleys
-			if h10 == 2: return Enums.TerrainType.SHARD_WASTES # exposed crystal veins
-			return Enums.TerrainType.MOUNTAINS
-		if region_id == &"moonspear_citadel":
-			# Tundra plateau with scattered peaks and frozen forest
+	# ── Western Civilized Basin — Gladehost ──
+	if region_id in ZONE_WEST_GLADEHOST:
+		if region_id == &"sainkhu_groves":
+			# Dense ancient forest
+			if h10 <= 1: return Enums.TerrainType.PLAINS
+			if h10 == 2: return Enums.TerrainType.SWAMP
+			return Enums.TerrainType.FOREST
+		if region_id == &"verdant_glade":
+			# Mixed forest-plains
+			if h10 <= 3: return Enums.TerrainType.FOREST
+			if h10 == 4: return Enums.TerrainType.MOUNTAINS
+			return Enums.TerrainType.PLAINS
+		# Orisyl — misty coastal forest
+		if h10 <= 1: return Enums.TerrainType.SWAMP
+		if h10 == 2: return Enums.TerrainType.WETLANDS
+		return Enums.TerrainType.FOREST
+
+	# ── Northern Divine — Moonspear ──
+	if region_id in ZONE_NORTH_MOONSPEAR:
+		if region_id == &"iskar":
+			# Sacred citadel plateau
 			if h10 <= 1: return Enums.TerrainType.MOUNTAINS
-			if h10 == 2: return Enums.TerrainType.FOREST # frozen pine groves
-			if h10 == 3: return Enums.TerrainType.PLAINS # sheltered valleys
+			if h10 == 2: return Enums.TerrainType.FOREST
+			if h10 == 3: return Enums.TerrainType.PLAINS
 			return Enums.TerrainType.TUNDRA
-		# Nightfall Sanctum — dark forests and mountain passes
-		if h10 <= 2: return Enums.TerrainType.MOUNTAINS
-		if h10 <= 4: return Enums.TerrainType.FOREST # dark pine forest
-		if h10 == 5: return Enums.TerrainType.SWAMP # frozen bogs
+		if region_id == &"nightfall_sanctum":
+			# Dark forests and mountain passes
+			if h10 <= 2: return Enums.TerrainType.MOUNTAINS
+			if h10 <= 4: return Enums.TerrainType.FOREST
+			if h10 == 5: return Enums.TerrainType.SWAMP
+			return Enums.TerrainType.TUNDRA
+		# Asdrol — frozen tundra with peaks
+		if h10 <= 1: return Enums.TerrainType.MOUNTAINS
+		if h10 == 2: return Enums.TerrainType.FOREST
 		return Enums.TerrainType.TUNDRA
 
-	# ── Southern Reach (south) — dense jungle, misty swamps, hidden temples ──
-	if region_id in ZONE_SOUTHERN_REACH:
-		if region_id == &"misthaven_refuge":
-			# Vast wetlands with deep pools and mangroves
-			if h10 <= 1: return Enums.TerrainType.JUNGLE # mangrove edges
-			if h10 == 2: return Enums.TerrainType.FOREST # raised land
-			if h10 == 3: return Enums.TerrainType.COAST # coastal marshes
-			return Enums.TerrainType.SWAMP
-		if region_id == &"xotchis_sanctuary":
-			# Heart of the jungle — towering canopy with ancient ruins
-			if h10 <= 1: return Enums.TerrainType.SWAMP # jungle pools
-			if h10 == 2: return Enums.TerrainType.MOUNTAINS # temple ruins on hillsides
-			if h10 == 3: return Enums.TerrainType.FOREST # transitional forest
+	# ── Northern Storm Belt — Thunderswarm ──
+	if region_id in ZONE_NORTH_THUNDERSWARM:
+		if region_id == &"dragonspire_mountains":
+			# Towering crystallized peaks
+			if h10 <= 1: return Enums.TerrainType.TUNDRA
+			if h10 == 2: return Enums.TerrainType.SHARD_WASTES
+			return Enums.TerrainType.MOUNTAINS
+		if region_id == &"thundercrest_peaks":
+			# Storm-battered ridges
+			if h10 <= 1: return Enums.TerrainType.TUNDRA
+			if h10 == 2: return Enums.TerrainType.DESERT
+			return Enums.TerrainType.MOUNTAINS
+		# Skalvar — mountain-steppe transition
+		if h10 <= 1: return Enums.TerrainType.PLAINS
+		if h10 <= 3: return Enums.TerrainType.TUNDRA
+		return Enums.TerrainType.MOUNTAINS
+
+	# ── Southern Emerald Reach — Tainted Jade ──
+	if region_id in ZONE_SOUTH_JADE:
+		if region_id == &"coatlantli":
+			# Deep jungle with volcanic ridges
+			if h10 <= 1: return Enums.TerrainType.SWAMP
+			if h10 == 2: return Enums.TerrainType.MOUNTAINS
+			if h10 == 3: return Enums.TerrainType.FOREST
 			return Enums.TerrainType.JUNGLE
-		# Coatlanli Jungle — deep jungle with volcanic mountains
+		if region_id == &"southern_reach":
+			# Vast wetlands and mangroves
+			if h10 <= 1: return Enums.TerrainType.JUNGLE
+			if h10 == 2: return Enums.TerrainType.FOREST
+			if h10 == 3: return Enums.TerrainType.WETLANDS
+			return Enums.TerrainType.SWAMP
+		# Xotchi — ancient jungle sanctuary
 		if h10 <= 1: return Enums.TerrainType.SWAMP
-		if h10 == 2: return Enums.TerrainType.MOUNTAINS # volcanic ridge
+		if h10 == 2: return Enums.TerrainType.MOUNTAINS
 		if h10 == 3: return Enums.TerrainType.FOREST
 		return Enums.TerrainType.JUNGLE
 
-	# ── Torgalun Desert (west) — vast dunes, oases, mountain passes ──
-	if region_id in ZONE_TORGALUN_DESERT:
+	# ── Central Steppe — Skulloath ──
+	if region_id in ZONE_CENTER_SKULLOATH:
+		if region_id == &"bataarbad":
+			# Steppe heartland — nomad camps
+			if h10 <= 1: return Enums.TerrainType.PLAINS
+			if h10 == 2: return Enums.TerrainType.TUNDRA
+			if h10 == 3: return Enums.TerrainType.MOUNTAINS
+			return Enums.TerrainType.DESERT
+		if region_id == &"altaban":
+			# Broken shard-scarred wasteland
+			if h10 <= 1: return Enums.TerrainType.MOUNTAINS
+			if h10 <= 3: return Enums.TerrainType.DESERT
+			if h10 == 4: return Enums.TerrainType.PLAINS
+			return Enums.TerrainType.SHARD_WASTES
+		# Tsagan — deep corruption
+		if h10 <= 1: return Enums.TerrainType.MOUNTAINS
+		if h10 == 2: return Enums.TerrainType.DESERT
+		if h10 == 3: return Enums.TerrainType.SWAMP
+		return Enums.TerrainType.SHARD_WASTES
+
+	# ── Ash March — Cinderguard ──
+	if region_id in ZONE_CENTER_CINDERGUARD:
 		if region_id == &"duststorm_valley":
 			# Desert basin ringed by mountains
-			if h10 <= 1: return Enums.TerrainType.MOUNTAINS # basin walls
-			if h10 == 2: return Enums.TerrainType.PLAINS # oasis
-			if h10 == 3: return Enums.TerrainType.SHARD_WASTES # wind-exposed crystals
+			if h10 <= 1: return Enums.TerrainType.MOUNTAINS
+			if h10 == 2: return Enums.TerrainType.PLAINS
+			if h10 == 3: return Enums.TerrainType.SHARD_WASTES
 			return Enums.TerrainType.DESERT
-		if region_id == &"great_pyramid":
-			# Ancient monument in endless sand
-			if h10 == 0: return Enums.TerrainType.PLAINS # irrigated fields
-			if h10 == 1: return Enums.TerrainType.MOUNTAINS # buried ruins
+		if region_id == &"ashenmark":
+			# Volcanic ash plains
+			if h10 <= 1: return Enums.TerrainType.MOUNTAINS
+			if h10 == 2: return Enums.TerrainType.SHARD_WASTES
 			return Enums.TerrainType.DESERT
-		if region_id == &"bataarbad_expanse":
-			# Steppe transition: desert meeting plains
-			if h10 <= 1: return Enums.TerrainType.PLAINS # nomad camps
-			if h10 == 2: return Enums.TerrainType.TUNDRA # cold desert nights
-			if h10 == 3: return Enums.TerrainType.MOUNTAINS # buttes
-			return Enums.TerrainType.DESERT
-		# Whispering Dunes — deep sand sea
-		if h10 == 0: return Enums.TerrainType.COAST # coastal dunes
-		if h10 == 1: return Enums.TerrainType.PLAINS # dried riverbed
-		return Enums.TerrainType.DESERT
+		# Valkarn — mountain fortress region
+		if h10 <= 1: return Enums.TerrainType.DESERT
+		if h10 == 2: return Enums.TerrainType.TUNDRA
+		return Enums.TerrainType.MOUNTAINS
 
-	# ── Wasteland (east) — shard-scarred landscape, crystalline wastes ──
-	if region_id in ZONE_WASTELAND:
-		if region_id == &"dragonspire_mountains":
-			# Crystallized mountain range with shard veins
-			if h10 <= 1: return Enums.TerrainType.SHARD_WASTES # exposed crystal
-			if h10 == 2: return Enums.TerrainType.TUNDRA # high altitude
-			if h10 == 3: return Enums.TerrainType.DESERT # rain shadow
-			return Enums.TerrainType.MOUNTAINS
-		if region_id == &"altaban_barrens":
-			# Broken landscape: shattered plains, scattered peaks, sand
-			if h10 <= 1: return Enums.TerrainType.MOUNTAINS # jagged remnants
-			if h10 <= 3: return Enums.TerrainType.DESERT # dry flats
-			if h10 == 4: return Enums.TerrainType.PLAINS # rare fertile patch
+	# ── Eastern Ruin — Forsaken ──
+	if region_id in ZONE_EAST_FORSAKEN:
+		if region_id == &"orenthal":
+			# Shard frontier capital
+			if h10 <= 1: return Enums.TerrainType.DESERT
+			if h10 <= 3: return Enums.TerrainType.SWAMP
 			return Enums.TerrainType.SHARD_WASTES
-		# Tsagan Badlands — deep wasteland, most corrupted
-		if h10 <= 1: return Enums.TerrainType.MOUNTAINS # crystallized pillars
-		if h10 == 2: return Enums.TerrainType.DESERT # ash flats
-		if h10 == 3: return Enums.TerrainType.SWAMP # toxic pools
-		return Enums.TerrainType.SHARD_WASTES
+		if region_id == &"morvane":
+			# Blighted marshlands
+			if h10 <= 1: return Enums.TerrainType.SHARD_WASTES
+			if h10 == 2: return Enums.TerrainType.FOREST
+			return Enums.TerrainType.SWAMP
+		# Weeping Barrows — toxic swamps
+		if h10 <= 1: return Enums.TerrainType.SHARD_WASTES
+		if h10 == 2: return Enums.TerrainType.MOUNTAINS
+		return Enums.TerrainType.SWAMP
+
+	# ── Shard Frontier — Ivoryscar ──
+	if region_id in ZONE_EAST_IVORYSCAR:
+		if region_id == &"qareth":
+			# Desert citadel with ruins
+			if h10 == 0: return Enums.TerrainType.PLAINS
+			if h10 == 1: return Enums.TerrainType.MOUNTAINS
+			if h10 == 2: return Enums.TerrainType.SHARD_WASTES
+			return Enums.TerrainType.DESERT
+		if region_id == &"torgalun_desert":
+			# Endless sand sea
+			if h10 == 0: return Enums.TerrainType.WETLANDS
+			if h10 == 1: return Enums.TerrainType.PLAINS
+			if h10 == 2: return Enums.TerrainType.MOUNTAINS
+			return Enums.TerrainType.DESERT
+		# Whispering Dunes — deep sand with buried ruins
+		if h10 == 0: return Enums.TerrainType.SHARD_WASTES
+		if h10 == 1: return Enums.TerrainType.MOUNTAINS
+		return Enums.TerrainType.DESERT
 
 	return Enums.TerrainType.PLAINS
 
@@ -279,24 +383,19 @@ static func _hash_coord(col: int, row: int) -> int:
 	return absi(h)
 
 static func _fix_terrain_pockets(map: HexMapData) -> void:
-	# Find all passable land tiles (cost < INF) and flood-fill from the largest
-	# connected component. Any disconnected tiles get their terrain changed to
-	# something passable (Plains) so armies can't get trapped.
-	var passable: Dictionary = {} # coord -> true
+	var passable: Dictionary = {}
 	for coord in map.tiles:
 		var tile: HexMapData.TileState = map.tiles[coord]
 		if tile.terrain == Enums.TerrainType.WATER:
 			continue
-		# Check if this tile is passable (mountains are passable but expensive)
 		passable[coord] = true
 
 	if passable.is_empty():
 		return
 
-	# BFS from the center of the map to find the main connected component
-	var start := Vector2i(24, 15)
+	# BFS from center
+	var start := Vector2i(32, 22)
 	if not passable.has(start):
-		# Find any passable tile as start
 		for coord in passable:
 			start = coord
 			break
@@ -316,12 +415,10 @@ static func _fix_terrain_pockets(map: HexMapData) -> void:
 			visited[n] = true
 			queue.append(n)
 
-	# Any passable tile NOT in visited is in an isolated pocket
-	# Check if it's surrounded by impassable terrain and fix it
+	# Fix isolated pockets
 	for coord in passable:
 		if visited.has(coord):
 			continue
-		# This tile is isolated - check neighbors
 		var neighbors := HexHelper.get_neighbors(coord)
 		for n in neighbors:
 			if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
@@ -329,12 +426,10 @@ static func _fix_terrain_pockets(map: HexMapData) -> void:
 			var ntile := map.get_tile(n)
 			if ntile == null:
 				continue
-			# If neighbor is impassable mountain, make it passable
 			if ntile.terrain == Enums.TerrainType.MOUNTAINS:
-				# Convert to a passable terrain matching the region's zone
 				ntile.terrain = Enums.TerrainType.PLAINS
 
-	# Re-run BFS to verify - convert remaining isolated tiles to plains
+	# Re-verify
 	visited.clear()
 	queue = [start]
 	visited[start] = true
@@ -352,13 +447,11 @@ static func _fix_terrain_pockets(map: HexMapData) -> void:
 			visited[n] = true
 			queue.append(n)
 
-	# Force-connect any still-isolated land tiles
 	for coord in passable:
 		if not visited.has(coord):
 			var tile: HexMapData.TileState = map.tiles[coord]
-			# Convert to water if truly unreachable (small isolated islands)
 			tile.terrain = Enums.TerrainType.WATER
 			tile.region_id = &""
 
 static func get_region_center(region_id: StringName) -> Vector2i:
-	return REGION_SEEDS.get(region_id, Vector2i(24, 15))
+	return REGION_SEEDS.get(region_id, Vector2i(32, 22))

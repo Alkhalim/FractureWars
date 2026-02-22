@@ -81,6 +81,30 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		if senate_wood_pct != 0 and income.has(Enums.ResourceType.WOOD):
 			income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * senate_wood_pct / 100.0)
 
+	# Region completion bonus: +2 to all resources for each city in completed regions
+	var completed_regions := GameManager.get_completed_regions(faction_id)
+	if city.region_id in completed_regions:
+		for res_type in [Enums.ResourceType.GOLD, Enums.ResourceType.IRON, Enums.ResourceType.FOOD, Enums.ResourceType.WOOD, Enums.ResourceType.TECHNOLOGY]:
+			income[res_type] = income.get(res_type, 0) + 2
+
+	# Culture completion bonuses
+	if GameManager.has_culture_bonus(faction_id, "food_bonus"):
+		var val := GameManager.get_culture_bonus_value(faction_id, "food_bonus")
+		if income.has(Enums.ResourceType.FOOD):
+			income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * val)
+	if GameManager.has_culture_bonus(faction_id, "tech_bonus"):
+		var val := GameManager.get_culture_bonus_value(faction_id, "tech_bonus")
+		if income.has(Enums.ResourceType.TECHNOLOGY):
+			income[Enums.ResourceType.TECHNOLOGY] += int(income[Enums.ResourceType.TECHNOLOGY] * val)
+	if GameManager.has_culture_bonus(faction_id, "iron_bonus"):
+		var val := GameManager.get_culture_bonus_value(faction_id, "iron_bonus")
+		if income.has(Enums.ResourceType.IRON):
+			income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * val)
+	if GameManager.has_culture_bonus(faction_id, "shard_bonus"):
+		var val := GameManager.get_culture_bonus_value(faction_id, "shard_bonus")
+		if income.has(Enums.ResourceType.SHARD_ESSENCE):
+			income[Enums.ResourceType.SHARD_ESSENCE] += int(income[Enums.ResourceType.SHARD_ESSENCE] * val)
+
 	# Debt penalty: buildings produce 66% income when faction gold is negative
 	if fs.resources.get(Enums.ResourceType.GOLD, 0) < 0:
 		for res_type in income:
@@ -533,6 +557,56 @@ func _trigger_revolt(city: CityState, faction_id: StringName) -> void:
 
 	EventBus.revolt_triggered.emit(city.city_id, faction_id)
 
+# ── City Territory (Voronoi within region) ───────────────────
+
+func get_city_territory_owner(hex_pos: Vector2i, region_id: StringName) -> StringName:
+	var closest_city_id: StringName = &""
+	var closest_dist := 999
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.region_id != region_id:
+			continue
+		var dist := HexHelper.hex_distance(hex_pos, city.hex_pos)
+		if dist < closest_dist:
+			closest_dist = dist
+			closest_city_id = city.city_id
+	return closest_city_id
+
+# ── Independent City Joining Logic ───────────────────────────
+
+func check_independent_city_loyalty() -> void:
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != &"independent":
+			continue
+		var culture: StringName = GameManager.REGION_CULTURE.get(city.region_id, &"")
+		if culture == &"":
+			continue
+		# Find factions with territory adjacent to this city
+		var candidates: Dictionary = {}  # faction_id -> tile_count
+		for neighbor in HexHelper.get_neighbors(city.hex_pos):
+			var tile := GameManager.state.hex_map.get_tile(neighbor)
+			if tile and tile.owner_faction != &"" and tile.owner_faction != &"independent":
+				candidates[tile.owner_faction] = candidates.get(tile.owner_faction, 0) + 1
+
+		for faction_id in candidates:
+			var standing := GameManager.diplomacy_system.get_standing(faction_id, culture)
+			if standing >= 40:
+				_independent_city_joins(city, faction_id)
+				break
+
+func _independent_city_joins(city: CityState, faction_id: StringName) -> void:
+	city.faction_id = faction_id
+	city.turns_since_capture = 0
+	city.loyalty = 30
+	city.class_loyalty = {
+		"peasants": 30, "artisans": 30, "scholars": 30, "nobles": 30, "captives": 0
+	}
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs:
+		fs.owned_cities.append(city.city_id)
+	EventBus.city_joined.emit(city.city_id, faction_id)
+
 # ── Terrain helpers ───────────────────────────────────────────
 
 func _has_adjacent_terrain(city: CityState, terrain: int) -> bool:
@@ -806,6 +880,10 @@ func start_siege(city_id: StringName, attacking_faction: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null or city.faction_id == attacking_faction:
 		return
+	# Don't siege allied or friendly cities
+	var relation := GameManager.get_relation(attacking_faction, city.faction_id)
+	if relation == Enums.FactionRelation.ALLIED or relation == Enums.FactionRelation.FRIENDLY:
+		return
 	city.is_under_siege = true
 	city.siege_faction = attacking_faction
 	city.siege_turns = 0
@@ -836,7 +914,7 @@ const TILE_INCOME := {
 	Enums.TerrainType.DESERT:    {0: 3, 3: 0, 5: 0},
 	Enums.TerrainType.JUNGLE:    {0: 1, 3: 2, 5: 2},
 	Enums.TerrainType.SWAMP:     {0: 1, 3: 2, 5: 1},
-	Enums.TerrainType.COAST:     {0: 2, 3: 2, 5: 0},
+	Enums.TerrainType.WETLANDS:     {0: 2, 3: 2, 5: 0},
 	Enums.TerrainType.TUNDRA:    {0: 1, 3: 1, 1: 1},
 }
 
@@ -920,7 +998,7 @@ func _get_primary_resource(terrain: Enums.TerrainType) -> int:
 		Enums.TerrainType.DESERT: return 0  # Gold
 		Enums.TerrainType.JUNGLE: return 5  # Wood
 		Enums.TerrainType.SWAMP: return 3  # Food
-		Enums.TerrainType.COAST: return 0  # Gold
+		Enums.TerrainType.WETLANDS: return 0  # Gold
 		Enums.TerrainType.TUNDRA: return 1  # Iron
 	return -1
 

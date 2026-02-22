@@ -71,7 +71,7 @@ static func generate(campaign_terrain: Enums.TerrainType, seed_value: int,
 		Enums.TerrainType.SHARD_WASTES:
 			_scatter_clusters(terrain, Enums.BattleTerrain.CRYSTAL, _scaled(3, scale), 3, 6, seed_value, grid_w, grid_h)
 			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, _scaled(2, scale), 2, 4, seed_value + 100, grid_w, grid_h)
-		Enums.TerrainType.COAST:
+		Enums.TerrainType.WETLANDS:
 			_place_water_edge(terrain, seed_value, grid_w, grid_h)
 			_scatter_clusters(terrain, Enums.BattleTerrain.SAND, _scaled(3, scale), 4, 7, seed_value + 100, grid_w, grid_h)
 		Enums.TerrainType.WATER:

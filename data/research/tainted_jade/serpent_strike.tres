@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"serpent_strike"
+display_name = "Serpent Strike"
+description = "Strike like the viper—swift, silent, and lethal."
+tech_cost = 70
+research_time = 10
+prerequisites = Array[StringName]([&"venomcraft"])
+effects = { "ambush_damage_pct": 15 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"tainted_jade"
+tree_angle = 15
+tree_branch = &"serpent_lore"

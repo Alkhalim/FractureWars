@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"death_march"
+display_name = "Death March"
+description = "The dead do not tire."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"shadow_blades"])
+effects = { "movement_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"forsaken"
+tree_angle = 270
+tree_branch = &"shadow_war"

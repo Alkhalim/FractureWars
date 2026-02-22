@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"blightcoven"
+display_name = "Blightcoven"
+description = "Plague sorcerers of the Weeping Barrows who spread corruption through dark rituals. Their blighted swamps consume all who enter."
+color = Color(0.35, 0.35, 0.2, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"weeping_barrows"])
+realm_affinity = 1
+shard_preferences = {}
+ai_personality = {"aggression": 0.4, "expansion": 0.3}

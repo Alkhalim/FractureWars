@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"grove_sanctuary"
+display_name = "Grove Sanctuary"
+description = "All who rest in the grove are restored."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"elder_wisdom", &"deep_roots"])
+effects = { "city_heal_bonus": 100 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"gladehost"
+tree_angle = 270
+tree_branch = &"herbalism"

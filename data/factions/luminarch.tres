@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"luminarch"
+display_name = "Luminarch"
+description = "Radiant templars of Asdrol who channel divine light into their weapons. Their zealous faith illuminates the frozen north."
+color = Color(0.8, 0.78, 0.6, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"asdrol"])
+realm_affinity = 0
+shard_preferences = {}
+ai_personality = {"aggression": 0.35, "expansion": 0.35}

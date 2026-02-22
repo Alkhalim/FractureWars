@@ -1509,7 +1509,7 @@ func _apply_debt_flags() -> void:
 	# Check if each side's faction is in gold debt and flag their formations
 	for faction_id in [attacker_faction_id, defender_faction_id]:
 		var fs: FactionState = GameManager.state.faction_states.get(faction_id)
-		var in_debt := fs != null and fs.resources.get(Enums.ResourceType.GOLD, 0) < 0
+		var in_debt: bool = fs != null and fs.resources.get(Enums.ResourceType.GOLD, 0) < 0
 		if not in_debt:
 			continue
 		var formations: Array = simulator.attacker_formations if faction_id == attacker_faction_id else simulator.defender_formations

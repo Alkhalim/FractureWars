@@ -506,6 +506,11 @@ func get_treaties_for_faction(faction_id: StringName) -> Array[TreatyInstance]:
 			result.append(treaty)
 	return result
 
+func break_alliance_on_attack(attacker: StringName, defender: StringName) -> void:
+	var relation := GameManager.get_relation(attacker, defender)
+	if relation == Enums.FactionRelation.ALLIED:
+		declare_war(attacker, defender)
+
 func get_treaties_between(faction_a: StringName, faction_b: StringName) -> Array[TreatyInstance]:
 	var result: Array[TreatyInstance] = []
 	for treaty_id in GameManager.state.diplomacy_state.treaties:

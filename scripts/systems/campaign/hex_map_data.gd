@@ -1,8 +1,8 @@
 class_name HexMapData
 extends RefCounted
 
-const MAP_WIDTH := 50
-const MAP_HEIGHT := 35
+const MAP_WIDTH := 65
+const MAP_HEIGHT := 45
 
 var tiles: Dictionary = {} # Vector2i -> TileState
 
@@ -20,7 +20,7 @@ const TERRAIN_COSTS := {
 	Enums.TerrainType.MOUNTAINS: 4.2,
 	Enums.TerrainType.DESERT: 1.5,
 	Enums.TerrainType.SWAMP: 3.0,
-	Enums.TerrainType.COAST: 1.0,
+	Enums.TerrainType.WETLANDS: 1.0,
 	Enums.TerrainType.TUNDRA: 2.0,
 	Enums.TerrainType.SHARD_WASTES: 3.0,
 	Enums.TerrainType.WATER: INF,
@@ -53,7 +53,7 @@ func get_movement_cost(coord: Vector2i, faction_id: StringName) -> float:
 			elif tile.terrain == Enums.TerrainType.FOREST:
 				base_cost -= 0.4
 		elif fd.realm_affinity == Enums.Realm.MORTAL:
-			# Mortal factions: -0.3 on Plains and Coast (civilized lands)
+			# Mortal factions: -0.3 on Plains and Wetlands (civilized lands)
 			if tile.terrain == Enums.TerrainType.PLAINS:
 				base_cost -= 0.2
 		elif fd.realm_affinity == Enums.Realm.ELEMENTAL:

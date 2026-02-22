@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"eternal_watch"
+display_name = "Eternal Watch"
+description = "The Cinderguard never sleep, never rest, never yield."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"firebreak_walls"])
+effects = { "garrison_strength_pct": 30, "city_defense_pct": 10 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"cinderguard"
+tree_angle = 240
+tree_branch = &"garrison_duty"

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"obsidian_order"
+display_name = "Obsidian Order"
+description = "A secretive branch of the Moonspear stationed at Nightfall Sanctum. They specialize in shadow warfare and divine warding."
+color = Color(0.4, 0.38, 0.55, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"nightfall_sanctum"])
+realm_affinity = 0
+shard_preferences = {}
+ai_personality = {"aggression": 0.4, "expansion": 0.3}

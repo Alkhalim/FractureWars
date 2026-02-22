@@ -137,6 +137,384 @@ func make_notification_style() -> StyleBox:
 	s.content_margin_bottom = _NOTIF_CONTENT.w
 	return s
 
+# Minor faction → parent faction mapping
+const MINOR_FACTION_PARENTS := {
+	&"crimson_legion": &"empire", &"aurentis_guard": &"empire",
+	&"thornwardens": &"gladehost", &"miststriders": &"gladehost",
+	&"obsidian_order": &"moonspear", &"luminarch": &"moonspear",
+	&"stormbound": &"thunderswarm", &"skalvar_watch": &"thunderswarm",
+	&"twilight_veil": &"tainted_jade", &"jade_conclave": &"tainted_jade",
+	&"gorgonic_cult": &"ivoryscar", &"servants_of_reliquary": &"ivoryscar",
+	&"salt_reavers": &"skulloath", &"ashbound": &"skulloath",
+	&"crownfire": &"cinderguard", &"valkarn_garrison": &"cinderguard",
+	&"bloodthrone": &"forsaken", &"blightcoven": &"forsaken",
+	&"icebound": &"shardhorde", &"splinterbrood": &"shardhorde",
+	&"oaseans": &"sunblessed", &"venerated": &"sunblessed",
+}
+
+# Nomadic factions don't get cities — they roam or use elderbeasts
+const NOMADIC_FACTIONS := [&"shardhorde", &"icebound", &"splinterbrood", &"sunblessed", &"oaseans", &"venerated"]
+
+# ── Region → 3 cities each (81 cities total) ──────────────────
+const REGION_CITIES := {
+	# ── Empire Culture ──
+	&"eternal_plains": [
+		{name = "Aurelion", offset = Vector2i(-2, -2)},
+		{name = "Marcellum", offset = Vector2i(2, 0)},
+		{name = "Goldsward", offset = Vector2i(-1, 3)},
+	],
+	&"sunburst_valley": [
+		{name = "Dawnhold", offset = Vector2i(-2, -1)},
+		{name = "Solarius", offset = Vector2i(2, 1)},
+		{name = "Cinderfall Keep", offset = Vector2i(0, 3)},
+	],
+	&"aurentis": [
+		{name = "Aurentis Prime", offset = Vector2i(0, -2)},
+		{name = "Goldwatch", offset = Vector2i(2, 1)},
+		{name = "Whitegate", offset = Vector2i(-2, 2)},
+	],
+	# ── Gladehost Culture ──
+	&"sainkhu_groves": [
+		{name = "Heartwood", offset = Vector2i(-2, -1)},
+		{name = "Willowmere", offset = Vector2i(2, 0)},
+		{name = "Roothollow", offset = Vector2i(0, 3)},
+	],
+	&"verdant_glade": [
+		{name = "Fernhall", offset = Vector2i(-1, -2)},
+		{name = "Mosskeep", offset = Vector2i(2, 1)},
+		{name = "Briargate", offset = Vector2i(-2, 2)},
+	],
+	&"orisyl": [
+		{name = "Orisyl Canopy", offset = Vector2i(0, -2)},
+		{name = "Dewspring", offset = Vector2i(2, 1)},
+		{name = "Thornveil", offset = Vector2i(-2, 2)},
+	],
+	# ── Moonspear Culture ──
+	&"iskar": [
+		{name = "Iskar Citadel", offset = Vector2i(0, -2)},
+		{name = "Moonwell", offset = Vector2i(2, 1)},
+		{name = "Silver Archive", offset = Vector2i(-2, 2)},
+	],
+	&"nightfall_sanctum": [
+		{name = "Obsidian Gate", offset = Vector2i(-2, -1)},
+		{name = "Twilight Spire", offset = Vector2i(2, 0)},
+		{name = "Sanctum Depths", offset = Vector2i(0, 3)},
+	],
+	&"asdrol": [
+		{name = "Asdrol Haven", offset = Vector2i(0, -2)},
+		{name = "Luminar Watch", offset = Vector2i(2, 1)},
+		{name = "Pilgrim's Rest", offset = Vector2i(-2, 2)},
+	],
+	# ── Thunderswarm Culture ──
+	&"dragonspire_mountains": [
+		{name = "Stormforge", offset = Vector2i(-2, -1)},
+		{name = "Thunder Keep", offset = Vector2i(2, 0)},
+		{name = "Wyrmhold", offset = Vector2i(0, 3)},
+	],
+	&"thundercrest_peaks": [
+		{name = "Thundercrest", offset = Vector2i(0, -2)},
+		{name = "Galewatch", offset = Vector2i(2, 1)},
+		{name = "Stonehorn", offset = Vector2i(-2, 2)},
+	],
+	&"skalvar": [
+		{name = "Skalvar Hall", offset = Vector2i(-1, -2)},
+		{name = "Ironpeak", offset = Vector2i(2, 1)},
+		{name = "Windbreak", offset = Vector2i(-2, 2)},
+	],
+	# ── Tainted Jade Culture ──
+	&"coatlantli": [
+		{name = "Coatlantli", offset = Vector2i(0, -2)},
+		{name = "Jade Fang Temple", offset = Vector2i(2, 1)},
+		{name = "Serpent Pool", offset = Vector2i(-2, 3)},
+	],
+	&"southern_reach": [
+		{name = "Xalapa", offset = Vector2i(-2, -1)},
+		{name = "Emerald Port", offset = Vector2i(2, 0)},
+		{name = "Thornmarsh", offset = Vector2i(0, 3)},
+	],
+	&"xotchi": [
+		{name = "Xotchi Sanctuary", offset = Vector2i(0, -2)},
+		{name = "Bloomheart", offset = Vector2i(2, 1)},
+		{name = "Fungal Hollow", offset = Vector2i(-2, 2)},
+	],
+	# ── Skulloath Culture ──
+	&"bataarbad": [
+		{name = "Bataarbad", offset = Vector2i(-2, -1)},
+		{name = "Bonecairn", offset = Vector2i(2, 0)},
+		{name = "Dreadcamp", offset = Vector2i(0, 3)},
+	],
+	&"altaban": [
+		{name = "Altaban Outpost", offset = Vector2i(0, -2)},
+		{name = "Salt Hollow", offset = Vector2i(2, 1)},
+		{name = "Reaver's Den", offset = Vector2i(-2, 2)},
+	],
+	&"tsagan": [
+		{name = "Tsagan Camp", offset = Vector2i(-1, -2)},
+		{name = "Ashbone", offset = Vector2i(2, 1)},
+		{name = "Wailing Flats", offset = Vector2i(-2, 2)},
+	],
+	# ── Cinderguard Culture ──
+	&"duststorm_valley": [
+		{name = "Emberhold", offset = Vector2i(-2, -1)},
+		{name = "Cinderwatch", offset = Vector2i(2, 0)},
+		{name = "Furnace Gate", offset = Vector2i(0, 3)},
+	],
+	&"ashenmark": [
+		{name = "Ashenmark Forge", offset = Vector2i(0, -2)},
+		{name = "Crownfire Bastion", offset = Vector2i(2, 1)},
+		{name = "Slagtown", offset = Vector2i(-2, 2)},
+	],
+	&"valkarn": [
+		{name = "Valkarn Garrison", offset = Vector2i(-1, -2)},
+		{name = "Molten Gate", offset = Vector2i(2, 1)},
+		{name = "Sparkhaven", offset = Vector2i(-2, 2)},
+	],
+	# ── Forsaken Culture ──
+	&"orenthal": [
+		{name = "Orenthal Ruins", offset = Vector2i(-2, -1)},
+		{name = "Blightspire", offset = Vector2i(2, 0)},
+		{name = "Carrion Hold", offset = Vector2i(0, 3)},
+	],
+	&"morvane": [
+		{name = "Morvane Citadel", offset = Vector2i(0, -2)},
+		{name = "Bloodthrone Keep", offset = Vector2i(2, 1)},
+		{name = "Rotmere", offset = Vector2i(-2, 2)},
+	],
+	&"weeping_barrows": [
+		{name = "Barrow Gate", offset = Vector2i(-1, -2)},
+		{name = "Blighthollow", offset = Vector2i(2, 1)},
+		{name = "Gravemist", offset = Vector2i(-2, 2)},
+	],
+	# ── Ivoryscar Culture ──
+	&"qareth": [
+		{name = "Qareth Spire", offset = Vector2i(-2, -1)},
+		{name = "Gorgon's Eye", offset = Vector2i(2, 0)},
+		{name = "Petrified Gate", offset = Vector2i(0, 3)},
+	],
+	&"torgalun_desert": [
+		{name = "Torgalun", offset = Vector2i(0, -2)},
+		{name = "Sand Shrine", offset = Vector2i(2, 1)},
+		{name = "Dustwalker Camp", offset = Vector2i(-2, 2)},
+	],
+	&"whispering_dunes": [
+		{name = "Relic Court", offset = Vector2i(-1, -2)},
+		{name = "Whisper Gate", offset = Vector2i(2, 1)},
+		{name = "Ossuary", offset = Vector2i(-2, 2)},
+	],
+}
+
+# ── Region → Culture mapping ──────────────────────────────────
+const REGION_CULTURE := {
+	&"eternal_plains": &"empire", &"sunburst_valley": &"empire", &"aurentis": &"empire",
+	&"sainkhu_groves": &"gladehost", &"verdant_glade": &"gladehost", &"orisyl": &"gladehost",
+	&"iskar": &"moonspear", &"nightfall_sanctum": &"moonspear", &"asdrol": &"moonspear",
+	&"dragonspire_mountains": &"thunderswarm", &"thundercrest_peaks": &"thunderswarm", &"skalvar": &"thunderswarm",
+	&"coatlantli": &"tainted_jade", &"southern_reach": &"tainted_jade", &"xotchi": &"tainted_jade",
+	&"bataarbad": &"skulloath", &"altaban": &"skulloath", &"tsagan": &"skulloath",
+	&"duststorm_valley": &"cinderguard", &"ashenmark": &"cinderguard", &"valkarn": &"cinderguard",
+	&"orenthal": &"forsaken", &"morvane": &"forsaken", &"weeping_barrows": &"forsaken",
+	&"qareth": &"ivoryscar", &"torgalun_desert": &"ivoryscar", &"whispering_dunes": &"ivoryscar",
+}
+
+# ── Culture → Regions mapping ─────────────────────────────────
+const CULTURE_REGIONS := {
+	&"empire": [&"eternal_plains", &"sunburst_valley", &"aurentis"],
+	&"gladehost": [&"sainkhu_groves", &"verdant_glade", &"orisyl"],
+	&"moonspear": [&"iskar", &"nightfall_sanctum", &"asdrol"],
+	&"thunderswarm": [&"dragonspire_mountains", &"thundercrest_peaks", &"skalvar"],
+	&"tainted_jade": [&"coatlantli", &"southern_reach", &"xotchi"],
+	&"skulloath": [&"bataarbad", &"altaban", &"tsagan"],
+	&"cinderguard": [&"duststorm_valley", &"ashenmark", &"valkarn"],
+	&"forsaken": [&"orenthal", &"morvane", &"weeping_barrows"],
+	&"ivoryscar": [&"qareth", &"torgalun_desert", &"whispering_dunes"],
+}
+
+# ── Culture completion bonuses ────────────────────────────────
+const CULTURE_BONUSES := {
+	&"empire":       {type = "upkeep_reduction", value = 0.20, desc = "Imperial Dominion: -20% unit upkeep"},
+	&"gladehost":    {type = "food_bonus", value = 0.30, desc = "Verdant Bounty: +30% food production"},
+	&"moonspear":    {type = "tech_bonus", value = 0.25, desc = "Lunar Enlightenment: +25% technology"},
+	&"thunderswarm": {type = "movement_bonus", value = 1.0, desc = "Storm March: +1 army movement"},
+	&"tainted_jade": {type = "population_growth", value = 0.30, desc = "Jungle Vitality: +30% population growth"},
+	&"skulloath":    {type = "combat_damage", value = 0.15, desc = "Steppe Fury: +15% combat damage"},
+	&"cinderguard":  {type = "iron_bonus", value = 0.30, desc = "Forge Mastery: +30% iron production"},
+	&"forsaken":     {type = "building_cost_reduction", value = 0.25, desc = "Ruinlore: -25% building costs"},
+	&"ivoryscar":    {type = "shard_bonus", value = 0.25, desc = "Petrified Wisdom: +25% shard essence"},
+}
+
+# ── Faction leader names ──────────────────────────────────────
+const FACTION_LEADER_NAMES := {
+	&"empire": "Emperor Aurelian III",
+	&"gladehost": "Archdruid Thalwen",
+	&"moonspear": "High Priestess Selara",
+	&"thunderswarm": "Warchief Groth",
+	&"tainted_jade": "Serpent Queen Ixchala",
+	&"skulloath": "Khan Borlag the Pale",
+	&"cinderguard": "Forgemaster Valdris",
+	&"forsaken": "The Hollow King",
+	&"ivoryscar": "Oracle Medusa",
+	&"shardhorde": "The Crystalmind",
+	&"sunblessed": "Solar Archon Kael",
+}
+
+# ── Faction dialogue ──────────────────────────────────────────
+const FACTION_DIALOGUE := {
+	&"empire": {
+		"greeting_friendly": "The Empire remembers its friends. What do you seek?",
+		"greeting_hostile": "You dare approach the throne? Speak quickly.",
+		"greeting_neutral": "State your business with the Empire.",
+		"greeting_war": "Your audacity knows no bounds. Speak before we silence you.",
+		"accept_trade": "The Empire's coffers benefit from fair trade.",
+		"reject_trade": "These terms insult the Crown. Leave.",
+		"accept_alliance": "Together we shall bring order to this fractured world.",
+		"reject_alliance": "The Empire does not ally with the weak.",
+		"accept_peace": "Very well. The Empire grants you respite... for now.",
+		"reject_peace": "Your armies burn. There will be no peace.",
+		"war_declared": "So be it. The legions march.",
+		"threatened": "You would threaten the Empire? Bold... and foolish.",
+	},
+	&"gladehost": {
+		"greeting_friendly": "The forest welcomes you, kindred spirit.",
+		"greeting_hostile": "The roots remember your transgressions.",
+		"greeting_neutral": "The grove listens. Speak.",
+		"greeting_war": "You have disturbed the balance. Nature will correct this.",
+		"accept_trade": "A fair exchange nourishes both sides.",
+		"reject_trade": "The forest has no need of your trinkets.",
+		"accept_alliance": "Our roots intertwine. We grow stronger together.",
+		"reject_alliance": "The grove stands alone for now.",
+		"accept_peace": "Let the land heal. We accept your peace.",
+		"reject_peace": "The thorns will not be withdrawn.",
+		"war_declared": "You have awoken the wrath of the wild.",
+		"threatened": "Storms break upon ancient oaks. We do not bend.",
+	},
+	&"moonspear": {
+		"greeting_friendly": "The moon smiles upon your visit, friend.",
+		"greeting_hostile": "The stars foretold your coming... and your failure.",
+		"greeting_neutral": "What guidance do you seek from the moon?",
+		"greeting_war": "The divine light shall burn away your darkness.",
+		"accept_trade": "The temple accepts this exchange in good faith.",
+		"reject_trade": "The stars counsel against this arrangement.",
+		"accept_alliance": "By moonlight we are bound. Our fates intertwine.",
+		"reject_alliance": "The moon has not yet aligned for such a pact.",
+		"accept_peace": "Let there be peace under the moon's gaze.",
+		"reject_peace": "The divine mandate demands your submission.",
+		"war_declared": "The moonspear shall pierce your heart.",
+		"threatened": "We serve a higher power. Your threats are empty.",
+	},
+	&"thunderswarm": {
+		"greeting_friendly": "Ha! A worthy ally approaches! Come, drink with us!",
+		"greeting_hostile": "You smell of weakness. State your purpose.",
+		"greeting_neutral": "The storms care not for pleasantries. Speak.",
+		"greeting_war": "Your skull will join our collection.",
+		"accept_trade": "Iron and gold flow like mountain rivers. Agreed.",
+		"reject_trade": "Bah! Insulting terms. Begone.",
+		"accept_alliance": "Together we are the storm! None shall stand before us!",
+		"reject_alliance": "We fight our own battles. Ask again when you prove yourself.",
+		"accept_peace": "The storm passes. For now.",
+		"reject_peace": "THUNDER DOES NOT NEGOTIATE!",
+		"war_declared": "STOOOOORM! The warhorns sound!",
+		"threatened": "You threaten the storm? HAH! Amusing.",
+	},
+	&"tainted_jade": {
+		"greeting_friendly": "The serpent coils gently for those it favors.",
+		"greeting_hostile": "Careful where you tread. The jungle has teeth.",
+		"greeting_neutral": "The jade throne acknowledges your presence.",
+		"greeting_war": "Your blood will feed the jungle.",
+		"accept_trade": "The serpent accepts. An equitable exchange.",
+		"reject_trade": "You offer poison disguised as honey. Denied.",
+		"accept_alliance": "Our venom and your strength... a potent combination.",
+		"reject_alliance": "The jungle does not share its secrets lightly.",
+		"accept_peace": "The serpent releases its prey... this time.",
+		"reject_peace": "The jungle remembers every wound.",
+		"war_declared": "The serpent strikes without warning.",
+		"threatened": "Threaten us? The jungle laughs.",
+	},
+	&"skulloath": {
+		"greeting_friendly": "You ride with honor. The horde respects this.",
+		"greeting_hostile": "Your bones will decorate our standards.",
+		"greeting_neutral": "Speak, outsider. The Khan listens.",
+		"greeting_war": "The steppe will swallow your armies whole.",
+		"accept_trade": "The caravan routes open. A fair exchange.",
+		"reject_trade": "The Khan spits on your offer.",
+		"accept_alliance": "Blood brothers! Together, the world trembles!",
+		"reject_alliance": "The horde rides alone.",
+		"accept_peace": "The raids cease. Your tribute is noted.",
+		"reject_peace": "Peace is for the dead!",
+		"war_declared": "The skull banner rises! War!",
+		"threatened": "Threaten the horde? Your courage exceeds your wisdom.",
+	},
+	&"cinderguard": {
+		"greeting_friendly": "The forges burn bright for allies. Welcome.",
+		"greeting_hostile": "You stand in the shadow of the furnace. Choose wisely.",
+		"greeting_neutral": "The Forgemaster has a moment. Make it count.",
+		"greeting_war": "The furnace consumes all. You will be no different.",
+		"accept_trade": "Iron meets iron. A solid deal.",
+		"reject_trade": "Slag. Worthless. Leave my forge.",
+		"accept_alliance": "Forged together, we are unbreakable.",
+		"reject_alliance": "The forge needs no additional fuel.",
+		"accept_peace": "The coals cool. Peace is granted.",
+		"reject_peace": "The furnace does not forgive.",
+		"war_declared": "The forge-fires of war are stoked.",
+		"threatened": "Threaten the forge? You'll melt before us.",
+	},
+	&"forsaken": {
+		"greeting_friendly": "Even in darkness, some lights are... tolerable.",
+		"greeting_hostile": "Your presence offends what remains of our senses.",
+		"greeting_neutral": "The Hollow King deigns to listen. Briefly.",
+		"greeting_war": "All things end. Your time has come.",
+		"accept_trade": "Even the dead have use for the living's trinkets.",
+		"reject_trade": "We have no need of your pittance.",
+		"accept_alliance": "In shadow, we are bound. A useful arrangement.",
+		"reject_alliance": "Trust? We barely trust ourselves.",
+		"accept_peace": "Death pauses... but never truly stops.",
+		"reject_peace": "There is no peace in the grave.",
+		"war_declared": "The hollow winds carry our armies forth.",
+		"threatened": "What can you threaten the already-dead?",
+	},
+	&"ivoryscar": {
+		"greeting_friendly": "The Oracle's eye sees a favorable future for us both.",
+		"greeting_hostile": "The petrified gaze falls upon you. Be still.",
+		"greeting_neutral": "The relics whisper. What do you bring?",
+		"greeting_war": "Your fate was sealed the moment you opposed us.",
+		"accept_trade": "Ancient wisdom says: a fair trade benefits all.",
+		"reject_trade": "The sands bury worthless offers.",
+		"accept_alliance": "Our visions align. Together we unearth greatness.",
+		"reject_alliance": "The future does not yet show us as allies.",
+		"accept_peace": "The Oracle decrees peace. So it shall be.",
+		"reject_peace": "Your destruction has already been foretold.",
+		"war_declared": "The desert's wrath is patient, but absolute.",
+		"threatened": "We have seen civilizations rise and fall. You do not frighten us.",
+	},
+	&"shardhorde": {
+		"greeting_friendly": "Crystal resonance... positive. Communication proceeds.",
+		"greeting_hostile": "Foreign vibrations detected. Hostile intent registered.",
+		"greeting_neutral": "The Crystalmind processes your signal. Transmit.",
+		"greeting_war": "Elimination protocol engaged.",
+		"accept_trade": "Resource exchange optimized. Agreement formed.",
+		"reject_trade": "Exchange ratio suboptimal. Rejected.",
+		"accept_alliance": "Symbiosis detected. Cooperation protocol initiated.",
+		"reject_alliance": "Insufficient compatibility for merger.",
+		"accept_peace": "Hostility termination accepted. Resources redirected.",
+		"reject_peace": "Threat not neutralized. Conflict continues.",
+		"war_declared": "Swarm vector locked. All units: converge.",
+		"threatened": "Threat assessment: negligible.",
+	},
+	&"sunblessed": {
+		"greeting_friendly": "The sun shines upon the righteous. Welcome, friend.",
+		"greeting_hostile": "The sacred flame judges you... and finds you wanting.",
+		"greeting_neutral": "Walk in the light, stranger. What do you seek?",
+		"greeting_war": "The sun's justice is absolute. Prepare yourself.",
+		"accept_trade": "A blessed exchange under the golden sky.",
+		"reject_trade": "The sun does not bargain with shadows.",
+		"accept_alliance": "Under the same sun, we march as one.",
+		"reject_alliance": "The pilgrimage continues alone.",
+		"accept_peace": "Let the dawn bring peace between us.",
+		"reject_peace": "The sun sets on your pleas for mercy.",
+		"war_declared": "By solar decree, you are judged!",
+		"threatened": "The sun fears no darkness.",
+	},
+}
+
 # Commander name lists per faction
 const COMMANDER_NAMES := {
 	&"empire": [
@@ -163,6 +541,30 @@ const COMMANDER_NAMES := {
 		"Crystal Matriarch Zyx", "Shard Caller Prysm", "Hive Mind Kryl", "Crystal Warden Thex",
 		"Swarm Lord Vyss", "Beast Keeper Nyx", "Void Herder Qal", "Crystal Seer Oryth",
 		"Shard Mother Kael", "Hive Queen Zhyl", "Crystal Fang Drex", "Beast Lord Gryx",
+	],
+	&"moonspear": [
+		"Sentinel Arathor", "Moon Warden Yselle", "Starlight Keeper Doran", "High Guard Caelen",
+		"Dawn Shield Mirael", "Silver Lance Theron", "Crescent Blade Lirael", "Vigilant Aldric",
+	],
+	&"thunderswarm": [
+		"Stormcaller Draken", "Thunder Lord Bjorn", "Lightning Warden Askari", "Storm Rider Volga",
+		"Tempest Fang Ragnar", "Sky Breaker Haldis", "Gale Marshal Tormund", "Wind Rider Svara",
+	],
+	&"ivoryscar": [
+		"Relic Seeker Asharan", "Bone Scholar Nephris", "Dust Warden Kaleth", "Tomb Walker Seris",
+		"Ivory Sage Mithren", "Sand Oracle Zephra", "Ruin Guard Vashti", "Crypt Keeper Oshar",
+	],
+	&"cinderguard": [
+		"Forge Master Vulkan", "Ember Warden Kael", "Ash Captain Brennan", "Fire Marshal Ignis",
+		"Slag Knight Thorin", "Cinder Shield Pyra", "Furnace Lord Steren", "Coal Warden Ashlyn",
+	],
+	&"forsaken": [
+		"Dusk Lord Morven", "Blight Warden Thessal", "Hollow Knight Cadeus", "Wraith Captain Vael",
+		"Shadow Keeper Nyx", "Ruin Marshal Gharan", "Pale Sentinel Draven", "Void Walker Serath",
+	],
+	&"sunblessed": [
+		"Radiant Seraph Aurel", "Sun Warden Solara", "Dawn Walker Helios", "Light Bearer Amara",
+		"Golden Shield Darius", "Sacred Flame Pyriel", "Sun Pilgrim Eshara", "Bright Lance Oriel",
 	],
 }
 var _commander_name_counters: Dictionary = {} # faction_id -> int
@@ -206,6 +608,7 @@ func new_game(faction_id: StringName = &"empire") -> void:
 	_init_factions()
 	_init_rebels_faction()
 	_init_shard_guardians_faction()
+	_init_independent_faction()
 	_init_regions()
 	_init_cities()
 	_init_elderbeasts()
@@ -220,17 +623,31 @@ func _init_factions() -> void:
 	for faction_id in DataManager.factions:
 		var fs := FactionState.new()
 		fs.faction_data_id = faction_id
-		if faction_id == &"shardhorde":
+		var is_minor := MINOR_FACTION_PARENTS.has(faction_id)
+		if faction_id in NOMADIC_FACTIONS and _is_shardhorde_type(faction_id):
+			# Shardhorde-type nomads: crystal/shard economy
+			fs.resources = {
+				Enums.ResourceType.GOLD: 60 if is_minor else 100,
+				Enums.ResourceType.IRON: 30 if is_minor else 50,
+				Enums.ResourceType.FOOD: 100 if is_minor else 150,
+				Enums.ResourceType.TECHNOLOGY: 10 if is_minor else 15,
+				Enums.ResourceType.SHARD_ESSENCE: 10 if is_minor else 20,
+				Enums.ResourceType.WOOD: 20 if is_minor else 40,
+				Enums.ResourceType.CAPTIVES: 0,
+			}
+		elif is_minor:
+			# Minor factions: reduced starting resources
 			fs.resources = {
 				Enums.ResourceType.GOLD: 100,
 				Enums.ResourceType.IRON: 50,
-				Enums.ResourceType.FOOD: 150,
+				Enums.ResourceType.FOOD: 80,
 				Enums.ResourceType.TECHNOLOGY: 15,
-				Enums.ResourceType.SHARD_ESSENCE: 20,
+				Enums.ResourceType.SHARD_ESSENCE: 0,
 				Enums.ResourceType.WOOD: 40,
 				Enums.ResourceType.CAPTIVES: 0,
 			}
 		else:
+			# Major factions: full starting resources
 			fs.resources = {
 				Enums.ResourceType.GOLD: 150,
 				Enums.ResourceType.IRON: 80,
@@ -242,8 +659,11 @@ func _init_factions() -> void:
 			}
 		state.faction_states[faction_id] = fs
 
+static func _is_shardhorde_type(faction_id: StringName) -> bool:
+	return faction_id == &"shardhorde" or faction_id == &"icebound" or faction_id == &"splinterbrood"
+
 static func is_npc_faction(faction_id: StringName) -> bool:
-	return faction_id == &"rebels" or faction_id == &"shard_guardians"
+	return faction_id == &"rebels" or faction_id == &"shard_guardians" or faction_id == &"independent"
 
 func _init_rebels_faction() -> void:
 	var fs := FactionState.new()
@@ -273,6 +693,20 @@ func _init_shard_guardians_faction() -> void:
 	}
 	state.faction_states[&"shard_guardians"] = fs
 
+func _init_independent_faction() -> void:
+	var fs := FactionState.new()
+	fs.faction_data_id = &"independent"
+	fs.resources = {
+		Enums.ResourceType.GOLD: 0,
+		Enums.ResourceType.IRON: 0,
+		Enums.ResourceType.FOOD: 0,
+		Enums.ResourceType.TECHNOLOGY: 0,
+		Enums.ResourceType.SHARD_ESSENCE: 0,
+		Enums.ResourceType.WOOD: 0,
+		Enums.ResourceType.CAPTIVES: 0,
+	}
+	state.faction_states[&"independent"] = fs
+
 func _init_regions() -> void:
 	# Assign starting regions to factions via hex map tile ownership
 	for faction_id in DataManager.factions:
@@ -282,71 +716,110 @@ func _init_regions() -> void:
 			state.hex_map.set_region_owner(region_id, faction_id)
 			fs.owned_regions.append(region_id)
 
+# Hardcoded starting armies for factions with custom unit rosters
+const MAJOR_STARTING_ARMIES := {
+	&"empire": [&"legionary", &"legionary", &"emberlight_auxilia", &"dracarii_riders", &"marching_bastion"],
+	&"gladehost": [&"grove_warden", &"grove_warden", &"thornbow_scout", &"thornbow_scout", &"stag_rider", &"dryad"],
+	&"tainted_jade": [&"jade_fang", &"jade_fang", &"jungle_stalker", &"serpent_guardian", &"coatl_shaman"],
+	&"skulloath": [&"warband_raider", &"warband_raider", &"steppe_rider", &"skulloath_raider", &"bonecaller", &"runebound_wyvern", &"dread_riders"],
+}
+
 func _init_armies() -> void:
-	# Create Empire starting army at their first region center
-	var empire_data: FactionData = DataManager.get_faction(&"empire")
-	if empire_data and empire_data.starting_regions.size() > 0:
-		var center := MapGenerator.get_region_center(empire_data.starting_regions[0])
-		var army := _create_army(&"empire", center,
-			[&"legionary", &"legionary", &"emberlight_auxilia", &"dracarii_riders", &"marching_bastion"])
+	for faction_id in DataManager.factions:
+		if _is_shardhorde_type(faction_id):
+			continue # Shardhorde-type armies handled in _init_shardhorde_armies
+		if faction_id in NOMADIC_FACTIONS:
+			_init_nomadic_army(faction_id)
+			continue
+		var faction_data: FactionData = DataManager.factions[faction_id]
+		if faction_data.starting_regions.is_empty():
+			continue
+
+		var center := MapGenerator.get_region_center(faction_data.starting_regions[0])
+
+		# Use hardcoded composition if available, otherwise build from faction units
+		var unit_ids: Array = MAJOR_STARTING_ARMIES.get(faction_id, [])
+		if unit_ids.is_empty():
+			unit_ids = _get_generic_starting_units(faction_id)
+		if unit_ids.is_empty():
+			continue
+
+		var army := _create_army(faction_id, center, unit_ids)
 		state.armies[army.army_id] = army
 
-	# Create Skulloath starting army
-	var skulloath_data: FactionData = DataManager.get_faction(&"skulloath")
-	if skulloath_data and skulloath_data.starting_regions.size() > 0:
-		var center := MapGenerator.get_region_center(skulloath_data.starting_regions[0])
-		var army := _create_army(&"skulloath", center,
-			[&"warband_raider", &"warband_raider", &"steppe_rider", &"skulloath_raider", &"bonecaller", &"runebound_wyvern", &"dread_riders"])
-		state.armies[army.army_id] = army
+	# Shardhorde elderbeasts + escort armies
+	_init_shardhorde_armies()
 
-	# Create Gladehost starting army
-	var gladehost_data: FactionData = DataManager.get_faction(&"gladehost")
-	if gladehost_data and gladehost_data.starting_regions.size() > 0:
-		var center := MapGenerator.get_region_center(gladehost_data.starting_regions[0])
-		var army := _create_army(&"gladehost", center,
-			[&"grove_warden", &"grove_warden", &"thornbow_scout", &"thornbow_scout", &"stag_rider", &"dryad"])
-		state.armies[army.army_id] = army
+func _get_generic_starting_units(faction_id: StringName) -> Array:
+	# Build a starting army from whatever units exist for this faction
+	var faction_units: Array = []
+	for unit_id in DataManager.units:
+		var ud: UnitData = DataManager.units[unit_id]
+		if ud.faction_id == faction_id:
+			faction_units.append(ud.id)
+	if faction_units.is_empty():
+		# Try parent faction units for minor factions
+		var parent_id: StringName = MINOR_FACTION_PARENTS.get(faction_id, &"")
+		if parent_id != &"":
+			for unit_id in DataManager.units:
+				var ud: UnitData = DataManager.units[unit_id]
+				if ud.faction_id == parent_id:
+					faction_units.append(ud.id)
+	if faction_units.is_empty():
+		return []
 
-	# Create Tainted Jade starting army
-	var jade_data: FactionData = DataManager.get_faction(&"tainted_jade")
-	if jade_data and jade_data.starting_regions.size() > 0:
-		var center := MapGenerator.get_region_center(jade_data.starting_regions[0])
-		var army := _create_army(&"tainted_jade", center,
-			[&"jade_fang", &"jade_fang", &"jungle_stalker", &"serpent_guardian", &"coatl_shaman"])
-		state.armies[army.army_id] = army
+	# Major factions get 4 units, minor factions get 3
+	var is_minor := MINOR_FACTION_PARENTS.has(faction_id)
+	var count := 3 if is_minor else 4
+	var result: Array = []
+	for i in count:
+		result.append(faction_units[i % faction_units.size()])
+	return result
 
-	# Create Shardhorde starting armies (with elderbeasts attached)
-	var shard_data: FactionData = DataManager.get_faction(&"shardhorde")
-	if shard_data and shard_data.starting_regions.size() > 0:
-		var beast_ids := state.elderbeasts.keys()
-		if beast_ids.size() >= 1:
-			var beast1: ElderbeastState = state.elderbeasts[beast_ids[0]]
-			var escort := _create_army(&"shardhorde", beast1.hex_pos,
-				[&"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling", &"crystalback_raptor"])
-			escort.elderbeast_id = beast1.beast_id
-			state.armies[escort.army_id] = escort
-			beast1.escort_army_id = escort.army_id
-			_add_elderbeast_to_army(beast1, escort)
-			# Elderbeast as army general
-			beast1.commander = _create_commander(&"shardhorde")
-			beast1.commander.name = beast1.name
-			beast1.commander.is_elderbeast = true
-			escort.commander = beast1.commander
-			escort.commander_name = beast1.commander.name
-		if beast_ids.size() >= 2:
-			var beast2: ElderbeastState = state.elderbeasts[beast_ids[1]]
-			var raider := _create_army(&"shardhorde", beast2.hex_pos,
-				[&"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling"])
-			raider.elderbeast_id = beast2.beast_id
-			state.armies[raider.army_id] = raider
-			beast2.escort_army_id = raider.army_id
-			_add_elderbeast_to_army(beast2, raider)
-			# Elderbeast as army general
-			beast2.commander = _create_commander(&"shardhorde")
-			beast2.commander.name = beast2.name
-			beast2.commander.is_elderbeast = true
-			raider.commander = beast2.commander
-			raider.commander_name = beast2.commander.name
+func _init_nomadic_army(faction_id: StringName) -> void:
+	# Nomadic non-shardhorde factions (e.g. sunblessed) get an army at a random neutral tile
+	var unit_ids := _get_generic_starting_units(faction_id)
+	if unit_ids.is_empty():
+		return
+	# Find a suitable spawn position (neutral tile near center)
+	var spawn_pos := Vector2i(32, 22)
+	for coord in state.hex_map.tiles:
+		var tile: HexMapData.TileState = state.hex_map.tiles[coord]
+		if tile.terrain != Enums.TerrainType.WATER and tile.owner_faction == &"":
+			if HexHelper.hex_distance(coord, Vector2i(32, 22)) < 12:
+				spawn_pos = coord
+				break
+	var army := _create_army(faction_id, spawn_pos, unit_ids)
+	state.armies[army.army_id] = army
+
+func _init_shardhorde_armies() -> void:
+	var beast_ids := state.elderbeasts.keys()
+	if beast_ids.size() >= 1:
+		var beast1: ElderbeastState = state.elderbeasts[beast_ids[0]]
+		var escort := _create_army(&"shardhorde", beast1.hex_pos,
+			[&"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling", &"crystalback_raptor"])
+		escort.elderbeast_id = beast1.beast_id
+		state.armies[escort.army_id] = escort
+		beast1.escort_army_id = escort.army_id
+		_add_elderbeast_to_army(beast1, escort)
+		beast1.commander = _create_commander(&"shardhorde")
+		beast1.commander.name = beast1.name
+		beast1.commander.is_elderbeast = true
+		escort.commander = beast1.commander
+		escort.commander_name = beast1.commander.name
+	if beast_ids.size() >= 2:
+		var beast2: ElderbeastState = state.elderbeasts[beast_ids[1]]
+		var raider := _create_army(&"shardhorde", beast2.hex_pos,
+			[&"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling", &"crystal_swarmling"])
+		raider.elderbeast_id = beast2.beast_id
+		state.armies[raider.army_id] = raider
+		beast2.escort_army_id = raider.army_id
+		_add_elderbeast_to_army(beast2, raider)
+		beast2.commander = _create_commander(&"shardhorde")
+		beast2.commander.name = beast2.name
+		beast2.commander.is_elderbeast = true
+		raider.commander = beast2.commander
+		raider.commander_name = beast2.commander.name
 
 func _create_army(faction_id: StringName, hex_pos: Vector2i, unit_ids: Array) -> ArmyState:
 	var army := ArmyState.new()
@@ -390,6 +863,39 @@ func _generate_commander_name(faction_id: StringName) -> String:
 	_commander_name_counters[faction_id] = idx + 1
 	return name
 
+func _get_faction_starting_city_count(faction_id: StringName) -> int:
+	if faction_id == &"" or faction_id in NOMADIC_FACTIONS:
+		return 0
+	if MINOR_FACTION_PARENTS.has(faction_id):
+		return 1  # Minor factions: 1 city
+	return 2  # Major factions: 2 cities
+
+func _get_region_starting_faction(region_id: StringName) -> StringName:
+	for faction_id in DataManager.factions:
+		var fd: FactionData = DataManager.factions[faction_id]
+		if region_id in fd.starting_regions:
+			return faction_id
+	return &""
+
+func _find_valid_city_pos(region_center: Vector2i, offset: Vector2i) -> Vector2i:
+	var target := region_center + offset
+	# Clamp to map bounds
+	target.x = clampi(target.x, 0, HexMapData.MAP_WIDTH - 1)
+	target.y = clampi(target.y, 0, HexMapData.MAP_HEIGHT - 1)
+	# Check if the target tile is valid land
+	var tile := state.hex_map.get_tile(target)
+	if tile and tile.terrain != Enums.TerrainType.WATER:
+		return target
+	# Fallback: spiral search for nearest land tile
+	for radius in range(1, 5):
+		for neighbor in HexHelper.get_neighbors(target):
+			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var ntile := state.hex_map.get_tile(neighbor)
+			if ntile and ntile.terrain != Enums.TerrainType.WATER:
+				return neighbor
+	return region_center  # Ultimate fallback
+
 func _init_cities() -> void:
 	# Faction-specific starting buildings
 	var faction_starting_buildings := {
@@ -399,54 +905,79 @@ func _init_cities() -> void:
 		&"tainted_jade": &"serpent_pit",
 	}
 
-	for faction_id in DataManager.factions:
-		if faction_id == &"shardhorde":
-			continue # Shardhorde uses elderbeasts, not cities
-		var faction_data: FactionData = DataManager.factions[faction_id]
-		var fs: FactionState = state.faction_states[faction_id]
-		var is_first_city := true
-		for region_id in faction_data.starting_regions:
-			var center := MapGenerator.get_region_center(region_id)
+	for region_id in REGION_CITIES:
+		var slots: Array = REGION_CITIES[region_id]
+		var region_center := MapGenerator.get_region_center(region_id)
+
+		# Determine which faction owns this region
+		var owning_faction := _get_region_starting_faction(region_id)
+		var faction_cities_placed := 0
+		var max_faction_cities := _get_faction_starting_city_count(owning_faction)
+
+		for i in slots.size():
+			var slot: Dictionary = slots[i]
+			var city_pos := _find_valid_city_pos(region_center, slot.offset)
 			var city := CityState.new()
 			city.city_id = state.generate_id()
+			city.city_name = slot.name
 			city.region_id = region_id
-			city.faction_id = faction_id
-			city.hex_pos = center
+			city.hex_pos = city_pos
 			city.level = 1
-			city.population = 100
-			city.is_capital = is_first_city
-			# Faction-specific starting building
-			var starting_building: StringName = faction_starting_buildings.get(faction_id, &"")
-			if starting_building != &"":
-				city.buildings.append(starting_building)
-			city.original_faction_id = faction_id
-			city.loyalty = 50
+			city.population = 80
+			city.loyalty = 40
 			city.class_loyalty = {
-				"peasants": 50, "artisans": 50, "scholars": 50, "nobles": 50, "captives": 0
+				"peasants": 40, "artisans": 40, "scholars": 40, "nobles": 40, "captives": 0
 			}
+			city.original_faction_id = owning_faction if owning_faction != &"" else &"independent"
 			city.turns_since_capture = -1
-			# Grant player a free settlement founding on turn 1
-			if faction_id == state.player_faction_id and is_first_city:
-				city.can_found_settlement = true
-			state.cities[city.city_id] = city
-			fs.owned_cities.append(city.city_id)
 
-			is_first_city = false
+			# First N cities go to the owning faction, rest are independent
+			if owning_faction != &"" and owning_faction not in NOMADIC_FACTIONS and faction_cities_placed < max_faction_cities:
+				city.faction_id = owning_faction
+				city.loyalty = 50
+				city.population = 100
+				city.class_loyalty = {
+					"peasants": 50, "artisans": 50, "scholars": 50, "nobles": 50, "captives": 0
+				}
+				if faction_cities_placed == 0:
+					city.is_capital = true
+					# Faction-specific starting building
+					var building: StringName = faction_starting_buildings.get(owning_faction, &"")
+					if building != &"":
+						city.buildings.append(building)
+					# Grant player a free settlement founding on turn 1
+					if owning_faction == state.player_faction_id:
+						city.can_found_settlement = true
+				faction_cities_placed += 1
+				var fs: FactionState = state.faction_states.get(owning_faction)
+				if fs:
+					fs.owned_cities.append(city.city_id)
+			else:
+				city.faction_id = &"independent"
+				city.loyalty = 60  # Independent cities are self-content
+				city.class_loyalty = {
+					"peasants": 60, "artisans": 60, "scholars": 60, "nobles": 60, "captives": 0
+				}
+
+			state.cities[city.city_id] = city
 
 func _init_elderbeasts() -> void:
 	var shard_data: FactionData = DataManager.get_faction(&"shardhorde")
-	if shard_data == null or shard_data.starting_regions.is_empty():
+	if shard_data == null:
 		return
-	var region_id: StringName = shard_data.starting_regions[0]
+
+	# Shardhorde is nomadic — spawn elderbeasts near Skulloath territory (central steppe)
+	var region_id: StringName = &"bataarbad"
 	var center := MapGenerator.get_region_center(region_id)
 
-	# Find two suitable hex positions in the region
+	# Find suitable hex positions near center (doesn't need to be in the region)
 	var hex_map := state.hex_map
 	var valid_hexes: Array[Vector2i] = []
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		if tile.region_id == region_id and tile.terrain != Enums.TerrainType.WATER:
-			valid_hexes.append(coord)
+		if tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.WETLANDS:
+			if HexHelper.hex_distance(coord, center) <= 8:
+				valid_hexes.append(coord)
 
 	var beast1_pos := center
 	var beast2_pos := center
@@ -463,8 +994,8 @@ func _init_elderbeasts() -> void:
 	beast1.hex_pos = beast1_pos
 	beast1.name = "Elder Crystalhorn"
 	beast1.level = 1
-	beast1.hp = 500
-	beast1.max_hp = 500
+	beast1.apply_level_stats()
+	beast1.hp = beast1.max_hp
 	# Elderbeasts recruit all faction units directly — no barracks needed
 	state.elderbeasts[beast1.beast_id] = beast1
 
@@ -475,8 +1006,8 @@ func _init_elderbeasts() -> void:
 	beast2.hex_pos = beast2_pos
 	beast2.name = "Ancient Shardback"
 	beast2.level = 1
-	beast2.hp = 500
-	beast2.max_hp = 500
+	beast2.apply_level_stats()
+	beast2.hp = beast2.max_hp
 	state.elderbeasts[beast2.beast_id] = beast2
 
 func _create_commander(faction_id: StringName) -> CommanderState:
@@ -550,49 +1081,96 @@ func get_available_commanders(faction_id: StringName) -> Array[CommanderState]:
 	return fs.commander_pool
 
 func _init_diplomacy() -> void:
-	# Empire relations
-	state.diplomacy[&"empire:skulloath"] = Enums.FactionRelation.WAR
-	state.diplomacy[&"skulloath:empire"] = Enums.FactionRelation.WAR
-	state.diplomacy[&"empire:gladehost"] = Enums.FactionRelation.FRIENDLY
-	state.diplomacy[&"gladehost:empire"] = Enums.FactionRelation.FRIENDLY
-	state.diplomacy[&"empire:tainted_jade"] = Enums.FactionRelation.WAR
-	state.diplomacy[&"tainted_jade:empire"] = Enums.FactionRelation.WAR
-	# Skulloath relations
-	state.diplomacy[&"skulloath:gladehost"] = Enums.FactionRelation.NEUTRAL
-	state.diplomacy[&"gladehost:skulloath"] = Enums.FactionRelation.NEUTRAL
-	state.diplomacy[&"skulloath:tainted_jade"] = Enums.FactionRelation.WAR
-	state.diplomacy[&"tainted_jade:skulloath"] = Enums.FactionRelation.WAR
-	# Gladehost vs Tainted Jade
-	state.diplomacy[&"gladehost:tainted_jade"] = Enums.FactionRelation.WAR
-	state.diplomacy[&"tainted_jade:gladehost"] = Enums.FactionRelation.WAR
-	# Shardhorde relations
-	state.diplomacy[&"shardhorde:skulloath"] = Enums.FactionRelation.HOSTILE
-	state.diplomacy[&"skulloath:shardhorde"] = Enums.FactionRelation.HOSTILE
-	state.diplomacy[&"shardhorde:empire"] = Enums.FactionRelation.HOSTILE
-	state.diplomacy[&"empire:shardhorde"] = Enums.FactionRelation.HOSTILE
-	state.diplomacy[&"shardhorde:gladehost"] = Enums.FactionRelation.HOSTILE
-	state.diplomacy[&"gladehost:shardhorde"] = Enums.FactionRelation.HOSTILE
-	state.diplomacy[&"shardhorde:tainted_jade"] = Enums.FactionRelation.NEUTRAL
-	state.diplomacy[&"tainted_jade:shardhorde"] = Enums.FactionRelation.NEUTRAL
-	# Rebels at WAR with all factions
+	# ── Minor factions are ALLIED with their parent, FRIENDLY with siblings ──
+	for minor_id in MINOR_FACTION_PARENTS:
+		if not state.faction_states.has(minor_id):
+			continue
+		var parent_id: StringName = MINOR_FACTION_PARENTS[minor_id]
+		if state.faction_states.has(parent_id):
+			_set_relation(minor_id, parent_id, Enums.FactionRelation.ALLIED)
+		# Friendly with other minors of same parent
+		for other_minor in MINOR_FACTION_PARENTS:
+			if other_minor == minor_id:
+				continue
+			if MINOR_FACTION_PARENTS[other_minor] == parent_id:
+				if state.faction_states.has(other_minor):
+					_set_relation(minor_id, other_minor, Enums.FactionRelation.FRIENDLY)
+
+	# ── Major faction relationships ──
+	# Western Basin: Empire + Gladehost (allies)
+	_set_relation(&"empire", &"gladehost", Enums.FactionRelation.FRIENDLY)
+	_set_relation(&"empire", &"moonspear", Enums.FactionRelation.FRIENDLY)
+	_set_relation(&"empire", &"sunblessed", Enums.FactionRelation.FRIENDLY)
+	_set_relation(&"gladehost", &"moonspear", Enums.FactionRelation.FRIENDLY)
+
+	# Empire conflicts
+	_set_relation(&"empire", &"skulloath", Enums.FactionRelation.WAR)
+	_set_relation(&"empire", &"tainted_jade", Enums.FactionRelation.WAR)
+	_set_relation(&"empire", &"forsaken", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"empire", &"shardhorde", Enums.FactionRelation.HOSTILE)
+
+	# Northern belt: Moonspear + Thunderswarm (uneasy neighbors)
+	_set_relation(&"moonspear", &"thunderswarm", Enums.FactionRelation.FRIENDLY)
+	_set_relation(&"moonspear", &"skulloath", Enums.FactionRelation.WAR)
+	_set_relation(&"moonspear", &"ivoryscar", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"moonspear", &"forsaken", Enums.FactionRelation.HOSTILE)
+
+	_set_relation(&"thunderswarm", &"skulloath", Enums.FactionRelation.WAR)
+	_set_relation(&"thunderswarm", &"cinderguard", Enums.FactionRelation.HOSTILE)
+
+	# Southern: Tainted Jade vs their neighbors
+	_set_relation(&"gladehost", &"tainted_jade", Enums.FactionRelation.WAR)
+	_set_relation(&"tainted_jade", &"skulloath", Enums.FactionRelation.WAR)
+	_set_relation(&"tainted_jade", &"shardhorde", Enums.FactionRelation.NEUTRAL)
+
+	# Central: Skulloath + Cinderguard (rivals)
+	_set_relation(&"skulloath", &"cinderguard", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"skulloath", &"forsaken", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"skulloath", &"shardhorde", Enums.FactionRelation.HOSTILE)
+
+	# Eastern: Forsaken + Ivoryscar (uneasy neighbors)
+	_set_relation(&"forsaken", &"ivoryscar", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"cinderguard", &"forsaken", Enums.FactionRelation.HOSTILE)
+
+	# Shardhorde vs most
+	_set_relation(&"shardhorde", &"gladehost", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"shardhorde", &"moonspear", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"shardhorde", &"thunderswarm", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"shardhorde", &"forsaken", Enums.FactionRelation.HOSTILE)
+
+	# ── Minor factions inherit their parent's wars ──
+	for minor_id in MINOR_FACTION_PARENTS:
+		if not state.faction_states.has(minor_id):
+			continue
+		var parent_id: StringName = MINOR_FACTION_PARENTS[minor_id]
+		for other_faction in state.faction_states:
+			if other_faction == minor_id or other_faction == parent_id:
+				continue
+			if MINOR_FACTION_PARENTS.get(other_faction, &"") == parent_id:
+				continue # Same-parent minor, already set above
+			# Check if parent has a relation with this faction
+			var parent_rel := _get_set_relation(parent_id, other_faction)
+			if parent_rel != -1:
+				var current := _get_set_relation(minor_id, other_faction)
+				if current == -1: # Only set if not already defined
+					_set_relation(minor_id, other_faction, parent_rel as Enums.FactionRelation)
+
+	# ── Rebels at WAR with all ──
 	for faction_id in state.faction_states:
 		if faction_id != &"rebels":
-			state.diplomacy[StringName(str(&"rebels") + ":" + str(faction_id))] = Enums.FactionRelation.WAR
-			state.diplomacy[StringName(str(faction_id) + ":" + str(&"rebels"))] = Enums.FactionRelation.WAR
-	# Shard Guardians at WAR with all factions
+			_set_relation(&"rebels", faction_id, Enums.FactionRelation.WAR)
+	# ── Shard Guardians at WAR with all ──
 	for faction_id in state.faction_states:
 		if faction_id != &"shard_guardians":
-			state.diplomacy[StringName(str(&"shard_guardians") + ":" + str(faction_id))] = Enums.FactionRelation.WAR
-			state.diplomacy[StringName(str(faction_id) + ":" + str(&"shard_guardians"))] = Enums.FactionRelation.WAR
+			_set_relation(&"shard_guardians", faction_id, Enums.FactionRelation.WAR)
 
-	# Initialize diplomacy standing from starting relations
+	# ── Initialize diplomacy standing from relations ──
 	for key in state.diplomacy:
 		var parts := str(key).split(":")
 		if parts.size() != 2:
 			continue
 		var a := StringName(parts[0])
 		var b := StringName(parts[1])
-		# Only set once per pair (a < b alphabetically)
 		if str(a) > str(b):
 			continue
 		var relation: int = state.diplomacy[key]
@@ -607,6 +1185,61 @@ func _init_diplomacy() -> void:
 		var standing_key_ba := str(b) + ":" + str(a)
 		state.diplomacy_state.standing[standing_key_ab] = initial_standing
 		state.diplomacy_state.standing[standing_key_ba] = initial_standing
+
+func _set_relation(a: StringName, b: StringName, relation: Enums.FactionRelation) -> void:
+	state.diplomacy[StringName(str(a) + ":" + str(b))] = relation
+	state.diplomacy[StringName(str(b) + ":" + str(a))] = relation
+
+func _get_set_relation(a: StringName, b: StringName) -> int:
+	var key := StringName(str(a) + ":" + str(b))
+	if state.diplomacy.has(key):
+		return state.diplomacy[key]
+	return -1
+
+# ── Region & Culture Completion ──────────────────────────────
+func get_completed_regions(faction_id: StringName) -> Array[StringName]:
+	var result: Array[StringName] = []
+	for region_id in REGION_CITIES:
+		var all_owned := true
+		for city_id in state.cities:
+			var city: CityState = state.cities[city_id]
+			if city.region_id == region_id and city.faction_id != faction_id:
+				all_owned = false
+				break
+		if all_owned:
+			result.append(region_id)
+	return result
+
+func get_completed_cultures(faction_id: StringName) -> Array[StringName]:
+	var completed_regions := get_completed_regions(faction_id)
+	var result: Array[StringName] = []
+	for culture_id in CULTURE_REGIONS:
+		var regions: Array = CULTURE_REGIONS[culture_id]
+		var all_complete := true
+		for r in regions:
+			if r not in completed_regions:
+				all_complete = false
+				break
+		if all_complete:
+			result.append(culture_id)
+	return result
+
+func has_culture_bonus(faction_id: StringName, bonus_type: String) -> bool:
+	var completed := get_completed_cultures(faction_id)
+	for culture_id in completed:
+		var bonus: Dictionary = CULTURE_BONUSES.get(culture_id, {})
+		if bonus.get("type", "") == bonus_type:
+			return true
+	return false
+
+func get_culture_bonus_value(faction_id: StringName, bonus_type: String) -> float:
+	var total := 0.0
+	var completed := get_completed_cultures(faction_id)
+	for culture_id in completed:
+		var bonus: Dictionary = CULTURE_BONUSES.get(culture_id, {})
+		if bonus.get("type", "") == bonus_type:
+			total += bonus.get("value", 0.0)
+	return total
 
 func get_elderbeast_at_tile(coord: Vector2i) -> ElderbeastState:
 	for beast_id in state.elderbeasts:

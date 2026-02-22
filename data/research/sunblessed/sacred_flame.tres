@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sacred_flame"
+display_name = "Sacred Flame"
+description = "Sacred flame burns away darkness and corruption."
+tech_cost = 50
+research_time = 4
+prerequisites = Array[StringName]([])
+effects = { "fire_damage_pct": 10 }
+shard_bonuses = {}
+tier = 1
+research_category = &"military"
+faction_id = &"sunblessed"
+tree_angle = 240
+tree_branch = &"sacred_flame"

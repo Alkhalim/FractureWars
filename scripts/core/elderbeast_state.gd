@@ -23,9 +23,9 @@ extends Resource
 
 # Stats by level
 const LEVEL_STATS := {
-	1: {max_hp = 500, building_slots = 1, movement = 1.0},
-	2: {max_hp = 750, building_slots = 2, movement = 1.0},
-	3: {max_hp = 1000, building_slots = 3, movement = 1.5},
+	1: {max_hp = 2500, building_slots = 1, movement = 1.0},
+	2: {max_hp = 4000, building_slots = 2, movement = 1.0},
+	3: {max_hp = 6000, building_slots = 3, movement = 1.5},
 }
 
 # Unit data ID per level

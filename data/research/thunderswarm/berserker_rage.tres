@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"berserker_rage"
+display_name = "Berserker Rage"
+description = "Fury sharpens the blade but blinds the shield arm."
+tech_cost = 50
+research_time = 8
+prerequisites = Array[StringName]([])
+effects = { "unit_attack_bonus": 2, "unit_defense_penalty": 1 }
+shard_bonuses = {}
+tier = 1
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 240
+tree_branch = &"war_fury"

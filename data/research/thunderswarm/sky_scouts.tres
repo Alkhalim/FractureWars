@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sky_scouts"
+display_name = "Sky Scouts"
+description = "Eagle riders survey the land from cloud-height."
+tech_cost = 35
+research_time = 6
+prerequisites = Array[StringName]([])
+effects = { "vision_range_bonus": 2 }
+shard_bonuses = {}
+tier = 1
+research_category = &"logistics"
+faction_id = &"thunderswarm"
+tree_angle = 60
+tree_branch = &"storm_mastery"

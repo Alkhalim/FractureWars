@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"heart_of_the_forest"
+display_name = "Heart of the Forest"
+description = "The forest itself becomes an endless garden."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"verdant_growth", &"spirit_pact"])
+effects = { "income_food_pct": 25, "forest_food_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"gladehost"
+tree_angle = 0
+tree_branch = &"nature_bond"

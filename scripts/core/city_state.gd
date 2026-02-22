@@ -2,6 +2,7 @@ class_name CityState
 extends Resource
 
 @export var city_id: StringName
+@export var city_name: String = ""
 @export var region_id: StringName
 @export var faction_id: StringName
 @export var hex_pos: Vector2i
@@ -44,9 +45,17 @@ const UPGRADE_TURNS := {
 }
 
 func get_max_building_slots() -> int:
+	var base: int
 	if is_capital:
-		return 2 + level # capital: 3 at L1, 4 at L2, ... 7 at L5
-	return level # settlement: 1 at L1, 2 at L2, etc.
+		base = 2 + level # capital: 3 at L1, 4 at L2, ... 7 at L5
+	else:
+		base = level # settlement: 1 at L1, 2 at L2, etc.
+	# Region completion bonus: +1 building slot
+	if faction_id != &"" and faction_id != &"independent":
+		var completed := GameManager.get_completed_regions(faction_id)
+		if region_id in completed:
+			base += 1
+	return base
 
 func get_available_building_slots() -> int:
 	return get_max_building_slots() - buildings.size()
@@ -106,6 +115,8 @@ func can_recruit(unit_data_id: StringName) -> bool:
 	return false
 
 func get_display_name() -> String:
+	if city_name != "":
+		return city_name
 	var region: RegionData = DataManager.get_region(region_id)
 	var suffix := " Capital" if is_capital else " Settlement"
 	if region:

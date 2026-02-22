@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"trade_routes"
+display_name = "Trade Routes"
+description = "Gold flows along the Emperor's roads."
+tech_cost = 50
+research_time = 8
+prerequisites = Array[StringName]([])
+effects = { "income_gold_pct": 15 }
+shard_bonuses = {}
+tier = 1
+research_category = &"economy"
+faction_id = &"empire"
+tree_angle = 90.0
+tree_branch = &"commerce"

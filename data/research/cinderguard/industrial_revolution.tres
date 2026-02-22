@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"industrial_revolution"
+display_name = "Industrial Revolution"
+description = "The furnaces of the Cinderguard reshape the world."
+tech_cost = 130
+research_time = 18
+prerequisites = Array[StringName]([&"adamantine_forge", &"volcanic_glass"])
+effects = { "income_gold_pct": 20, "income_iron_pct": 15, "building_cost_pct": -20 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"cinderguard"
+tree_angle = 30
+tree_branch = &"forging"

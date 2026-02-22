@@ -35,6 +35,7 @@ signal building_completed(city_id: StringName, building_id: StringName)
 signal unit_recruited(city_id: StringName, unit_data_id: StringName, army_id: StringName)
 signal siege_started(city_id: StringName, faction_id: StringName)
 signal siege_broken(city_id: StringName)
+signal city_joined(city_id: StringName, faction_id: StringName)
 
 # Commander signals
 signal commander_level_up(commander: CommanderState)

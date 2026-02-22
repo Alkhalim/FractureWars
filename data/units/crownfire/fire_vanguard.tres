@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fire_vanguard"
+display_name = "Fire Vanguard"
+description = "Pyromancers who wield forge-flame in battle."
+faction_id = &"crownfire"
+max_hp = 800
+attack = 14
+defense = 4
+speed = 5
+attack_range = 5
+squad_size = 50
+hp_per_soldier = 16
+movement_points = 3.5
+upkeep_cost = {0: 4, 3: 1}
+recruit_cost = {0: 70, 1: 15}
+recruit_time = 2
+population_cost = 10
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["ranged"])
+base_morale = 55

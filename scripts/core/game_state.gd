@@ -18,6 +18,8 @@ extends Resource
 @export var turn_manager_state: Dictionary = {} # Serialized TurnManager AI state
 @export var game_over: bool = false
 @export var victory_type: StringName = &""
+@export var game_mode: int = Enums.GameMode.SANDBOX
+@export var quickmatch_won: bool = false
 @export var tutorial_enabled: bool = true
 @export var tutorial_step: int = 0
 

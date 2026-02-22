@@ -20,7 +20,10 @@ func _has_enemy_at(coord: Vector2i, faction_id: StringName, excluded_army_id: St
 	for army in armies:
 		if army.army_id == excluded_army_id:
 			continue
-		if army.faction_id != faction_id and GameManager.get_relation(faction_id, army.faction_id) == Enums.FactionRelation.WAR:
+		if army.faction_id == faction_id:
+			continue
+		var relation := GameManager.get_relation(faction_id, army.faction_id)
+		if relation == Enums.FactionRelation.WAR or relation == Enums.FactionRelation.HOSTILE:
 			return true
 	return false
 

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"living_walls"
+display_name = "Living Walls"
+description = "Trees weave into walls no siege can breach."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"forest_ambush"])
+effects = { "forest_building_slots": 2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"gladehost"
+tree_angle = 90
+tree_branch = &"wardenship"

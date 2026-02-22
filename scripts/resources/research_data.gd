@@ -12,3 +12,5 @@ extends Resource
 @export var tier: int = 1
 @export var research_category: StringName = &"military" # military, economy, arcane, logistics
 @export var faction_id: StringName = &"" # empty = universal
+@export var tree_angle: float = 0.0       # Angle in degrees for radial placement (0-360)
+@export var tree_branch: StringName = &""  # Branch name for grouping

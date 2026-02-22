@@ -89,8 +89,8 @@ func _pick_hex_position() -> Vector2i:
 			continue
 
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		# Skip water and coast tiles
-		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.COAST:
+		# Skip water and wetlands tiles
+		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.WETLANDS:
 			continue
 		candidates.append(coord)
 		if tile.owner_faction == &"":

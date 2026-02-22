@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"skalvar_watch"
+display_name = "Skalvar Watch"
+description = "Mountain sentinels of Skalvar who guard the passes between the storm peaks and the central steppes."
+color = Color(0.7, 0.6, 0.3, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"skalvar"])
+realm_affinity = 2
+shard_preferences = {}
+ai_personality = {"aggression": 0.3, "expansion": 0.3}

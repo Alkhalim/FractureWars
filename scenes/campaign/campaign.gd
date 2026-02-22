@@ -1,10 +1,10 @@
 extends Node2D
 
-const TERRAIN_NAMES := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+const TERRAIN_NAMES := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wetlands", "Tundra", "Shard Wastes", "Water", "Jungle"]
 const REALM_NAMES := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
 
 # Hex outer radius (center to vertex) for flat-top hexes
-const HEX_RADIUS := 24.0
+const HEX_RADIUS := 32.0
 # Derived spacing
 const HEX_H_SPACING := HEX_RADIUS * 1.5 # 36.0 - horizontal center-to-center
 const HEX_V_SPACING := HEX_RADIUS * 1.732 # sqrt(3) * radius ≈ 41.57
@@ -17,7 +17,7 @@ const TERRAIN_COLORS := {
 	Enums.TerrainType.MOUNTAINS: Color(0.45, 0.42, 0.38),
 	Enums.TerrainType.DESERT: Color(0.72, 0.62, 0.40),
 	Enums.TerrainType.SWAMP: Color(0.30, 0.32, 0.22),
-	Enums.TerrainType.COAST: Color(0.48, 0.52, 0.42),
+	Enums.TerrainType.WETLANDS: Color(0.48, 0.52, 0.42),
 	Enums.TerrainType.TUNDRA: Color(0.58, 0.56, 0.52),
 	Enums.TerrainType.SHARD_WASTES: Color(0.42, 0.28, 0.38),
 	Enums.TerrainType.WATER: Color(0.22, 0.30, 0.38),
@@ -34,7 +34,7 @@ const TERRAIN_ELEVATION := {
 	Enums.TerrainType.MOUNTAINS: 5.0,
 	Enums.TerrainType.DESERT: 0.0,
 	Enums.TerrainType.SWAMP: -2.0,
-	Enums.TerrainType.COAST: -0.5,
+	Enums.TerrainType.WETLANDS: -0.5,
 	Enums.TerrainType.TUNDRA: 1.0,
 	Enums.TerrainType.SHARD_WASTES: 0.0,
 	Enums.TerrainType.WATER: -4.0,
@@ -79,6 +79,9 @@ var _building_tile_overlays: Array[Node2D] = []
 
 # Elderbeast terrain depletion overlay
 var _beast_terrain_overlays: Array[Node2D] = []
+
+# Terrain textures (loaded once in _render_hex_map)
+var _terrain_textures: Dictionary = {}
 
 # Fog of war
 var _fog_of_war_enabled := true
@@ -188,13 +191,53 @@ func _make_hex_polygon(radius: float) -> PackedVector2Array:
 
 # ── Rendering ─────────────────────────────────────────────────
 
+func _load_terrain_textures() -> void:
+	if not _terrain_textures.is_empty():
+		return
+	# Map terrain type to base filename (variants are name1.png, name2.png, etc.)
+	var base_names := {
+		Enums.TerrainType.PLAINS: "plains",
+		Enums.TerrainType.FOREST: "forest",
+		Enums.TerrainType.MOUNTAINS: "mountain",
+		Enums.TerrainType.DESERT: "desert",
+		Enums.TerrainType.SWAMP: "swamp",
+		Enums.TerrainType.WETLANDS: "wetlands",
+		Enums.TerrainType.TUNDRA: "tundra",
+		Enums.TerrainType.SHARD_WASTES: "shardwaste",
+		Enums.TerrainType.WATER: "water",
+		Enums.TerrainType.JUNGLE: "jungle",
+	}
+	for terrain in base_names:
+		var variants: Array[Texture2D] = []
+		# Try base name (no number)
+		var base_path := "res://assets/sprites/campaign_map/%s.png" % base_names[terrain]
+		if ResourceLoader.exists(base_path):
+			variants.append(load(base_path))
+		# Try numbered variants (1-9)
+		for i in range(1, 10):
+			var path := "res://assets/sprites/campaign_map/%s%d.png" % [base_names[terrain], i]
+			if ResourceLoader.exists(path):
+				variants.append(load(path))
+			else:
+				break
+		if not variants.is_empty():
+			_terrain_textures[terrain] = variants
+
 func _render_hex_map() -> void:
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
 		return
 
+	_load_terrain_textures()
+
 	var border_poly := _make_hex_polygon(HEX_RADIUS)
-	var fill_poly := _make_hex_polygon(HEX_RADIUS * 0.92)
+	var fill_poly := _make_hex_polygon(HEX_RADIUS * 0.96)
+	var fill_r := HEX_RADIUS * 0.96
+
+	# Pre-compute normalized UV coordinates for hex polygon (centered 0-1 space)
+	var hex_uvs := PackedVector2Array()
+	for point in fill_poly:
+		hex_uvs.append(Vector2(point.x / (2.0 * fill_r) + 0.5, point.y / (2.0 * fill_r) + 0.5))
 
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
@@ -213,14 +256,34 @@ func _render_hex_map() -> void:
 		border.color = HEX_BORDER_COLOR
 		container.add_child(border)
 
-		# Fill hex
+		# Fill hex — pick a random texture variant based on tile coordinate
 		var fill := Polygon2D.new()
 		fill.polygon = fill_poly
-		fill.color = base_color
+		var variants: Array = _terrain_textures.get(tile.terrain, [])
+		var tex: Texture2D = null
+		if not variants.is_empty():
+			var variant_idx := absi(coord.x * 7 + coord.y * 13 + coord.x * coord.y) % variants.size()
+			tex = variants[variant_idx]
+		if tex:
+			fill.texture = tex
+			# Center-crop a square region from the texture, zoomed in 15% to cut off
+			# any asymmetric edges. Same scale on both axes ensures uniform hex shape.
+			var tex_size := tex.get_size()
+			var crop := minf(tex_size.x, tex_size.y) * 0.85
+			var cx := tex_size.x * 0.5
+			var cy := tex_size.y * 0.5
+			var scaled_uv := PackedVector2Array()
+			for uv in hex_uvs:
+				scaled_uv.append(Vector2(cx + (uv.x - 0.5) * crop, cy + (uv.y - 0.5) * crop))
+			fill.uv = scaled_uv
+			fill.color = Color.WHITE
+		else:
+			fill.color = base_color
 		container.add_child(fill)
 
-		# Terrain texture details
-		_add_terrain_detail(container, tile.terrain, fill_poly, base_color)
+		# Procedural terrain details (only for terrains without textures)
+		if not tex:
+			_add_terrain_detail(container, tile.terrain, fill_poly, base_color)
 
 		hex_map_layer.add_child(container)
 		_hex_visuals[coord] = container
@@ -282,7 +345,7 @@ func _draw_elevation_edges() -> void:
 				hex_map_layer.add_child(highlight)
 
 func _add_terrain_detail(container: Node2D, terrain: Enums.TerrainType, _hex_poly: PackedVector2Array, base_color: Color) -> void:
-	var r := HEX_RADIUS * 0.92
+	var r := HEX_RADIUS * 0.96
 	match terrain:
 		Enums.TerrainType.FOREST:
 			# Tree circles
@@ -369,8 +432,8 @@ func _add_terrain_detail(container: Node2D, terrain: Enums.TerrainType, _hex_pol
 			line2.width = 1.0
 			line2.default_color = base_color.lightened(0.12)
 			container.add_child(line2)
-		Enums.TerrainType.COAST:
-			# Sandy shore dots
+		Enums.TerrainType.WETLANDS:
+			# Wetlands reeds
 			var line := Line2D.new()
 			line.points = PackedVector2Array([Vector2(-7, 3), Vector2(-2, 0), Vector2(4, 3), Vector2(8, 1)])
 			line.width = 1.5
@@ -476,16 +539,16 @@ func _update_political_overlay() -> void:
 	for coord in _hex_visuals:
 		var container: Node2D = _hex_visuals[coord]
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		var base_color: Color = TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
-
-		if tile.owner_faction != &"":
-			var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
-			if faction_data:
-				base_color = base_color.lerp(faction_data.color, 0.12)
 
 		# The fill polygon is child 1 (child 0 is border)
 		if container.get_child_count() > 1:
 			var fill: Polygon2D = container.get_child(1)
+			var has_texture := fill.texture != null
+			var base_color: Color = Color.WHITE if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
+			if tile.owner_faction != &"":
+				var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
+				if faction_data:
+					base_color = base_color.lerp(faction_data.color, 0.12)
 			fill.color = base_color
 
 # ── Army markers ──────────────────────────────────────────────
@@ -1138,6 +1201,11 @@ func _move_army_to(army: ArmyState, hex_coord: Vector2i) -> void:
 			EventBus.army_selected.emit(selected_army_id)
 		else:
 			_reachable_tiles.clear()
+		# Refresh beast terrain overlay after movement
+		if army and army.elderbeast_id != &"":
+			var beast: ElderbeastState = GameManager.state.elderbeasts.get(army.elderbeast_id)
+			if beast:
+				_show_beast_terrain_overlay(beast)
 
 func _animate_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 	# Move army tile by tile with animation between each step
@@ -1481,7 +1549,7 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 		var tile := GameManager.state.hex_map.get_tile(_pending_battle_hex)
 		if tile:
 			campaign_terrain = tile.terrain
-	var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+	var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wetlands", "Tundra", "Shard Wastes", "Water", "Jungle"]
 	var t_name: String = terrain_names[campaign_terrain] if campaign_terrain < terrain_names.size() else "Unknown"
 	bonus_parts.append("Terrain: %s" % t_name)
 
@@ -1967,6 +2035,11 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 		if army:
 			_show_reachable_tiles(army)
 			EventBus.army_selected.emit(selected_army_id)
+	# Refresh beast terrain overlay if an elderbeast is still selected
+	if _selected_beast_id != &"":
+		var beast: ElderbeastState = GameManager.state.elderbeasts.get(_selected_beast_id)
+		if beast:
+			_show_beast_terrain_overlay(beast)
 	# Refresh city panel if open
 	if _city_panel_open and _selected_city_id != &"":
 		_open_city_panel(_selected_city_id)
@@ -2536,7 +2609,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 2)
 
-	var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+	var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wetlands", "Tundra", "Shard Wastes", "Water", "Jungle"]
 	var tile := GameManager.state.hex_map.get_tile(hex_coord)
 	var terrain_name: String = terrain_names[tile.terrain] if tile and tile.terrain < terrain_names.size() else "Unknown"
 
@@ -2618,7 +2691,8 @@ func _show_beast_terrain_overlay(beast: ElderbeastState) -> void:
 
 func _clear_beast_terrain_overlay() -> void:
 	for node in _beast_terrain_overlays:
-		node.queue_free()
+		if is_instance_valid(node):
+			node.queue_free()
 	_beast_terrain_overlays.clear()
 
 # ── Minimap ──────────────────────────────────────────────────
@@ -2699,7 +2773,7 @@ func _update_minimap() -> void:
 			if tile == null:
 				continue
 			var color: Color
-			if tile.owner_faction != &"":
+			if tile.owner_faction != &"" and tile.owner_faction != &"independent":
 				color = faction_colors.get(tile.owner_faction, TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3)))
 				color = color.darkened(0.3)
 			else:

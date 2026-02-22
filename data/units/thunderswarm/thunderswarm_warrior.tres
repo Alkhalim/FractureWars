@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"thunderswarm_warrior"
+display_name = "Thunderswarm Warrior"
+description = "Storm-touched warriors who channel lightning through their weapons. Their charge shakes the mountain."
+faction_id = &"thunderswarm"
+max_hp = 1000
+attack = 13
+defense = 5
+speed = 6
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 12
+movement_points = 4.0
+upkeep_cost = {0: 3, 3: 2}
+recruit_cost = {0: 55, 1: 20}
+recruit_time = 2
+population_cost = 16
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "fast"])
+base_morale = 55

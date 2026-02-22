@@ -34,12 +34,19 @@ func _load_factions() -> void:
 	_load_resources_from_dir("res://data/factions/", factions)
 
 func _load_units() -> void:
-	_load_resources_from_dir("res://data/units/empire/", units)
-	_load_resources_from_dir("res://data/units/skulloath/", units)
-	_load_resources_from_dir("res://data/units/gladehost/", units)
-	_load_resources_from_dir("res://data/units/tainted_jade/", units)
-	_load_resources_from_dir("res://data/units/shardhorde/", units)
-	_load_resources_from_dir("res://data/units/shard_guardians/", units)
+	# Dynamically scan all subdirectories under data/units/
+	var base_path := "res://data/units/"
+	var dir := DirAccess.open(base_path)
+	if dir == null:
+		push_warning("Could not open units directory: " + base_path)
+		return
+	dir.list_dir_begin()
+	var folder := dir.get_next()
+	while folder != "":
+		if dir.current_is_dir() and not folder.begins_with("."):
+			_load_resources_from_dir(base_path + folder + "/", units)
+		folder = dir.get_next()
+	dir.list_dir_end()
 
 func _load_regions() -> void:
 	_load_resources_from_dir("res://data/regions/", regions)
@@ -51,7 +58,21 @@ func _load_followers() -> void:
 	_load_resources_from_dir("res://data/followers/", followers)
 
 func _load_research() -> void:
-	_load_resources_from_dir("res://data/research/", research)
+	var base_path := "res://data/research/"
+	# Load root-level research files
+	_load_resources_from_dir(base_path, research)
+	# Load faction subdirectories
+	var dir := DirAccess.open(base_path)
+	if dir == null:
+		push_warning("Could not open research directory: " + base_path)
+		return
+	dir.list_dir_begin()
+	var folder := dir.get_next()
+	while folder != "":
+		if dir.current_is_dir() and not folder.begins_with("."):
+			_load_resources_from_dir(base_path + folder + "/", research)
+		folder = dir.get_next()
+	dir.list_dir_end()
 
 func _load_policies() -> void:
 	_load_resources_from_dir("res://data/policies/", policies)

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"resonance_field"
+display_name = "Resonance Field"
+description = "Shard energy pulses outward, empowering all nearby."
+tech_cost = 90
+research_time = 7
+prerequisites = Array[StringName]([&"shard_communion"])
+effects = { "shard_radius_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"shardhorde"
+tree_angle = 240
+tree_branch = &"shard_communion"

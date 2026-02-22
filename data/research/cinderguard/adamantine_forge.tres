@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"adamantine_forge"
+display_name = "Adamantine Forge"
+description = "The adamantine forge burns eternal, yielding godsteel."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"master_smithing", &"garrison_doctrine"])
+effects = { "income_iron_pct": 20, "unit_attack_bonus": 3 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"cinderguard"
+tree_angle = 0
+tree_branch = &"forging"

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"splinterbrood"
+display_name = "Splinterbrood"
+description = "A voracious offshoot of the Shardhorde whose swarms consume everything in their path. Quantity over quality."
+color = Color(0.6, 0.2, 0.5, 1)
+is_playable = false
+starting_regions = Array[StringName]([])
+realm_affinity = 1
+shard_preferences = {}
+ai_personality = {"aggression": 0.6, "expansion": 0.7, "style": "nomadic"}

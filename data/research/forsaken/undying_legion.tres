@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"undying_legion"
+display_name = "Undying Legion"
+description = "The dead march eternal."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"corpse_harvest", &"shadow_blades"])
+effects = { "unit_attack_bonus": 3, "max_army_size_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"forsaken"
+tree_angle = 0
+tree_branch = &"necromancy"

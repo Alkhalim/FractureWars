@@ -1,6 +1,6 @@
 extends Control
 
-const TERRAIN_NAMES := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+const TERRAIN_NAMES := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wetlands", "Tundra", "Shard Wastes", "Water", "Jungle"]
 const REALM_NAMES := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
 
 # Colors for unit card portrait backgrounds by tag
@@ -83,7 +83,6 @@ var _research_panel: PanelContainer
 var _unit_detail_panel: PanelContainer
 var _item_swap_panel: PanelContainer
 var _turn_summary_panel: PanelContainer
-var _diplo_overview_panel: PanelContainer
 var _tutorial_overlay: PanelContainer
 var _advisor_toast: Label
 
@@ -1624,6 +1623,10 @@ var _diplomacy_gift_panel: PanelContainer
 var _diplomacy_result_panel: PanelContainer
 var _last_rejected_offer: Dictionary = {} # {target, action, ...offer details}
 var _last_rejected_target: StringName = &""
+var _diplo_tab_index: int = 0 # 0=Major, 1=Minor, 2=Independent Cities
+var _diplo_detail_faction: StringName = &""
+var _diplo_detail_panel: PanelContainer
+var _diplo_selected_offers: Dictionary = {} # action_name -> bool
 
 func _create_diplomacy_panel() -> void:
 	_diplomacy_panel = PanelContainer.new()
@@ -1632,12 +1635,12 @@ func _create_diplomacy_panel() -> void:
 	_diplomacy_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_diplomacy_panel.anchor_left = 0.5
 	_diplomacy_panel.anchor_right = 0.5
-	_diplomacy_panel.anchor_top = 0.08
-	_diplomacy_panel.anchor_bottom = 0.92
-	_diplomacy_panel.offset_left = -280.0
-	_diplomacy_panel.offset_right = 280.0
+	_diplomacy_panel.anchor_top = 0.06
+	_diplomacy_panel.anchor_bottom = 0.94
+	_diplomacy_panel.offset_left = -320.0
+	_diplomacy_panel.offset_right = 320.0
 	_diplomacy_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_diplomacy_panel.custom_minimum_size = Vector2(540, 0)
+	_diplomacy_panel.custom_minimum_size = Vector2(620, 0)
 	_diplomacy_panel.add_theme_stylebox_override("panel", _create_panel_style())
 
 	var scroll := ScrollContainer.new()
@@ -1656,14 +1659,15 @@ func _create_diplomacy_panel() -> void:
 func _toggle_diplomacy_panel() -> void:
 	if _diplomacy_panel.visible:
 		_diplomacy_panel.visible = false
-		if _diplo_overview_panel:
-			_diplo_overview_panel.queue_free()
-			_diplo_overview_panel = null
+		if _diplo_detail_panel:
+			_diplo_detail_panel.queue_free()
+			_diplo_detail_panel = null
+		_diplo_detail_faction = &""
 	else:
 		_check_tutorial("diplomacy_viewed")
+		_diplo_detail_faction = &""
 		_refresh_diplomacy_panel()
 		_diplomacy_panel.visible = true
-		_show_diplomatic_overview()
 
 const RELATION_NAMES := ["War", "Hostile", "Neutral", "Friendly", "Allied"]
 const RELATION_COLORS := {
@@ -1680,9 +1684,49 @@ func _refresh_diplomacy_panel() -> void:
 	for child in vbox.get_children():
 		child.queue_free()
 
+	# If viewing a faction detail, show that instead
+	if _diplo_detail_faction != &"":
+		_build_faction_detail(vbox, _diplo_detail_faction)
+		return
+
 	_create_panel_header(vbox, "Diplomacy", _diplomacy_panel)
 
+	# Tab buttons
+	var tab_row := HBoxContainer.new()
+	tab_row.add_theme_constant_override("separation", 4)
+	tab_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var tab_names := ["Major Factions", "Minor Factions", "Independent Cities"]
+	for i in tab_names.size():
+		var tab_btn := Button.new()
+		tab_btn.text = tab_names[i]
+		tab_btn.custom_minimum_size = Vector2(140, 30)
+		if i == _diplo_tab_index:
+			tab_btn.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+		else:
+			tab_btn.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48))
+		var idx: int = i
+		tab_btn.pressed.connect(func():
+			_diplo_tab_index = idx
+			_refresh_diplomacy_panel()
+		)
+		tab_row.add_child(tab_btn)
+	vbox.add_child(tab_row)
+	_add_separator(vbox)
+
 	var player_id := GameManager.state.player_faction_id
+
+	if _diplo_tab_index == 0:
+		_build_diplo_faction_list(vbox, player_id, true) # major factions
+	elif _diplo_tab_index == 1:
+		_build_diplo_faction_list(vbox, player_id, false) # minor factions
+	else:
+		_build_diplo_independent_list(vbox, player_id)
+
+func _is_major_faction(faction_id: StringName) -> bool:
+	return not GameManager.MINOR_FACTION_PARENTS.has(faction_id) and not GameManager.is_npc_faction(faction_id) and faction_id not in GameManager.NOMADIC_FACTIONS
+
+func _build_diplo_faction_list(vbox: VBoxContainer, player_id: StringName, major_only: bool) -> void:
+	var has_any := false
 	for faction_id in GameManager.state.faction_states:
 		if faction_id == player_id or GameManager.is_npc_faction(faction_id):
 			continue
@@ -1692,126 +1736,584 @@ func _refresh_diplomacy_panel() -> void:
 		var fd: FactionData = DataManager.get_faction(faction_id)
 		if fd == null:
 			continue
+		var is_major := _is_major_faction(faction_id)
+		if major_only and not is_major:
+			continue
+		if not major_only and is_major:
+			continue
 
+		has_any = true
 		var relation := GameManager.get_relation(player_id, faction_id)
 		var standing := GameManager.diplomacy_system.get_standing(player_id, faction_id)
+		_build_diplo_faction_row(vbox, faction_id, fd, relation, standing)
 
-		# Faction row container
-		var faction_box := VBoxContainer.new()
-		faction_box.add_theme_constant_override("separation", 4)
+	if not has_any:
+		var none_lbl := Label.new()
+		none_lbl.text = "  No factions in this category."
+		none_lbl.add_theme_font_size_override("font_size", 12)
+		none_lbl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.45))
+		vbox.add_child(none_lbl)
 
-		# Name + relation + standing row
-		var info_row := HBoxContainer.new()
-		var color_rect := ColorRect.new()
-		color_rect.custom_minimum_size = Vector2(12, 12)
-		color_rect.color = fd.color
-		info_row.add_child(color_rect)
-		var name_label := Label.new()
-		name_label.text = " " + fd.display_name
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_label.add_theme_font_size_override("font_size", 13)
-		info_row.add_child(name_label)
-		var rel_label := Label.new()
-		rel_label.text = RELATION_NAMES[relation]
-		rel_label.add_theme_font_size_override("font_size", 12)
-		rel_label.add_theme_color_override("font_color", RELATION_COLORS.get(relation, Color.WHITE))
-		info_row.add_child(rel_label)
-		var standing_label := Label.new()
-		standing_label.text = "  [%d]" % standing
-		standing_label.add_theme_font_size_override("font_size", 11)
-		if standing > 0:
-			standing_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
-		elif standing < 0:
-			standing_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: FactionData, relation: int, standing: int) -> void:
+	var player_id := GameManager.state.player_faction_id
+	var row_panel := PanelContainer.new()
+	var row_style := StyleBoxFlat.new()
+	row_style.bg_color = Color(0.12, 0.11, 0.14, 0.8)
+	row_style.border_width_left = 3
+	row_style.border_color = fd.color
+	row_style.corner_radius_top_left = 3
+	row_style.corner_radius_bottom_left = 3
+	row_style.corner_radius_top_right = 3
+	row_style.corner_radius_bottom_right = 3
+	row_style.content_margin_left = 8.0
+	row_style.content_margin_top = 6.0
+	row_style.content_margin_right = 8.0
+	row_style.content_margin_bottom = 6.0
+	row_panel.add_theme_stylebox_override("panel", row_style)
+
+	var info_row := HBoxContainer.new()
+	info_row.add_theme_constant_override("separation", 8)
+
+	# Faction color dot
+	var color_rect := ColorRect.new()
+	color_rect.custom_minimum_size = Vector2(14, 14)
+	color_rect.color = fd.color
+	info_row.add_child(color_rect)
+
+	# Faction name
+	var name_label := Label.new()
+	name_label.text = fd.display_name
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.add_theme_font_size_override("font_size", 13)
+	info_row.add_child(name_label)
+
+	# Relation badge
+	var rel_label := Label.new()
+	rel_label.text = RELATION_NAMES[relation]
+	rel_label.add_theme_font_size_override("font_size", 12)
+	rel_label.add_theme_color_override("font_color", RELATION_COLORS.get(relation, Color.WHITE))
+	rel_label.custom_minimum_size = Vector2(55, 0)
+	info_row.add_child(rel_label)
+
+	# Standing
+	var standing_label := Label.new()
+	var s_prefix: String = "+" if standing > 0 else ""
+	standing_label.text = "[%s%d]" % [s_prefix, standing]
+	standing_label.add_theme_font_size_override("font_size", 11)
+	if standing > 0:
+		standing_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+	elif standing < 0:
+		standing_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+	else:
+		standing_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+	standing_label.custom_minimum_size = Vector2(40, 0)
+	info_row.add_child(standing_label)
+
+	# View button
+	var view_btn := Button.new()
+	view_btn.text = "View"
+	view_btn.custom_minimum_size = Vector2(50, 26)
+	var fid: StringName = faction_id
+	view_btn.pressed.connect(func():
+		_diplo_detail_faction = fid
+		_diplo_selected_offers.clear()
+		_refresh_diplomacy_panel()
+	)
+	info_row.add_child(view_btn)
+
+	row_panel.add_child(info_row)
+	vbox.add_child(row_panel)
+
+func _build_diplo_independent_list(vbox: VBoxContainer, player_id: StringName) -> void:
+	# Group independent cities by culture region
+	var culture_cities: Dictionary = {} # culture_name -> Array of CityState
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != &"independent":
+			continue
+		var culture: StringName = GameManager.REGION_CULTURE.get(city.region_id, &"unknown")
+		if not culture_cities.has(culture):
+			culture_cities[culture] = []
+		culture_cities[culture].append(city)
+
+	if culture_cities.is_empty():
+		var none_lbl := Label.new()
+		none_lbl.text = "  No independent cities remain."
+		none_lbl.add_theme_font_size_override("font_size", 12)
+		none_lbl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.45))
+		vbox.add_child(none_lbl)
+		return
+
+	for culture_id in culture_cities:
+		var culture_label := Label.new()
+		culture_label.text = str(culture_id).capitalize() + " Culture"
+		culture_label.add_theme_font_size_override("font_size", 13)
+		culture_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(culture_label)
+
+		var standing := 0
+		if GameManager.diplomacy_system.has_method("get_standing"):
+			standing = GameManager.diplomacy_system.get_standing(player_id, culture_id)
+
+		var standing_lbl := Label.new()
+		var s_prefix: String = "+" if standing > 0 else ""
+		standing_lbl.text = "  Culture standing: %s%d (join at 40)" % [s_prefix, standing]
+		standing_lbl.add_theme_font_size_override("font_size", 11)
+		if standing >= 40:
+			standing_lbl.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+		elif standing > 0:
+			standing_lbl.add_theme_color_override("font_color", Color(0.6, 0.7, 0.5))
 		else:
-			standing_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
-		info_row.add_child(standing_label)
-		faction_box.add_child(info_row)
+			standing_lbl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		vbox.add_child(standing_lbl)
 
-		# Action buttons row
-		var btn_row := HBoxContainer.new()
-		btn_row.add_theme_constant_override("separation", 4)
+		var cities: Array = culture_cities[culture_id]
+		for city in cities:
+			var city_row := HBoxContainer.new()
+			city_row.add_theme_constant_override("separation", 6)
+			var city_label := Label.new()
+			city_label.text = "    " + city.get_display_name()
+			city_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			city_label.add_theme_font_size_override("font_size", 12)
+			city_row.add_child(city_label)
 
-		if relation == Enums.FactionRelation.WAR:
-			var peace_btn := Button.new()
-			peace_btn.text = "Propose Peace"
-			peace_btn.tooltip_text = "Offer a peace treaty to end the war. More likely to be accepted if the enemy is exhausted or you are stronger."
-			peace_btn.custom_minimum_size = Vector2(100, 28)
-			var fid: StringName = faction_id
-			peace_btn.pressed.connect(func(): _on_diplomacy_propose_peace(fid))
-			btn_row.add_child(peace_btn)
-		elif relation != Enums.FactionRelation.ALLIED:
-			var war_btn := Button.new()
-			war_btn.text = "Declare War"
-			war_btn.tooltip_text = "Declare war on this faction. Immediately sets relation to War and heavily reduces standing."
-			war_btn.custom_minimum_size = Vector2(90, 28)
-			var fid: StringName = faction_id
-			war_btn.pressed.connect(func(): _on_diplomacy_declare_war(fid))
-			btn_row.add_child(war_btn)
-			if relation == Enums.FactionRelation.FRIENDLY:
-				var ally_btn := Button.new()
-				ally_btn.text = "Propose Alliance"
-				ally_btn.tooltip_text = "Propose a military alliance. Requires Friendly relations. Allies won't attack each other and may coordinate against shared enemies."
-				ally_btn.custom_minimum_size = Vector2(110, 28)
-				var fid2: StringName = faction_id
-				ally_btn.pressed.connect(func(): _on_diplomacy_propose_alliance(fid2))
-				btn_row.add_child(ally_btn)
+			var region_data: RegionData = DataManager.get_region(city.region_id)
+			var region_name: String = region_data.display_name if region_data else str(city.region_id)
+			var region_lbl := Label.new()
+			region_lbl.text = region_name
+			region_lbl.add_theme_font_size_override("font_size", 11)
+			region_lbl.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48))
+			city_row.add_child(region_lbl)
+			vbox.add_child(city_row)
 
-		if relation != Enums.FactionRelation.WAR:
-			var trade_btn := Button.new()
-			trade_btn.text = "Trade"
-			trade_btn.tooltip_text = "Propose a recurring resource exchange. Friendly factions accept less favorable terms; hostile factions demand generous offers."
-			trade_btn.custom_minimum_size = Vector2(60, 28)
-			var fid: StringName = faction_id
-			trade_btn.pressed.connect(func(): _on_diplomacy_open_trade(fid))
-			btn_row.add_child(trade_btn)
-
-		var gift_btn := Button.new()
-		gift_btn.text = "Gift"
-		gift_btn.tooltip_text = "Send resources as a diplomatic gift. Choose resource type and amount. Improves standing. Once per turn per faction."
-		gift_btn.custom_minimum_size = Vector2(50, 28)
-		var fid_gift: StringName = faction_id
-		if GameManager.diplomacy_system.has_gifted_this_turn(player_id, faction_id):
-			gift_btn.disabled = true
-			gift_btn.tooltip_text = "Already sent a gift to this faction this turn."
-		gift_btn.pressed.connect(func(): _on_diplomacy_open_gift(fid_gift))
-		btn_row.add_child(gift_btn)
-
-		# Shard offer button (only if player owns shards)
-		var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
-		if player_fs and player_fs.owned_shards.size() > 0:
-			var shard_btn := Button.new()
-			shard_btn.text = "Offer Shard"
-			shard_btn.tooltip_text = "Transfer one of your claimed shards to this faction. Greatly improves standing based on shard power level."
-			shard_btn.custom_minimum_size = Vector2(80, 28)
-			var fid_s: StringName = faction_id
-			shard_btn.pressed.connect(func(): _on_diplomacy_offer_shard(fid_s))
-			btn_row.add_child(shard_btn)
-
-		faction_box.add_child(btn_row)
-
-		# Active treaties
-		var treaties := GameManager.diplomacy_system.get_treaties_between(player_id, faction_id)
-		if treaties.size() > 0:
-			for treaty in treaties:
-				var treaty_label := Label.new()
-				var type_name := ""
-				match treaty.treaty_type:
-					Enums.TreatyType.PEACE: type_name = "Peace Treaty"
-					Enums.TreatyType.ALLIANCE: type_name = "Alliance"
-					Enums.TreatyType.TRADE_DEAL: type_name = "Trade Deal"
-				var duration_text := ""
-				if treaty.turns_remaining > 0:
-					duration_text = " (%d turns)" % treaty.turns_remaining
-				elif treaty.turns_remaining == -1:
-					duration_text = " (permanent)"
-				treaty_label.text = "  > " + type_name + duration_text
-				treaty_label.add_theme_font_size_override("font_size", 11)
-				treaty_label.add_theme_color_override("font_color", Color(0.5, 0.7, 0.8))
-				faction_box.add_child(treaty_label)
-
-		vbox.add_child(faction_box)
 		_add_separator(vbox)
+
+# ── Faction Detail Screen ──────────────────────────────────────
+
+func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
+	var player_id := GameManager.state.player_faction_id
+	var fd: FactionData = DataManager.get_faction(faction_id)
+	if fd == null:
+		return
+	var relation := GameManager.get_relation(player_id, faction_id)
+	var standing := GameManager.diplomacy_system.get_standing(player_id, faction_id)
+
+	# Back button + faction name header
+	var header := HBoxContainer.new()
+	var back_btn := Button.new()
+	back_btn.text = "< Back"
+	back_btn.custom_minimum_size = Vector2(70, 30)
+	back_btn.pressed.connect(func():
+		_diplo_detail_faction = &""
+		_diplo_selected_offers.clear()
+		_refresh_diplomacy_panel()
+	)
+	header.add_child(back_btn)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(spacer)
+	var title := Label.new()
+	title.text = fd.display_name
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", fd.color.lightened(0.3))
+	header.add_child(title)
+	var spacer2 := Control.new()
+	spacer2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(spacer2)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func(): _diplomacy_panel.visible = false)
+	header.add_child(close_btn)
+	vbox.add_child(header)
+	_add_separator(vbox)
+
+	# Top section: Portrait + Info side by side
+	var top_row := HBoxContainer.new()
+	top_row.add_theme_constant_override("separation", 12)
+
+	# Leader portrait (code-drawn placeholder)
+	var portrait := _LeaderPortrait.new()
+	portrait.faction_color = fd.color
+	portrait.faction_id = faction_id
+	portrait.custom_minimum_size = Vector2(100, 130)
+	top_row.add_child(portrait)
+
+	# Info column
+	var info_col := VBoxContainer.new()
+	info_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info_col.add_theme_constant_override("separation", 4)
+
+	# Leader name
+	var leader_name: String = GameManager.FACTION_LEADER_NAMES.get(faction_id, "Unknown Leader")
+	var leader_lbl := Label.new()
+	leader_lbl.text = leader_name
+	leader_lbl.add_theme_font_size_override("font_size", 14)
+	leader_lbl.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	info_col.add_child(leader_lbl)
+
+	# Relation + Standing
+	var rel_row := HBoxContainer.new()
+	var rel_lbl := Label.new()
+	rel_lbl.text = "Relation: " + RELATION_NAMES[relation]
+	rel_lbl.add_theme_font_size_override("font_size", 12)
+	rel_lbl.add_theme_color_override("font_color", RELATION_COLORS.get(relation, Color.WHITE))
+	rel_row.add_child(rel_lbl)
+	var standing_lbl := Label.new()
+	var s_prefix: String = "+" if standing > 0 else ""
+	standing_lbl.text = "  Standing: [%s%d]" % [s_prefix, standing]
+	standing_lbl.add_theme_font_size_override("font_size", 12)
+	if standing > 0:
+		standing_lbl.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+	elif standing < 0:
+		standing_lbl.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+	else:
+		standing_lbl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+	rel_row.add_child(standing_lbl)
+	info_col.add_child(rel_row)
+
+	# Faction-specific dialogue
+	var dialogue: Dictionary = GameManager.FACTION_DIALOGUE.get(faction_id, {})
+	var greeting_key := "greeting_neutral"
+	if relation == Enums.FactionRelation.WAR:
+		greeting_key = "greeting_war"
+	elif relation == Enums.FactionRelation.HOSTILE:
+		greeting_key = "greeting_hostile"
+	elif relation >= Enums.FactionRelation.FRIENDLY:
+		greeting_key = "greeting_friendly"
+	var greeting_text: String = dialogue.get(greeting_key, dialogue.get("greeting_neutral", "..."))
+	var dialogue_lbl := Label.new()
+	dialogue_lbl.text = '"' + greeting_text + '"'
+	dialogue_lbl.add_theme_font_size_override("font_size", 11)
+	dialogue_lbl.add_theme_color_override("font_color", Color(0.7, 0.68, 0.6))
+	dialogue_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info_col.add_child(dialogue_lbl)
+
+	# Active treaties
+	var treaties := GameManager.diplomacy_system.get_treaties_between(player_id, faction_id)
+	if treaties.size() > 0:
+		var treaty_header := Label.new()
+		treaty_header.text = "Active Treaties:"
+		treaty_header.add_theme_font_size_override("font_size", 11)
+		treaty_header.add_theme_color_override("font_color", Color(0.7, 0.68, 0.6))
+		info_col.add_child(treaty_header)
+		for treaty in treaties:
+			var type_name := ""
+			match treaty.treaty_type:
+				Enums.TreatyType.PEACE: type_name = "Peace Treaty"
+				Enums.TreatyType.ALLIANCE: type_name = "Alliance"
+				Enums.TreatyType.TRADE_DEAL: type_name = "Trade Deal"
+			var dur_text := ""
+			if treaty.turns_remaining > 0:
+				dur_text = " (%d turns)" % treaty.turns_remaining
+			elif treaty.turns_remaining == -1:
+				dur_text = " (permanent)"
+			var t_lbl := Label.new()
+			t_lbl.text = "  " + type_name + dur_text
+			t_lbl.add_theme_font_size_override("font_size", 10)
+			t_lbl.add_theme_color_override("font_color", Color(0.5, 0.7, 0.8))
+			info_col.add_child(t_lbl)
+
+	top_row.add_child(info_col)
+	vbox.add_child(top_row)
+	_add_separator(vbox)
+
+	# Offer selection section
+	var offer_title := Label.new()
+	offer_title.text = "SELECT OFFERS:"
+	offer_title.add_theme_font_size_override("font_size", 13)
+	offer_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	vbox.add_child(offer_title)
+
+	var offer_grid := GridContainer.new()
+	offer_grid.columns = 2
+	offer_grid.add_theme_constant_override("h_separation", 12)
+	offer_grid.add_theme_constant_override("v_separation", 4)
+
+	# Define available offers based on relation
+	var offers: Array[Dictionary] = []
+	if relation == Enums.FactionRelation.WAR:
+		offers.append({id = "peace", label = "Propose Peace"})
+	if relation != Enums.FactionRelation.WAR and relation != Enums.FactionRelation.ALLIED:
+		offers.append({id = "declare_war", label = "Declare War"})
+	if relation == Enums.FactionRelation.FRIENDLY:
+		offers.append({id = "alliance", label = "Propose Alliance"})
+	if relation != Enums.FactionRelation.WAR:
+		offers.append({id = "trade", label = "Offer Trade"})
+	offers.append({id = "gift", label = "Gift Resources"})
+	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if player_fs and player_fs.owned_shards.size() > 0:
+		offers.append({id = "shard", label = "Offer Shard"})
+
+	for offer in offers:
+		var check := CheckBox.new()
+		check.text = offer.label
+		check.add_theme_font_size_override("font_size", 12)
+		var offer_id: String = offer.id
+		check.button_pressed = _diplo_selected_offers.get(offer_id, false)
+		check.toggled.connect(func(pressed: bool):
+			_diplo_selected_offers[offer_id] = pressed
+			_refresh_diplomacy_panel()
+		)
+		# Disable gift if already gifted this turn
+		if offer_id == "gift" and GameManager.diplomacy_system.has_gifted_this_turn(player_id, faction_id):
+			check.disabled = true
+			check.tooltip_text = "Already gifted this turn."
+		offer_grid.add_child(check)
+
+	vbox.add_child(offer_grid)
+
+	# Likelihood preview
+	var likelihood := _calculate_combined_likelihood(player_id, faction_id)
+	if likelihood >= 0:
+		_add_separator(vbox)
+		var likelihood_row := HBoxContainer.new()
+		likelihood_row.add_theme_constant_override("separation", 8)
+		var lk_label := Label.new()
+		lk_label.text = "Likelihood: "
+		lk_label.add_theme_font_size_override("font_size", 12)
+		likelihood_row.add_child(lk_label)
+		var bar := ProgressBar.new()
+		bar.min_value = 0
+		bar.max_value = 100
+		bar.value = likelihood
+		bar.custom_minimum_size = Vector2(200, 18)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.show_percentage = false
+		likelihood_row.add_child(bar)
+		var pct_label := Label.new()
+		pct_label.text = "%d%%" % likelihood
+		pct_label.add_theme_font_size_override("font_size", 12)
+		if likelihood >= 70:
+			pct_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
+		elif likelihood >= 40:
+			pct_label.add_theme_color_override("font_color", Color(0.85, 0.75, 0.3))
+		else:
+			pct_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+		likelihood_row.add_child(pct_label)
+		var favorable_lbl := Label.new()
+		if likelihood >= 70:
+			favorable_lbl.text = "Favorable"
+		elif likelihood >= 40:
+			favorable_lbl.text = "Uncertain"
+		else:
+			favorable_lbl.text = "Unlikely"
+		favorable_lbl.add_theme_font_size_override("font_size", 11)
+		favorable_lbl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		likelihood_row.add_child(favorable_lbl)
+		vbox.add_child(likelihood_row)
+
+	_add_separator(vbox)
+
+	# Action buttons
+	var btn_row := HBoxContainer.new()
+	btn_row.add_theme_constant_override("separation", 8)
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var has_selection := false
+	for key in _diplo_selected_offers:
+		if _diplo_selected_offers[key]:
+			has_selection = true
+			break
+
+	var make_offer_btn := Button.new()
+	make_offer_btn.text = "MAKE OFFER"
+	make_offer_btn.custom_minimum_size = Vector2(120, 34)
+	make_offer_btn.disabled = not has_selection
+	var fid: StringName = faction_id
+	make_offer_btn.pressed.connect(func(): _execute_combined_offers(fid))
+	btn_row.add_child(make_offer_btn)
+
+	var cancel_btn := Button.new()
+	cancel_btn.text = "CANCEL"
+	cancel_btn.custom_minimum_size = Vector2(100, 34)
+	cancel_btn.pressed.connect(func():
+		_diplo_detail_faction = &""
+		_diplo_selected_offers.clear()
+		_refresh_diplomacy_panel()
+	)
+	btn_row.add_child(cancel_btn)
+	vbox.add_child(btn_row)
+
+func _calculate_combined_likelihood(player_id: StringName, target_id: StringName) -> int:
+	var has_any := false
+	var total_chance := 0.0
+	var count := 0
+	var standing := GameManager.diplomacy_system.get_standing(player_id, target_id)
+	var ratio := GameManager.diplomacy_system.get_strength_ratio(player_id, target_id)
+
+	for offer_id in _diplo_selected_offers:
+		if not _diplo_selected_offers[offer_id]:
+			continue
+		has_any = true
+		count += 1
+		match offer_id:
+			"peace":
+				var base := 30.0
+				base += clampf(standing * 0.5, -20, 20)
+				base += clampf((ratio - 1.0) * 20.0, -20, 30)
+				total_chance += clampf(base, 5, 95)
+			"alliance":
+				var base := 40.0
+				base += clampf(standing * 0.8, -30, 30)
+				total_chance += clampf(base, 5, 95)
+			"trade":
+				var base := 50.0
+				base += clampf(standing * 0.5, -20, 25)
+				total_chance += clampf(base, 10, 95)
+			"gift":
+				total_chance += 100.0 # Gifts always succeed
+			"shard":
+				total_chance += 100.0 # Shard offers always succeed
+			"declare_war":
+				total_chance += 100.0 # War declarations always succeed
+			_:
+				total_chance += 50.0
+
+	if not has_any:
+		return -1
+	return int(total_chance / float(count))
+
+func _execute_combined_offers(target: StringName) -> void:
+	var player_id := GameManager.state.player_faction_id
+	var results: Array[String] = []
+
+	for offer_id in _diplo_selected_offers:
+		if not _diplo_selected_offers[offer_id]:
+			continue
+		match offer_id:
+			"peace":
+				var result := GameManager.diplomacy_system.propose_peace(player_id, target)
+				results.append("Peace: " + result.reason)
+			"alliance":
+				var result := GameManager.diplomacy_system.propose_alliance(player_id, target)
+				results.append("Alliance: " + result.reason)
+			"declare_war":
+				GameManager.diplomacy_system.declare_war(player_id, target)
+				results.append("War declared!")
+			"trade":
+				# Open trade dialog separately
+				_on_diplomacy_open_trade(target)
+				_diplo_selected_offers.clear()
+				return
+			"gift":
+				_on_diplomacy_open_gift(target)
+				_diplo_selected_offers.clear()
+				return
+			"shard":
+				_on_diplomacy_offer_shard(target)
+				results.append("Shard offered.")
+
+	_diplo_selected_offers.clear()
+	if results.size() > 0:
+		_show_diplomacy_result(target, "\n".join(results), false)
+	_refresh_diplomacy_panel()
+
+# ── Leader Portrait (Code-Drawn) ──────────────────────────────
+
+class _LeaderPortrait extends Control:
+	var faction_color: Color = Color.WHITE
+	var faction_id: StringName = &""
+
+	const FACTION_EMBLEMS := {
+		&"empire": "shield", &"gladehost": "tree", &"moonspear": "crescent",
+		&"thunderswarm": "bolt", &"tainted_jade": "serpent", &"skulloath": "skull",
+		&"cinderguard": "flame", &"forsaken": "eye", &"ivoryscar": "diamond",
+		&"shardhorde": "crystal", &"sunblessed": "sun",
+	}
+
+	func _draw() -> void:
+		var rect := Rect2(Vector2.ZERO, size)
+		# Background
+		draw_rect(rect, faction_color.darkened(0.7))
+		# Border
+		draw_rect(rect, faction_color.darkened(0.3), false, 2.0)
+		# Inner glow
+		var inner := Rect2(rect.position + Vector2(4, 4), rect.size - Vector2(8, 8))
+		draw_rect(inner, faction_color.darkened(0.6))
+
+		var cx := size.x * 0.5
+		var cy := size.y * 0.45
+		var emblem: String = FACTION_EMBLEMS.get(faction_id, "shield")
+		var col := faction_color.lightened(0.2)
+
+		match emblem:
+			"shield":
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 30), Vector2(cx + 22, cy - 18),
+					Vector2(cx + 22, cy + 8), Vector2(cx, cy + 28),
+					Vector2(cx - 22, cy + 8), Vector2(cx - 22, cy - 18),
+				]
+				draw_colored_polygon(pts, col)
+				draw_polyline(pts, Color.WHITE, 1.5, true)
+			"tree":
+				draw_rect(Rect2(cx - 4, cy + 5, 8, 25), col.darkened(0.3))
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 30), Vector2(cx + 20, cy + 5), Vector2(cx - 20, cy + 5),
+				]
+				draw_colored_polygon(pts, col)
+			"crescent":
+				draw_arc(Vector2(cx, cy), 22, deg_to_rad(30), deg_to_rad(330), 24, col, 4.0)
+				draw_circle(Vector2(cx + 8, cy - 8), 5, col)
+			"bolt":
+				var pts: PackedVector2Array = [
+					Vector2(cx + 5, cy - 30), Vector2(cx - 8, cy - 2),
+					Vector2(cx + 2, cy - 2), Vector2(cx - 5, cy + 30),
+					Vector2(cx + 8, cy + 2), Vector2(cx - 2, cy + 2),
+				]
+				draw_colored_polygon(pts, col)
+			"serpent":
+				draw_arc(Vector2(cx, cy - 5), 18, deg_to_rad(0), deg_to_rad(300), 20, col, 3.5)
+				draw_circle(Vector2(cx + 16, cy - 10), 4, col.lightened(0.2))
+			"skull":
+				draw_arc(Vector2(cx, cy - 5), 20, deg_to_rad(180), deg_to_rad(540), 20, col, 3.0)
+				draw_rect(Rect2(cx - 15, cy - 5, 30, 18), col)
+				draw_circle(Vector2(cx - 7, cy - 5), 5, Color(0.1, 0.09, 0.12))
+				draw_circle(Vector2(cx + 7, cy - 5), 5, Color(0.1, 0.09, 0.12))
+			"flame":
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 28), Vector2(cx + 14, cy + 5),
+					Vector2(cx + 6, cy - 5), Vector2(cx + 18, cy + 15),
+					Vector2(cx, cy + 25), Vector2(cx - 18, cy + 15),
+					Vector2(cx - 6, cy - 5), Vector2(cx - 14, cy + 5),
+				]
+				draw_colored_polygon(pts, col)
+			"eye":
+				var pts: PackedVector2Array = [
+					Vector2(cx - 25, cy), Vector2(cx, cy - 15), Vector2(cx + 25, cy),
+					Vector2(cx, cy + 15),
+				]
+				draw_colored_polygon(pts, col)
+				draw_circle(Vector2(cx, cy), 8, Color(0.15, 0.1, 0.2))
+				draw_circle(Vector2(cx, cy), 4, col.lightened(0.3))
+			"diamond":
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 25), Vector2(cx + 18, cy),
+					Vector2(cx, cy + 25), Vector2(cx - 18, cy),
+				]
+				draw_colored_polygon(pts, col)
+				draw_polyline(pts, Color.WHITE, 1.5, true)
+			"crystal":
+				for i in 5:
+					var angle := deg_to_rad(i * 72.0 - 90.0)
+					var tip := Vector2(cx + cos(angle) * 22, cy + sin(angle) * 22)
+					var left := Vector2(cx + cos(angle + 0.4) * 8, cy + sin(angle + 0.4) * 8)
+					var right := Vector2(cx + cos(angle - 0.4) * 8, cy + sin(angle - 0.4) * 8)
+					draw_colored_polygon([tip, left, right], col)
+			"sun":
+				draw_circle(Vector2(cx, cy), 14, col)
+				for i in 8:
+					var angle := deg_to_rad(i * 45.0)
+					var start := Vector2(cx + cos(angle) * 16, cy + sin(angle) * 16)
+					var end := Vector2(cx + cos(angle) * 26, cy + sin(angle) * 26)
+					draw_line(start, end, col, 2.5)
+
+		# Leader name below emblem
+		var leader: String = GameManager.FACTION_LEADER_NAMES.get(faction_id, "")
+		if leader != "":
+			var font := ThemeDB.fallback_font
+			var font_size := 9
+			draw_string(font, Vector2(4, size.y - 6), leader, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, font_size, Color(0.8, 0.76, 0.68))
 
 func _on_diplomacy_declare_war(target: StringName) -> void:
 	GameManager.diplomacy_system.declare_war(GameManager.state.player_faction_id, target)
@@ -2167,12 +2669,12 @@ func _create_research_panel() -> void:
 	_research_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_research_panel.anchor_left = 0.5
 	_research_panel.anchor_right = 0.5
-	_research_panel.anchor_top = 0.08
-	_research_panel.anchor_bottom = 0.92
-	_research_panel.offset_left = -280.0
-	_research_panel.offset_right = 280.0
+	_research_panel.anchor_top = 0.04
+	_research_panel.anchor_bottom = 0.96
+	_research_panel.offset_left = -440.0
+	_research_panel.offset_right = 440.0
 	_research_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_research_panel.custom_minimum_size = Vector2(540, 0)
+	_research_panel.custom_minimum_size = Vector2(860, 0)
 	_research_panel.add_theme_stylebox_override("panel", _create_panel_style())
 
 	var scroll := ScrollContainer.new()
@@ -2209,262 +2711,338 @@ func _refresh_research_panel() -> void:
 	for child in vbox.get_children():
 		child.queue_free()
 
-	_create_panel_header(vbox, "Research", _research_panel)
-
 	var player_id := GameManager.state.player_faction_id
 	var fs: FactionState = GameManager.state.faction_states.get(player_id)
 	if fs == null:
 		return
 
+	var parent_faction_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(fs.faction_data_id, fs.faction_data_id)
+	var fd: FactionData = DataManager.get_faction(parent_faction_id)
+	var faction_name: String = fd.display_name if fd else str(parent_faction_id).capitalize()
+
+	# Header
+	var header := HBoxContainer.new()
+	var title := Label.new()
+	title.text = "Tech Tree - " + faction_name
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	header.add_child(title)
 	var current_tech: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
-
-	# Technology resource display
-	var tech_row := HBoxContainer.new()
-	var tech_icon := Label.new()
-	tech_icon.text = "Technology: "
-	tech_icon.add_theme_font_size_override("font_size", 13)
-	tech_icon.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-	tech_row.add_child(tech_icon)
-	var tech_val := Label.new()
-	tech_val.text = str(current_tech)
-	tech_val.add_theme_font_size_override("font_size", 13)
-	tech_val.add_theme_color_override("font_color", RESOURCE_COLORS.get(2, Color.WHITE))
-	tech_row.add_child(tech_val)
-	vbox.add_child(tech_row)
-
-	# Current research section
-	if fs.current_research_id != &"":
-		var data: ResearchData = DataManager.get_research(fs.current_research_id)
-		if data:
-			_add_separator(vbox)
-			var section_label := Label.new()
-			section_label.text = "Current Research"
-			section_label.add_theme_font_size_override("font_size", 14)
-			section_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-			vbox.add_child(section_label)
-
-			var cat_color: Color = RESEARCH_CATEGORY_COLORS.get(data.research_category, Color(0.7, 0.7, 0.7))
-			var cur_box := VBoxContainer.new()
-			cur_box.add_theme_constant_override("separation", 2)
-			var name_label := Label.new()
-			name_label.text = data.display_name
-			name_label.add_theme_font_size_override("font_size", 13)
-			name_label.add_theme_color_override("font_color", cat_color)
-			cur_box.add_child(name_label)
-
-			var progress_row := HBoxContainer.new()
-			var bar := ProgressBar.new()
-			bar.min_value = 0
-			bar.max_value = data.research_time
-			bar.value = fs.research_progress
-			bar.custom_minimum_size = Vector2(200, 20)
-			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			bar.show_percentage = false
-			progress_row.add_child(bar)
-			var turns_label := Label.new()
-			turns_label.text = " %d/%d turns" % [fs.research_progress, data.research_time]
-			turns_label.add_theme_font_size_override("font_size", 11)
-			progress_row.add_child(turns_label)
-			cur_box.add_child(progress_row)
-
-			var invested: Array = fs.research_invested_shards.get(fs.current_research_id, [])
-			if invested.size() > 0:
-				var shard_text := Label.new()
-				var realm_names: Array[String] = []
-				for realm in invested:
-					realm_names.append(REALM_NAMES[realm])
-				shard_text.text = "Invested shards: " + ", ".join(realm_names)
-				shard_text.add_theme_font_size_override("font_size", 11)
-				shard_text.add_theme_color_override("font_color", Color(0.7, 0.3, 0.8))
-				cur_box.add_child(shard_text)
-
-			var cancel_btn := Button.new()
-			cancel_btn.text = "Cancel Research"
-			cancel_btn.custom_minimum_size = Vector2(120, 26)
-			cancel_btn.pressed.connect(func():
-				GameManager.research_system.cancel_research(player_id)
-				_refresh_research_panel())
-			cur_box.add_child(cancel_btn)
-			vbox.add_child(cur_box)
-
-	# Available shards to invest
-	if fs.current_research_id != &"" and fs.owned_shards.size() > 0:
-		_add_separator(vbox)
-		var shard_section := Label.new()
-		shard_section.text = "Invest Shard"
-		shard_section.add_theme_font_size_override("font_size", 14)
-		shard_section.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-		vbox.add_child(shard_section)
-		for shard_id in fs.owned_shards:
-			var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
-			if shard == null:
-				continue
-			var shard_row := HBoxContainer.new()
-			var shard_label_item := Label.new()
-			shard_label_item.text = "%s Shard (Power %d)" % [REALM_NAMES[shard.realm], shard.power_level]
-			shard_label_item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			shard_label_item.add_theme_font_size_override("font_size", 12)
-			shard_row.add_child(shard_label_item)
-			var invest_btn := Button.new()
-			invest_btn.text = "Invest"
-			invest_btn.custom_minimum_size = Vector2(60, 24)
-			var sid: StringName = shard_id
-			invest_btn.pressed.connect(func():
-				GameManager.research_system.invest_shard(player_id, sid)
-				_refresh_research_panel())
-			shard_row.add_child(invest_btn)
-			vbox.add_child(shard_row)
+	var tech_lbl := Label.new()
+	tech_lbl.text = "Technology: %d" % current_tech
+	tech_lbl.add_theme_font_size_override("font_size", 13)
+	tech_lbl.add_theme_color_override("font_color", RESOURCE_COLORS.get(2, Color.WHITE))
+	header.add_child(tech_lbl)
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.custom_minimum_size = Vector2(30, 30)
+	close_btn.pressed.connect(func(): _research_panel.visible = false)
+	header.add_child(close_btn)
+	vbox.add_child(header)
 
 	# Category legend
-	_add_separator(vbox)
 	var legend_row := HBoxContainer.new()
 	legend_row.add_theme_constant_override("separation", 12)
+	legend_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	for cat_name in [&"military", &"economy", &"arcane", &"logistics"]:
 		var chip := Label.new()
 		chip.text = str(cat_name).capitalize()
 		chip.add_theme_font_size_override("font_size", 10)
 		chip.add_theme_color_override("font_color", RESEARCH_CATEGORY_COLORS.get(cat_name, Color.WHITE))
 		legend_row.add_child(chip)
+	var done_chip := Label.new()
+	done_chip.text = "= Done"
+	done_chip.add_theme_font_size_override("font_size", 10)
+	done_chip.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+	legend_row.add_child(done_chip)
+	var avail_chip := Label.new()
+	avail_chip.text = "O Available"
+	avail_chip.add_theme_font_size_override("font_size", 10)
+	avail_chip.add_theme_color_override("font_color", Color(0.35, 0.8, 0.4))
+	legend_row.add_child(avail_chip)
 	vbox.add_child(legend_row)
 
-	# Research tree grouped by tier
-	for tier in [1, 2, 3]:
-		_add_separator(vbox)
-		var tier_label := Label.new()
-		tier_label.text = "Tier %d" % tier
-		tier_label.add_theme_font_size_override("font_size", 14)
-		tier_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-		vbox.add_child(tier_label)
+	# Radial tech tree drawing
+	var tree_control := _RadialTechTree.new()
+	tree_control.custom_minimum_size = Vector2(820, 700)
+	tree_control.faction_id = parent_faction_id
+	tree_control.player_faction_id = player_id
+	tree_control.hud_ref = self
+	vbox.add_child(tree_control)
 
-		var has_any := false
+	_add_separator(vbox)
+
+	# Current research progress at bottom
+	if fs.current_research_id != &"":
+		var data: ResearchData = DataManager.get_research(fs.current_research_id)
+		if data:
+			var cat_color: Color = RESEARCH_CATEGORY_COLORS.get(data.research_category, Color(0.7, 0.7, 0.7))
+			var cur_row := HBoxContainer.new()
+			cur_row.add_theme_constant_override("separation", 8)
+			var cur_label := Label.new()
+			cur_label.text = "Researching: " + data.display_name
+			cur_label.add_theme_font_size_override("font_size", 12)
+			cur_label.add_theme_color_override("font_color", cat_color)
+			cur_row.add_child(cur_label)
+			var bar := ProgressBar.new()
+			bar.min_value = 0
+			bar.max_value = data.research_time
+			bar.value = fs.research_progress
+			bar.custom_minimum_size = Vector2(150, 18)
+			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar.show_percentage = false
+			cur_row.add_child(bar)
+			var turns_lbl := Label.new()
+			turns_lbl.text = "%d/%d" % [fs.research_progress, data.research_time]
+			turns_lbl.add_theme_font_size_override("font_size", 11)
+			cur_row.add_child(turns_lbl)
+			var cancel_btn2 := Button.new()
+			cancel_btn2.text = "Cancel"
+			cancel_btn2.custom_minimum_size = Vector2(60, 24)
+			cancel_btn2.pressed.connect(func():
+				GameManager.research_system.cancel_research(player_id)
+				_refresh_research_panel())
+			cur_row.add_child(cancel_btn2)
+			vbox.add_child(cur_row)
+
+	# Shard investment section
+	if fs.current_research_id != &"" and fs.owned_shards.size() > 0:
+		var shard_row := HBoxContainer.new()
+		shard_row.add_theme_constant_override("separation", 6)
+		var shard_lbl := Label.new()
+		shard_lbl.text = "Invest Shard:"
+		shard_lbl.add_theme_font_size_override("font_size", 11)
+		shard_lbl.add_theme_color_override("font_color", Color(0.7, 0.3, 0.8))
+		shard_row.add_child(shard_lbl)
+		for shard_id in fs.owned_shards:
+			var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+			if shard == null:
+				continue
+			var invest_btn := Button.new()
+			invest_btn.text = "%s (P%d)" % [REALM_NAMES[shard.realm], shard.power_level]
+			invest_btn.custom_minimum_size = Vector2(80, 22)
+			var sid: StringName = shard_id
+			invest_btn.pressed.connect(func():
+				GameManager.research_system.invest_shard(player_id, sid)
+				_refresh_research_panel())
+			shard_row.add_child(invest_btn)
+		vbox.add_child(shard_row)
+
+# ── Radial Tech Tree Control ──────────────────────────────────
+
+class _RadialTechTree extends Control:
+	var faction_id: StringName = &""
+	var player_faction_id: StringName = &""
+	var hud_ref: Control
+	var _node_positions: Dictionary = {} # research_id -> Vector2
+	var _node_data: Dictionary = {} # research_id -> ResearchData
+	var _selected_id: StringName = &""
+	var _hovered_id: StringName = &""
+
+	const TIER_RADII := [0, 120, 220, 310]
+	const NODE_RADIUS := 18.0
+	const CAT_COLORS := {
+		&"military": Color(0.85, 0.35, 0.3),
+		&"economy": Color(0.35, 0.8, 0.35),
+		&"arcane": Color(0.65, 0.35, 0.85),
+		&"logistics": Color(0.35, 0.6, 0.9),
+	}
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		_calculate_positions()
+
+	func _calculate_positions() -> void:
+		_node_positions.clear()
+		_node_data.clear()
+		var center := size * 0.5
 		for research_id in DataManager.research:
 			var data: ResearchData = DataManager.research[research_id]
-			if data.tier != tier:
+			# Filter to this faction + universal
+			if data.faction_id != &"" and data.faction_id != faction_id:
 				continue
-			if data.faction_id != &"" and data.faction_id != fs.faction_data_id:
-				continue
-			has_any = true
-			var cat_color: Color = RESEARCH_CATEGORY_COLORS.get(data.research_category, Color(0.7, 0.7, 0.7))
-
-			# Research card
-			var card := PanelContainer.new()
-			var card_style := StyleBoxFlat.new()
-			card_style.bg_color = Color(0.1, 0.09, 0.13, 0.9)
-			card_style.border_width_left = 3
-			card_style.border_width_top = 1
-			card_style.border_width_right = 1
-			card_style.border_width_bottom = 1
-			card_style.border_color = cat_color.darkened(0.3)
-			card_style.corner_radius_top_left = 4
-			card_style.corner_radius_top_right = 4
-			card_style.corner_radius_bottom_right = 4
-			card_style.corner_radius_bottom_left = 4
-			card_style.content_margin_left = 8.0
-			card_style.content_margin_top = 4.0
-			card_style.content_margin_right = 6.0
-			card_style.content_margin_bottom = 4.0
-			card.add_theme_stylebox_override("panel", card_style)
-
-			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation", 6)
-			var info_box := VBoxContainer.new()
-			info_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			info_box.add_theme_constant_override("separation", 1)
-			var r_name := Label.new()
-			r_name.add_theme_font_size_override("font_size", 12)
-			var desc := Label.new()
-			desc.add_theme_font_size_override("font_size", 10)
-			desc.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
-
-			if fs.completed_research.has(research_id):
-				r_name.text = data.display_name
-				r_name.add_theme_color_override("font_color", cat_color)
-				card_style.bg_color = Color(cat_color.r * 0.15, cat_color.g * 0.15, cat_color.b * 0.15, 0.9)
-				desc.text = _format_research_effects(data, fs)
-				var done_badge := Label.new()
-				done_badge.text = "DONE"
-				done_badge.add_theme_font_size_override("font_size", 10)
-				done_badge.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
-				row.add_child(info_box)
-				info_box.add_child(r_name)
-				info_box.add_child(desc)
-				row.add_child(done_badge)
-			elif fs.current_research_id == research_id:
-				r_name.text = data.display_name
-				r_name.add_theme_color_override("font_color", Color(0.9, 0.8, 0.3))
-				desc.text = "%d/%d turns" % [fs.research_progress, data.research_time]
-				row.add_child(info_box)
-				info_box.add_child(r_name)
-				info_box.add_child(desc)
+			_node_data[research_id] = data
+			var angle_rad := deg_to_rad(data.tree_angle)
+			var radius: float = TIER_RADII[clampi(data.tier, 1, 3)]
+			# Universal techs (no faction_id) go in a ring at the bottom
+			if data.faction_id == &"":
+				# Place universal techs below center in a horizontal line
+				var idx := 0
+				var total := 0
+				for rid in DataManager.research:
+					var d: ResearchData = DataManager.research[rid]
+					if d.faction_id == &"":
+						if rid == research_id:
+							idx = total
+						total += 1
+				var x_start := center.x - (total - 1) * 35.0 * 0.5
+				_node_positions[research_id] = Vector2(x_start + idx * 35.0, size.y - 40)
 			else:
-				var prereqs_met := true
-				for prereq in data.prerequisites:
-					if not fs.completed_research.has(prereq):
-						prereqs_met = false
-						break
-				var can_afford := current_tech >= data.tech_cost
-				var not_busy := fs.current_research_id == &""
+				_node_positions[research_id] = center + Vector2(cos(angle_rad) * radius, sin(angle_rad) * radius)
 
-				if not prereqs_met:
-					r_name.text = data.display_name
-					r_name.add_theme_color_override("font_color", Color(0.4, 0.38, 0.35))
-					card_style.border_color = Color(0.3, 0.28, 0.25)
-					var prereq_names: Array[String] = []
-					for prereq in data.prerequisites:
-						var pdata: ResearchData = DataManager.get_research(prereq)
-						if pdata:
-							prereq_names.append(pdata.display_name)
-					desc.text = "Requires: " + ", ".join(prereq_names)
-					var lock_badge := Label.new()
-					lock_badge.text = "LOCKED"
-					lock_badge.add_theme_font_size_override("font_size", 10)
-					lock_badge.add_theme_color_override("font_color", Color(0.5, 0.45, 0.4))
-					row.add_child(info_box)
-					info_box.add_child(r_name)
-					info_box.add_child(desc)
-					row.add_child(lock_badge)
-				else:
-					r_name.text = data.display_name
-					r_name.add_theme_color_override("font_color", cat_color if can_afford else cat_color.darkened(0.4))
-					var cost_color := Color(0.6, 0.58, 0.5) if can_afford else Color(0.85, 0.35, 0.3)
-					desc.text = "Cost: %dT, %d turns" % [data.tech_cost, data.research_time]
-					desc.add_theme_color_override("font_color", cost_color)
-					row.add_child(info_box)
-					info_box.add_child(r_name)
-					info_box.add_child(desc)
-					if not_busy:
-						var start_btn := Button.new()
-						start_btn.text = "Start"
-						start_btn.custom_minimum_size = Vector2(55, 24)
-						start_btn.disabled = not can_afford
-						var rid: StringName = research_id
-						start_btn.pressed.connect(func():
-							GameManager.research_system.start_research(player_id, rid)
-							_refresh_research_panel())
-						row.add_child(start_btn)
+	func _draw() -> void:
+		var center := size * 0.5
+		_calculate_positions()
+
+		# Draw tier circles (faint guides)
+		for tier in [1, 2, 3]:
+			draw_arc(center, TIER_RADII[tier], 0, TAU, 48, Color(0.2, 0.19, 0.22, 0.4), 1.0)
+
+		# Draw center faction emblem
+		draw_circle(center, 24, Color(0.15, 0.14, 0.18))
+		draw_arc(center, 24, 0, TAU, 24, Color(0.4, 0.38, 0.35), 1.5)
+		var font := ThemeDB.fallback_font
+		var faction_short: String = str(faction_id).substr(0, 3).to_upper()
+		draw_string(font, center - Vector2(10, -4), faction_short, HORIZONTAL_ALIGNMENT_CENTER, 20, 10, Color(0.8, 0.76, 0.65))
+
+		# Universal tech label
+		draw_string(font, Vector2(10, size.y - 50), "Universal:", HORIZONTAL_ALIGNMENT_LEFT, 80, 9, Color(0.5, 0.48, 0.45))
+
+		var fs: FactionState = GameManager.state.faction_states.get(player_faction_id)
+		if fs == null:
+			return
+		var current_tech: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
+
+		# Draw connections first (behind nodes)
+		for research_id in _node_data:
+			var data: ResearchData = _node_data[research_id]
+			var to_pos: Vector2 = _node_positions.get(research_id, Vector2.ZERO)
+			for prereq in data.prerequisites:
+				if _node_positions.has(prereq):
+					var from_pos: Vector2 = _node_positions[prereq]
+					# Check if cross-branch
+					var prereq_data: ResearchData = _node_data.get(prereq)
+					var is_cross: bool = prereq_data != null and prereq_data.tree_branch != data.tree_branch and data.tree_branch != &"" and prereq_data.tree_branch != &""
+					if is_cross:
+						# Dashed line
+						var dir := (to_pos - from_pos).normalized()
+						var length := from_pos.distance_to(to_pos)
+						var dash_len := 6.0
+						var gap_len := 4.0
+						var pos := 0.0
+						while pos < length:
+							var seg_start := from_pos + dir * pos
+							var seg_end := from_pos + dir * minf(pos + dash_len, length)
+							draw_line(seg_start, seg_end, Color(0.4, 0.38, 0.35, 0.6), 1.0)
+							pos += dash_len + gap_len
 					else:
-						var busy_label := Label.new()
-						busy_label.text = "BUSY"
-						busy_label.add_theme_font_size_override("font_size", 10)
-						busy_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
-						row.add_child(busy_label)
+						draw_line(from_pos, to_pos, Color(0.35, 0.33, 0.3, 0.7), 1.5)
 
-			card.add_child(row)
+		# Draw nodes
+		for research_id in _node_data:
+			var data: ResearchData = _node_data[research_id]
+			var pos: Vector2 = _node_positions.get(research_id, Vector2.ZERO)
+			var cat_color: Color = CAT_COLORS.get(data.research_category, Color(0.5, 0.5, 0.5))
 
-			# Right-click for detail popup
-			var captured_data: ResearchData = data
-			card.gui_input.connect(func(event: InputEvent):
-				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-					_show_research_detail(captured_data))
+			# Determine node state
+			var is_completed: bool = fs.completed_research.has(research_id)
+			var is_in_progress: bool = fs.current_research_id == research_id
+			var prereqs_met: bool = true
+			for prereq in data.prerequisites:
+				if not fs.completed_research.has(prereq):
+					prereqs_met = false
+					break
+			var can_afford: bool = current_tech >= data.tech_cost
 
-			vbox.add_child(card)
+			var node_color: Color
+			var border_color: Color
+			if is_completed:
+				node_color = Color(0.95, 0.85, 0.3) # Gold
+				border_color = Color(0.8, 0.7, 0.2)
+			elif is_in_progress:
+				node_color = Color(0.9, 0.8, 0.3, 0.8) # Yellow pulse
+				border_color = Color(0.85, 0.75, 0.2)
+			elif prereqs_met and can_afford:
+				node_color = Color(0.25, 0.65, 0.3) # Green - available
+				border_color = cat_color
+			elif prereqs_met and not can_afford:
+				node_color = Color(0.55, 0.2, 0.2) # Dark red - unaffordable
+				border_color = Color(0.7, 0.3, 0.3)
+			else:
+				node_color = Color(0.25, 0.23, 0.2) # Grey - locked
+				border_color = Color(0.35, 0.33, 0.3)
 
-		if not has_any:
-			var none_label := Label.new()
-			none_label.text = "  No research available"
-			none_label.add_theme_font_size_override("font_size", 11)
-			none_label.add_theme_color_override("font_color", Color(0.5, 0.45, 0.4))
-			vbox.add_child(none_label)
+			# Highlight selected/hovered
+			if research_id == _selected_id:
+				border_color = Color.WHITE
+			elif research_id == _hovered_id:
+				border_color = border_color.lightened(0.3)
+
+			draw_circle(pos, NODE_RADIUS, node_color)
+			draw_arc(pos, NODE_RADIUS, 0, TAU, 16, border_color, 2.0)
+
+			# Category indicator dot
+			draw_circle(pos + Vector2(0, -NODE_RADIUS - 4), 3, cat_color)
+
+			# Short name below node
+			var short_name: String = data.display_name
+			if short_name.length() > 12:
+				short_name = short_name.substr(0, 11) + "."
+			draw_string(font, pos + Vector2(-35, NODE_RADIUS + 14), short_name, HORIZONTAL_ALIGNMENT_CENTER, 70, 9, Color(0.65, 0.62, 0.55))
+
+		# Draw selected node detail box
+		if _selected_id != &"" and _node_data.has(_selected_id):
+			_draw_selected_detail(fs, current_tech)
+
+	func _draw_selected_detail(fs: FactionState, current_tech: int) -> void:
+		var data: ResearchData = _node_data[_selected_id]
+		var font := ThemeDB.fallback_font
+		var box_pos := Vector2(10, 10)
+		var box_size := Vector2(240, 130)
+		draw_rect(Rect2(box_pos, box_size), Color(0.08, 0.07, 0.1, 0.92))
+		draw_rect(Rect2(box_pos, box_size), Color(0.4, 0.38, 0.35), false, 1.0)
+
+		var cat_color: Color = CAT_COLORS.get(data.research_category, Color(0.5, 0.5, 0.5))
+		var y := box_pos.y + 14
+		draw_string(font, Vector2(box_pos.x + 8, y), data.display_name, HORIZONTAL_ALIGNMENT_LEFT, 224, 12, cat_color)
+		y += 15
+		draw_string(font, Vector2(box_pos.x + 8, y), "Cost: %dT | %d turns" % [data.tech_cost, data.research_time], HORIZONTAL_ALIGNMENT_LEFT, 224, 10, Color(0.6, 0.58, 0.5))
+		y += 13
+		# Effects
+		for key in data.effects:
+			draw_string(font, Vector2(box_pos.x + 8, y), "%s: %+d" % [key.replace("_", " "), data.effects[key]], HORIZONTAL_ALIGNMENT_LEFT, 224, 9, Color(0.4, 0.75, 0.35))
+			y += 11
+		# Description
+		y += 3
+		draw_string(font, Vector2(box_pos.x + 8, y), data.description, HORIZONTAL_ALIGNMENT_LEFT, 224, 8, Color(0.55, 0.52, 0.48))
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseMotion:
+			var new_hover := _get_node_at(event.position)
+			if new_hover != _hovered_id:
+				_hovered_id = new_hover
+				queue_redraw()
+		elif event is InputEventMouseButton and event.pressed:
+			var clicked := _get_node_at(event.position)
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				if clicked != &"":
+					if _selected_id == clicked:
+						# Double-click on selected node: try to start research
+						_try_start_research(clicked)
+					else:
+						_selected_id = clicked
+				else:
+					_selected_id = &""
+				queue_redraw()
+			elif event.button_index == MOUSE_BUTTON_RIGHT and clicked != &"":
+				var data: ResearchData = _node_data.get(clicked)
+				if data and hud_ref:
+					hud_ref._show_research_detail(data)
+
+	func _try_start_research(research_id: StringName) -> void:
+		if hud_ref == null:
+			return
+		var result := GameManager.research_system.start_research(player_faction_id, research_id)
+		if result and hud_ref:
+			hud_ref._refresh_research_panel()
+
+	func _get_node_at(pos: Vector2) -> StringName:
+		for research_id in _node_positions:
+			var node_pos: Vector2 = _node_positions[research_id]
+			if pos.distance_to(node_pos) <= NODE_RADIUS + 4:
+				return research_id
+		return &""
 
 func _show_research_detail(data: ResearchData) -> void:
 	var existing := get_node_or_null("ResearchDetailDialog")
@@ -4073,7 +4651,7 @@ func _on_building_hover(building_id: StringName) -> void:
 
 	# Terrain requirement
 	if building.required_terrain >= 0:
-		var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Coast", "Tundra", "Shard Wastes", "Water", "Jungle"]
+		var terrain_names := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wetlands", "Tundra", "Shard Wastes", "Water", "Jungle"]
 		text += "Requires adjacent: " + terrain_names[building.required_terrain] + "\n"
 
 	# Income bonuses
@@ -5688,7 +6266,7 @@ func _show_region_overview(region_id: StringName) -> void:
 
 func _create_centered_dialog(width: int, height: int) -> PanelContainer:
 	var dialog := PanelContainer.new()
-	dialog.add_theme_stylebox_override("panel", GameManager.make_notification_style())
+	dialog.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 
 	dialog.anchors_preset = Control.PRESET_CENTER
 	dialog.anchor_left = 0.5
@@ -6383,264 +6961,6 @@ func _execute_army_split(army_id: StringName, unit_indices: Array[int]) -> void:
 	# Refresh the army panel
 	_on_army_selected(army_id)
 
-# ── Diplomatic Overview ──────────────────────────────────────
-
-func _show_diplomatic_overview() -> void:
-	if _diplo_overview_panel:
-		_diplo_overview_panel.queue_free()
-	_diplo_overview_panel = PanelContainer.new()
-	_diplo_overview_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
-	_diplo_overview_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_diplo_overview_panel.anchor_left = 0.5
-	_diplo_overview_panel.anchor_right = 0.5
-	_diplo_overview_panel.anchor_top = 0.12
-	_diplo_overview_panel.anchor_bottom = 0.88
-	_diplo_overview_panel.offset_left = -280.0
-	_diplo_overview_panel.offset_right = 280.0
-	_diplo_overview_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_diplo_overview_panel.custom_minimum_size = Vector2(540, 0)
-	add_child(_diplo_overview_panel)
-
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_diplo_overview_panel.add_child(scroll)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "DIPLOMATIC OVERVIEW"
-	title.add_theme_font_size_override("font_size", 16)
-	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	vbox.add_child(title)
-
-	_add_separator(vbox)
-
-	var player_id := GameManager.state.player_faction_id
-	var rel_names := {
-		Enums.FactionRelation.WAR: "At War",
-		Enums.FactionRelation.HOSTILE: "Hostile",
-		Enums.FactionRelation.NEUTRAL: "Neutral",
-		Enums.FactionRelation.FRIENDLY: "Friendly",
-		Enums.FactionRelation.ALLIED: "Allied",
-	}
-	var rel_colors := {
-		Enums.FactionRelation.WAR: Color(0.85, 0.25, 0.25),
-		Enums.FactionRelation.HOSTILE: Color(0.8, 0.5, 0.2),
-		Enums.FactionRelation.NEUTRAL: Color(0.6, 0.58, 0.55),
-		Enums.FactionRelation.FRIENDLY: Color(0.3, 0.7, 0.4),
-		Enums.FactionRelation.ALLIED: Color(0.35, 0.55, 0.9),
-	}
-
-	# One row per other faction
-	for fid in GameManager.state.faction_states:
-		if fid == player_id:
-			continue
-		var fs: FactionState = GameManager.state.faction_states[fid]
-		var fd: FactionData = DataManager.get_faction(fid)
-		var fname: String = fd.display_name if fd else str(fid)
-		var relation: int = GameManager.get_relation(player_id, fid)
-		var standing: int = GameManager.diplomacy_system.get_standing(player_id, fid)
-
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		vbox.add_child(row)
-
-		# Faction name
-		var name_lbl := Label.new()
-		name_lbl.text = fname
-		name_lbl.custom_minimum_size = Vector2(120, 0)
-		name_lbl.add_theme_font_size_override("font_size", 13)
-		if fd:
-			name_lbl.add_theme_color_override("font_color", fd.color.lightened(0.4))
-		row.add_child(name_lbl)
-
-		# Relation status badge
-		var rel_badge := Label.new()
-		rel_badge.text = rel_names.get(relation, "Unknown")
-		rel_badge.custom_minimum_size = Vector2(70, 0)
-		rel_badge.add_theme_font_size_override("font_size", 12)
-		rel_badge.add_theme_color_override("font_color", rel_colors.get(relation, Color.WHITE))
-		row.add_child(rel_badge)
-
-		# Standing value
-		var standing_lbl := Label.new()
-		var s_prefix: String = "+" if standing >= 0 else ""
-		standing_lbl.text = s_prefix + str(standing)
-		standing_lbl.custom_minimum_size = Vector2(40, 0)
-		standing_lbl.add_theme_font_size_override("font_size", 12)
-		standing_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		if standing > 0:
-			standing_lbl.add_theme_color_override("font_color", Color(0.4, 0.75, 0.45))
-		elif standing < 0:
-			standing_lbl.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
-		else:
-			standing_lbl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.55))
-		row.add_child(standing_lbl)
-
-		# Defeated indicator
-		if fs.is_defeated:
-			var defeated_lbl := Label.new()
-			defeated_lbl.text = "(Defeated)"
-			defeated_lbl.add_theme_font_size_override("font_size", 11)
-			defeated_lbl.add_theme_color_override("font_color", Color(0.5, 0.4, 0.4))
-			row.add_child(defeated_lbl)
-
-		# Build tooltip with factor breakdown
-		row.tooltip_text = _build_diplo_tooltip(player_id, fid, fname, relation, standing)
-		row.mouse_filter = Control.MOUSE_FILTER_STOP
-
-	# Legend
-	_add_separator(vbox)
-	var legend := HBoxContainer.new()
-	legend.add_theme_constant_override("separation", 12)
-	legend.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_child(legend)
-	for rel_val in rel_names:
-		var lbl := Label.new()
-		lbl.text = rel_names[rel_val]
-		lbl.add_theme_font_size_override("font_size", 9)
-		lbl.add_theme_color_override("font_color", rel_colors[rel_val])
-		legend.add_child(lbl)
-
-	# Active treaties (only involving player)
-	_add_separator(vbox)
-	var treaties_title := Label.new()
-	treaties_title.text = "Your Treaties:"
-	treaties_title.add_theme_font_size_override("font_size", 12)
-	treaties_title.add_theme_color_override("font_color", Color(0.8, 0.78, 0.7))
-	vbox.add_child(treaties_title)
-
-	var treaty_type_names := ["Peace", "Alliance", "Trade"]
-	var any_treaties := false
-	for treaty_id in GameManager.state.diplomacy_state.treaties:
-		var treaty: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
-		if treaty.faction_a != player_id and treaty.faction_b != player_id:
-			continue
-		any_treaties = true
-		var other_id: StringName = treaty.faction_b if treaty.faction_a == player_id else treaty.faction_a
-		var other_fd: FactionData = DataManager.get_faction(other_id)
-		var other_name: String = other_fd.display_name if other_fd else str(other_id)
-		var t_name: String = treaty_type_names[treaty.treaty_type] if treaty.treaty_type < treaty_type_names.size() else "Treaty"
-		var remaining: int = treaty.turns_remaining
-		var t_lbl := Label.new()
-		if remaining < 0:
-			t_lbl.text = "  %s with %s (permanent)" % [t_name, other_name]
-		else:
-			t_lbl.text = "  %s with %s (%d turns left)" % [t_name, other_name, remaining]
-		t_lbl.add_theme_font_size_override("font_size", 11)
-		vbox.add_child(t_lbl)
-
-	if not any_treaties:
-		var none_lbl := Label.new()
-		none_lbl.text = "  No active treaties."
-		none_lbl.add_theme_font_size_override("font_size", 11)
-		none_lbl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.45))
-		vbox.add_child(none_lbl)
-
-	var close_btn := Button.new()
-	close_btn.text = "Close"
-	close_btn.custom_minimum_size = Vector2(0, 32)
-	close_btn.pressed.connect(func():
-		_diplo_overview_panel.queue_free()
-		_diplo_overview_panel = null
-	)
-	vbox.add_child(close_btn)
-
-func _build_diplo_tooltip(player_id: StringName, other_id: StringName, other_name: String, relation: int, standing: int) -> String:
-	var lines: Array[String] = []
-	lines.append(other_name)
-	var rel_names := {0: "At War", 1: "Hostile", 2: "Neutral", 3: "Friendly", 4: "Allied"}
-	lines.append("Status: %s  |  Standing: %d" % [rel_names.get(relation, "?"), standing])
-	lines.append("")
-	lines.append("-- Factors --")
-
-	# Military strength comparison
-	var player_str := GameManager.diplomacy_system._calculate_faction_strength(player_id)
-	var other_str := GameManager.diplomacy_system._calculate_faction_strength(other_id)
-	if other_str > player_str * 1.5:
-		lines.append("Military: They are much stronger")
-	elif other_str > player_str:
-		lines.append("Military: They are stronger")
-	elif player_str > other_str * 1.5:
-		lines.append("Military: They are much weaker")
-	elif player_str > other_str:
-		lines.append("Military: They are weaker")
-	else:
-		lines.append("Military: Roughly equal")
-
-	# Shared borders
-	var shared_borders := 0
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		if city.faction_id == player_id:
-			for other_city_id in GameManager.state.cities:
-				var other_city: CityState = GameManager.state.cities[other_city_id]
-				if other_city.faction_id == other_id:
-					if HexHelper.hex_distance(city.hex_pos, other_city.hex_pos) <= 6:
-						shared_borders += 1
-	if shared_borders > 0:
-		lines.append("Borders: %d nearby cities (tension)" % shared_borders)
-	else:
-		lines.append("Borders: No shared borders")
-
-	# Active treaties between player and this faction
-	var treaty_lines: Array[String] = []
-	var treaty_type_names := ["Peace", "Alliance", "Trade"]
-	for tid in GameManager.state.diplomacy_state.treaties:
-		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[tid]
-		if (t.faction_a == player_id and t.faction_b == other_id) or (t.faction_a == other_id and t.faction_b == player_id):
-			var tname: String = treaty_type_names[t.treaty_type] if t.treaty_type < treaty_type_names.size() else "Treaty"
-			if t.turns_remaining < 0:
-				treaty_lines.append("  %s (permanent)" % tname)
-			else:
-				treaty_lines.append("  %s (%d turns)" % [tname, t.turns_remaining])
-	if treaty_lines.size() > 0:
-		lines.append("Treaties:")
-		lines.append_array(treaty_lines)
-	else:
-		lines.append("Treaties: None")
-
-	# Shared enemies
-	var shared_enemies: Array[String] = []
-	for fid in GameManager.state.faction_states:
-		if fid == player_id or fid == other_id:
-			continue
-		var player_rel: int = GameManager.get_relation(player_id, fid)
-		var other_rel: int = GameManager.get_relation(other_id, fid)
-		if player_rel == Enums.FactionRelation.WAR and other_rel == Enums.FactionRelation.WAR:
-			var efd: FactionData = DataManager.get_faction(fid)
-			shared_enemies.append(efd.display_name if efd else str(fid))
-	if shared_enemies.size() > 0:
-		lines.append("Shared enemies: %s" % ", ".join(shared_enemies))
-
-	# War exhaustion (if at war)
-	if relation == Enums.FactionRelation.WAR:
-		var exhaustion := GameManager.diplomacy_system._calculate_war_exhaustion(other_id)
-		if exhaustion > 0.6:
-			lines.append("War exhaustion: High (may accept peace)")
-		elif exhaustion > 0.3:
-			lines.append("War exhaustion: Moderate")
-		else:
-			lines.append("War exhaustion: Low")
-
-	# City/army counts
-	var other_cities := 0
-	var other_armies := 0
-	for cid in GameManager.state.cities:
-		if GameManager.state.cities[cid].faction_id == other_id:
-			other_cities += 1
-	for aid in GameManager.state.armies:
-		var a: ArmyState = GameManager.state.armies[aid]
-		if a.faction_id == other_id and not a.is_garrison:
-			other_armies += 1
-	lines.append("Cities: %d  |  Armies: %d" % [other_cities, other_armies])
-
-	return "\n".join(lines)
 
 # ── Tutorial System ──────────────────────────────────────────
 

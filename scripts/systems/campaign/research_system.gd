@@ -17,8 +17,9 @@ func get_available_research(faction_id: StringName) -> Array[ResearchData]:
 		# Skip if currently researching
 		if fs.current_research_id == research_id:
 			continue
-		# Skip faction-specific research for other factions
-		if data.faction_id != &"" and data.faction_id != fs.faction_data_id:
+		# Skip faction-specific research for other factions (minor factions use parent's tree)
+		var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(fs.faction_data_id, fs.faction_data_id)
+		if data.faction_id != &"" and data.faction_id != fs.faction_data_id and data.faction_id != parent_id:
 			continue
 		# Check prerequisites
 		var prereqs_met := true
@@ -137,13 +138,21 @@ func execute_ai_research(faction_id: StringName) -> void:
 
 	# Faction-specific category preferences (higher = more preferred)
 	var category_weights := {
-		&"skulloath": {&"military": 3, &"economy": 1, &"arcane": 1, &"logistics": 1},
-		&"gladehost": {&"military": 1, &"economy": 2, &"arcane": 2, &"logistics": 2},
-		&"tainted_jade": {&"military": 2, &"economy": 2, &"arcane": 3, &"logistics": 1},
 		&"empire": {&"military": 2, &"economy": 2, &"arcane": 1, &"logistics": 2},
+		&"gladehost": {&"military": 1, &"economy": 2, &"arcane": 2, &"logistics": 2},
+		&"skulloath": {&"military": 3, &"economy": 1, &"arcane": 1, &"logistics": 1},
+		&"moonspear": {&"military": 1, &"economy": 2, &"arcane": 3, &"logistics": 1},
+		&"thunderswarm": {&"military": 3, &"economy": 1, &"arcane": 1, &"logistics": 2},
+		&"tainted_jade": {&"military": 2, &"economy": 2, &"arcane": 3, &"logistics": 1},
+		&"cinderguard": {&"military": 2, &"economy": 3, &"arcane": 1, &"logistics": 1},
+		&"forsaken": {&"military": 2, &"economy": 1, &"arcane": 3, &"logistics": 1},
+		&"ivoryscar": {&"military": 1, &"economy": 2, &"arcane": 3, &"logistics": 1},
 		&"shardhorde": {&"military": 3, &"economy": 1, &"arcane": 2, &"logistics": 1},
+		&"sunblessed": {&"military": 2, &"economy": 1, &"arcane": 2, &"logistics": 2},
 	}
-	var weights: Dictionary = category_weights.get(faction_id, {&"military": 2, &"economy": 2, &"arcane": 1, &"logistics": 1})
+	# Minor factions use parent faction's weights
+	var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var weights: Dictionary = category_weights.get(parent_id, {&"military": 2, &"economy": 2, &"arcane": 1, &"logistics": 1})
 
 	# Score each research by preference weight / cost
 	var best: ResearchData = available[0]

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"twilight_veil"
+display_name = "Twilight Veil"
+description = "Mystic serpent-priests of the Southern Reach who command illusions and venom. They guard the jungle's deepest secrets."
+color = Color(0.35, 0.2, 0.45, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"xotchi"])
+realm_affinity = 3
+shard_preferences = {}
+ai_personality = {"aggression": 0.4, "expansion": 0.3}

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moonspear"
+display_name = "The Moonspear"
+description = "An ancient order of divine warriors and mystics who guard the northern sanctums. They wield celestial light and mortal discipline in equal measure."
+color = Color(0.7, 0.72, 0.85, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"iskar"])
+realm_affinity = 0
+shard_preferences = {}
+ai_personality = {"aggression": 0.3, "expansion": 0.4}

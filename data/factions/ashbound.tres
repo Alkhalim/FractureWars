@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ashbound"
+display_name = "Ashbound"
+description = "Void-touched warriors of Tsagan who have embraced the shard corruption. Their bodies are scarred but their will is iron."
+color = Color(0.4, 0.15, 0.2, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"tsagan"])
+realm_affinity = 1
+shard_preferences = {}
+ai_personality = {"aggression": 0.6, "expansion": 0.4}

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dragon_roost"
+display_name = "Dragon Roost"
+description = "The great roosts shelter beasts that rule the skies."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"mining_expertise"])
+effects = { "flying_movement_bonus": 1, "flying_upkeep_pct": -15 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"thunderswarm"
+tree_angle = 120
+tree_branch = &"mountain_hold"

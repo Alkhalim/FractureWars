@@ -273,7 +273,26 @@ func _check_victory_conditions() -> void:
 				return
 			continue
 
-		# Check Domination — control 60%+ of regions
+		# ── Quick Match: culture completion ──
+		if GameManager.state.game_mode == Enums.GameMode.QUICKMATCH and not GameManager.state.quickmatch_won:
+			var completed_cultures := GameManager.get_completed_cultures(faction_id)
+			if completed_cultures.size() > 0:
+				_trigger_game_over(faction_id, Enums.VictoryType.CULTURE_VICTORY, is_player)
+				return
+
+		# ── Sandbox: Long Victory (60% regions) and World Conquest (100%) ──
+		if GameManager.state.game_mode == Enums.GameMode.SANDBOX or GameManager.state.quickmatch_won:
+			# World Conquest — own ALL regions
+			var all_regions := GameManager.get_completed_regions(faction_id)
+			if all_regions.size() >= GameManager.REGION_CITIES.size():
+				_trigger_game_over(faction_id, Enums.VictoryType.WORLD_CONQUEST, is_player)
+				return
+			# Long Victory — control 60%+ of regions
+			if all_regions.size() >= int(GameManager.REGION_CITIES.size() * 0.6):
+				_trigger_game_over(faction_id, Enums.VictoryType.LONG_VICTORY, is_player)
+				return
+
+		# Check Domination — control 60%+ of regions (legacy, uses owned_regions)
 		if fs.owned_regions.size() >= domination_threshold:
 			_trigger_game_over(faction_id, Enums.VictoryType.DOMINATION, is_player)
 			return
@@ -641,7 +660,7 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 				return
 
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.1).timeout
 	_end_current_faction_turn()
 
 # ── Skulloath AI (Raider) ────────────────────────────────────
@@ -652,7 +671,7 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 		# Defensive phase: recruit, defend own cities, don't attack
 		_ai_aggression_cooldown[faction_id] = cooldown - 1
 		_execute_defensive_skulloath(faction_id)
-		await get_tree().create_timer(0.5).timeout
+		await get_tree().create_timer(0.1).timeout
 		_end_current_faction_turn()
 		return
 
@@ -691,7 +710,7 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 			_ai_aggression_cooldown[faction_id] = 4
 			_ai_attack_counters[faction_id] = 0
 
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.1).timeout
 	_end_current_faction_turn()
 
 func _execute_defensive_skulloath(faction_id: StringName) -> void:
@@ -758,7 +777,7 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 					return
 
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.1).timeout
 	_end_current_faction_turn()
 
 func _build_gladehost_patrol(faction_id: StringName) -> Array:
@@ -838,7 +857,7 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 						return
 
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.1).timeout
 	_end_current_faction_turn()
 
 # ── Shardhorde AI (Nomadic) ──────────────────────────────────
@@ -908,7 +927,7 @@ func _execute_shardhorde_ai() -> void:
 	# Recruit at elderbeasts
 	_shardhorde_recruit()
 
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(0.1).timeout
 	_end_current_faction_turn()
 
 func _move_beast_army_toward_wastes(army: ArmyState) -> void:
@@ -1195,7 +1214,7 @@ const TERRAIN_INCOME := {
 	Enums.TerrainType.MOUNTAINS: {Enums.ResourceType.IRON: 2, Enums.ResourceType.GOLD: 1},
 	Enums.TerrainType.DESERT: {Enums.ResourceType.GOLD: 1, Enums.ResourceType.SHARD_ESSENCE: 1},
 	Enums.TerrainType.SWAMP: {Enums.ResourceType.FOOD: 1, Enums.ResourceType.CAPTIVES: 1},
-	Enums.TerrainType.COAST: {Enums.ResourceType.GOLD: 2, Enums.ResourceType.FOOD: 1},
+	Enums.TerrainType.WETLANDS: {Enums.ResourceType.GOLD: 2, Enums.ResourceType.FOOD: 1},
 	Enums.TerrainType.TUNDRA: {Enums.ResourceType.IRON: 1, Enums.ResourceType.FOOD: 1},
 	Enums.TerrainType.SHARD_WASTES: {Enums.ResourceType.SHARD_ESSENCE: 3},
 	Enums.TerrainType.JUNGLE: {Enums.ResourceType.FOOD: 2, Enums.ResourceType.WOOD: 1},
@@ -1286,6 +1305,14 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 					continue
 				var heal_amount := int(unit_data.max_hp * 0.05) + cmd_heal
 				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
+		elif faction_id == &"shardhorde" and _is_in_undepleted_beast_range(army.hex_pos):
+			# Shardhorde armies regenerate troops in undepleted elderbeast territory
+			for unit in army.units:
+				var unit_data := DataManager.get_unit(unit.unit_data_id)
+				if unit_data == null:
+					continue
+				var heal_amount := int(unit_data.max_hp * 0.10) + cmd_heal
+				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
 		elif cmd_heal > 0:
 			# Commander heals even in neutral territory
 			for unit in army.units:
@@ -1293,6 +1320,16 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 				if unit_data == null:
 					continue
 				unit.current_hp = mini(unit.current_hp + cmd_heal, unit_data.max_hp)
+
+func _is_in_undepleted_beast_range(hex_pos: Vector2i) -> bool:
+	for beast_id in GameManager.state.elderbeasts:
+		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
+		if beast.faction_id != &"shardhorde":
+			continue
+		if HexHelper.hex_distance(hex_pos, beast.hex_pos) <= 1:
+			if beast.get_depletion_multiplier(hex_pos) >= 0.75:
+				return true
+	return false
 
 # ── Terrain Attrition ───────────────────────────────────────
 

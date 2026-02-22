@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"stormborn"
+display_name = "Stormborn"
+description = "Born of storm and stone, nothing halts their advance."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"warband_unity", &"lightning_strike"])
+effects = { "army_movement_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 240
+tree_branch = &"war_fury"

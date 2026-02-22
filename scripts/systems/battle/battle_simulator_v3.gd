@@ -529,17 +529,25 @@ func _update_entity_world_positions(f: BattleFormationV3, use_lerp: bool = false
 			var jitter := Vector2.ZERO
 			if not f.in_melee_contact and not f.is_sprinting:
 				jitter = Vector2(randf_range(-0.8, 0.8), randf_range(-0.8, 0.8))
-			f.entity_positions[i] = f.entity_positions[i].lerp(f.entity_target_positions[i] + jitter, entity_lerp)
+			var target_pos := f.entity_target_positions[i] + jitter
+			var new_pos := f.entity_positions[i].lerp(target_pos, entity_lerp)
+			# Cap per-tick movement to move_speed so entities don't teleport
+			var move_delta := new_pos - f.entity_positions[i]
+			var max_step := f.move_speed * 1.5
+			if move_delta.length() > max_step:
+				new_pos = f.entity_positions[i] + move_delta.normalized() * max_step
+			f.entity_positions[i] = new_pos
 
 		# Anti-overlap: push apart entities that are too close to friendly entities
 		if limit > 1:
 			var min_dist := get_entity_radius(f) * 2.0
+			var push_strength := 0.5 if f.in_melee_contact else 0.3
 			for i in limit:
 				for j in range(i + 1, limit):
 					var diff := f.entity_positions[i] - f.entity_positions[j]
 					var d := diff.length()
 					if d > 0.1 and d < min_dist:
-						var push := diff.normalized() * (min_dist - d) * 0.3
+						var push := diff.normalized() * (min_dist - d) * push_strength
 						f.entity_positions[i] += push
 						f.entity_positions[j] -= push
 	else:
@@ -594,12 +602,14 @@ func _resolve_cross_formation_overlap() -> void:
 				continue
 			var lim1 := mini(f1.entities_alive, f1.entity_positions.size())
 			var lim2 := mini(f2.entities_alive, f2.entity_positions.size())
+			# Stronger push for same-side formations piling into melee
+			var push_str := 0.7 if f1.side == f2.side else 0.5
 			for a in lim1:
 				for b in lim2:
 					var diff := f1.entity_positions[a] - f2.entity_positions[b]
 					var d := diff.length()
 					if d < min_dist and d > 0.01:
-						var push := diff.normalized() * (min_dist - d) * 0.5
+						var push := diff.normalized() * (min_dist - d) * push_str
 						f1.entity_positions[a] += push
 						f2.entity_positions[b] -= push
 
@@ -1273,7 +1283,11 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 
 	# Cap contact: limited by how many attacker entities are in range (not defender count)
 	# This allows many small units to swarm a single large target
-	total_contact = minf(total_contact, float(attacker.entities_alive))
+	var contact_cap := float(attacker.entities_alive)
+	# Large single entities (elderbeasts, dragons) cleave — their massive size hits many at once
+	if attacker.total_entities == 1:
+		contact_cap = maxf(1.0, get_entity_radius(attacker) / 2.5)
+	total_contact = minf(total_contact, contact_cap)
 
 	# Percentage-based defense: armor reduces damage proportionally, never to zero
 	# Formula: attack^2 / (attack + defense * 0.5)
@@ -1302,6 +1316,8 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	if attacker.total_entities == 1:
 		var hp_ratio := float(attacker.current_hp) / float(attacker.max_hp)
 		per_tile_dps *= lerpf(0.4, 1.0, hp_ratio)
+		# Large single entities cleave many targets — reduce per-hit DPS to compensate
+		per_tile_dps *= 0.7
 
 	# Terrain defense bonus (percentage reduction on top)
 	var terrain_def := BattleTerrainGen.get_defense_bonus(get_terrain_at(defender.position))
