@@ -175,8 +175,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.tags = ud.tags.duplicate()
 	var atk_bonus: int = cmd_bonuses.get("attack_bonus", 0)
 	var def_bonus: int = cmd_bonuses.get("defense_bonus", 0)
-	f.attack = ud.attack + atk_bonus
-	f.defense = ud.defense + def_bonus
+	# Research combat bonuses
+	var r_eff := GameManager.research_system.get_research_effects(ud.faction_id)
+	f.attack = ud.attack + atk_bonus + r_eff.get("unit_attack_bonus", 0)
+	f.defense = ud.defense + def_bonus + r_eff.get("unit_defense_bonus", 0)
 
 	# Faction mechanic combat bonuses
 	var fs: FactionState = GameManager.state.faction_states.get(ud.faction_id)
@@ -254,8 +256,8 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 		f.front_entity_hp = unit.current_hp
 
 	# Morale
-	f.base_morale = ud.base_morale
-	f.current_morale = float(ud.base_morale)
+	f.base_morale = ud.base_morale + r_eff.get("unit_morale_bonus", 0)
+	f.current_morale = float(f.base_morale)
 	f.morale_aura = ud.morale_aura
 	f.fear_radius = ud.fear_radius
 	f.captive_chance = ud.captive_chance

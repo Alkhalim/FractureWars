@@ -86,10 +86,18 @@ func _is_mouse_over_ui() -> bool:
 
 func _clamp_position() -> void:
 	# Hex map bounds in pixels (flat-top hex: h_spacing = radius * 1.5, v_spacing = radius * sqrt(3))
-	const HEX_RADIUS := 24.0
-	const HEX_H_SPACING := HEX_RADIUS * 1.5 # 36.0
-	const HEX_V_SPACING := HEX_RADIUS * 1.732 # ~41.57
-	var map_width := HexMapData.MAP_WIDTH * HEX_H_SPACING + MAP_MARGIN
-	var map_height := HexMapData.MAP_HEIGHT * HEX_V_SPACING + MAP_MARGIN
-	position.x = clampf(position.x, -MAP_MARGIN, map_width)
-	position.y = clampf(position.y, -MAP_MARGIN, map_height)
+	const HEX_RADIUS := 32.0
+	const HEX_H_SPACING := HEX_RADIUS * 1.5 # 48.0
+	const HEX_V_SPACING := HEX_RADIUS * 1.732 # ~55.42
+	var map_w := float(HexMapData.MAP_WIDTH) * HEX_H_SPACING
+	var map_h := float(HexMapData.MAP_HEIGHT) * HEX_V_SPACING
+	# Account for zoom: allow camera center to move so the viewport edge reaches map edges
+	var vp_half := get_viewport_rect().size / zoom / 2.0
+	var margin := MAP_MARGIN
+	position.x = clampf(position.x, -margin + vp_half.x, map_w + margin - vp_half.x)
+	position.y = clampf(position.y, -margin + vp_half.y, map_h + margin - vp_half.y)
+	# When zoomed out far enough to see the whole map, center it
+	if -margin + vp_half.x > map_w + margin - vp_half.x:
+		position.x = map_w / 2.0
+	if -margin + vp_half.y > map_h + margin - vp_half.y:
+		position.y = map_h / 2.0

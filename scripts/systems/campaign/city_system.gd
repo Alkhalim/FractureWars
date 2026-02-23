@@ -60,10 +60,17 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 	var research_effects := GameManager.research_system.get_research_effects(faction_id)
 	var gold_pct: int = research_effects.get("income_gold_pct", 0)
 	var food_pct: int = research_effects.get("income_food_pct", 0)
-	if gold_pct != 0 and income.has(Enums.ResourceType.GOLD):
-		income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * gold_pct / 100.0)
-	if food_pct != 0 and income.has(Enums.ResourceType.FOOD):
-		income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * food_pct / 100.0)
+	var iron_pct: int = research_effects.get("income_iron_pct", 0)
+	var wood_pct: int = research_effects.get("income_wood_pct", 0)
+	var all_pct: int = research_effects.get("income_all_pct", 0)
+	if gold_pct + all_pct != 0 and income.has(Enums.ResourceType.GOLD):
+		income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * (gold_pct + all_pct) / 100.0)
+	if food_pct + all_pct != 0 and income.has(Enums.ResourceType.FOOD):
+		income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * (food_pct + all_pct) / 100.0)
+	if iron_pct + all_pct != 0 and income.has(Enums.ResourceType.IRON):
+		income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * (iron_pct + all_pct) / 100.0)
+	if wood_pct + all_pct != 0 and income.has(Enums.ResourceType.WOOD):
+		income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * (wood_pct + all_pct) / 100.0)
 
 	# Apply senate majority income effects (Empire only — other factions have no senate)
 	if faction_id == &"empire":
@@ -226,6 +233,11 @@ func calculate_province_growth(region_id: StringName, faction_id: StringName) ->
 	var loyalty_growth_mult := _get_loyalty_growth_multiplier(best_loyalty)
 	if loyalty_growth_mult < 1.0:
 		base_growth = int(float(base_growth) * loyalty_growth_mult)
+	# Research population growth bonus
+	var r_eff := GameManager.research_system.get_research_effects(faction_id)
+	var pop_growth_pct: int = r_eff.get("population_growth_pct", 0)
+	if pop_growth_pct != 0:
+		base_growth += int(float(base_growth) * pop_growth_pct / 100.0)
 	return base_growth
 
 func calculate_growth(city: CityState) -> int:
@@ -477,6 +489,10 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 	if fs == null:
 		return
 
+	# Research upkeep reduction
+	var r_eff := GameManager.research_system.get_research_effects(faction_id)
+	var upkeep_red_pct: float = float(r_eff.get("upkeep_reduction_pct", 0)) / 100.0
+
 	for army_id in GameManager.state.armies:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		if army.faction_id != faction_id:
@@ -492,7 +508,10 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 				continue
 			for res_type in unit_data.upkeep_cost:
 				if fs.resources.has(res_type):
-					fs.resources[res_type] -= int(unit_data.upkeep_cost[res_type] * terrain_mult)
+					var cost := int(unit_data.upkeep_cost[res_type] * terrain_mult)
+					if upkeep_red_pct > 0:
+						cost = int(cost * (1.0 - upkeep_red_pct))
+					fs.resources[res_type] -= cost
 		# Commander upkeep (only while assigned to army; skip for elderbeast armies)
 		if army.commander != null and army.elderbeast_id == &"":
 			var level_mult := 1.0 + (army.commander.level - 1) * 0.5

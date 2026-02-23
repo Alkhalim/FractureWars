@@ -10,6 +10,13 @@ const HEX_H_SPACING := HEX_RADIUS * 1.5 # 36.0 - horizontal center-to-center
 const HEX_V_SPACING := HEX_RADIUS * 1.732 # sqrt(3) * radius ≈ 41.57
 const HEX_V_OFFSET := HEX_V_SPACING * 0.5 # Odd column vertical shift
 
+# Maps neighbor direction index → hex polygon edge start corner.
+# Edge e goes from hex_points[e] to hex_points[(e+1)%6].
+# DIRECTIONS_EVEN/ODD don't follow the same angular order as polygon corners,
+# so we need this lookup to draw the correct hex edge for each neighbor direction.
+const DIR_TO_EDGE_EVEN := [0, 5, 4, 2, 3, 1]
+const DIR_TO_EDGE_ODD  := [0, 5, 4, 3, 2, 1]
+
 # Terrain base colors
 const TERRAIN_COLORS := {
 	Enums.TerrainType.PLAINS: Color(0.62, 0.58, 0.42),
@@ -89,6 +96,7 @@ var _building_tile_overlays: Array[Node2D] = []
 
 # Faction territory border lines
 var _faction_border_node: Node2D
+var _visual_faction_owner: Dictionary = {}  # Vector2i -> StringName (fills mountain/water gaps)
 
 # Elderbeast terrain depletion overlay
 var _beast_terrain_overlays: Array[Node2D] = []
@@ -366,6 +374,7 @@ func _draw_elevation_edges() -> void:
 		var my_elev: float = _hex_elevations.get(coord, 0.0)
 		var my_pixel := _hex_to_pixel(coord)
 		var neighbors := HexHelper.get_neighbors(coord)
+		var edge_lut: Array = DIR_TO_EDGE_EVEN if (coord.x & 1 == 0) else DIR_TO_EDGE_ODD
 		for i in 6:
 			var neighbor: Vector2i = neighbors[i]
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
@@ -376,8 +385,9 @@ func _draw_elevation_edges() -> void:
 				continue
 
 			# Draw shadow quad on the lower side of the shared edge
-			var v1: Vector2 = my_pixel + hex_points[i]
-			var v2: Vector2 = my_pixel + hex_points[(i + 1) % 6]
+			var e: int = edge_lut[i]
+			var v1: Vector2 = my_pixel + hex_points[e]
+			var v2: Vector2 = my_pixel + hex_points[(e + 1) % 6]
 			# Offset vertices down by elevation difference
 			var drop := elev_diff * 1.5
 			var shadow_poly := PackedVector2Array([
@@ -422,13 +432,15 @@ func _draw_mountain_outlines() -> void:
 		var my_pixel := _hex_to_pixel(coord)
 		var my_elev: float = _hex_elevations.get(coord, 0.0)
 		var neighbors := HexHelper.get_neighbors(coord)
+		var edge_lut: Array = DIR_TO_EDGE_EVEN if (coord.x & 1 == 0) else DIR_TO_EDGE_ODD
 		for i in 6:
 			var neighbor: Vector2i = neighbors[i]
 			var ntile := hex_map.get_tile(neighbor)
 			# Only draw outline on edges facing non-mountain tiles
 			if ntile == null or ntile.terrain != Enums.TerrainType.MOUNTAINS:
-				var v1: Vector2 = my_pixel + hex_points[i]
-				var v2: Vector2 = my_pixel + hex_points[(i + 1) % 6]
+				var e: int = edge_lut[i]
+				var v1: Vector2 = my_pixel + hex_points[e]
+				var v2: Vector2 = my_pixel + hex_points[(e + 1) % 6]
 				var outline := Line2D.new()
 				outline.points = PackedVector2Array([
 					Vector2(v1.x, v1.y - my_elev),
@@ -558,6 +570,7 @@ func _draw_region_borders() -> void:
 
 		var pixel_pos := _hex_to_pixel(coord)
 		var neighbors := HexHelper.get_neighbors(coord)
+		var edge_lut: Array = DIR_TO_EDGE_EVEN if (coord.x & 1 == 0) else DIR_TO_EDGE_ODD
 
 		for i in 6:
 			var neighbor: Vector2i = neighbors[i]
@@ -571,8 +584,9 @@ func _draw_region_borders() -> void:
 					draw_border = true
 
 			if draw_border:
-				var v1: Vector2 = pixel_pos + hex_points[i]
-				var v2: Vector2 = pixel_pos + hex_points[(i + 1) % 6]
+				var e: int = edge_lut[i]
+				var v1: Vector2 = pixel_pos + hex_points[e]
+				var v2: Vector2 = pixel_pos + hex_points[(e + 1) % 6]
 				all_edges.append([v1, v2])
 
 	# Draw using custom draw node (single draw call, clean lines)
@@ -593,18 +607,53 @@ func _draw_faction_borders() -> void:
 	if hex_map == null:
 		return
 
-	# Use unscaled hex radius so adjacent hexes share exact vertex positions
-	var hex_points := _make_hex_polygon(HEX_RADIUS)
-	# Collect all border edges grouped by faction
-	var border_edges: Dictionary = {}  # faction_id -> Array of [v1, v2]
+	# Build visual ownership map: use region ownership to fill mountain/water gaps
+	# so borders follow region boundaries cleanly instead of outlining every unowned tile.
+	_visual_faction_owner.clear()
+	var visual_owner := _visual_faction_owner
 
+	# Determine which faction controls each region (majority of cities)
+	var region_faction_counts: Dictionary = {}  # region_id -> {faction_id -> count}
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id == &"" or city.faction_id == &"independent":
+			continue
+		if not region_faction_counts.has(city.region_id):
+			region_faction_counts[city.region_id] = {}
+		var rc: Dictionary = region_faction_counts[city.region_id]
+		rc[city.faction_id] = rc.get(city.faction_id, 0) + 1
+	var region_owners: Dictionary = {}  # region_id -> faction_id
+	for region_id in region_faction_counts:
+		var rc: Dictionary = region_faction_counts[region_id]
+		var best_fid: StringName = &""
+		var best_count := 0
+		for fid in rc:
+			if rc[fid] > best_count:
+				best_count = rc[fid]
+				best_fid = fid
+		if best_fid != &"":
+			region_owners[region_id] = best_fid
+
+	# Assign visual ownership: owned tiles use actual owner, unowned use region owner
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		if tile.owner_faction == &"" or tile.owner_faction == &"independent":
-			continue
+		if tile.owner_faction != &"" and tile.owner_faction != &"independent":
+			visual_owner[coord] = tile.owner_faction
+		elif tile.region_id != &"":
+			var reg_owner: StringName = region_owners.get(tile.region_id, &"")
+			if reg_owner != &"":
+				visual_owner[coord] = reg_owner
 
+	# Use full HEX_RADIUS (no 0.96 inset) so shared vertices between adjacent hexes
+	# match exactly — required for reliable snap-based vertex matching in pruning.
+	var hex_points := _make_hex_polygon(HEX_RADIUS)
+	var border_edges: Dictionary = {}  # faction_id -> Array of [v1, v2]
+
+	for coord in visual_owner:
+		var my_faction: StringName = visual_owner[coord]
 		var pixel_pos := _hex_to_pixel(coord)
 		var neighbors := HexHelper.get_neighbors(coord)
+		var edge_lut: Array = DIR_TO_EDGE_EVEN if (coord.x & 1 == 0) else DIR_TO_EDGE_ODD
 
 		for i in 6:
 			var neighbor: Vector2i = neighbors[i]
@@ -613,111 +662,115 @@ func _draw_faction_borders() -> void:
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				draw_border = true
 			else:
-				var ntile := hex_map.get_tile(neighbor)
-				if ntile == null or ntile.owner_faction != tile.owner_faction:
+				var n_faction: StringName = visual_owner.get(neighbor, &"")
+				if n_faction != my_faction:
 					draw_border = true
 
 			if draw_border:
-				var v1: Vector2 = pixel_pos + hex_points[i]
-				var v2: Vector2 = pixel_pos + hex_points[(i + 1) % 6]
-				if not border_edges.has(tile.owner_faction):
-					border_edges[tile.owner_faction] = []
-				border_edges[tile.owner_faction].append([v1, v2])
+				var e: int = edge_lut[i]
+				var v1: Vector2 = pixel_pos + hex_points[e]
+				var v2: Vector2 = pixel_pos + hex_points[(e + 1) % 6]
+				if not border_edges.has(my_faction):
+					border_edges[my_faction] = []
+				border_edges[my_faction].append([v1, v2])
 
-	# Prune dead-end stubs and filter small isolated clusters
 	for faction_id in border_edges:
 		var fd: FactionData = DataManager.get_faction(faction_id)
 		var border_color: Color = fd.color.lightened(0.1) if fd else Color.WHITE
 		border_color.a = 0.7
-		var clean := _prune_border_edges(border_edges[faction_id])
+		var clean := _prune_faction_border_edges(border_edges[faction_id])
 		var draw_node := _BorderDrawNode.new()
 		draw_node.edges = clean
 		draw_node.line_color = border_color
 		draw_node.line_width = 2.5
 		_faction_border_node.add_child(draw_node)
 
-# Prunes dead-end stubs and removes small isolated border loops (< 12 edges).
-func _prune_border_edges(raw_edges: Array) -> Array:
+# Removes dead-end stubs and small isolated loops from faction border edges.
+# Uses coarse spatial hashing (÷16) for vertex matching — shared corners differ by
+# ~0.002px (always same bucket), distinct corners are 32+px apart (always different buckets).
+func _prune_faction_border_edges(raw_edges: Array) -> Array:
 	if raw_edges.size() < 3:
-		return []
+		return raw_edges
 
-	# Snap vertices to integer coords (×10) for reliable matching
-	var snap_edges: Array = []  # Array of [Vector2i, Vector2i]
-	var snap_to_real: Dictionary = {}  # Vector2i -> Vector2
+	# Snap vertices to coarse grid for reliable matching
+	var snap_edges: Array = []  # [Vector2i snap_v1, Vector2i snap_v2, Vector2 real_v1, Vector2 real_v2]
 	for edge in raw_edges:
 		var v1: Vector2 = edge[0]
 		var v2: Vector2 = edge[1]
-		var s1 := Vector2i(roundi(v1.x * 10), roundi(v1.y * 10))
-		var s2 := Vector2i(roundi(v2.x * 10), roundi(v2.y * 10))
-		snap_to_real[s1] = v1
-		snap_to_real[s2] = v2
-		snap_edges.append([s1, s2])
+		var s1 := Vector2i(roundi(v1.x / 16.0), roundi(v1.y / 16.0))
+		var s2 := Vector2i(roundi(v2.x / 16.0), roundi(v2.y / 16.0))
+		snap_edges.append([s1, s2, v1, v2])
 
-	# Build adjacency: vertex -> list of edge indices
+	# Build adjacency: vertex -> edge indices
 	var adj: Dictionary = {}
 	for idx in snap_edges.size():
-		for sv in [snap_edges[idx][0], snap_edges[idx][1]]:
-			if not adj.has(sv): adj[sv] = []
-			adj[sv].append(idx)
+		var s1: Vector2i = snap_edges[idx][0]
+		var s2: Vector2i = snap_edges[idx][1]
+		if not adj.has(s1): adj[s1] = []
+		adj[s1].append(idx)
+		if not adj.has(s2): adj[s2] = []
+		adj[s2].append(idx)
 
-	# Iteratively prune dead ends (degree-1 vertices = stubs ending in nothing)
+	# Compute degrees and iteratively prune dead ends (degree-1 vertices)
 	var degree: Dictionary = {}
 	for v in adj:
 		degree[v] = adj[v].size()
-	var queue: Array[Vector2i] = []
+	var queue: Array = []
 	for v in degree:
 		if degree[v] == 1:
 			queue.append(v)
 	var removed: Dictionary = {}
 	while queue.size() > 0:
-		var v: Vector2i = queue.pop_front()
+		var v = queue.pop_front()
 		if degree.get(v, 0) != 1:
 			continue
 		for eidx in adj[v]:
 			if removed.has(eidx):
 				continue
 			removed[eidx] = true
-			var e: Array = snap_edges[eidx]
-			var other: Vector2i = e[0] if e[1] == v else e[1]
+			var se: Array = snap_edges[eidx]
+			var other: Vector2i = se[0] if se[1] == v else se[1]
 			degree[other] -= 1
 			if degree[other] == 1:
 				queue.append(other)
 			break
 		degree[v] = 0
 
-	# Collect surviving edge indices and rebuild adjacency
-	var surviving: Array[int] = []
+	# Collect surviving edges and rebuild adjacency for component detection
+	var surviving: Array = []
 	var adj2: Dictionary = {}
 	for idx in snap_edges.size():
 		if removed.has(idx):
 			continue
 		surviving.append(idx)
-		for sv in [snap_edges[idx][0], snap_edges[idx][1]]:
-			if not adj2.has(sv): adj2[sv] = []
-			adj2[sv].append(idx)
+		var s1: Vector2i = snap_edges[idx][0]
+		var s2: Vector2i = snap_edges[idx][1]
+		if not adj2.has(s1): adj2[s1] = []
+		adj2[s1].append(idx)
+		if not adj2.has(s2): adj2[s2] = []
+		adj2[s2].append(idx)
 
-	# BFS to find connected components, filter out small ones (< 12 edges)
+	# BFS connected components — filter out small ones (< 12 edges)
 	var visited: Dictionary = {}
 	var result: Array = []
 	for start_idx in surviving:
 		if visited.has(start_idx):
 			continue
-		var bfs: Array[int] = [start_idx]
+		var bfs: Array = [start_idx]
 		visited[start_idx] = true
-		var comp: Array[int] = []
+		var comp: Array = []
 		while bfs.size() > 0:
 			var eidx: int = bfs.pop_front()
 			comp.append(eidx)
-			var e: Array = snap_edges[eidx]
-			for sv in [e[0], e[1]]:
+			var se: Array = snap_edges[eidx]
+			for sv in [se[0], se[1]]:
 				for nb in adj2.get(sv, []):
 					if not visited.has(nb):
 						visited[nb] = true
 						bfs.append(nb)
 		if comp.size() >= 12:
 			for eidx in comp:
-				var e: Array = snap_edges[eidx]
-				result.append([snap_to_real[e[0]], snap_to_real[e[1]]])
+				result.append([snap_edges[eidx][2], snap_edges[eidx][3]])
 	return result
 
 class _BorderDrawNode extends Node2D:
@@ -3105,6 +3158,7 @@ const MINIMAP_MARGIN := Vector2(10, 10)
 var _minimap_panel: PanelContainer
 var _minimap_image: TextureRect
 var _minimap_political_mode := false
+var _minimap_dragging := false
 
 func _create_minimap() -> void:
 	# Outer container for button + minimap
@@ -3231,24 +3285,22 @@ func _update_minimap() -> void:
 					if px + dx < px_w and py + dy < px_h:
 						img.set_pixel(px + dx, py + dy, color)
 
-	# Draw faction territory borders on minimap (always visible for visible/explored tiles)
+	# Draw faction territory borders on minimap using visual ownership (fills mountain/water gaps)
 	for x in w:
 		for y in h:
 			var coord := Vector2i(x, y)
-			var tile := hex_map.get_tile(coord)
-			if tile == null or tile.owner_faction == &"" or tile.owner_faction == &"independent":
+			var my_faction: StringName = _visual_faction_owner.get(coord, &"")
+			if my_faction == &"":
 				continue
 			if fog_active and not bool(_visible_tile_cache.get(coord, false)) and not bool(_explored_tiles.get(coord, false)):
 				continue
-			var fc: Color = faction_colors.get(tile.owner_faction, Color.WHITE)
+			var fc: Color = faction_colors.get(my_faction, Color.WHITE)
 			var border_color: Color = fc.darkened(0.2) if _minimap_political_mode else fc.darkened(0.1)
 			border_color.a = 0.9
-			# Check if any neighbor has a different owner
+			# Check if any neighbor has a different visual owner
 			for n in HexHelper.get_neighbors(coord):
-				var ntile := hex_map.get_tile(n)
-				var n_owner: StringName = ntile.owner_faction if ntile else &""
-				if n_owner != tile.owner_faction:
-					# Draw border pixels at the edge direction
+				var n_faction: StringName = _visual_faction_owner.get(n, &"")
+				if n_faction != my_faction:
 					var dx: int = n.x - coord.x
 					var dy: int = n.y - coord.y
 					var bx: int = coord.x * 3 + 1 + clampi(dx, -1, 1)
@@ -3333,17 +3385,24 @@ func _update_minimap() -> void:
 	_minimap_image.texture = ImageTexture.create_from_image(img)
 
 func _on_minimap_click(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		var local_pos: Vector2 = event.position
-		var minimap_size := _minimap_image.size
-		var hex_map := GameManager.state.hex_map
-		if hex_map == null:
-			return
-		var w: int = HexMapData.MAP_WIDTH
-		var h: int = HexMapData.MAP_HEIGHT
-		var map_pixel_w := float(w) * HEX_H_SPACING
-		var map_pixel_h := float(h) * HEX_V_SPACING
-		var ratio_x := local_pos.x / minimap_size.x
-		var ratio_y := local_pos.y / minimap_size.y
-		camera.position = Vector2(ratio_x * map_pixel_w, ratio_y * map_pixel_h)
-		_update_minimap()
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_minimap_dragging = true
+			_minimap_move_camera(event.position)
+		else:
+			_minimap_dragging = false
+	elif event is InputEventMouseMotion and _minimap_dragging:
+		_minimap_move_camera(event.position)
+
+func _minimap_move_camera(local_pos: Vector2) -> void:
+	var minimap_size := _minimap_image.size
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+	var map_pixel_w := float(HexMapData.MAP_WIDTH) * HEX_H_SPACING
+	var map_pixel_h := float(HexMapData.MAP_HEIGHT) * HEX_V_SPACING
+	var ratio_x := clampf(local_pos.x / minimap_size.x, 0.0, 1.0)
+	var ratio_y := clampf(local_pos.y / minimap_size.y, 0.0, 1.0)
+	camera.position = Vector2(ratio_x * map_pixel_w, ratio_y * map_pixel_h)
+	camera._clamp_position()
+	_update_minimap()

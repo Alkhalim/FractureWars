@@ -3326,7 +3326,7 @@ class _RadialTechTree extends Control:
 				if not fs.completed_research.has(prereq):
 					prereqs_met = false
 					break
-			var can_afford: bool = current_tech >= data.tech_cost
+			var can_afford := true
 
 			var node_color: Color
 			var border_color: Color
@@ -3415,7 +3415,7 @@ class _RadialTechTree extends Control:
 			status_text = "IN PROGRESS (%d/%d)" % [fs.research_progress, data.research_time]
 			status_color = Color(0.9, 0.8, 0.3)
 		else:
-			status_text = "Cost: %dT | %d turns" % [data.tech_cost, data.research_time]
+			status_text = "%d turns" % data.research_time
 			status_color = Color(0.6, 0.58, 0.5)
 		draw_string(font, Vector2(box_pos.x + 8, y), status_text, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, status_color)
 		y += 14
@@ -3618,7 +3618,7 @@ func _show_research_detail(data: ResearchData) -> void:
 
 	# Cost + Time
 	var cost_label := Label.new()
-	cost_label.text = "Cost: %d Technology  |  Research Time: %d turns" % [data.tech_cost, data.research_time]
+	cost_label.text = "Research Time: %d turns" % data.research_time
 	cost_label.add_theme_font_size_override("font_size", 12)
 	cost_label.add_theme_color_override("font_color", RESOURCE_COLORS.get(2, Color.WHITE))
 	vbox.add_child(cost_label)
@@ -7847,14 +7847,11 @@ func _check_advisor_messages() -> void:
 		if messages.size() > 2:
 			break
 
-	# Check no active research — only if player can afford at least one
+	# Check no active research
 	if fs.current_research_id == &"":
-		var tech_budget: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
 		var available := GameManager.research_system.get_available_research(player_id)
-		for rd in available:
-			if rd.tech_cost <= tech_budget:
-				messages.append("You can research a new technology.")
-				break
+		if available.size() > 0:
+			messages.append("You can research a new technology.")
 
 	# Show the first advisor message as a toast
 	if messages.size() > 0:

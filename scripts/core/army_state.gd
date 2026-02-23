@@ -34,6 +34,10 @@ func get_max_movement() -> float:
 	if commander:
 		var bonuses := CommanderSystem.get_commander_army_bonuses(commander)
 		base_mp += bonuses.get("movement_bonus", 0.0)
+	# Research movement bonuses
+	var r_eff := GameManager.research_system.get_research_effects(faction_id)
+	base_mp += r_eff.get("movement_bonus", 0)
+	base_mp += r_eff.get("army_movement_bonus", 0)
 	return base_mp * 1.2
 
 func get_commander_name() -> String:
