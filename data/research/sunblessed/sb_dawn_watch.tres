@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_dawn_watch"
+display_name = "Dawn Watch"
+description = "Vigilant guards greet each dawn."
+tech_cost = 50
+research_time = 8
+prerequisites = Array[StringName]([])
+effects = { "unit_defense_bonus": 1 }
+shard_bonuses = {}
+tier = 1
+research_category = &"military"
+faction_id = &"sunblessed"
+tree_angle = 60.0
+tree_branch = &"dawn_guard"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sk_world_conqueror"
+display_name = "World Conqueror"
+description = "All peoples shall kneel before the Skulloath."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sk_khan_fury", &"sk_unstoppable_tide"])
+effects = { "unit_attack_bonus": 7, "unit_speed_bonus": 4, "unit_morale_bonus": 25 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"skulloath"
+tree_angle = 300.0
+tree_branch = &"skull_throne"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cg_foundry_cities"
+display_name = "Foundry Cities"
+description = "Entire cities dedicated to metalwork."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"cg_blast_furnace", &"volcanic_glass"])
+effects = { "income_gold_pct": 10, "recruitment_cost_reduction": 8 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"cinderguard"
+tree_angle = 175.0
+tree_branch = &"industry"

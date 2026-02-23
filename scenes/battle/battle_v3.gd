@@ -38,6 +38,10 @@ var is_paused: bool = false
 var _dragging_formation: BattleSimulatorV3.BattleFormationV3 = null
 var _drag_offset: Vector2 = Vector2.ZERO
 
+# Screen shake
+var _shake_intensity: float = 0.0
+var _shake_decay: float = 8.0
+
 # UI nodes
 var renderer: Node2D
 var effects_layer: Node2D
@@ -888,6 +892,15 @@ func _on_skip() -> void:
 
 func _process(delta: float) -> void:
 	_update_magic_projectiles(delta)
+
+	# Update screen shake
+	if _shake_intensity > 0.01:
+		_shake_intensity *= exp(-_shake_decay * delta)
+		$Camera2D.offset = Vector2(randf_range(-_shake_intensity, _shake_intensity), randf_range(-_shake_intensity, _shake_intensity))
+	else:
+		_shake_intensity = 0.0
+		$Camera2D.offset = Vector2.ZERO
+
 	if current_phase != Phase.SIMULATION or not is_simulating:
 		return
 
@@ -929,6 +942,9 @@ func _process_visual_actions(actions: Array[Dictionary]) -> void:
 				var def_id: StringName = action.defender
 				var dmg: int = action.damage
 				_spawn_damage_number(def_id, dmg)
+				if dmg > 15:
+					_shake_intensity = clampf(float(dmg) * 0.15, 2.0, 8.0)
+				renderer.trigger_flash(action.attacker)
 			"ranged_hit":
 				var r_dmg: int = action.damage
 				var r_def_id: StringName = action.defender
@@ -944,6 +960,7 @@ func _process_visual_actions(actions: Array[Dictionary]) -> void:
 					_spawn_projectile(action.attacker, r_def_id)
 				if r_dmg > 0:
 					_spawn_damage_number(r_def_id, r_dmg)
+					renderer.trigger_flash(action.attacker)
 			"aura_damage":
 				_spawn_aura_damage_number(action.target, action.damage)
 			"spawn":
@@ -1249,6 +1266,9 @@ func _show_result() -> void:
 
 	result_panel.add_child(vbox)
 	result_panel.visible = true
+	result_panel.modulate = Color(1, 1, 1, 0)
+	var tween := create_tween()
+	tween.tween_property(result_panel, "modulate:a", 1.0, 0.6).set_ease(Tween.EASE_OUT)
 
 func _on_continue() -> void:
 	# Fade music out
@@ -1534,9 +1554,10 @@ func _apply_elderbeast_building_bonuses() -> void:
 			if beast.buildings.has(&"chitin_walls"):
 				f.defense += 8
 
-			# T1: Feeding Tendrils — HP regen (2 HP/tick)
+			# T1: Feeding Tendrils — HP regen while fighting (1 HP/tick, only during combat)
 			if beast.buildings.has(&"shard_conduit"):
-				f.hp_regen_per_tick += 2.0
+				f.hp_regen_per_tick = 1.0
+				f.regen_requires_combat = true
 
 			# T1: Chitin Forge — +10 attack
 			if beast.buildings.has(&"crystal_forge"):

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_pilgrim_roads"
+display_name = "Pilgrim Roads"
+description = "Well-maintained roads for pilgrims."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"pilgrim_zeal", &"sb_oasis_trade"])
+effects = { "movement_bonus": 2, "supply_range_bonus": 1 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"sunblessed"
+tree_angle = 130.0
+tree_branch = &"pilgrimage"

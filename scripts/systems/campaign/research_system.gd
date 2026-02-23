@@ -41,12 +41,7 @@ func start_research(faction_id: StringName, research_id: StringName) -> bool:
 	# Check if already researching
 	if fs.current_research_id != &"":
 		return false
-	# Check cost
-	var tech: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
-	if tech < data.tech_cost:
-		return false
-	# Deduct cost
-	fs.resources[Enums.ResourceType.TECHNOLOGY] -= data.tech_cost
+	# Research is free — no cost check or deduction
 	fs.current_research_id = research_id
 	fs.research_progress = 0
 	EventBus.research_started.emit(faction_id, research_id)
@@ -154,12 +149,13 @@ func execute_ai_research(faction_id: StringName) -> void:
 	var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 	var weights: Dictionary = category_weights.get(parent_id, {&"military": 2, &"economy": 2, &"arcane": 1, &"logistics": 1})
 
-	# Score each research by preference weight / cost
+	# Score each research by preference weight * tier (lower tier = faster to complete)
 	var best: ResearchData = available[0]
 	var best_score := -999.0
 	for data in available:
 		var weight: float = float(weights.get(data.research_category, 1))
-		var score := weight / maxf(1.0, float(data.tech_cost)) * 100.0
+		var tier_factor := maxf(1.0, float(6 - data.tier))  # Lower tier = higher priority
+		var score := weight * tier_factor
 		if score > best_score:
 			best_score = score
 			best = data

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_dark_harvest"
+display_name = "Dark Harvest"
+description = "Blighted crops still feed the dead."
+tech_cost = 50
+research_time = 8
+prerequisites = Array[StringName]([])
+effects = { "income_food_pct": 5 }
+shard_bonuses = {}
+tier = 1
+research_category = &"economy"
+faction_id = &"forsaken"
+tree_angle = 180.0
+tree_branch = &"blight"

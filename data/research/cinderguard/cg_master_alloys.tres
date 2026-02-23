@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cg_master_alloys"
+display_name = "Master Alloys"
+description = "Alloys harder than any known metal."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"industrial_revolution"])
+effects = { "unit_defense_bonus": 4, "unit_attack_bonus": 2 }
+shard_bonuses = {}
+tier = 4
+research_category = &"economy"
+faction_id = &"cinderguard"
+tree_angle = 350.0
+tree_branch = &"forging"

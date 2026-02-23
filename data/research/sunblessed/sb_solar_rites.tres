@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_solar_rites"
+display_name = "Solar Rites"
+description = "Sacred sun rituals empower warriors."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"radiant_aura", &"sun_warriors"])
+effects = { "unit_morale_bonus": 10, "unit_attack_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"sunblessed"
+tree_angle = 310.0
+tree_branch = &"solar_throne"

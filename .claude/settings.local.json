@@ -35,7 +35,11 @@
       "Bash(bash -c 'cat \"\"D:/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars/data/skills/hardy.tres\"\"')",
       "Bash(/usr/bin/grep:*)",
       "Bash(command -v:*)",
-      "Bash(command -v sed:*)"
+      "Bash(command -v sed:*)",
+      "Bash(for:*)",
+      "Bash(do echo \"$f\")",
+      "Bash(cat $file:*)",
+      "Bash(echo === $\\(basename \"$dir\"\\) ===:*)"
     ]
   }
 }

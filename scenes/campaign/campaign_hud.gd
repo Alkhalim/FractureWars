@@ -109,6 +109,10 @@ func _ready() -> void:
 	army_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 	region_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 
+	# Wire up army panel close button
+	var army_close_btn: Button = army_panel.get_node("VBox/HeaderRow/CloseButton")
+	army_close_btn.pressed.connect(func(): EventBus.army_deselected.emit())
+
 	_create_resource_bar()
 	_create_shard_display()
 	_create_economy_panel()
@@ -492,8 +496,19 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 
 	hbox.add_child(stats_vbox)
 
-	# Right-click to open detail panel
+	# Hover scale effect
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.mouse_entered.connect(func():
+		var tw := create_tween()
+		tw.tween_property(card, "scale", Vector2(1.03, 1.03), 0.1)
+	)
+	card.mouse_exited.connect(func():
+		var tw := create_tween()
+		tw.tween_property(card, "scale", Vector2.ONE, 0.1)
+	)
+	card.pivot_offset = card.size * 0.5
+
+	# Right-click to open detail panel
 	card.gui_input.connect(func(event: InputEvent):
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 			_show_unit_detail(unit, unit_data)
@@ -706,6 +721,11 @@ func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 	_update_top_bar()
 	_update_resource_display()
 	end_turn_button.disabled = not TurnManager.is_player_turn
+	# Resource bar gold pulse on player turn
+	if TurnManager.is_player_turn and resource_bar:
+		var pulse_tw := create_tween()
+		pulse_tw.tween_property(resource_bar, "modulate", Color(1.3, 1.2, 0.8), 0.15)
+		pulse_tw.tween_property(resource_bar, "modulate", Color.WHITE, 0.3)
 	# Auto-refresh loyalty panel if open
 	if _loyalty_panel_city_id != &"":
 		_show_loyalty_panel(_loyalty_panel_city_id)
@@ -2696,6 +2716,51 @@ func _on_research_completed(faction_id: StringName, _research_id: StringName) ->
 	# Refresh research panel if open
 	if _research_panel and _research_panel.visible:
 		_refresh_research_panel()
+	# Research completion toast
+	var data: ResearchData = DataManager.research.get(_research_id)
+	if data:
+		_spawn_research_toast(data.display_name)
+
+func _spawn_research_toast(research_name: String) -> void:
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.06, 0.12, 0.92)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.65, 0.35, 0.85, 0.7)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 12.0
+	style.content_margin_top = 8.0
+	style.content_margin_right = 12.0
+	style.content_margin_bottom = 8.0
+	panel.add_theme_stylebox_override("panel", style)
+
+	var lbl := Label.new()
+	lbl.text = "Research Complete: %s" % research_name
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", Color(0.85, 0.75, 0.95))
+	panel.add_child(lbl)
+
+	panel.anchors_preset = Control.PRESET_CENTER_TOP
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.0
+	panel.offset_left = -140
+	panel.offset_right = 140
+	panel.offset_top = 40
+	panel.modulate = Color(1, 1, 1, 0)
+	add_child(panel)
+
+	var tween := create_tween()
+	tween.tween_property(panel, "modulate:a", 1.0, 0.3)
+	tween.tween_interval(2.5)
+	tween.tween_property(panel, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(panel.queue_free)
 
 func _toggle_research_panel() -> void:
 	if _research_panel.visible:
@@ -2704,6 +2769,14 @@ func _toggle_research_panel() -> void:
 		_check_tutorial("research_viewed")
 		_refresh_research_panel()
 		_research_panel.visible = true
+		# Scale-in from center
+		_research_panel.scale = Vector2(0.9, 0.9)
+		_research_panel.modulate = Color(1, 1, 1, 0)
+		_research_panel.pivot_offset = _research_panel.size * 0.5
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(_research_panel, "scale", Vector2.ONE, 0.2).set_ease(Tween.EASE_OUT)
+		tw.tween_property(_research_panel, "modulate:a", 1.0, 0.2)
 
 func _refresh_research_panel() -> void:
 	var scroll: ScrollContainer = _research_panel.get_child(0)
@@ -2765,7 +2838,7 @@ func _refresh_research_panel() -> void:
 
 	# Radial tech tree drawing
 	var tree_control := _RadialTechTree.new()
-	tree_control.custom_minimum_size = Vector2(820, 700)
+	tree_control.custom_minimum_size = Vector2(900, 900)
 	tree_control.faction_id = parent_faction_id
 	tree_control.player_faction_id = player_id
 	tree_control.hud_ref = self
@@ -2840,7 +2913,7 @@ class _RadialTechTree extends Control:
 	var _selected_id: StringName = &""
 	var _hovered_id: StringName = &""
 
-	const TIER_RADII := [0, 120, 220, 310]
+	const TIER_RADII := [0, 100, 175, 250, 325, 400]
 	const NODE_RADIUS := 18.0
 	const CAT_COLORS := {
 		&"military": Color(0.85, 0.35, 0.3),
@@ -2864,7 +2937,7 @@ class _RadialTechTree extends Control:
 				continue
 			_node_data[research_id] = data
 			var angle_rad := deg_to_rad(data.tree_angle)
-			var radius: float = TIER_RADII[clampi(data.tier, 1, 3)]
+			var radius: float = TIER_RADII[clampi(data.tier, 1, 5)]
 			# Universal techs (no faction_id) go in a ring at the bottom
 			if data.faction_id == &"":
 				# Place universal techs below center in a horizontal line
@@ -2886,7 +2959,7 @@ class _RadialTechTree extends Control:
 		_calculate_positions()
 
 		# Draw tier circles (faint guides)
-		for tier in [1, 2, 3]:
+		for tier in [1, 2, 3, 4, 5]:
 			draw_arc(center, TIER_RADII[tier], 0, TAU, 48, Color(0.2, 0.19, 0.22, 0.4), 1.0)
 
 		# Draw center faction emblem
@@ -3845,6 +3918,10 @@ func _show_city_panel(city_id: StringName) -> void:
 
 	var is_player_city := city.faction_id == GameManager.state.player_faction_id
 	city_panel.visible = true
+	# Slide-in from right
+	city_panel.modulate = Color(1, 1, 1, 0)
+	var tw := create_tween()
+	tw.tween_property(city_panel, "modulate:a", 1.0, 0.2).set_ease(Tween.EASE_OUT)
 
 	var scroll: ScrollContainer = city_panel.get_child(0)
 	var vbox: VBoxContainer = scroll.get_node("CityVBox")

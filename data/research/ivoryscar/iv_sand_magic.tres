@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iv_sand_magic"
+display_name = "Sand Magic"
+description = "Magic drawn from the endless sands."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"iv_dust_warriors", &"iv_oasis_control"])
+effects = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"ivoryscar"
+tree_angle = 60.0
+tree_branch = &"desert_power"

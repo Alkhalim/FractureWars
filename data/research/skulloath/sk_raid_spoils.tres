@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sk_raid_spoils"
+display_name = "Raid Spoils"
+description = "Plunder enriches the horde."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"terror_tactics", &"steppe_ambush"])
+effects = { "income_gold_pct": 12, "trade_income_bonus": 8 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"skulloath"
+tree_angle = 15.0
+tree_branch = &"raiding"

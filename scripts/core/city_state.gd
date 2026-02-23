@@ -103,6 +103,9 @@ func get_upgrade_time() -> int:
 	return UPGRADE_TURNS.get(target_level, 3)
 
 func can_recruit(unit_data_id: StringName) -> bool:
+	# Shardhorde: Crystal Swarmlings are always recruitable (no building needed)
+	if unit_data_id == &"crystal_swarmling" and faction_id == &"shardhorde":
+		return true
 	for building_id in buildings:
 		var current_id: StringName = building_id
 		while current_id != &"":

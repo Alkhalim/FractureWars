@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_mountain_paths"
+display_name = "Mountain Paths"
+description = "Secret paths through the mountains."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"peak_fortresses"])
+effects = { "movement_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"thunderswarm"
+tree_angle = 140.0
+tree_branch = &"mountain_hold"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ms_moon_phases"
+display_name = "Moon Phase Mastery"
+description = "Each moon phase grants different power."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"celestial_insight", &"ms_prophet_visions"])
+effects = { "unit_attack_bonus": 2, "unit_defense_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"moonspear"
+tree_angle = 15.0
+tree_branch = &"lunar_doctrine"

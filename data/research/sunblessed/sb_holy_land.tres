@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_holy_land"
+display_name = "The Holy Land"
+description = "Claim the sacred lands of the sun."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sb_pilgrim_army"])
+effects = { "income_gold_pct": 20, "unit_morale_bonus": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"sunblessed"
+tree_angle = 120.0
+tree_branch = &"pilgrimage"

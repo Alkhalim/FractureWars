@@ -192,6 +192,12 @@ theme_override_colors/font_color = Color(0.75, 0.72, 0.65, 1)
 theme_override_font_sizes/font_size = 13
 text = "Units:"
 
+[node name="CloseButton" type="Button" parent="UILayer/HUD/SelectedArmyPanel/VBox/HeaderRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(30, 30)
+theme_override_font_sizes/font_size = 14
+text = "X"
+
 [node name="Separator" type="HSeparator" parent="UILayer/HUD/SelectedArmyPanel/VBox"]
 layout_mode = 2
 theme_override_colors/separator_color = Color(0.55, 0.42, 0.2, 0.5)

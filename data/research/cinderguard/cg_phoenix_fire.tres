@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cg_phoenix_fire"
+display_name = "Phoenix Fire"
+description = "Fire that gives life as well as death."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"cg_firestorm"])
+effects = { "unit_attack_bonus": 6, "unit_hp_bonus": 15 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"cinderguard"
+tree_angle = 120.0
+tree_branch = &"flamecraft"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"emp_combined_arms"
+display_name = "Combined Arms"
+description = "Infantry, cavalry, and mages fight as one."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"emp_military_reforms", &"emp_arcane_dominion"])
+effects = { "unit_attack_bonus": 4, "unit_defense_bonus": 3 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"empire"
+tree_angle = 305.0
+tree_branch = &"supremacy"

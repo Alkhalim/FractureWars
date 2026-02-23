@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cg_industrial_might"
+display_name = "Industrial Might"
+description = "Unmatched industrial capacity."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"cg_mass_production"])
+effects = { "income_gold_pct": 15, "recruitment_cost_reduction": 15 }
+shard_bonuses = {}
+tier = 4
+research_category = &"economy"
+faction_id = &"cinderguard"
+tree_angle = 180.0
+tree_branch = &"industry"

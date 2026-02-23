@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_eagle_riders"
+display_name = "Eagle Riders"
+description = "Soar above the battlefield on giant eagles."
+tech_cost = 50
+research_time = 8
+prerequisites = Array[StringName]([])
+effects = { "unit_speed_bonus": 1, "movement_bonus": 1 }
+shard_bonuses = {}
+tier = 1
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 60.0
+tree_branch = &"sky_lords"

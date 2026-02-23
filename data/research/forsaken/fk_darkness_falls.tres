@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_darkness_falls"
+display_name = "Darkness Falls"
+description = "Supernatural darkness blankets the land."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"hollow_throne", &"fk_shadow_army"])
+effects = { "unit_attack_bonus": 3, "flanking_damage_bonus": 15 }
+shard_bonuses = {}
+tier = 4
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 230.0
+tree_branch = &"shadow_war"

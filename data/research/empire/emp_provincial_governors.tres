@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"emp_provincial_governors"
+display_name = "Provincial Governors"
+description = "Efficient governance stabilizes conquered lands."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"senate_authority", &"imperial_edict"])
+effects = { "income_gold_pct": 10, "upkeep_reduction": 5 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"empire"
+tree_angle = 280.0
+tree_branch = &"governance"

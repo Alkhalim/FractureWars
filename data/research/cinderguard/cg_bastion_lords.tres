@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cg_bastion_lords"
+display_name = "Bastion Lords"
+description = "Unbreakable fortress commanders."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"eternal_watch"])
+effects = { "defense_bonus": 10, "unit_morale_bonus": 15 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"cinderguard"
+tree_angle = 235.0
+tree_branch = &"garrison_duty"

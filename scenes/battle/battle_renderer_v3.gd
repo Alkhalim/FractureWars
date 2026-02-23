@@ -22,6 +22,22 @@ const COLOR_SELECTED := Color(0.95, 0.85, 0.3, 1)
 const COLOR_ROUTING_TINT := Color(0.4, 0.4, 0.4, 1)
 const COLOR_BAR_OUTLINE := Color(0.6, 0.55, 0.4, 0.5)
 
+var _flash_formations: Dictionary = {} # formation instance_id -> flash_timer (float)
+
+func trigger_flash(formation_id: StringName) -> void:
+	_flash_formations[formation_id] = 0.15
+
+func _process(delta: float) -> void:
+	var to_remove: Array[StringName] = []
+	for fid in _flash_formations:
+		_flash_formations[fid] -= delta
+		if _flash_formations[fid] <= 0.0:
+			to_remove.append(fid)
+	for fid in to_remove:
+		_flash_formations.erase(fid)
+	if _flash_formations.size() > 0:
+		queue_redraw()
+
 func _draw() -> void:
 	if battle_scene == null:
 		return
@@ -88,7 +104,7 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 		var is_player: bool = f.side == battle_scene.player_side
 		var base_color: Color = COLOR_PLAYER if is_player else COLOR_ENEMY
 		if f.is_routing:
-			base_color = base_color.lerp(COLOR_ROUTING_TINT, 0.5)
+			base_color = base_color.lerp(Color(0.55, 0.25, 0.2), 0.55)
 
 		var is_selected: bool = f == selected
 
@@ -103,6 +119,18 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 			if is_selected:
 				c = c.lerp(COLOR_SELECTED, 0.25)
 			draw_circle(epos, radius, c)
+			# Attack flash overlay
+			if _flash_formations.has(f.instance_id):
+				draw_circle(epos, radius, Color(1, 1, 1, 0.5))
+
+		# Charge trail for fast-moving units
+		if f.current_order == Enums.BattleOrder.CHARGE and not f.is_routing:
+			var facing := f.get_facing_vector()
+			var trail_color := Color(base_color.r, base_color.g, base_color.b, 0.15)
+			for i in mini(f.entities_alive, f.entity_positions.size()):
+				var epos: Vector2 = f.entity_positions[i]
+				var trail_end := epos - facing * radius * 3.0
+				draw_line(epos, trail_end, trail_color, 1.5)
 
 		# Selection highlight ring around entities
 		if is_selected:
@@ -139,10 +167,12 @@ func _draw_dead_marks(sim: BattleSimulatorV3) -> void:
 			continue
 		var is_player: bool = f.side == battle_scene.player_side
 		var base_color: Color = COLOR_PLAYER if is_player else COLOR_ENEMY
-		var mark_color := Color(base_color.r, base_color.g, base_color.b, 0.15)
-		var radius := BattleSimulatorV3.get_entity_radius(f)
+		var mark_color := Color(base_color.r, base_color.g, base_color.b, 0.2)
+		var r := BattleSimulatorV3.get_entity_radius(f) * 0.5
 		for pos in f.dead_entity_positions:
-			draw_circle(pos, radius, mark_color)
+			# Draw X mark
+			draw_line(pos + Vector2(-r, -r), pos + Vector2(r, r), mark_color, 1.0)
+			draw_line(pos + Vector2(r, -r), pos + Vector2(-r, r), mark_color, 1.0)
 
 func _draw_facing_arrow(f: BattleSimulatorV3.BattleFormationV3, base_color: Color) -> void:
 	var facing := f.get_facing_vector()

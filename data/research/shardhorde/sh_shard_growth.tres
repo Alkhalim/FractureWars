@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_shard_growth"
+display_name = "Shard Growth Acceleration"
+description = "Crystals grow faster and stronger."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"shard_communion"])
+effects = { "shard_harvest_bonus": 8 }
+shard_bonuses = {}
+tier = 2
+research_category = &"economy"
+faction_id = &"shardhorde"
+tree_angle = 225.0
+tree_branch = &"shard_communion"

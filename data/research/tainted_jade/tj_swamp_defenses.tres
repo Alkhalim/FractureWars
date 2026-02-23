@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tj_swamp_defenses"
+display_name = "Swamp Defenses"
+description = "Natural swamp defenses enhanced."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"tj_mycelium_web", &"fungal_cultivation"])
+effects = { "defense_bonus": 5 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"tainted_jade"
+tree_angle = 195.0
+tree_branch = &"fungal_network"

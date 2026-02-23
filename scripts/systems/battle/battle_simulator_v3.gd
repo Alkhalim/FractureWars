@@ -163,6 +163,7 @@ class BattleFormationV3:
 
 	# Beast special abilities (set by building bonuses)
 	var hp_regen_per_tick: float = 0.0    # HP restored per tick
+	var regen_requires_combat: bool = false  # If true, only regen while actively fighting
 	var damage_aura_radius: float = 0.0   # Pixel radius for damage aura
 	var damage_aura_damage: float = 0.0   # Damage per tick to enemies in aura
 	var spawn_unit_data_id: StringName = &""  # Unit to spawn mid-battle
@@ -388,7 +389,9 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	return f
 
 func _assign_formation_shape(f: BattleFormationV3) -> void:
-	if f.tags.has("beast") or f.tags.has("monster"):
+	if f.tags.has("swarm"):
+		f.formation_shape = Enums.FormationShape.SWARM
+	elif f.tags.has("beast") or f.tags.has("monster"):
 		if f.total_entities <= 3:
 			f.formation_shape = Enums.FormationShape.SINGLE
 		else:
@@ -431,10 +434,12 @@ func _generate_formation_offsets(f: BattleFormationV3) -> void:
 			_generate_block_offsets(f, count, scaled_spacing, scaled_row)
 		Enums.FormationShape.SINGLE:
 			_generate_single_offsets(f, count, scaled_spacing)
+		Enums.FormationShape.SWARM:
+			_generate_swarm_offsets(f, count, scaled_spacing)
 
 	# Add initial scatter for natural look (skip single entities)
 	if count > 1:
-		var scatter := get_entity_radius(f) * 0.4
+		var scatter := get_entity_radius(f) * (0.7 if f.formation_shape == Enums.FormationShape.SWARM else 0.4)
 		for i in f.entity_local_offsets.size():
 			f.entity_local_offsets[i] += Vector2(randf_range(-scatter, scatter), randf_range(-scatter, scatter))
 
@@ -491,6 +496,29 @@ func _generate_single_offsets(f: BattleFormationV3, count: int, spacing: float) 
 		for i in count:
 			var angle := TAU * float(i) / float(count)
 			f.entity_local_offsets.append(Vector2(cos(angle), sin(angle)) * spacing)
+
+func _generate_swarm_offsets(f: BattleFormationV3, count: int, spacing: float) -> void:
+	# Organic blob: concentric rings with angular jitter and radial noise
+	if count <= 0:
+		return
+	# Ring 0: center entity
+	f.entity_local_offsets.append(Vector2.ZERO)
+	var placed := 1
+	var ring := 1
+	while placed < count:
+		var entities_in_ring := mini(6 * ring, count - placed)
+		for i in entities_in_ring:
+			if placed >= count:
+				break
+			var base_angle := TAU * float(i) / float(entities_in_ring)
+			var angle_jitter := randf_range(-TAU / float(entities_in_ring) * 0.3, TAU / float(entities_in_ring) * 0.3)
+			var angle := base_angle + angle_jitter
+			var base_radius := ring * spacing * 0.8
+			var radial_jitter := randf_range(-spacing * 0.3, spacing * 0.3)
+			var radius := base_radius + radial_jitter
+			f.entity_local_offsets.append(Vector2(cos(angle) * radius, sin(angle) * radius))
+			placed += 1
+		ring += 1
 
 func _update_entity_world_positions(f: BattleFormationV3, use_lerp: bool = false) -> void:
 	# Compute target positions from center + rotated offsets
@@ -783,8 +811,12 @@ func simulate_tick() -> Array[Dictionary]:
 			continue
 		# HP regeneration
 		if f.hp_regen_per_tick > 0.0 and f.current_hp < f.max_hp:
-			f.current_hp = mini(f.max_hp, f.current_hp + roundi(f.hp_regen_per_tick))
-			f.front_entity_hp = f.current_hp if f.total_entities == 1 else f.front_entity_hp
+			var should_regen := true
+			if f.regen_requires_combat:
+				should_regen = not f.is_idle_this_tick  # Only regen while actively fighting
+			if should_regen:
+				f.current_hp = mini(f.max_hp, f.current_hp + roundi(f.hp_regen_per_tick))
+				f.front_entity_hp = f.current_hp if f.total_entities == 1 else f.front_entity_hp
 		# Damage aura
 		if f.damage_aura_radius > 0.0 and f.damage_aura_damage > 0.0:
 			var enemies := defender_formations if f.side == 0 else attacker_formations

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_aerial_assault"
+display_name = "Aerial Assault"
+description = "Dive-bombing attacks from the sky."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"ts_eagle_riders"])
+effects = { "unit_attack_bonus": 2, "flanking_damage_bonus": 10 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 55.0
+tree_branch = &"sky_lords"

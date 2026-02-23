@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"emp_ward_masters"
+display_name = "Ward Masters"
+description = "Protective magical barriers shield armies."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"emp_battle_mages"])
+effects = { "unit_defense_bonus": 3 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"empire"
+tree_angle = 70.0
+tree_branch = &"arcane"

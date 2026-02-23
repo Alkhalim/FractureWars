@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_runic_mastery"
+display_name = "Runic Mastery"
+description = "Absolute mastery of runic magic."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"ts_master_runes"])
+effects = { "unit_attack_bonus": 4, "unit_defense_bonus": 3 }
+shard_bonuses = {}
+tier = 4
+research_category = &"arcane"
+faction_id = &"thunderswarm"
+tree_angle = 180.0
+tree_branch = &"iron_peak"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sk_steppe_empire"
+display_name = "Steppe Empire"
+description = "From horizon to horizon, the steppe obeys."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sk_vast_herds"])
+effects = { "income_gold_pct": 20, "income_food_pct": 25, "trade_income_bonus": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"economy"
+faction_id = &"skulloath"
+tree_angle = 90.0
+tree_branch = &"steppe_craft"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ms_lunar_apotheosis"
+display_name = "Lunar Apotheosis"
+description = "The Moon Goddess grants her full blessing."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"ms_eclipse_rites"])
+effects = { "unit_attack_bonus": 6, "unit_defense_bonus": 5, "unit_morale_bonus": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"moonspear"
+tree_angle = 0.0
+tree_branch = &"lunar_doctrine"

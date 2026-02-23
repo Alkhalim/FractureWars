@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_purifying_fire"
+display_name = "Purifying Fire"
+description = "The sacred flame purifies all."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sb_flame_knights", &"sb_solar_god"])
+effects = { "unit_attack_bonus": 6, "unit_defense_bonus": 5, "siege_bonus": 15 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"sunblessed"
+tree_angle = 240.0
+tree_branch = &"sacred_flame"

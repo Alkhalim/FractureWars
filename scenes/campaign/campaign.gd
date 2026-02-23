@@ -58,6 +58,10 @@ var _selected_city_id: StringName = &""
 var _elderbeast_markers: Dictionary = {} # beast_id -> Node2D
 var _building_tile_markers: Array[Node2D] = [] # building markers on hex tiles
 
+# Animated terrain timers
+var _water_timer: float = 0.0
+var _shard_waste_timer: float = 0.0
+
 # Pre-battle dialog state
 var _pending_battle_attacker_id: StringName = &""
 var _pending_battle_defender_id: StringName = &""
@@ -158,6 +162,37 @@ func _ready() -> void:
 	elif GameManager.current_phase == Enums.GamePhase.CAMPAIGN:
 		if not TurnManager.is_player_turn:
 			TurnManager._end_current_faction_turn()
+
+func _process(delta: float) -> void:
+	# Animated water color cycling
+	_water_timer += delta * 0.5
+	# Shard waste shimmer
+	_shard_waste_timer += delta * 1.2
+
+	# Apply animated color shifts to water and shard waste tiles
+	var hex_map := GameManager.state.hex_map
+	if hex_map != null:
+		for coord in _hex_visuals:
+			var tile: HexMapData.TileState = hex_map.tiles.get(coord)
+			if tile == null:
+				continue
+			if tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.SHARD_WASTES:
+				continue
+			var container: Node2D = _hex_visuals[coord]
+			if container.get_child_count() <= 1:
+				continue
+			var fill: Polygon2D = container.get_child(1)
+			var has_texture := fill.texture != null
+			var base_color: Color = Color.WHITE if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
+			if tile.owner_faction != &"":
+				var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
+				if faction_data:
+					base_color = base_color.lerp(faction_data.color, 0.12)
+			if tile.terrain == Enums.TerrainType.WATER:
+				base_color = base_color + Color(0, 0.02 * sin(_water_timer * 2.0), 0.04 * sin(_water_timer), 0)
+			elif tile.terrain == Enums.TerrainType.SHARD_WASTES:
+				base_color = base_color + Color(0.04 * sin(_shard_waste_timer), 0, 0.06 * sin(_shard_waste_timer * 0.7), 0)
+			fill.color = base_color
 
 # ── Hex geometry ──────────────────────────────────────────────
 
@@ -676,11 +711,31 @@ func _create_city_marker(city: CityState) -> void:
 		])
 		crown.color = Color(0.95, 0.85, 0.3)
 		marker.add_child(crown)
-		# Glow ring around base
-		var glow := Polygon2D.new()
-		glow.polygon = _make_circle(16.0, 12)
-		glow.color = Color(faction_color.r, faction_color.g, faction_color.b, 0.3)
-		marker.add_child(glow)
+
+	# City level glow — scales with city level, larger for capitals
+	if city.faction_id == GameManager.state.player_faction_id:
+		var glow_base_radius := 14.0 + city.level * 2.0
+		if city.is_capital:
+			glow_base_radius += 6.0
+		var glow_alpha := clampf(0.15 + city.level * 0.04, 0.15, 0.45)
+		# Outer soft glow
+		var glow_outer := Polygon2D.new()
+		glow_outer.name = "CityGlowOuter"
+		glow_outer.polygon = _make_circle(glow_base_radius + 4.0, 16)
+		glow_outer.color = Color(faction_color.r, faction_color.g, faction_color.b, glow_alpha * 0.5)
+		glow_outer.z_index = -1
+		marker.add_child(glow_outer)
+		# Inner bright glow
+		var glow_inner := Polygon2D.new()
+		glow_inner.name = "CityGlowInner"
+		glow_inner.polygon = _make_circle(glow_base_radius, 16)
+		glow_inner.color = Color(faction_color.r, faction_color.g, faction_color.b, glow_alpha)
+		glow_inner.z_index = -1
+		marker.add_child(glow_inner)
+		# Gentle pulse animation
+		var glow_tween := create_tween().set_loops()
+		glow_tween.tween_property(glow_outer, "modulate:a", 0.5, 2.0).set_trans(Tween.TRANS_SINE)
+		glow_tween.tween_property(glow_outer, "modulate:a", 1.0, 2.0).set_trans(Tween.TRANS_SINE)
 
 	# Level label
 	var label := Label.new()
@@ -2019,7 +2074,22 @@ func _separate_armies_stalemate(army_a: ArmyState, army_b: ArmyState) -> void:
 	army_a.hex_pos = best_a
 	army_b.hex_pos = best_b
 
+func _flash_turn_transition() -> void:
+	var fade := ColorRect.new()
+	fade.color = Color(0, 0, 0, 0.4)
+	fade.anchor_left = 0
+	fade.anchor_top = 0
+	fade.anchor_right = 1
+	fade.anchor_bottom = 1
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(fade)
+	var tween := create_tween()
+	tween.tween_property(fade, "color:a", 0.0, 0.4)
+	tween.tween_callback(fade.queue_free)
+
 func _on_turn_started(_turn: int, faction_id: StringName) -> void:
+	# Brief turn transition fade
+	_flash_turn_transition()
 	if faction_id == GameManager.state.player_faction_id:
 		AudioManager.play_sfx(&"turn_chime")
 		_show_notification("Your turn - Turn " + str(GameManager.state.current_turn))

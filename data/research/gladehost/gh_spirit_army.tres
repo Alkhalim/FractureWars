@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_spirit_army"
+display_name = "Spirit Army"
+description = "Ethereal warriors join the fight."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"avatar_of_the_wild"])
+effects = { "unit_attack_bonus": 3, "unit_morale_bonus": 15 }
+shard_bonuses = {}
+tier = 4
+research_category = &"arcane"
+faction_id = &"gladehost"
+tree_angle = 175.0
+tree_branch = &"spirit_lore"

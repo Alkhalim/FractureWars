@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_forest_wrath"
+display_name = "Forest's Wrath"
+description = "The forest itself strikes down invaders."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"entangling_roots", &"gh_wild_hunt"])
+effects = { "unit_attack_bonus": 3, "defense_bonus": 5 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"gladehost"
+tree_angle = 80.0
+tree_branch = &"wardenship"

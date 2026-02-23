@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_shadow_lords"
+display_name = "Shadow Lords"
+description = "Masters of shadow and stealth."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"hollow_throne"])
+effects = { "unit_attack_bonus": 4, "flanking_damage_bonus": 20 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"forsaken"
+tree_angle = 235.0
+tree_branch = &"shadow_war"

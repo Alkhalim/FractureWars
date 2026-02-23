@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"emp_imperial_law"
+display_name = "Imperial Law"
+description = "Codified laws bring order to the realm."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"pax_imperialis", &"emp_provincial_governors"])
+effects = { "income_gold_pct": 15, "unit_morale_bonus": 10 }
+shard_bonuses = {}
+tier = 4
+research_category = &"economy"
+faction_id = &"empire"
+tree_angle = 265.0
+tree_branch = &"governance"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ms_celestial_host"
+display_name = "Celestial Host"
+description = "An army blessed by the heavens."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"ms_silver_knights", &"ms_lunar_apotheosis"])
+effects = { "unit_attack_bonus": 6, "unit_defense_bonus": 6 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"moonspear"
+tree_angle = 120.0
+tree_branch = &"silver_arms"

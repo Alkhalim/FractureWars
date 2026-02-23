@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cg_iron_citadel"
+display_name = "Iron Citadel"
+description = "The ultimate defensive fortification."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"cg_bastion_lords", &"cg_forge_eternal"])
+effects = { "defense_bonus": 15, "unit_defense_bonus": 5, "unit_morale_bonus": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"cinderguard"
+tree_angle = 240.0
+tree_branch = &"garrison_duty"
