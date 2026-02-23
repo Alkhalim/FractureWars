@@ -38,12 +38,16 @@ func start_research(faction_id: StringName, research_id: StringName) -> bool:
 	var data: ResearchData = DataManager.research.get(research_id)
 	if data == null:
 		return false
-	# Check if already researching
-	if fs.current_research_id != &"":
+	# Already researching this one
+	if fs.current_research_id == research_id:
 		return false
-	# Research is free — no cost check or deduction
+	# Pause current research (save progress)
+	if fs.current_research_id != &"" and fs.research_progress > 0:
+		fs.paused_research_progress[fs.current_research_id] = fs.research_progress
+	# Switch to new research — restore saved progress if any
 	fs.current_research_id = research_id
-	fs.research_progress = 0
+	fs.research_progress = fs.paused_research_progress.get(research_id, 0)
+	fs.paused_research_progress.erase(research_id)
 	EventBus.research_started.emit(faction_id, research_id)
 	return true
 

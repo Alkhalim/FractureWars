@@ -115,7 +115,7 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 
 	# Population food consumption: larger populations eat more
 	var province_pop := get_province_population(city)
-	var food_consumed := province_pop / 10
+	var food_consumed := province_pop / 40
 	if food_consumed > 0 and income.has(Enums.ResourceType.FOOD):
 		income[Enums.ResourceType.FOOD] -= food_consumed
 	elif food_consumed > 0:
@@ -138,9 +138,9 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	# Province-shared population: use total province pop for multiplier
 	var province_pop := get_province_population(city)
 	var pop_mult := minf(float(province_pop) / 100.0, float(city.level))
-	# Low population malus: below 50 pop, production suffers
+	# Low population malus: below 50 pop, production suffers — but floor at 0.3 to prevent death spiral
 	if province_pop < 50:
-		pop_mult *= maxf(0.1, float(province_pop) / 50.0)
+		pop_mult *= maxf(0.3, float(province_pop) / 50.0)
 
 	var income: Dictionary = {}
 
@@ -249,9 +249,9 @@ func _calculate_food_income(faction_id: StringName) -> int:
 			var province_pop := get_province_population(city)
 			var pop_mult := minf(float(province_pop) / 100.0, float(city.level))
 			total_food += int(region.base_income[Enums.ResourceType.FOOD] * pop_mult)
-		# Food consumption
+		# Food consumption (quartered rate)
 		var province_pop := get_province_population(city)
-		total_food -= province_pop / 10
+		total_food -= province_pop / 40
 	return total_food
 
 func _apply_starvation(faction_id: StringName) -> void:
@@ -270,9 +270,10 @@ func _apply_starvation(faction_id: StringName) -> void:
 	if faction_cities.is_empty():
 		return
 	# Lose population: severity scales with deficit magnitude
+	# Floor at 30 pop to prevent death spirals — at 30 pop, food consumption is low enough to recover
 	var loss_per_city := maxi(1, absi(food_total) / (faction_cities.size() * 5))
 	for city in faction_cities:
-		city.population = maxi(10, city.population - loss_per_city)
+		city.population = maxi(30, city.population - loss_per_city)
 
 static func _get_loyalty_growth_multiplier(loyalty_value: int) -> float:
 	if loyalty_value >= 50:
@@ -838,6 +839,12 @@ const GARRISON_UNITS := {
 	&"gladehost": [&"grove_warden", &"blade_dancer"],
 	&"tainted_jade": [&"jade_fang", &"jungle_stalker"],
 	&"shardhorde": [&"crystal_swarmling", &"shard_crawler"],
+	&"moonspear": [&"moonspear_sentinel", &"moonspear_sentinel"],
+	&"thunderswarm": [&"thunderswarm_warrior", &"thunderswarm_warrior"],
+	&"cinderguard": [&"cinderguard_forgeborn", &"cinderguard_forgeborn"],
+	&"forsaken": [&"forsaken_wretch", &"forsaken_wretch"],
+	&"ivoryscar": [&"ivoryscar_seeker", &"ivoryscar_seeker"],
+	&"sunblessed": [&"sunblessed_pilgrim", &"sunblessed_pilgrim"],
 }
 
 func _get_garrison_composition(city: CityState) -> Array:
@@ -845,12 +852,12 @@ func _get_garrison_composition(city: CityState) -> Array:
 	var militia: StringName = units[0]
 	var regular: StringName = units[1]
 	match city.level:
-		1: return [{unit_id = militia, count = 1}]
-		2: return [{unit_id = militia, count = 1}, {unit_id = regular, count = 1}]
-		3: return [{unit_id = militia, count = 2}, {unit_id = regular, count = 1}]
-		4: return [{unit_id = militia, count = 2}, {unit_id = regular, count = 2}]
-		5: return [{unit_id = militia, count = 3}, {unit_id = regular, count = 2}]
-		_: return [{unit_id = militia, count = 1}]
+		1: return [{unit_id = militia, count = 2}]
+		2: return [{unit_id = militia, count = 2}, {unit_id = regular, count = 2}]
+		3: return [{unit_id = militia, count = 4}, {unit_id = regular, count = 2}]
+		4: return [{unit_id = militia, count = 4}, {unit_id = regular, count = 4}]
+		5: return [{unit_id = militia, count = 6}, {unit_id = regular, count = 4}]
+		_: return [{unit_id = militia, count = 2}]
 
 func create_garrison_army(city: CityState) -> ArmyState:
 	var garrison_def: Array = _get_garrison_composition(city)
@@ -924,7 +931,7 @@ const SETTLEMENT_FOUNDING_COST := {
 	Enums.ResourceType.FOOD: 30,
 }
 
-const SETTLEMENT_SPHERE_RADIUS := 2
+const SETTLEMENT_SPHERE_RADIUS := 3
 
 func is_in_settlement_sphere(hex_pos: Vector2i) -> bool:
 	for city_id in GameManager.state.cities:
@@ -933,7 +940,7 @@ func is_in_settlement_sphere(hex_pos: Vector2i) -> bool:
 			return true
 	return false
 
-func get_valid_settlement_tiles(faction_id: StringName, region_id: StringName) -> Array[Vector2i]:
+func get_valid_settlement_tiles(faction_id: StringName, region_id: StringName, city_id: StringName = &"") -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
@@ -946,8 +953,14 @@ func get_valid_settlement_tiles(faction_id: StringName, region_id: StringName) -
 			continue
 		if tile.terrain == Enums.TerrainType.WATER:
 			continue
+		if tile.terrain == Enums.TerrainType.MOUNTAINS:
+			continue
 		if is_in_settlement_sphere(coord):
 			continue
+		if city_id != &"":
+			var territory_owner := get_city_territory_owner(coord, region_id)
+			if territory_owner != city_id:
+				continue
 		result.append(coord)
 	return result
 

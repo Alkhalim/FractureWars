@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 id = &"forsaken"
-display_name = "The Forsaken"
+display_name = "Forsaken"
 description = "Outcasts and survivors of the eastern ruins, the Forsaken cling to existence in shard-scarred lands. Mortal resilience meets void corruption in their blighted domain."
 color = Color(0.45, 0.3, 0.5, 1)
-is_playable = false
+is_playable = true
 starting_regions = Array[StringName]([&"orenthal"])
 realm_affinity = 1
 shard_preferences = {}

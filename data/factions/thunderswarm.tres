@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 id = &"thunderswarm"
-display_name = "The Thunderswarm"
+display_name = "Thunderswarm"
 description = "Storm-riders of the Dragonspire Mountains, the Thunderswarm harness elemental fury and draconic might. Their war-drums echo across the peaks."
 color = Color(0.85, 0.7, 0.2, 1)
-is_playable = false
+is_playable = true
 starting_regions = Array[StringName]([&"dragonspire_mountains"])
 realm_affinity = 2
 shard_preferences = {}

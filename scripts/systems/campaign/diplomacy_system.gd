@@ -332,6 +332,109 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 
 	return {accepted = false, reason = "Invalid threat target."}
 
+# ── Trade Relations ────────────────────────────────────────
+
+func get_top_produced_resource(faction_id: StringName) -> int:
+	# Returns the ResourceType the faction produces the most (based on city income totals)
+	# Excludes CAPTIVES and SHARD_ESSENCE as they are special
+	var totals: Dictionary = {} # ResourceType -> int
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != faction_id:
+			continue
+		if city.is_under_siege:
+			continue
+		var income := GameManager.city_system.calculate_city_income(city)
+		for res_type in income:
+			if res_type == Enums.ResourceType.CAPTIVES or res_type == Enums.ResourceType.SHARD_ESSENCE:
+				continue
+			totals[res_type] = totals.get(res_type, 0) + income[res_type]
+	var best_type: int = Enums.ResourceType.GOLD
+	var best_amount: int = 0
+	for res_type in totals:
+		if totals[res_type] > best_amount:
+			best_amount = totals[res_type]
+			best_type = res_type
+	return best_type
+
+func get_faction_resource_income(faction_id: StringName, res_type: int) -> int:
+	var total := 0
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != faction_id or city.is_under_siege:
+			continue
+		var income := GameManager.city_system.calculate_city_income(city)
+		total += income.get(res_type, 0)
+	return total
+
+func get_trade_relations_share(turns_active: int) -> float:
+	# Starts at 5%, +0.5% per turn, caps at 15%
+	return minf(5.0 + float(turns_active) * 0.5, 15.0)
+
+func propose_trade_relations(proposer: StringName, target: StringName) -> Dictionary:
+	var relation := GameManager.get_relation(proposer, target)
+	if relation == Enums.FactionRelation.WAR or relation == Enums.FactionRelation.HOSTILE:
+		return {accepted = false, reason = "Relations too poor for trade"}
+	# Check if already have trade relations
+	for treaty_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+		if t.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
+			if (t.faction_a == proposer and t.faction_b == target) or \
+			   (t.faction_a == target and t.faction_b == proposer):
+				return {accepted = false, reason = "Trade relations already established"}
+	var score := _evaluate_trade_relations(proposer, target)
+	if score > 0:
+		var res_a := get_top_produced_resource(proposer)
+		var res_b := get_top_produced_resource(target)
+		modify_standing(proposer, target, 5)
+		var treaty := TreatyInstance.new()
+		treaty.treaty_id = GameManager.state.generate_id()
+		treaty.treaty_type = Enums.TreatyType.TRADE_RELATIONS
+		treaty.faction_a = proposer
+		treaty.faction_b = target
+		treaty.turns_remaining = -1 # permanent until cancelled or war
+		treaty.terms = {
+			resource_a = res_a,
+			resource_b = res_b,
+			turns_active = 0,
+		}
+		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		_apply_friendly_action_ripple(proposer, target, 2)
+		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.OFFER_TRADE, proposer, target)
+		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.TRADE_RELATIONS, proposer, target)
+		return {accepted = true, reason = "Trade relations established!"}
+	return {accepted = false, reason = "They see no benefit in trade relations"}
+
+func _evaluate_trade_relations(proposer: StringName, target: StringName) -> float:
+	var standing := get_standing(proposer, target)
+	if standing <= -30:
+		return -100.0
+	# Friendlier factions are more willing; baseline at standing 0 is ~40% likely
+	return standing * 0.6 + 10.0
+
+func _execute_trade_relations(treaty: TreatyInstance) -> void:
+	var fs_a: FactionState = GameManager.state.faction_states.get(treaty.faction_a)
+	var fs_b: FactionState = GameManager.state.faction_states.get(treaty.faction_b)
+	if fs_a == null or fs_b == null:
+		return
+	var turns_active: int = treaty.terms.get("turns_active", 0)
+	var share_pct := get_trade_relations_share(turns_active) / 100.0
+	var res_a: int = treaty.terms.get("resource_a", 0)
+	var res_b: int = treaty.terms.get("resource_b", 0)
+	# Faction A shares their top resource with B
+	var income_a := get_faction_resource_income(treaty.faction_a, res_a)
+	var transfer_to_b := maxi(1, int(float(income_a) * share_pct))
+	fs_b.resources[res_a] = fs_b.resources.get(res_a, 0) + transfer_to_b
+	# Faction B shares their top resource with A
+	var income_b := get_faction_resource_income(treaty.faction_b, res_b)
+	var transfer_to_a := maxi(1, int(float(income_b) * share_pct))
+	fs_a.resources[res_b] = fs_a.resources.get(res_b, 0) + transfer_to_a
+	# Increment turns active
+	treaty.terms["turns_active"] = turns_active + 1
+	# Standing bonus every 3 turns
+	if (turns_active + 1) % 3 == 0:
+		modify_standing(treaty.faction_a, treaty.faction_b, 1)
+
 # ── Per-Turn Processing ─────────────────────────────────────
 
 func process_treaties(faction_id: StringName) -> void:
@@ -344,6 +447,8 @@ func process_treaties(faction_id: StringName) -> void:
 		# Execute trade transfers
 		if treaty.treaty_type == Enums.TreatyType.TRADE_DEAL:
 			_execute_trade(treaty)
+		elif treaty.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
+			_execute_trade_relations(treaty)
 		# Active treaties cause ongoing malus with treaty partner's enemies
 		_apply_treaty_enemy_malus(faction_id, treaty)
 		# Decrement duration
@@ -470,7 +575,10 @@ func execute_ai_diplomacy(faction_id: StringName) -> void:
 					propose_alliance(faction_id, other_id)
 			elif relation != Enums.FactionRelation.WAR:
 				var standing := get_standing(faction_id, other_id)
-				if standing >= 10:
+				# Try trade relations first if standing is decent
+				if standing >= 5:
+					propose_trade_relations(faction_id, other_id)
+				elif standing >= 10:
 					var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 					if fs:
 						var my_gold: int = fs.resources.get(Enums.ResourceType.GOLD, 0)

@@ -159,147 +159,147 @@ const NOMADIC_FACTIONS := [&"shardhorde", &"icebound", &"splinterbrood", &"sunbl
 const REGION_CITIES := {
 	# ── Empire Culture ──
 	&"eternal_plains": [
-		{name = "Aurelion", offset = Vector2i(-2, -2)},
-		{name = "Marcellum", offset = Vector2i(2, 0)},
-		{name = "Goldsward", offset = Vector2i(-1, 3)},
+		{name = "Aurelion", offset = Vector2i(-4, -4)},
+		{name = "Marcellum", offset = Vector2i(4, 0)},
+		{name = "Goldsward", offset = Vector2i(-1, 5)},
 	],
 	&"sunburst_valley": [
-		{name = "Dawnhold", offset = Vector2i(-2, -1)},
-		{name = "Solarius", offset = Vector2i(2, 1)},
-		{name = "Cinderfall Keep", offset = Vector2i(0, 3)},
+		{name = "Dawnhold", offset = Vector2i(-4, -3)},
+		{name = "Solarius", offset = Vector2i(4, 3)},
+		{name = "Cinderfall Keep", offset = Vector2i(0, 7)},
 	],
 	&"aurentis": [
-		{name = "Aurentis Prime", offset = Vector2i(0, -2)},
-		{name = "Goldwatch", offset = Vector2i(2, 1)},
-		{name = "Whitegate", offset = Vector2i(-2, 2)},
+		{name = "Aurentis Prime", offset = Vector2i(0, -4)},
+		{name = "Goldwatch", offset = Vector2i(4, 3)},
+		{name = "Whitegate", offset = Vector2i(-4, 4)},
 	],
 	# ── Gladehost Culture ──
 	&"sainkhu_groves": [
-		{name = "Heartwood", offset = Vector2i(-2, -1)},
-		{name = "Willowmere", offset = Vector2i(2, 0)},
-		{name = "Roothollow", offset = Vector2i(0, 3)},
+		{name = "Heartwood", offset = Vector2i(-4, -3)},
+		{name = "Willowmere", offset = Vector2i(4, 0)},
+		{name = "Roothollow", offset = Vector2i(0, 5)},
 	],
 	&"verdant_glade": [
-		{name = "Fernhall", offset = Vector2i(-1, -2)},
-		{name = "Mosskeep", offset = Vector2i(2, 1)},
-		{name = "Briargate", offset = Vector2i(-2, 2)},
+		{name = "Fernhall", offset = Vector2i(-3, -4)},
+		{name = "Mosskeep", offset = Vector2i(4, 3)},
+		{name = "Briargate", offset = Vector2i(-4, 4)},
 	],
 	&"orisyl": [
-		{name = "Orisyl Canopy", offset = Vector2i(0, -2)},
-		{name = "Dewspring", offset = Vector2i(2, 1)},
-		{name = "Thornveil", offset = Vector2i(-2, 2)},
+		{name = "Orisyl Canopy", offset = Vector2i(0, -4)},
+		{name = "Dewspring", offset = Vector2i(4, 3)},
+		{name = "Thornveil", offset = Vector2i(-4, 4)},
 	],
 	# ── Moonspear Culture ──
 	&"iskar": [
-		{name = "Iskar Citadel", offset = Vector2i(0, -2)},
-		{name = "Moonwell", offset = Vector2i(2, 1)},
-		{name = "Silver Archive", offset = Vector2i(-2, 2)},
+		{name = "Iskar Citadel", offset = Vector2i(0, -4)},
+		{name = "Moonwell", offset = Vector2i(4, 3)},
+		{name = "Silver Archive", offset = Vector2i(-4, 4)},
 	],
 	&"nightfall_sanctum": [
-		{name = "Obsidian Gate", offset = Vector2i(-2, -1)},
-		{name = "Twilight Spire", offset = Vector2i(2, 0)},
-		{name = "Sanctum Depths", offset = Vector2i(0, 3)},
+		{name = "Obsidian Gate", offset = Vector2i(-4, -3)},
+		{name = "Twilight Spire", offset = Vector2i(4, 0)},
+		{name = "Sanctum Depths", offset = Vector2i(0, 5)},
 	],
 	&"asdrol": [
-		{name = "Asdrol Haven", offset = Vector2i(0, -2)},
-		{name = "Luminar Watch", offset = Vector2i(2, 1)},
-		{name = "Pilgrim's Rest", offset = Vector2i(-2, 2)},
+		{name = "Asdrol Haven", offset = Vector2i(0, -4)},
+		{name = "Luminar Watch", offset = Vector2i(4, 3)},
+		{name = "Pilgrim's Rest", offset = Vector2i(-4, 4)},
 	],
 	# ── Thunderswarm Culture ──
 	&"dragonspire_mountains": [
-		{name = "Stormforge", offset = Vector2i(-2, -1)},
-		{name = "Thunder Keep", offset = Vector2i(2, 0)},
-		{name = "Wyrmhold", offset = Vector2i(0, 3)},
+		{name = "Stormforge", offset = Vector2i(-4, -3)},
+		{name = "Thunder Keep", offset = Vector2i(4, 0)},
+		{name = "Wyrmhold", offset = Vector2i(0, 5)},
 	],
 	&"thundercrest_peaks": [
-		{name = "Thundercrest", offset = Vector2i(0, -2)},
-		{name = "Galewatch", offset = Vector2i(2, 1)},
-		{name = "Stonehorn", offset = Vector2i(-2, 2)},
+		{name = "Thundercrest", offset = Vector2i(0, -4)},
+		{name = "Galewatch", offset = Vector2i(4, 3)},
+		{name = "Stonehorn", offset = Vector2i(-4, 4)},
 	],
 	&"skalvar": [
-		{name = "Skalvar Hall", offset = Vector2i(-1, -2)},
-		{name = "Ironpeak", offset = Vector2i(2, 1)},
-		{name = "Windbreak", offset = Vector2i(-2, 2)},
+		{name = "Skalvar Hall", offset = Vector2i(-3, -4)},
+		{name = "Ironpeak", offset = Vector2i(4, 3)},
+		{name = "Windbreak", offset = Vector2i(-4, 4)},
 	],
 	# ── Tainted Jade Culture ──
 	&"coatlantli": [
-		{name = "Coatlantli", offset = Vector2i(0, -2)},
-		{name = "Jade Fang Temple", offset = Vector2i(2, 1)},
-		{name = "Serpent Pool", offset = Vector2i(-2, 3)},
+		{name = "Coatlantli", offset = Vector2i(0, -4)},
+		{name = "Jade Fang Temple", offset = Vector2i(4, 3)},
+		{name = "Serpent Pool", offset = Vector2i(-4, 5)},
 	],
 	&"southern_reach": [
-		{name = "Xalapa", offset = Vector2i(-2, -1)},
-		{name = "Emerald Port", offset = Vector2i(2, 0)},
-		{name = "Thornmarsh", offset = Vector2i(0, 3)},
+		{name = "Xalapa", offset = Vector2i(-4, -3)},
+		{name = "Emerald Port", offset = Vector2i(4, 0)},
+		{name = "Thornmarsh", offset = Vector2i(0, 5)},
 	],
 	&"xotchi": [
-		{name = "Xotchi Sanctuary", offset = Vector2i(0, -2)},
-		{name = "Bloomheart", offset = Vector2i(2, 1)},
-		{name = "Fungal Hollow", offset = Vector2i(-2, 2)},
+		{name = "Xotchi Sanctuary", offset = Vector2i(0, -4)},
+		{name = "Bloomheart", offset = Vector2i(4, 3)},
+		{name = "Fungal Hollow", offset = Vector2i(-4, 4)},
 	],
 	# ── Skulloath Culture ──
 	&"bataarbad": [
-		{name = "Bataarbad", offset = Vector2i(-2, -1)},
-		{name = "Bonecairn", offset = Vector2i(2, 0)},
-		{name = "Dreadcamp", offset = Vector2i(0, 3)},
+		{name = "Bataarbad", offset = Vector2i(-4, -3)},
+		{name = "Bonecairn", offset = Vector2i(4, 0)},
+		{name = "Dreadcamp", offset = Vector2i(0, 5)},
 	],
 	&"altaban": [
-		{name = "Altaban Outpost", offset = Vector2i(0, -2)},
-		{name = "Salt Hollow", offset = Vector2i(2, 1)},
-		{name = "Reaver's Den", offset = Vector2i(-2, 2)},
+		{name = "Altaban Outpost", offset = Vector2i(0, -4)},
+		{name = "Salt Hollow", offset = Vector2i(4, 3)},
+		{name = "Reaver's Den", offset = Vector2i(-4, 4)},
 	],
 	&"tsagan": [
-		{name = "Tsagan Camp", offset = Vector2i(-1, -2)},
-		{name = "Ashbone", offset = Vector2i(2, 1)},
-		{name = "Wailing Flats", offset = Vector2i(-2, 2)},
+		{name = "Tsagan Camp", offset = Vector2i(-3, -4)},
+		{name = "Ashbone", offset = Vector2i(4, 3)},
+		{name = "Wailing Flats", offset = Vector2i(-4, 4)},
 	],
 	# ── Cinderguard Culture ──
 	&"duststorm_valley": [
-		{name = "Emberhold", offset = Vector2i(-2, -1)},
-		{name = "Cinderwatch", offset = Vector2i(2, 0)},
-		{name = "Furnace Gate", offset = Vector2i(0, 3)},
+		{name = "Emberhold", offset = Vector2i(-4, -3)},
+		{name = "Cinderwatch", offset = Vector2i(4, 0)},
+		{name = "Furnace Gate", offset = Vector2i(0, 5)},
 	],
 	&"ashenmark": [
-		{name = "Ashenmark Forge", offset = Vector2i(0, -2)},
-		{name = "Crownfire Bastion", offset = Vector2i(2, 1)},
-		{name = "Slagtown", offset = Vector2i(-2, 2)},
+		{name = "Ashenmark Forge", offset = Vector2i(0, -4)},
+		{name = "Crownfire Bastion", offset = Vector2i(4, 3)},
+		{name = "Slagtown", offset = Vector2i(-4, 4)},
 	],
 	&"valkarn": [
-		{name = "Valkarn Garrison", offset = Vector2i(-1, -2)},
-		{name = "Molten Gate", offset = Vector2i(2, 1)},
-		{name = "Sparkhaven", offset = Vector2i(-2, 2)},
+		{name = "Valkarn Garrison", offset = Vector2i(-3, -4)},
+		{name = "Molten Gate", offset = Vector2i(4, 3)},
+		{name = "Sparkhaven", offset = Vector2i(-4, 4)},
 	],
 	# ── Forsaken Culture ──
 	&"orenthal": [
-		{name = "Orenthal Ruins", offset = Vector2i(-2, -1)},
-		{name = "Blightspire", offset = Vector2i(2, 0)},
-		{name = "Carrion Hold", offset = Vector2i(0, 3)},
+		{name = "Orenthal Ruins", offset = Vector2i(-4, -3)},
+		{name = "Blightspire", offset = Vector2i(4, 0)},
+		{name = "Carrion Hold", offset = Vector2i(0, 5)},
 	],
 	&"morvane": [
-		{name = "Morvane Citadel", offset = Vector2i(0, -2)},
-		{name = "Bloodthrone Keep", offset = Vector2i(2, 1)},
-		{name = "Rotmere", offset = Vector2i(-2, 2)},
+		{name = "Morvane Citadel", offset = Vector2i(0, -4)},
+		{name = "Bloodthrone Keep", offset = Vector2i(4, 3)},
+		{name = "Rotmere", offset = Vector2i(-4, 4)},
 	],
 	&"weeping_barrows": [
-		{name = "Barrow Gate", offset = Vector2i(-1, -2)},
-		{name = "Blighthollow", offset = Vector2i(2, 1)},
-		{name = "Gravemist", offset = Vector2i(-2, 2)},
+		{name = "Barrow Gate", offset = Vector2i(-3, -4)},
+		{name = "Blighthollow", offset = Vector2i(4, 3)},
+		{name = "Gravemist", offset = Vector2i(-4, 4)},
 	],
 	# ── Ivoryscar Culture ──
 	&"qareth": [
-		{name = "Qareth Spire", offset = Vector2i(-2, -1)},
-		{name = "Gorgon's Eye", offset = Vector2i(2, 0)},
-		{name = "Petrified Gate", offset = Vector2i(0, 3)},
+		{name = "Qareth Spire", offset = Vector2i(-4, -3)},
+		{name = "Gorgon's Eye", offset = Vector2i(4, 0)},
+		{name = "Petrified Gate", offset = Vector2i(0, 5)},
 	],
 	&"torgalun_desert": [
-		{name = "Torgalun", offset = Vector2i(0, -2)},
-		{name = "Sand Shrine", offset = Vector2i(2, 1)},
-		{name = "Dustwalker Camp", offset = Vector2i(-2, 2)},
+		{name = "Torgalun", offset = Vector2i(0, -4)},
+		{name = "Sand Shrine", offset = Vector2i(4, 3)},
+		{name = "Dustwalker Camp", offset = Vector2i(-4, 4)},
 	],
 	&"whispering_dunes": [
-		{name = "Relic Court", offset = Vector2i(-1, -2)},
-		{name = "Whisper Gate", offset = Vector2i(2, 1)},
-		{name = "Ossuary", offset = Vector2i(-2, 2)},
+		{name = "Relic Court", offset = Vector2i(-3, -4)},
+		{name = "Whisper Gate", offset = Vector2i(4, 3)},
+		{name = "Ossuary", offset = Vector2i(-4, 4)},
 	],
 }
 
@@ -627,7 +627,7 @@ func _init_factions() -> void:
 		if faction_id in NOMADIC_FACTIONS and _is_shardhorde_type(faction_id):
 			# Shardhorde-type nomads: crystal/shard economy
 			fs.resources = {
-				Enums.ResourceType.GOLD: 60 if is_minor else 100,
+				Enums.ResourceType.GOLD: 160 if is_minor else 200,
 				Enums.ResourceType.IRON: 30 if is_minor else 50,
 				Enums.ResourceType.FOOD: 100 if is_minor else 150,
 				Enums.ResourceType.TECHNOLOGY: 10 if is_minor else 15,
@@ -638,7 +638,7 @@ func _init_factions() -> void:
 		elif is_minor:
 			# Minor factions: reduced starting resources
 			fs.resources = {
-				Enums.ResourceType.GOLD: 100,
+				Enums.ResourceType.GOLD: 200,
 				Enums.ResourceType.IRON: 50,
 				Enums.ResourceType.FOOD: 80,
 				Enums.ResourceType.TECHNOLOGY: 15,
@@ -649,7 +649,7 @@ func _init_factions() -> void:
 		else:
 			# Major factions: full starting resources
 			fs.resources = {
-				Enums.ResourceType.GOLD: 150,
+				Enums.ResourceType.GOLD: 250,
 				Enums.ResourceType.IRON: 80,
 				Enums.ResourceType.FOOD: 120,
 				Enums.ResourceType.TECHNOLOGY: 30,
@@ -717,25 +717,33 @@ func _init_regions() -> void:
 			fs.owned_regions.append(region_id)
 
 # Hardcoded starting armies for factions with custom unit rosters
+# Mostly tier 1 units with at most 2 tier 2 units per army
 const MAJOR_STARTING_ARMIES := {
-	&"empire": [&"legionary", &"legionary", &"emberlight_auxilia", &"dracarii_riders", &"marching_bastion"],
-	&"gladehost": [&"grove_warden", &"grove_warden", &"thornbow_scout", &"thornbow_scout", &"stag_rider", &"dryad"],
-	&"tainted_jade": [&"jade_fang", &"jade_fang", &"jungle_stalker", &"serpent_guardian", &"coatl_shaman"],
-	&"skulloath": [&"warband_raider", &"warband_raider", &"steppe_rider", &"skulloath_raider", &"bonecaller", &"runebound_wyvern", &"dread_riders"],
+	&"empire": [&"levy_conscripts", &"legionary", &"legionary", &"emberlight_auxilia", &"border_mercenaries"],
+	&"gladehost": [&"grove_warden", &"grove_warden", &"thornbow_scout", &"stag_rider", &"hawk_scout"],
+	&"tainted_jade": [&"jade_fang", &"jade_fang", &"jungle_stalker", &"coatl_shaman", &"thrall_swarm"],
+	&"skulloath": [&"warband_raider", &"warband_raider", &"steppe_rider", &"steppe_archers", &"bonecaller"],
+	&"moonspear": [&"moonspear_sentinel", &"moonspear_sentinel", &"moonspear_sentinel", &"lunar_archer", &"lunar_archer"],
+	&"thunderswarm": [&"thunderswarm_warrior", &"thunderswarm_warrior", &"thunderswarm_warrior", &"stormbow_raider", &"stormbow_raider"],
+	&"cinderguard": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow", &"ember_crossbow"],
+	&"forsaken": [&"forsaken_wretch", &"forsaken_wretch", &"bat_swarm", &"bat_swarm", &"plague_thrower"],
+	&"ivoryscar": [&"ivoryscar_seeker", &"ivoryscar_seeker", &"scarab_swarm", &"scarab_swarm", &"bone_cavalry"],
 }
 
 func _init_armies() -> void:
+	var occupied_tiles: Dictionary = {} # Vector2i -> true — tracks tiles with armies
 	for faction_id in DataManager.factions:
 		if _is_shardhorde_type(faction_id):
 			continue # Shardhorde-type armies handled in _init_shardhorde_armies
 		if faction_id in NOMADIC_FACTIONS:
-			_init_nomadic_army(faction_id)
+			_init_nomadic_army(faction_id, occupied_tiles)
 			continue
 		var faction_data: FactionData = DataManager.factions[faction_id]
 		if faction_data.starting_regions.is_empty():
 			continue
 
 		var center := MapGenerator.get_region_center(faction_data.starting_regions[0])
+		center = _find_unoccupied_spawn(center, occupied_tiles)
 
 		# Use hardcoded composition if available, otherwise build from faction units
 		var unit_ids: Array = MAJOR_STARTING_ARMIES.get(faction_id, [])
@@ -746,17 +754,19 @@ func _init_armies() -> void:
 
 		var army := _create_army(faction_id, center, unit_ids)
 		state.armies[army.army_id] = army
+		occupied_tiles[center] = true
 
 	# Shardhorde elderbeasts + escort armies
 	_init_shardhorde_armies()
 
 func _get_generic_starting_units(faction_id: StringName) -> Array:
 	# Build a starting army from whatever units exist for this faction
-	var faction_units: Array = []
+	# Ensures at least 2 different unit types for variety (never mono-composition)
+	var faction_units: Array[UnitData] = []
 	for unit_id in DataManager.units:
 		var ud: UnitData = DataManager.units[unit_id]
 		if ud.faction_id == faction_id:
-			faction_units.append(ud.id)
+			faction_units.append(ud)
 	if faction_units.is_empty():
 		# Try parent faction units for minor factions
 		var parent_id: StringName = MINOR_FACTION_PARENTS.get(faction_id, &"")
@@ -764,33 +774,72 @@ func _get_generic_starting_units(faction_id: StringName) -> Array:
 			for unit_id in DataManager.units:
 				var ud: UnitData = DataManager.units[unit_id]
 				if ud.faction_id == parent_id:
-					faction_units.append(ud.id)
+					faction_units.append(ud)
 	if faction_units.is_empty():
 		return []
 
-	# Major factions get 4 units, minor factions get 3
+	# Sort by recruit cost (cheapest first) as proxy for tier
+	faction_units.sort_custom(func(a: UnitData, b: UnitData) -> bool:
+		var cost_a: int = a.recruit_cost.get(0, 100)
+		var cost_b: int = b.recruit_cost.get(0, 100)
+		return cost_a < cost_b
+	)
+
+	# Split into tier 1 (cheaper half) and tier 2 (more expensive half)
+	var mid := maxi(1, faction_units.size() / 2)
+	var tier1_units: Array[UnitData] = []
+	var tier2_units: Array[UnitData] = []
+	for i in faction_units.size():
+		if i < mid:
+			tier1_units.append(faction_units[i])
+		else:
+			tier2_units.append(faction_units[i])
+
+	# Major factions get 5 units, minor factions get 3
 	var is_minor := MINOR_FACTION_PARENTS.has(faction_id)
-	var count := 3 if is_minor else 4
+	var total_count := 3 if is_minor else 5
+	var max_tier2 := 1 if is_minor else 2
+
 	var result: Array = []
-	for i in count:
-		result.append(faction_units[i % faction_units.size()])
+	# Add tier 2 units (up to max_tier2), cycling through available tier 2 types
+	var t2_count := mini(max_tier2, tier2_units.size())
+	for i in t2_count:
+		result.append(tier2_units[i % tier2_units.size()].id)
+	# Fill rest with tier 1 units, cycling through available types for variety
+	var t1_needed := total_count - t2_count
+	for i in t1_needed:
+		result.append(tier1_units[i % tier1_units.size()].id)
+
+	# Ensure at least 2 different unit types — if only 1 type so far, swap one for a tier 2
+	if result.size() >= 2:
+		var unique_types: Dictionary = {}
+		for uid in result:
+			unique_types[uid] = true
+		if unique_types.size() <= 1 and tier2_units.size() > 0:
+			# Replace last slot with a different unit type
+			result[result.size() - 1] = tier2_units[0].id
+		elif unique_types.size() <= 1 and faction_units.size() > 1:
+			# Use the next available faction unit even if same tier
+			result[result.size() - 1] = faction_units[1].id
 	return result
 
-func _init_nomadic_army(faction_id: StringName) -> void:
+func _init_nomadic_army(faction_id: StringName, occupied_tiles: Dictionary) -> void:
 	# Nomadic non-shardhorde factions (e.g. sunblessed) get an army at a random neutral tile
 	var unit_ids := _get_generic_starting_units(faction_id)
 	if unit_ids.is_empty():
 		return
-	# Find a suitable spawn position (neutral tile near center)
-	var spawn_pos := Vector2i(32, 22)
+	# Find a suitable spawn position (neutral, unoccupied tile near center)
+	var search_center := Vector2i(42, 29)
+	var spawn_pos := search_center
 	for coord in state.hex_map.tiles:
 		var tile: HexMapData.TileState = state.hex_map.tiles[coord]
 		if tile.terrain != Enums.TerrainType.WATER and tile.owner_faction == &"":
-			if HexHelper.hex_distance(coord, Vector2i(32, 22)) < 12:
+			if not occupied_tiles.has(coord) and HexHelper.hex_distance(coord, search_center) < 12:
 				spawn_pos = coord
 				break
 	var army := _create_army(faction_id, spawn_pos, unit_ids)
 	state.armies[army.army_id] = army
+	occupied_tiles[spawn_pos] = true
 
 func _init_shardhorde_armies() -> void:
 	var beast_ids := state.elderbeasts.keys()
@@ -820,6 +869,28 @@ func _init_shardhorde_armies() -> void:
 		beast2.commander.is_elderbeast = true
 		raider.commander = beast2.commander
 		raider.commander_name = beast2.commander.name
+
+func _find_unoccupied_spawn(center: Vector2i, occupied_tiles: Dictionary) -> Vector2i:
+	if not occupied_tiles.has(center):
+		var tile := state.hex_map.get_tile(center)
+		if tile and tile.terrain != Enums.TerrainType.WATER:
+			return center
+	# BFS outward to find nearest unoccupied, passable tile
+	var visited: Dictionary = {center: true}
+	var queue: Array[Vector2i] = [center]
+	while queue.size() > 0:
+		var current: Vector2i = queue.pop_front()
+		for n in HexHelper.get_neighbors(current):
+			if visited.has(n):
+				continue
+			if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			visited[n] = true
+			var ntile := state.hex_map.get_tile(n)
+			if ntile and ntile.terrain != Enums.TerrainType.WATER and not occupied_tiles.has(n):
+				return n
+			queue.append(n)
+	return center
 
 func _create_army(faction_id: StringName, hex_pos: Vector2i, unit_ids: Array) -> ArmyState:
 	var army := ArmyState.new()
@@ -877,24 +948,45 @@ func _get_region_starting_faction(region_id: StringName) -> StringName:
 			return faction_id
 	return &""
 
+const MIN_CITY_DISTANCE := 4
+
 func _find_valid_city_pos(region_center: Vector2i, offset: Vector2i) -> Vector2i:
 	var target := region_center + offset
 	# Clamp to map bounds
 	target.x = clampi(target.x, 0, HexMapData.MAP_WIDTH - 1)
 	target.y = clampi(target.y, 0, HexMapData.MAP_HEIGHT - 1)
-	# Check if the target tile is valid land
+	# Check if the target tile is valid land and far enough from other cities
 	var tile := state.hex_map.get_tile(target)
-	if tile and tile.terrain != Enums.TerrainType.WATER:
+	if tile and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(target):
 		return target
-	# Fallback: spiral search for nearest land tile
-	for radius in range(1, 5):
-		for neighbor in HexHelper.get_neighbors(target):
+	# BFS spiral search for a valid placement that respects minimum distance
+	var visited: Dictionary = {target: true}
+	var frontier: Array[Vector2i] = [target]
+	var steps := 0
+	while frontier.size() > 0 and steps < 200:
+		var current: Vector2i = frontier.pop_front()
+		steps += 1
+		for neighbor in HexHelper.get_neighbors(current):
+			if visited.has(neighbor):
+				continue
+			visited[neighbor] = true
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				continue
 			var ntile := state.hex_map.get_tile(neighbor)
-			if ntile and ntile.terrain != Enums.TerrainType.WATER:
+			if ntile and ntile.terrain != Enums.TerrainType.WATER and ntile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(neighbor):
 				return neighbor
-	return region_center  # Ultimate fallback
+			frontier.append(neighbor)
+	# Last resort: accept original target even if close
+	if tile and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS:
+		return target
+	return region_center
+
+func _is_far_from_cities(pos: Vector2i) -> bool:
+	for city_id in state.cities:
+		var city: CityState = state.cities[city_id]
+		if HexHelper.hex_distance(pos, city.hex_pos) < MIN_CITY_DISTANCE:
+			return false
+	return true
 
 func _init_cities() -> void:
 	# Faction-specific starting buildings
@@ -1384,6 +1476,8 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 	var army: ArmyState = state.armies.get(army_id)
 	if army == null or path.is_empty():
 		return
+	# Invalidate movement cache since positions will change
+	movement_system._cache_valid = false
 	# Injured elderbeast prevents army movement
 	if army.elderbeast_id != &"":
 		var beast: ElderbeastState = state.elderbeasts.get(army.elderbeast_id)
@@ -1441,10 +1535,11 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 			if not state.armies.has(army_id):
 				return # This army was absorbed into another
 
-		# Take ownership of neutral tiles in the region
+		# Take ownership of neutral tiles in the region (skip mountains/water)
 		var tile := state.hex_map.get_tile(tile_coord)
 		if tile and tile.owner_faction == &"":
-			tile.owner_faction = army.faction_id
+			if tile.terrain != Enums.TerrainType.MOUNTAINS and tile.terrain != Enums.TerrainType.WATER:
+				tile.owner_faction = army.faction_id
 
 func _check_siege_departure(army: ArmyState) -> void:
 	# If this army was besieging a city and is now leaving, check if any other

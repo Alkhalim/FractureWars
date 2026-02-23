@@ -34,7 +34,7 @@ func get_max_movement() -> float:
 	if commander:
 		var bonuses := CommanderSystem.get_commander_army_bonuses(commander)
 		base_mp += bonuses.get("movement_bonus", 0.0)
-	return base_mp
+	return base_mp * 1.2
 
 func get_commander_name() -> String:
 	if commander:
@@ -46,6 +46,17 @@ func get_total_strength() -> int:
 	for unit in units:
 		strength += unit.current_hp
 	return strength
+
+func can_cross_mountains() -> bool:
+	var flying_count := 0
+	var total := 0
+	for unit in units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud:
+			total += 1
+			if "flying" in ud.tags:
+				flying_count += 1
+	return total > 0 and float(flying_count) / float(total) >= 0.5
 
 func is_alive() -> bool:
 	for unit in units:

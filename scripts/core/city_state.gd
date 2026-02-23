@@ -102,10 +102,32 @@ func get_upgrade_time() -> int:
 	var target_level := level + 1
 	return UPGRADE_TURNS.get(target_level, 3)
 
+# Basic units every city can recruit without buildings (faction-specific)
+const FACTION_BASIC_UNITS := {
+	&"empire": &"levy_conscripts",
+	&"gladehost": &"thornbow_scout",
+	&"tainted_jade": &"jade_fang",
+	&"skulloath": &"steppe_rider",
+	&"moonspear": &"moonspear_sentinel",
+	&"thunderswarm": &"thunderswarm_warrior",
+	&"cinderguard": &"cinderguard_forgeborn",
+	&"forsaken": &"bat_swarm",
+	&"ivoryscar": &"scarab_swarm",
+	&"shardhorde": &"crystal_swarmling",
+	&"sunblessed": &"sunblessed_pilgrim",
+}
+
 func can_recruit(unit_data_id: StringName) -> bool:
-	# Shardhorde: Crystal Swarmlings are always recruitable (no building needed)
-	if unit_data_id == &"crystal_swarmling" and faction_id == &"shardhorde":
+	# Basic unit: always recruitable for the faction (no building needed)
+	var basic_unit: StringName = FACTION_BASIC_UNITS.get(faction_id, &"")
+	if basic_unit != &"" and unit_data_id == basic_unit:
 		return true
+	# Also check parent faction for minor factions
+	var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, &"")
+	if parent_id != &"":
+		var parent_basic: StringName = FACTION_BASIC_UNITS.get(parent_id, &"")
+		if parent_basic != &"" and unit_data_id == parent_basic:
+			return true
 	for building_id in buildings:
 		var current_id: StringName = building_id
 		while current_id != &"":

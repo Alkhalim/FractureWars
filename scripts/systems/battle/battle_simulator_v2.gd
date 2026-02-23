@@ -177,7 +177,61 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	var def_bonus: int = cmd_bonuses.get("defense_bonus", 0)
 	f.attack = ud.attack + atk_bonus
 	f.defense = ud.defense + def_bonus
+
+	# Faction mechanic combat bonuses
+	var fs: FactionState = GameManager.state.faction_states.get(ud.faction_id)
+	if fs:
+		if ud.faction_id == &"skulloath":
+			if fs.corruption >= 81:
+				f.attack += int(f.attack * 0.25)
+			elif fs.corruption >= 61:
+				f.attack += int(f.attack * 0.15)
+		elif ud.faction_id == &"tainted_jade":
+			if fs.taint_power >= 50:
+				f.defense += int(f.defense * 0.15)
+			elif fs.taint_power >= 20:
+				f.defense += int(f.defense * 0.10)
+		elif ud.faction_id == &"shardhorde":
+			for realm_key in fs.shard_resonance:
+				if realm_key == Enums.Realm.VOID:
+					f.attack += int(f.attack * 0.10)
+				else:
+					f.attack += int(f.attack * 0.05)
+		elif ud.faction_id == &"moonspear":
+			match fs.lunar_phase:
+				0: f.attack += int(f.attack * 0.10)
+				2: f.defense += int(f.defense * 0.10)
+		elif ud.faction_id == &"thunderswarm":
+			if fs.storm_fury >= 80:
+				f.attack += int(f.attack * 0.20)
+				f.defense -= int(f.defense * 0.05)
+			elif fs.storm_fury >= 50:
+				f.attack += int(f.attack * 0.10)
+		elif ud.faction_id == &"cinderguard":
+			if fs.forge_heat <= 30:
+				f.defense += int(f.defense * 0.15)
+			elif fs.forge_heat >= 85:
+				f.attack += int(f.attack * 0.05)
+		elif ud.faction_id == &"ivoryscar":
+			if fs.relic_power >= 30:
+				f.defense += int(f.defense * 0.10)
+			elif fs.relic_power >= 15:
+				f.defense += int(f.defense * 0.05)
+		elif ud.faction_id == &"sunblessed":
+			if fs.solar_faith >= 85:
+				f.attack += int(f.attack * 0.10)
+				f.defense += int(f.defense * 0.05)
+			elif fs.solar_faith >= 70:
+				f.attack += int(f.attack * 0.05)
+
+	# Veterancy bonuses
+	var vet_bonus := unit.get_veterancy_bonus()
+	if vet_bonus > 0.0:
+		f.attack += int(float(f.attack) * vet_bonus)
+		f.defense += int(float(f.defense) * vet_bonus)
 	f.speed = ud.speed
+	if vet_bonus > 0.0:
+		f.speed += int(float(f.speed) * vet_bonus)
 	f.attack_range = ud.attack_range
 	f.tiles_per_entity = ud.tiles_per_entity
 	f.max_hp = unit.current_hp  # Use current HP from campaign

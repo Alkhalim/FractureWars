@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"swamp_fighter"
+display_name = "Swamp Fighter"
+description = "Thrives in treacherous wetlands where others flounder."
+category = &"combat"
+is_minor = true
+effects = {"army_defense_bonus": 1}
+context_tags = Array[StringName]([&"terrain_swamp", &"terrain_wetlands"])

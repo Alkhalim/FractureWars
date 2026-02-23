@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"lunar_archer"
+display_name = "Lunar Archer"
+description = "Moon-blessed archers whose silver-tipped arrows strike true even in darkness. They fire in disciplined volleys."
+faction_id = &"moonspear"
+max_hp = 800
+attack = 9
+defense = 4
+speed = 4
+attack_range = 3
+squad_size = 80
+hp_per_soldier = 10
+movement_points = 3.5
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 45, 1: 10}
+recruit_time = 2
+population_cost = 16
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "ranged"])
+base_morale = 55

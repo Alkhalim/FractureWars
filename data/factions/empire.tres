@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = &"empire"
-display_name = "The Empire"
+display_name = "Empire"
 description = "The central force shaping the known world - through conquest, cultural inertia, economic reach, and arcane regulation. Its heart is Metropoleia."
 color = Color(0.25, 0.35, 0.58, 1)
 is_playable = true

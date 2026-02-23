@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 id = &"shardhorde"
-display_name = "The Shardhorde"
+display_name = "Shardhorde"
 description = "A nomadic faction of crystal-bonded beasts and their swarming attendants, roaming the Baatar Expanse."
 color = Color(0.7, 0.3, 0.6, 1)
-is_playable = false
+is_playable = true
 starting_regions = Array[StringName]([])
 realm_affinity = 1
 shard_preferences = {}

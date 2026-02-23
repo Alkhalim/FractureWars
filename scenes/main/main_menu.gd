@@ -78,6 +78,7 @@ var _faction_region_label: Label
 var _faction_color_rect: ColorRect
 var _faction_start_btn: Button
 var _faction_buttons: Dictionary = {} # faction_id -> Button
+var _faction_emblem: _FactionEmblem
 
 const FACTION_DETAILS := {
 	&"empire": {
@@ -105,6 +106,36 @@ const FACTION_DETAILS := {
 		"playstyle": "A unique nomadic faction with no cities. Your elderbeasts serve as mobile bases that recruit units and evolve with buildings. Consume crystal shards to fuel your horde's growth.",
 		"unique": "Elderbeasts replace cities - mobile bases that move, fight, recruit, and evolve",
 	},
+	&"moonspear": {
+		"traits": "Moon-blessed warriors, sentinel discipline, nocturnal bonuses",
+		"playstyle": "Command disciplined sentinels who draw strength from the moon. Sturdy defensive formations and mystical lunar enchantments make the Moonspear a reliable bulwark.",
+		"unique": "Lunar cycle bonuses - combat effectiveness shifts with the passage of turns",
+	},
+	&"thunderswarm": {
+		"traits": "Fast skirmishers, lightning strikes, tribal fury, overwhelming numbers",
+		"playstyle": "Overwhelm enemies with speed and fury. Thunderswarm warriors hit hard and move fast, striking before opponents can react. Tribal bonds make your hordes fight harder together.",
+		"unique": "Storm Surge - chain attacks grow stronger as more allies engage",
+	},
+	&"cinderguard": {
+		"traits": "Forgeborn infantry, fire magic, heavy armor, industrial economy",
+		"playstyle": "Forge an industrial powerhouse and field heavily armored warriors tempered in flame. Cinderguard units are tough to kill and hit like a siege hammer.",
+		"unique": "Forge Heat - buildings produce bonus resources when adjacent to other industrial structures",
+	},
+	&"forsaken": {
+		"traits": "Blighted wretches, numbers over quality, dark rituals, desperation",
+		"playstyle": "The Forsaken fight with the desperation of the doomed. Cheap, expendable hordes bolstered by dark rituals. What they lack in quality they make up in sheer, terrifying numbers.",
+		"unique": "Desperation mechanic - units fight harder when outnumbered or at low HP",
+	},
+	&"ivoryscar": {
+		"traits": "Relic hunters, ancient weapons, adaptive seekers, forbidden knowledge",
+		"playstyle": "Seek out and harness ancient relics scattered across the land. Ivoryscar seekers adapt to any challenge, growing stronger as they uncover the secrets of the world.",
+		"unique": "Relic Mastery - discovered artifacts provide permanent faction-wide bonuses",
+	},
+	&"sunblessed": {
+		"traits": "Nomadic pilgrims, solar faith, desert endurance, divine blessings",
+		"playstyle": "A semi-nomadic people blessed by the Eternal Sun. Pilgrims wander the wastes, founding oases and spreading their faith. Divine blessings make them resilient against the harshest conditions.",
+		"unique": "Solar Faith - prayer generates divine favor which powers powerful faction abilities",
+	},
 }
 
 func _show_faction_select() -> void:
@@ -123,31 +154,31 @@ func _show_faction_select() -> void:
 	add_child(_faction_select_panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 40)
-	margin.add_theme_constant_override("margin_right", 40)
-	margin.add_theme_constant_override("margin_top", 30)
-	margin.add_theme_constant_override("margin_bottom", 30)
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
 	_faction_select_panel.add_child(margin)
 
 	var outer_vbox := VBoxContainer.new()
-	outer_vbox.add_theme_constant_override("separation", 16)
+	outer_vbox.add_theme_constant_override("separation", 10)
 	margin.add_child(outer_vbox)
 
 	# Title
 	var title := Label.new()
 	title.text = "CHOOSE YOUR FACTION"
-	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	outer_vbox.add_child(title)
 
 	# Main content: faction list (left) + info panel (right)
 	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 20)
+	hbox.add_theme_constant_override("separation", 16)
 	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer_vbox.add_child(hbox)
 
-	# Left side: faction list
+	# Left side: faction list in a scroll container
 	var left_panel := PanelContainer.new()
 	left_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 	left_panel.custom_minimum_size = Vector2(320, 0)
@@ -155,24 +186,35 @@ func _show_faction_select() -> void:
 	hbox.add_child(left_panel)
 
 	var left_margin := MarginContainer.new()
-	left_margin.add_theme_constant_override("margin_left", 16)
-	left_margin.add_theme_constant_override("margin_right", 16)
-	left_margin.add_theme_constant_override("margin_top", 16)
-	left_margin.add_theme_constant_override("margin_bottom", 16)
+	left_margin.add_theme_constant_override("margin_left", 12)
+	left_margin.add_theme_constant_override("margin_right", 12)
+	left_margin.add_theme_constant_override("margin_top", 12)
+	left_margin.add_theme_constant_override("margin_bottom", 12)
 	left_panel.add_child(left_margin)
 
-	var left_vbox := VBoxContainer.new()
-	left_vbox.add_theme_constant_override("separation", 8)
-	left_margin.add_child(left_vbox)
+	var left_outer_vbox := VBoxContainer.new()
+	left_outer_vbox.add_theme_constant_override("separation", 8)
+	left_margin.add_child(left_outer_vbox)
 
 	var list_title := Label.new()
 	list_title.text = "FACTIONS"
 	list_title.add_theme_font_size_override("font_size", 14)
 	list_title.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
 	list_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	left_vbox.add_child(list_title)
+	left_outer_vbox.add_child(list_title)
 
-	var factions: Array[StringName] = [&"empire", &"skulloath", &"gladehost", &"tainted_jade", &"shardhorde"]
+	# Scrollable faction list
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	left_outer_vbox.add_child(scroll)
+
+	var left_vbox := VBoxContainer.new()
+	left_vbox.add_theme_constant_override("separation", 4)
+	left_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(left_vbox)
+
+	var factions: Array[StringName] = [&"empire", &"skulloath", &"gladehost", &"tainted_jade", &"shardhorde", &"moonspear", &"thunderswarm", &"cinderguard", &"forsaken", &"ivoryscar", &"sunblessed"]
 	_faction_buttons.clear()
 	for faction_id in factions:
 		var faction_data: FactionData = DataManager.get_faction(faction_id)
@@ -180,26 +222,21 @@ func _show_faction_select() -> void:
 			continue
 		var btn := Button.new()
 		btn.text = faction_data.display_name
-		btn.custom_minimum_size = Vector2(0, 96)
-		btn.add_theme_font_size_override("font_size", 18)
+		btn.custom_minimum_size = Vector2(0, 44)
+		btn.add_theme_font_size_override("font_size", 15)
 		var captured_id := faction_id
 		btn.pressed.connect(_on_faction_list_clicked.bind(captured_id))
 		left_vbox.add_child(btn)
 		_faction_buttons[faction_id] = btn
 
-	# Spacer to push bottom controls down
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	left_vbox.add_child(spacer)
-
-	# Tutorial toggle
+	# Tutorial toggle below scroll
 	var tutorial_cb := CheckBox.new()
 	tutorial_cb.name = "TutorialCheck"
 	tutorial_cb.text = "Enable Tutorial"
 	tutorial_cb.button_pressed = true
 	tutorial_cb.add_theme_font_size_override("font_size", 13)
 	tutorial_cb.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
-	left_vbox.add_child(tutorial_cb)
+	left_outer_vbox.add_child(tutorial_cb)
 
 	# Right side: faction info panel
 	var right_panel := PanelContainer.new()
@@ -209,44 +246,76 @@ func _show_faction_select() -> void:
 	hbox.add_child(right_panel)
 
 	var right_margin := MarginContainer.new()
-	right_margin.add_theme_constant_override("margin_left", 16)
-	right_margin.add_theme_constant_override("margin_right", 16)
+	right_margin.add_theme_constant_override("margin_left", 20)
+	right_margin.add_theme_constant_override("margin_right", 20)
 	right_margin.add_theme_constant_override("margin_top", 16)
 	right_margin.add_theme_constant_override("margin_bottom", 16)
 	right_panel.add_child(right_margin)
 
 	var right_vbox := VBoxContainer.new()
-	right_vbox.add_theme_constant_override("separation", 12)
+	right_vbox.add_theme_constant_override("separation", 10)
 	right_margin.add_child(right_vbox)
 
-	# Faction color bar + name
+	# Top row: faction name + emblem
+	var top_hbox := HBoxContainer.new()
+	top_hbox.add_theme_constant_override("separation", 16)
+	right_vbox.add_child(top_hbox)
+
+	# Left column of top row: name + color bar
+	var name_vbox := VBoxContainer.new()
+	name_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_vbox.add_theme_constant_override("separation", 8)
+	top_hbox.add_child(name_vbox)
+
 	var header_hbox := HBoxContainer.new()
-	header_hbox.add_theme_constant_override("separation", 12)
-	right_vbox.add_child(header_hbox)
+	header_hbox.add_theme_constant_override("separation", 10)
+	name_vbox.add_child(header_hbox)
 
 	_faction_color_rect = ColorRect.new()
-	_faction_color_rect.custom_minimum_size = Vector2(8, 0)
-	_faction_color_rect.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_faction_color_rect.custom_minimum_size = Vector2(6, 36)
 	_faction_color_rect.color = Color(0.5, 0.5, 0.5, 0.5)
 	header_hbox.add_child(_faction_color_rect)
 
 	_faction_info_label = Label.new()
 	_faction_info_label.text = "Select a faction"
-	_faction_info_label.add_theme_font_size_override("font_size", 20)
+	_faction_info_label.add_theme_font_size_override("font_size", 22)
 	_faction_info_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.6))
 	header_hbox.add_child(_faction_info_label)
+
+	# Leader name under faction name
+	var leader_label := Label.new()
+	leader_label.name = "LeaderLabel"
+	leader_label.text = ""
+	leader_label.add_theme_font_size_override("font_size", 13)
+	leader_label.add_theme_color_override("font_color", Color(0.7, 0.68, 0.58))
+	name_vbox.add_child(leader_label)
+
+	# Right column of top row: emblem portrait
+	_faction_emblem = _FactionEmblem.new()
+	_faction_emblem.custom_minimum_size = Vector2(140, 170)
+	top_hbox.add_child(_faction_emblem)
 
 	var sep := HSeparator.new()
 	sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
 	right_vbox.add_child(sep)
 
-	# Description
+	# Description (scrollable for long text)
+	var desc_scroll := ScrollContainer.new()
+	desc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	desc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	right_vbox.add_child(desc_scroll)
+
+	var desc_vbox := VBoxContainer.new()
+	desc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc_vbox.add_theme_constant_override("separation", 12)
+	desc_scroll.add_child(desc_vbox)
+
 	_faction_desc_label = Label.new()
 	_faction_desc_label.text = "Choose a faction from the list to see details about their playstyle, unique mechanics, and starting position."
 	_faction_desc_label.add_theme_font_size_override("font_size", 14)
 	_faction_desc_label.add_theme_color_override("font_color", Color(0.8, 0.78, 0.7))
 	_faction_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	right_vbox.add_child(_faction_desc_label)
+	desc_vbox.add_child(_faction_desc_label)
 
 	# Traits
 	_faction_traits_label = Label.new()
@@ -254,7 +323,7 @@ func _show_faction_select() -> void:
 	_faction_traits_label.add_theme_font_size_override("font_size", 13)
 	_faction_traits_label.add_theme_color_override("font_color", Color(0.7, 0.82, 0.65))
 	_faction_traits_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	right_vbox.add_child(_faction_traits_label)
+	desc_vbox.add_child(_faction_traits_label)
 
 	# Starting region
 	_faction_region_label = Label.new()
@@ -262,17 +331,12 @@ func _show_faction_select() -> void:
 	_faction_region_label.add_theme_font_size_override("font_size", 13)
 	_faction_region_label.add_theme_color_override("font_color", Color(0.65, 0.7, 0.85))
 	_faction_region_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	right_vbox.add_child(_faction_region_label)
-
-	# Spacer
-	var info_spacer := Control.new()
-	info_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_vbox.add_child(info_spacer)
+	desc_vbox.add_child(_faction_region_label)
 
 	# Start button (disabled until faction selected)
 	_faction_start_btn = Button.new()
 	_faction_start_btn.text = "START GAME"
-	_faction_start_btn.custom_minimum_size = Vector2(0, 96)
+	_faction_start_btn.custom_minimum_size = Vector2(0, 56)
 	_faction_start_btn.add_theme_font_size_override("font_size", 20)
 	_faction_start_btn.disabled = true
 	_faction_start_btn.pressed.connect(_on_faction_confirmed)
@@ -285,8 +349,8 @@ func _show_faction_select() -> void:
 
 	var cancel_btn := Button.new()
 	cancel_btn.text = "Back to Main Menu"
-	cancel_btn.custom_minimum_size = Vector2(240, 96)
-	cancel_btn.add_theme_font_size_override("font_size", 18)
+	cancel_btn.custom_minimum_size = Vector2(240, 48)
+	cancel_btn.add_theme_font_size_override("font_size", 16)
 	cancel_btn.pressed.connect(func(): _faction_select_panel.queue_free())
 	bottom_hbox.add_child(cancel_btn)
 
@@ -310,6 +374,17 @@ func _on_faction_list_clicked(faction_id: StringName) -> void:
 	_faction_color_rect.color = faction_data.color
 	_faction_info_label.text = faction_data.display_name
 
+	# Update emblem
+	_faction_emblem.faction_id = faction_id
+	_faction_emblem.faction_color = faction_data.color
+	_faction_emblem.queue_redraw()
+
+	# Update leader name
+	var leader_label: Label = _faction_select_panel.find_child("LeaderLabel", true, false)
+	if leader_label:
+		var leader_name: String = GameManager.FACTION_LEADER_NAMES.get(faction_id, "")
+		leader_label.text = leader_name if leader_name != "" else ""
+
 	var details: Dictionary = FACTION_DETAILS.get(faction_id, {})
 	var desc_text := faction_data.description
 	if details.has("playstyle"):
@@ -329,7 +404,10 @@ func _on_faction_list_clicked(faction_id: StringName) -> void:
 			region_names.append(region.display_name)
 		else:
 			region_names.append(str(region_id).capitalize())
-	_faction_region_label.text = "Starting Region: " + ", ".join(region_names)
+	if region_names.size() > 0:
+		_faction_region_label.text = "Starting Region: " + ", ".join(region_names)
+	else:
+		_faction_region_label.text = "Starting Region: Nomadic (no fixed start)"
 
 	_faction_start_btn.disabled = false
 	_faction_start_btn.text = "START AS " + faction_data.display_name.to_upper()
@@ -397,3 +475,117 @@ func _show_load_menu() -> void:
 	cancel.add_theme_font_size_override("font_size", 18)
 	cancel.pressed.connect(func(): panel.queue_free())
 	vbox.add_child(cancel)
+
+# ── Faction Emblem Drawing ──────────────────────────────────
+
+class _FactionEmblem extends Control:
+	var faction_color: Color = Color(0.3, 0.3, 0.3)
+	var faction_id: StringName = &""
+
+	const FACTION_EMBLEMS := {
+		&"empire": "shield", &"gladehost": "tree", &"moonspear": "crescent",
+		&"thunderswarm": "bolt", &"tainted_jade": "serpent", &"skulloath": "skull",
+		&"cinderguard": "flame", &"forsaken": "eye", &"ivoryscar": "diamond",
+		&"shardhorde": "crystal", &"sunblessed": "sun",
+	}
+
+	func _draw() -> void:
+		var rect := Rect2(Vector2.ZERO, size)
+		# Background with faction tint
+		draw_rect(rect, faction_color.darkened(0.75))
+		# Border
+		draw_rect(rect, faction_color.darkened(0.2), false, 2.0)
+		# Inner panel
+		var inner := Rect2(rect.position + Vector2(4, 4), rect.size - Vector2(8, 8))
+		draw_rect(inner, faction_color.darkened(0.65))
+
+		if faction_id == &"":
+			# Placeholder when no faction selected
+			var font := ThemeDB.fallback_font
+			draw_string(font, Vector2(size.x * 0.5 - 10, size.y * 0.5 + 4), "?", HORIZONTAL_ALIGNMENT_CENTER, 20, 24, Color(0.4, 0.38, 0.35))
+			return
+
+		var cx := size.x * 0.5
+		var cy := size.y * 0.4
+		# Scale factor relative to the original 100x130 portrait
+		var s := minf(size.x / 100.0, size.y / 130.0)
+		var emblem: String = FACTION_EMBLEMS.get(faction_id, "shield")
+		var col := faction_color.lightened(0.2)
+
+		match emblem:
+			"shield":
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 42 * s), Vector2(cx + 30 * s, cy - 25 * s),
+					Vector2(cx + 30 * s, cy + 12 * s), Vector2(cx, cy + 40 * s),
+					Vector2(cx - 30 * s, cy + 12 * s), Vector2(cx - 30 * s, cy - 25 * s),
+				]
+				draw_colored_polygon(pts, col)
+				draw_polyline(pts, Color.WHITE * Color(1, 1, 1, 0.6), 2.0, true)
+			"tree":
+				draw_rect(Rect2(cx - 5 * s, cy + 8 * s, 10 * s, 35 * s), col.darkened(0.3))
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 42 * s), Vector2(cx + 28 * s, cy + 8 * s), Vector2(cx - 28 * s, cy + 8 * s),
+				]
+				draw_colored_polygon(pts, col)
+			"crescent":
+				draw_arc(Vector2(cx, cy), 30 * s, deg_to_rad(30), deg_to_rad(330), 32, col, 5.0 * s)
+				draw_circle(Vector2(cx + 10 * s, cy - 10 * s), 7 * s, col)
+			"bolt":
+				var pts: PackedVector2Array = [
+					Vector2(cx + 7 * s, cy - 42 * s), Vector2(cx - 11 * s, cy - 3 * s),
+					Vector2(cx + 3 * s, cy - 3 * s), Vector2(cx - 7 * s, cy + 42 * s),
+					Vector2(cx + 11 * s, cy + 3 * s), Vector2(cx - 3 * s, cy + 3 * s),
+				]
+				draw_colored_polygon(pts, col)
+			"serpent":
+				draw_arc(Vector2(cx, cy - 7 * s), 25 * s, deg_to_rad(0), deg_to_rad(300), 28, col, 5.0 * s)
+				draw_circle(Vector2(cx + 22 * s, cy - 14 * s), 6 * s, col.lightened(0.2))
+			"skull":
+				draw_arc(Vector2(cx, cy - 7 * s), 28 * s, deg_to_rad(180), deg_to_rad(540), 28, col, 4.0 * s)
+				draw_rect(Rect2(cx - 21 * s, cy - 7 * s, 42 * s, 25 * s), col)
+				draw_circle(Vector2(cx - 10 * s, cy - 7 * s), 7 * s, Color(0.1, 0.09, 0.12))
+				draw_circle(Vector2(cx + 10 * s, cy - 7 * s), 7 * s, Color(0.1, 0.09, 0.12))
+			"flame":
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 40 * s), Vector2(cx + 19 * s, cy + 7 * s),
+					Vector2(cx + 8 * s, cy - 7 * s), Vector2(cx + 25 * s, cy + 20 * s),
+					Vector2(cx, cy + 35 * s), Vector2(cx - 25 * s, cy + 20 * s),
+					Vector2(cx - 8 * s, cy - 7 * s), Vector2(cx - 19 * s, cy + 7 * s),
+				]
+				draw_colored_polygon(pts, col)
+			"eye":
+				var pts: PackedVector2Array = [
+					Vector2(cx - 35 * s, cy), Vector2(cx, cy - 20 * s), Vector2(cx + 35 * s, cy),
+					Vector2(cx, cy + 20 * s),
+				]
+				draw_colored_polygon(pts, col)
+				draw_circle(Vector2(cx, cy), 11 * s, Color(0.15, 0.1, 0.2))
+				draw_circle(Vector2(cx, cy), 6 * s, col.lightened(0.3))
+			"diamond":
+				var pts: PackedVector2Array = [
+					Vector2(cx, cy - 35 * s), Vector2(cx + 25 * s, cy),
+					Vector2(cx, cy + 35 * s), Vector2(cx - 25 * s, cy),
+				]
+				draw_colored_polygon(pts, col)
+				draw_polyline(pts, Color.WHITE * Color(1, 1, 1, 0.6), 2.0, true)
+			"crystal":
+				for i in 5:
+					var angle := deg_to_rad(i * 72.0 - 90.0)
+					var tip := Vector2(cx + cos(angle) * 30 * s, cy + sin(angle) * 30 * s)
+					var left := Vector2(cx + cos(angle + 0.4) * 11 * s, cy + sin(angle + 0.4) * 11 * s)
+					var right := Vector2(cx + cos(angle - 0.4) * 11 * s, cy + sin(angle - 0.4) * 11 * s)
+					draw_colored_polygon([tip, left, right], col)
+			"sun":
+				draw_circle(Vector2(cx, cy), 19 * s, col)
+				for i in 12:
+					var angle := deg_to_rad(i * 30.0)
+					var start := Vector2(cx + cos(angle) * 22 * s, cy + sin(angle) * 22 * s)
+					var end_pt := Vector2(cx + cos(angle) * 36 * s, cy + sin(angle) * 36 * s)
+					draw_line(start, end_pt, col, 3.0 * s)
+
+		# Faction name below emblem
+		var font := ThemeDB.fallback_font
+		var font_size := int(11 * s)
+		var faction_data: FactionData = DataManager.get_faction(faction_id)
+		if faction_data:
+			draw_string(font, Vector2(4, size.y - 8 * s), faction_data.display_name, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, font_size, faction_color.lightened(0.4))

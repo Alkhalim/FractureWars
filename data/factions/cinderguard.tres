@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 id = &"cinderguard"
-display_name = "The Cinderguard"
+display_name = "Cinderguard"
 description = "Forged in the volcanic ash of Duststorm Valley, the Cinderguard combine elemental forge-craft with mortal engineering. Their iron holds against all storms."
 color = Color(0.85, 0.45, 0.15, 1)
-is_playable = false
+is_playable = true
 starting_regions = Array[StringName]([&"duststorm_valley"])
 realm_affinity = 2
 shard_preferences = {}

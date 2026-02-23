@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"plague_thrower"
+display_name = "Plague Thrower"
+description = "Blighted scavengers who hurl pots of noxious plague at the enemy. Their weapons spread disease and despair."
+faction_id = &"forsaken"
+max_hp = 600
+attack = 8
+defense = 2
+speed = 4
+attack_range = 2
+squad_size = 60
+hp_per_soldier = 10
+movement_points = 3.5
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 35, 1: 8}
+recruit_time = 1
+population_cost = 12
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "ranged", "swarm"])
+base_morale = 35

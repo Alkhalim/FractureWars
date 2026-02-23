@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"scarab_swarm"
+display_name = "Scarab Swarm"
+description = "Swarms of tomb-scarabs animated by relic magic. They scuttle in endless waves, consuming everything in their path and leaving only bleached bone behind."
+faction_id = &"ivoryscar"
+max_hp = 700
+attack = 7
+defense = 3
+speed = 5
+attack_range = 1
+squad_size = 200
+hp_per_soldier = 3
+movement_points = 3.5
+upkeep_cost = {0: 1}
+recruit_cost = {0: 25, 1: 5}
+recruit_time = 1
+population_cost = 8
+terrain_bonuses = {3: 0.15}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee", "swarm"])
+base_morale = 50

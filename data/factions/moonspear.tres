@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 id = &"moonspear"
-display_name = "The Moonspear"
+display_name = "Moonspear"
 description = "An ancient order of divine warriors and mystics who guard the northern sanctums. They wield celestial light and mortal discipline in equal measure."
 color = Color(0.7, 0.72, 0.85, 1)
-is_playable = false
+is_playable = true
 starting_regions = Array[StringName]([&"iskar"])
 realm_affinity = 0
 shard_preferences = {}

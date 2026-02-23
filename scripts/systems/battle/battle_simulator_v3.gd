@@ -119,6 +119,7 @@ class BattleFormationV3:
 	var current_morale: float = 50.0
 	var is_routing: bool = false
 	var rally_cooldown: int = 0
+	var rout_panic_ticks: int = 0  # Ticks of panic where rally is impossible
 
 	# Orders
 	var current_order: Enums.BattleOrder = Enums.BattleOrder.ADVANCE
@@ -308,7 +309,48 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 					f.attack += int(f.attack * 0.10)
 				else:
 					f.attack += int(f.attack * 0.05)
+		# Moonspear: lunar phase combat bonuses
+		elif ud.faction_id == &"moonspear":
+			match fs.lunar_phase:
+				0: # New Moon: +10% attack
+					f.attack += int(f.attack * 0.10)
+				2: # Full Moon: +10% defense
+					f.defense += int(f.defense * 0.10)
+		# Thunderswarm: storm fury combat bonuses
+		elif ud.faction_id == &"thunderswarm":
+			if fs.storm_fury >= 80:
+				f.attack += int(f.attack * 0.20)
+				f.defense -= int(f.defense * 0.05)
+			elif fs.storm_fury >= 50:
+				f.attack += int(f.attack * 0.10)
+		# Cinderguard: forge heat defense bonus when cool
+		elif ud.faction_id == &"cinderguard":
+			if fs.forge_heat <= 30:
+				f.defense += int(f.defense * 0.15)
+			elif fs.forge_heat >= 85:
+				f.attack += int(f.attack * 0.05)
+		# Ivoryscar: relic power boosts defense
+		elif ud.faction_id == &"ivoryscar":
+			if fs.relic_power >= 30:
+				f.defense += int(f.defense * 0.10)
+			elif fs.relic_power >= 15:
+				f.defense += int(f.defense * 0.05)
+		# Sunblessed: solar faith boosts morale (attack proxy)
+		elif ud.faction_id == &"sunblessed":
+			if fs.solar_faith >= 85:
+				f.attack += int(f.attack * 0.10)
+				f.defense += int(f.defense * 0.05)
+			elif fs.solar_faith >= 70:
+				f.attack += int(f.attack * 0.05)
+	# Veterancy bonuses
+	var vet_bonus := unit.get_veterancy_bonus()
+	if vet_bonus > 0.0:
+		f.attack += int(float(f.attack) * vet_bonus)
+		f.defense += int(float(f.defense) * vet_bonus)
+
 	f.speed = ud.speed
+	if vet_bonus > 0.0:
+		f.speed += int(float(f.speed) * vet_bonus)
 	f.attack_range = ud.attack_range
 	f.max_hp = unit.current_hp
 	f.current_hp = unit.current_hp
@@ -439,7 +481,7 @@ func _generate_formation_offsets(f: BattleFormationV3) -> void:
 
 	# Add initial scatter for natural look (skip single entities)
 	if count > 1:
-		var scatter := get_entity_radius(f) * (0.7 if f.formation_shape == Enums.FormationShape.SWARM else 0.4)
+		var scatter := get_entity_radius(f) * (1.0 if f.formation_shape == Enums.FormationShape.SWARM else 0.4)
 		for i in f.entity_local_offsets.size():
 			f.entity_local_offsets[i] += Vector2(randf_range(-scatter, scatter), randf_range(-scatter, scatter))
 
@@ -511,10 +553,10 @@ func _generate_swarm_offsets(f: BattleFormationV3, count: int, spacing: float) -
 			if placed >= count:
 				break
 			var base_angle := TAU * float(i) / float(entities_in_ring)
-			var angle_jitter := randf_range(-TAU / float(entities_in_ring) * 0.3, TAU / float(entities_in_ring) * 0.3)
+			var angle_jitter := randf_range(-TAU / float(entities_in_ring) * 0.45, TAU / float(entities_in_ring) * 0.45)
 			var angle := base_angle + angle_jitter
-			var base_radius := ring * spacing * 0.8
-			var radial_jitter := randf_range(-spacing * 0.3, spacing * 0.3)
+			var base_radius := ring * spacing * 1.1
+			var radial_jitter := randf_range(-spacing * 0.45, spacing * 0.45)
 			var radius := base_radius + radial_jitter
 			f.entity_local_offsets.append(Vector2(cos(angle) * radius, sin(angle) * radius))
 			placed += 1
@@ -538,6 +580,7 @@ func _update_entity_world_positions(f: BattleFormationV3, use_lerp: bool = false
 		# Row-based lerp: front entities react faster, creating a ripple effect
 		var max_i := float(maxi(limit - 1, 1))
 		var is_cavalry := f.tags.has("cavalry")
+		var is_swarm := f.formation_shape == Enums.FormationShape.SWARM
 		for i in limit:
 			# Front entities (low index) have higher lerp = move first
 			var row_factor := 1.0 - float(i) / max_i * 0.5
@@ -552,11 +595,15 @@ func _update_entity_world_positions(f: BattleFormationV3, use_lerp: bool = false
 				base_lerp = 0.20
 			else:
 				base_lerp = 0.25
+			# Swarm units have more inertia — sluggish individual movement
+			if is_swarm:
+				base_lerp *= 0.55
 			var entity_lerp := base_lerp * row_factor
 			# No jitter during melee or sprint — clean purposeful movement
 			var jitter := Vector2.ZERO
 			if not f.in_melee_contact and not f.is_sprinting:
-				jitter = Vector2(randf_range(-0.8, 0.8), randf_range(-0.8, 0.8))
+				var jitter_strength := 1.5 if is_swarm else 0.8
+				jitter = Vector2(randf_range(-jitter_strength, jitter_strength), randf_range(-jitter_strength, jitter_strength))
 			var target_pos := f.entity_target_positions[i] + jitter
 			var new_pos := f.entity_positions[i].lerp(target_pos, entity_lerp)
 			# Cap per-tick movement to move_speed so entities don't teleport
@@ -813,7 +860,7 @@ func simulate_tick() -> Array[Dictionary]:
 		if f.hp_regen_per_tick > 0.0 and f.current_hp < f.max_hp:
 			var should_regen := true
 			if f.regen_requires_combat:
-				should_regen = not f.is_idle_this_tick  # Only regen while actively fighting
+				should_regen = f.in_melee_contact  # Only regen while in melee combat
 			if should_regen:
 				f.current_hp = mini(f.max_hp, f.current_hp + roundi(f.hp_regen_per_tick))
 				f.front_entity_hp = f.current_hp if f.total_entities == 1 else f.front_entity_hp
@@ -1584,14 +1631,23 @@ func _update_morale(f: BattleFormationV3) -> void:
 
 	f.current_morale = clampf(f.current_morale + delta, -30.0, f.base_morale * 1.5)
 
-	# Routing check
+	# Routing check — enter panic phase when morale drops to 0
 	if f.current_morale <= 0.0 and not f.is_routing and f.rally_cooldown <= 0:
 		f.is_routing = true
+		f.rout_panic_ticks = 40  # ~4 seconds of pure panic (no rally possible)
 
-	# Rally check
-	if f.is_routing and f.current_morale > float(f.base_morale) * 0.2:
-		f.is_routing = false
-		f.rally_cooldown = 25
+	# Panic phase countdown
+	if f.rout_panic_ticks > 0:
+		f.rout_panic_ticks -= 1
+
+	# Rally check — only after panic phase, with gradual probability
+	if f.is_routing and f.rout_panic_ticks <= 0 and f.current_morale > float(f.base_morale) * 0.2:
+		# Rally chance increases as morale recovers further above threshold
+		var morale_ratio := (f.current_morale - float(f.base_morale) * 0.2) / (float(f.base_morale) * 0.8)
+		var rally_chance := clampf(morale_ratio * 0.15, 0.01, 0.15)  # 1% to 15% per tick
+		if randf() < rally_chance:
+			f.is_routing = false
+			f.rally_cooldown = 30
 
 	if f.rally_cooldown > 0:
 		f.rally_cooldown -= 1

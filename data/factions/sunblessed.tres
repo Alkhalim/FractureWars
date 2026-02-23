@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 id = &"sunblessed"
-display_name = "The Sunblessed"
+display_name = "Sunblessed"
 description = "Nomadic pilgrims who follow the path of divine radiance. The Sunblessed forge alliances through diplomacy and shared faith rather than conquest."
 color = Color(0.9, 0.78, 0.3, 1)
-is_playable = false
+is_playable = true
 starting_regions = Array[StringName]([])
 realm_affinity = 0
 shard_preferences = {}

@@ -16,6 +16,9 @@ var _ai_attack_counters: Dictionary = {} # faction_id -> int
 var _gladehost_waypoints: Dictionary = {} # army_id -> {waypoints: Array, index: int}
 var _jade_patrol_index: Dictionary = {} # army_id -> int
 
+# Border tile cache (cleared each faction turn)
+var _border_cache: Dictionary = {} # faction_id -> Array[Vector2i]
+
 # Random event temp effects
 var _temp_effects: Array[Dictionary] = [] # [{faction_id, effect, turns_remaining}]
 
@@ -107,6 +110,10 @@ func _start_faction_turn() -> void:
 	var faction_id := faction_order[current_faction_index]
 	is_player_turn = (faction_id == GameManager.state.player_faction_id)
 
+	# Refresh caches for this faction's turn
+	GameManager.movement_system.refresh_caches()
+	_border_cache.clear()
+
 	# Process city system: income, growth, queues, sieges
 	GameManager.city_system.process_turn(faction_id)
 
@@ -140,6 +147,11 @@ func _start_faction_turn() -> void:
 			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 			if tile and tile.road_level >= 1:
 				army.movement_remaining += 0.6 * tile.road_level
+			# Moonspear: Waxing Moon (phase 1) grants +0.5 movement
+			if faction_id == &"moonspear":
+				var mfs: FactionState = GameManager.state.faction_states.get(faction_id)
+				if mfs and mfs.lunar_phase == 1:
+					army.movement_remaining += 0.5
 			army.has_moved = false
 			army.battle_exhausted = false
 
@@ -593,21 +605,26 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 						closest_dist = d
 						closest_army = army
 				if closest_army and closest_army.movement_remaining > 0:
-					var path := GameManager.movement_system.find_path(
-						closest_army.hex_pos, target_hex, faction_id, INF)
+					var path := _ai_find_path(closest_army, target_hex, faction_id)
 					if path.size() > 0:
 						GameManager.move_army_along_path(closest_army.army_id, path)
 			return
 
-		# Evaluate best settlement tile
+		# Evaluate best settlement tile (limit to 20 closest candidates)
 		var valid_tiles := GameManager.city_system.get_valid_settlement_tiles(faction_id, city.region_id)
 		if valid_tiles.is_empty():
 			continue
 
+		var capital_pos := city.hex_pos
+		# Sort by distance and only evaluate closest 20
+		valid_tiles.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+			return HexHelper.hex_distance(a, capital_pos) < HexHelper.hex_distance(b, capital_pos))
+		var eval_count := mini(valid_tiles.size(), 20)
+
 		var best_tile := Vector2i(-1, -1)
 		var best_score := -999
-		var capital_pos := city.hex_pos
-		for tile_pos in valid_tiles:
+		for i in eval_count:
+			var tile_pos: Vector2i = valid_tiles[i]
 			var income := GameManager.city_system.calculate_settlement_income_preview(tile_pos)
 			var income_score := 0
 			for res_type in income:
@@ -634,8 +651,7 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 			# Move toward nearest friendly city to consolidate
 			var nearest_city := _find_nearest_faction_city(army.hex_pos, faction_id)
 			if nearest_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, nearest_city) > 1:
-				var path := GameManager.movement_system.find_path(
-					army.hex_pos, nearest_city, faction_id, INF)
+				var path := _ai_find_path(army, nearest_city, faction_id)
 				if path.size() > 0:
 					GameManager.move_army_along_path(army.army_id, path)
 					if not GameManager.state.armies.has(army.army_id):
@@ -651,8 +667,7 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 		if target_hex == Vector2i(-1, -1):
 			continue
 
-		var path := GameManager.movement_system.find_path(
-			army.hex_pos, target_hex, faction_id, INF)
+		var path := _ai_find_path(army, target_hex, faction_id)
 		if path.size() > 0:
 			GameManager.move_army_along_path(army.army_id, path)
 			if not GameManager.state.armies.has(army.army_id):
@@ -660,7 +675,7 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 				return
 
-	await get_tree().create_timer(0.1).timeout
+	await get_tree().process_frame
 	_end_current_faction_turn()
 
 # ── Skulloath AI (Raider) ────────────────────────────────────
@@ -671,7 +686,7 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 		# Defensive phase: recruit, defend own cities, don't attack
 		_ai_aggression_cooldown[faction_id] = cooldown - 1
 		_execute_defensive_skulloath(faction_id)
-		await get_tree().create_timer(0.1).timeout
+		await get_tree().process_frame
 		_end_current_faction_turn()
 		return
 
@@ -692,8 +707,7 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 		if target_hex == Vector2i(-1, -1):
 			target_hex = _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
 		if target_hex != Vector2i(-1, -1):
-			var path := GameManager.movement_system.find_path(
-				army.hex_pos, target_hex, faction_id, INF)
+			var path := _ai_find_path(army, target_hex, faction_id)
 			if path.size() > 0:
 				GameManager.move_army_along_path(army.army_id, path)
 				attacked = true
@@ -710,7 +724,7 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 			_ai_aggression_cooldown[faction_id] = 4
 			_ai_attack_counters[faction_id] = 0
 
-	await get_tree().create_timer(0.1).timeout
+	await get_tree().process_frame
 	_end_current_faction_turn()
 
 func _execute_defensive_skulloath(faction_id: StringName) -> void:
@@ -724,8 +738,7 @@ func _execute_defensive_skulloath(faction_id: StringName) -> void:
 func _move_to_nearest_city(army: ArmyState, faction_id: StringName) -> void:
 	var nearest_city := _find_nearest_faction_city(army.hex_pos, faction_id)
 	if nearest_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, nearest_city) > 1:
-		var path := GameManager.movement_system.find_path(
-			army.hex_pos, nearest_city, faction_id, INF)
+		var path := _ai_find_path(army, nearest_city, faction_id)
 		if path.size() > 0:
 			GameManager.move_army_along_path(army.army_id, path)
 
@@ -743,8 +756,7 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 
 		if intruder != Vector2i(-1, -1):
 			# Attack intruder
-			var path := GameManager.movement_system.find_path(
-				army.hex_pos, intruder, faction_id, INF)
+			var path := _ai_find_path(army, intruder, faction_id)
 			if path.size() > 0:
 				GameManager.move_army_along_path(army.army_id, path)
 				if not GameManager.state.armies.has(army.army_id):
@@ -767,8 +779,7 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 			if army.hex_pos == target or HexHelper.hex_distance(army.hex_pos, target) <= 1:
 				wp_data["index"] = (wp_data["index"] + 1) % waypoints.size()
 				target = waypoints[wp_data["index"]]
-			var path := GameManager.movement_system.find_path(
-				army.hex_pos, target, faction_id, INF)
+			var path := _ai_find_path(army, target, faction_id)
 			if path.size() > 0:
 				GameManager.move_army_along_path(army.army_id, path)
 				if not GameManager.state.armies.has(army.army_id):
@@ -777,7 +788,7 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 					return
 
-	await get_tree().create_timer(0.1).timeout
+	await get_tree().process_frame
 	_end_current_faction_turn()
 
 func _build_gladehost_patrol(faction_id: StringName) -> Array:
@@ -807,8 +818,7 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 		if army.units.size() < 4:
 			var nearest_city := _find_nearest_faction_city(army.hex_pos, faction_id)
 			if nearest_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, nearest_city) > 1:
-				var path := GameManager.movement_system.find_path(
-					army.hex_pos, nearest_city, faction_id, INF)
+				var path := _ai_find_path(army, nearest_city, faction_id)
 				if path.size() > 0:
 					GameManager.move_army_along_path(army.army_id, path)
 					if not GameManager.state.armies.has(army.army_id):
@@ -821,8 +831,7 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 		# Actively seek to conquer
 		var intruder := _find_nearest_intruder(faction_id, 3)
 		if intruder != Vector2i(-1, -1):
-			var path := GameManager.movement_system.find_path(
-				army.hex_pos, intruder, faction_id, INF)
+			var path := _ai_find_path(army, intruder, faction_id)
 			if path.size() > 0:
 				GameManager.move_army_along_path(army.army_id, path)
 				if not GameManager.state.armies.has(army.army_id):
@@ -847,8 +856,7 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 					target_hex = borders[idx]
 
 			if target_hex != Vector2i(-1, -1):
-				var path := GameManager.movement_system.find_path(
-					army.hex_pos, target_hex, faction_id, INF)
+				var path := _ai_find_path(army, target_hex, faction_id)
 				if path.size() > 0:
 					GameManager.move_army_along_path(army.army_id, path)
 					if not GameManager.state.armies.has(army.army_id):
@@ -857,7 +865,7 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 						return
 
-	await get_tree().create_timer(0.1).timeout
+	await get_tree().process_frame
 	_end_current_faction_turn()
 
 # ── Shardhorde AI (Nomadic) ──────────────────────────────────
@@ -893,8 +901,7 @@ func _execute_shardhorde_ai() -> void:
 			# Armies with beasts attack within 6 hexes, raiding armies go further
 			var max_range := 6 if has_beast else 10
 			if HexHelper.hex_distance(army.hex_pos, target_hex) <= max_range:
-				var path := GameManager.movement_system.find_path(
-					army.hex_pos, target_hex, faction_id, INF)
+				var path := _ai_find_path(army, target_hex, faction_id)
 				if path.size() > 0:
 					GameManager.move_army_along_path(army.army_id, path)
 					if not GameManager.state.armies.has(army.army_id):
@@ -912,8 +919,7 @@ func _execute_shardhorde_ai() -> void:
 			if nearest_beast_pos != Vector2i(-1, -1):
 				var dist := HexHelper.hex_distance(army.hex_pos, nearest_beast_pos)
 				if dist > 5:
-					var path := GameManager.movement_system.find_path(
-						army.hex_pos, nearest_beast_pos, faction_id, INF)
+					var path := _ai_find_path(army, nearest_beast_pos, faction_id)
 					if path.size() > 0:
 						GameManager.move_army_along_path(army.army_id, path)
 						if not GameManager.state.armies.has(army.army_id):
@@ -927,7 +933,7 @@ func _execute_shardhorde_ai() -> void:
 	# Recruit at elderbeasts
 	_shardhorde_recruit()
 
-	await get_tree().create_timer(0.1).timeout
+	await get_tree().process_frame
 	_end_current_faction_turn()
 
 func _move_beast_army_toward_wastes(army: ArmyState) -> void:
@@ -2091,9 +2097,12 @@ func _find_nearest_intruder(faction_id: StringName, range_limit: int) -> Vector2
 	return Vector2i(-1, -1)
 
 func _get_faction_border_tiles(faction_id: StringName) -> Array[Vector2i]:
+	if _border_cache.has(faction_id):
+		return _border_cache[faction_id]
 	var borders: Array[Vector2i] = []
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
+		_border_cache[faction_id] = borders
 		return borders
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
@@ -2108,7 +2117,26 @@ func _get_faction_border_tiles(faction_id: StringName) -> Array[Vector2i]:
 			if ntile and ntile.owner_faction != faction_id:
 				borders.append(coord)
 				break
+	_border_cache[faction_id] = borders
 	return borders
+
+func _ai_find_path(army: ArmyState, target: Vector2i, faction_id: StringName) -> Array[Vector2i]:
+	# Capped AI pathfinding: search within 3x movement range, truncate to 1 turn of movement
+	var max_cost := army.movement_remaining * 3.0
+	var path := GameManager.movement_system.find_path(
+		army.hex_pos, target, faction_id, max_cost, &"", army.can_cross_mountains())
+	if path.is_empty():
+		return path
+	# Truncate path to what the army can actually walk this turn
+	var truncated: Array[Vector2i] = []
+	var remaining := army.movement_remaining
+	for coord in path:
+		var cost := GameManager.state.hex_map.get_movement_cost(coord, faction_id)
+		if remaining < cost:
+			break
+		remaining -= cost
+		truncated.append(coord)
+	return truncated
 
 func _can_afford_faction(fs: FactionState, cost: Dictionary) -> bool:
 	for res_type in cost:
@@ -2145,6 +2173,18 @@ func _process_faction_mechanic(faction_id: StringName) -> void:
 			_process_gladehost_seasons(fs)
 		&"shardhorde":
 			_process_shardhorde_resonance(fs)
+		&"moonspear":
+			_process_moonspear_lunar(fs)
+		&"thunderswarm":
+			_process_thunderswarm_fury(fs)
+		&"cinderguard":
+			_process_cinderguard_forge(fs)
+		&"forsaken":
+			_process_forsaken_espionage(fs)
+		&"ivoryscar":
+			_process_ivoryscar_relics(fs)
+		&"sunblessed":
+			_process_sunblessed_faith(fs)
 
 # ── Skulloath: Corruption Duality ──────────────────────────
 # Traditional path (0-30): food/loyalty/diplomacy bonuses, population growth
@@ -2479,3 +2519,220 @@ func destroy_shard_for_taint(faction_id: StringName, shard_id: StringName) -> vo
 	fs.taint_power += shard.power_level * 10
 	# Destroying shards also grants tech (studying what you destroy)
 	fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 5
+
+# ── Moonspear: Lunar Phase ────────────────────────────────
+# Cycles every 4 turns: 0=New Moon (+atk), 1=Waxing (+move), 2=Full Moon (+def), 3=Waning (+heal)
+# Battle bonuses applied in battle_simulator_v3 based on current phase
+
+func _process_moonspear_lunar(fs: FactionState) -> void:
+	# Advance lunar phase every 4 turns
+	if GameManager.state.current_turn % 4 == 0:
+		fs.lunar_phase = (fs.lunar_phase + 1) % 4
+
+	# Waning moon (phase 3): heal all armies slightly
+	if fs.lunar_phase == 3:
+		for army_id in GameManager.state.armies:
+			var army: ArmyState = GameManager.state.armies[army_id]
+			if army.faction_id == &"moonspear" and not army.is_garrison:
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						unit.current_hp = mini(unit.current_hp + 5, ud.hp * ud.squad_size)
+
+	# Full moon (phase 2): loyalty bonus to capital
+	if fs.lunar_phase == 2:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city and city.is_capital:
+				for cls in city.class_loyalty:
+					if cls != "captives":
+						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
+
+func get_lunar_phase_name(phase: int) -> String:
+	match phase:
+		0: return "New Moon"
+		1: return "Waxing Moon"
+		2: return "Full Moon"
+		3: return "Waning Moon"
+		_: return "Unknown"
+
+# ── Thunderswarm: Storm Fury ──────────────────────────────
+# Fury rises from battles (+10-20 per battle), decays naturally (-5/turn)
+# 50+: +10% atk to all armies. 80+: +20% atk, -5% def (reckless fury)
+# Applied in battle_simulator; here we just handle decay
+
+func _process_thunderswarm_fury(fs: FactionState) -> void:
+	# Natural decay: fury cools down over time
+	if fs.storm_fury > 0:
+		fs.storm_fury = maxi(fs.storm_fury - 5, 0)
+
+	# Thunderswarm armies in mountains/highlands gain +2 fury per turn (storms gather)
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id == &"thunderswarm" and not army.is_garrison:
+			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+			if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
+				fs.storm_fury = mini(fs.storm_fury + 2, 100)
+
+	# High fury: slight diplomacy penalty (seen as aggressive)
+	if fs.storm_fury >= 80:
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"thunderswarm" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			GameManager.diplomacy_system.modify_standing(&"thunderswarm", other_id, -1)
+
+# ── Cinderguard: Forge Heat ──────────────────────────────
+# High heat (70+): cheaper iron costs for buildings/units, faster recruitment
+# Low heat (30-): +defense bonus to all units, iron preservation
+# Heat rises from military buildings, falls from defensive/civilian buildings
+
+func _process_cinderguard_forge(fs: FactionState) -> void:
+	var drift := 0
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null:
+			continue
+		for building_id in city.buildings:
+			# Military/forge buildings raise heat
+			if building_id in [&"ember_forge", &"war_forge", &"siege_works", &"fire_barracks", &"molten_foundry"]:
+				drift += 1
+			# Defensive/civilian buildings lower heat
+			elif building_id in [&"stone_bastion", &"iron_wall", &"market", &"granary", &"temple"]:
+				drift -= 1
+
+	# Natural drift toward 50 (equilibrium)
+	if drift == 0:
+		if fs.forge_heat > 50:
+			drift = -1
+		elif fs.forge_heat < 50:
+			drift = 1
+
+	fs.forge_heat = clampi(fs.forge_heat + drift, 0, 100)
+
+	# High heat: bonus iron income from forge efficiency
+	if fs.forge_heat >= 70:
+		var iron_bonus := 2 if fs.forge_heat >= 85 else 1
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
+
+	# Low heat: population stability bonus (cooler forges = safer cities)
+	if fs.forge_heat <= 30:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city and city.is_capital:
+				city.population += 1
+
+# ── Forsaken: Espionage Network ──────────────────────────
+# Grows from number of owned regions (+1 per 3 regions per turn)
+# 10+: reveals enemy army positions (fog of war bypass)
+# 20+: enables sabotage actions (random enemy gold loss)
+# 30+: intelligence reports (see enemy city details)
+
+func _process_forsaken_espionage(fs: FactionState) -> void:
+	# Network grows from territorial control
+	var region_count := fs.owned_regions.size()
+	var growth := region_count / 3
+	fs.espionage_network = mini(fs.espionage_network + growth, 50)
+
+	# Natural decay if losing territory
+	if region_count <= 1:
+		fs.espionage_network = maxi(fs.espionage_network - 2, 0)
+
+	# 20+ espionage: occasional sabotage (steal gold from richest enemy)
+	if fs.espionage_network >= 20 and GameManager.state.current_turn % 3 == 0:
+		var richest_enemy: StringName = &""
+		var richest_gold := 0
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"forsaken" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			if GameManager.get_relation(&"forsaken", other_id) == Enums.FactionRelation.WAR:
+				var their_gold: int = other_fs.resources.get(Enums.ResourceType.GOLD, 0)
+				if their_gold > richest_gold:
+					richest_gold = their_gold
+					richest_enemy = other_id
+		if richest_enemy != &"" and richest_gold > 20:
+			var stolen := mini(richest_gold / 10, 15)
+			var enemy_fs: FactionState = GameManager.state.faction_states[richest_enemy]
+			enemy_fs.resources[Enums.ResourceType.GOLD] = enemy_fs.resources.get(Enums.ResourceType.GOLD, 0) - stolen
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + stolen
+
+# ── Ivoryscar: Relic Power ───────────────────────────────
+# Grows from controlling shard_wastes tiles and owned shards
+# Grants commander bonuses and tech acceleration
+
+func _process_ivoryscar_relics(fs: FactionState) -> void:
+	# Relic power from shard wastes control + owned shards
+	var wastes_count := 0
+	for region_id in fs.owned_regions:
+		var region_tiles := GameManager.state.hex_map.get_region_tiles(region_id)
+		for coord in region_tiles:
+			var tile := GameManager.state.hex_map.get_tile(coord)
+			if tile and tile.terrain == Enums.TerrainType.SHARD_WASTES:
+				wastes_count += 1
+
+	var shard_count := fs.owned_shards.size()
+	var target_power := wastes_count / 3 + shard_count * 5
+
+	# Drift toward target
+	if fs.relic_power < target_power:
+		fs.relic_power = mini(fs.relic_power + 2, 50)
+	elif fs.relic_power > target_power:
+		fs.relic_power = maxi(fs.relic_power - 1, 0)
+
+	# High relic power: tech bonus (ancient knowledge from relics)
+	if fs.relic_power >= 15:
+		var tech_bonus := 2 if fs.relic_power >= 30 else 1
+		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_bonus
+
+	# Very high relic power: shard essence passive generation
+	if fs.relic_power >= 30:
+		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 1
+
+# ── Sunblessed: Solar Faith ──────────────────────────────
+# 0-100, rises on battle victories (+10), drops on defeats (-15)
+# High faith (70+): +morale, healing in friendly territory
+# Low faith (30-): recruitment penalties, loyalty loss
+# Naturally drifts toward 50
+
+func _process_sunblessed_faith(fs: FactionState) -> void:
+	# Natural drift toward 50
+	if fs.solar_faith > 50:
+		fs.solar_faith -= 1
+	elif fs.solar_faith < 50:
+		fs.solar_faith += 1
+
+	# High faith: heal armies in owned territory
+	if fs.solar_faith >= 70:
+		var heal_amount := 3 if fs.solar_faith >= 85 else 2
+		for army_id in GameManager.state.armies:
+			var army: ArmyState = GameManager.state.armies[army_id]
+			if army.faction_id == &"sunblessed" and not army.is_garrison:
+				var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+				if tile and tile.region_id in fs.owned_regions:
+						for unit in army.units:
+							var ud := DataManager.get_unit(unit.unit_data_id)
+							if ud:
+								unit.current_hp = mini(unit.current_hp + heal_amount, ud.hp * ud.squad_size)
+
+	# High faith: loyalty bonus
+	if fs.solar_faith >= 70:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city and city.is_capital:
+				for cls in city.class_loyalty:
+					if cls != "captives":
+						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
+
+	# Low faith: loyalty penalty
+	if fs.solar_faith <= 30:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city and city.is_capital:
+				for cls in city.class_loyalty:
+					if cls != "captives":
+						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 1, -100, 100)

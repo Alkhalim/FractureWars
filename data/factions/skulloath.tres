@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 id = &"skulloath"
-display_name = "The Skulloath"
+display_name = "Skulloath"
 description = "A confederation of exiled peoples and fractured traditions, forged together under pressure, loss, and the dark promise of the Pale Waif."
 color = Color(0.35, 0.10, 0.10, 1)
-is_playable = false
+is_playable = true
 starting_regions = Array[StringName]([&"bataarbad"])
 realm_affinity = 1
 shard_preferences = {}

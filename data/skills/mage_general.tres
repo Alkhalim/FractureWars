@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"mage_general"
+display_name = "Mage General"
+description = "Understands how to integrate arcane forces into battlefield tactics."
+category = &"combat"
+is_minor = true
+effects = {"army_defense_bonus": 1}
+context_tags = Array[StringName]([&"used_mage"])

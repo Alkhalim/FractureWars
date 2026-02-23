@@ -1,8 +1,8 @@
 class_name HexMapData
 extends RefCounted
 
-const MAP_WIDTH := 65
-const MAP_HEIGHT := 45
+const MAP_WIDTH := 117
+const MAP_HEIGHT := 78
 
 var tiles: Dictionary = {} # Vector2i -> TileState
 
@@ -106,4 +106,7 @@ func set_region_owner(region_id: StringName, faction_id: StringName) -> void:
 	for coord in tiles:
 		var tile: TileState = tiles[coord]
 		if tile.region_id == region_id:
-			tile.owner_faction = faction_id
+			if tile.terrain == Enums.TerrainType.MOUNTAINS or tile.terrain == Enums.TerrainType.WATER:
+				tile.owner_faction = &""
+			else:
+				tile.owner_faction = faction_id

@@ -39,7 +39,12 @@
       "Bash(for:*)",
       "Bash(do echo \"$f\")",
       "Bash(cat $file:*)",
-      "Bash(echo === $\\(basename \"$dir\"\\) ===:*)"
+      "Bash(echo === $\\(basename \"$dir\"\\) ===:*)",
+      "Bash(echo === $faction ===:*)",
+      "Bash(echo === $faction directory ===:*)",
+      "Bash(echo Cinderguard::*)",
+      "Bash(python -c \"print\\('hello'\\)\" 2>&1 || node -e \"console.log\\('hello'\\)\" 2>&1)",
+      "Bash(node:*)"
     ]
   }
 }

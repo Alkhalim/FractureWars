@@ -1304,6 +1304,10 @@ func _apply_battle_results() -> void:
 		_update_army_survivors(defender_army, simulator.get_surviving_formations(0))
 		_update_army_survivors(attacker_army, simulator.get_surviving_formations(1))
 
+	# Grant veterancy XP to surviving units
+	_grant_unit_veterancy_xp(attacker_army, simulator, 0 if is_player_attacker else 1, def_strength)
+	_grant_unit_veterancy_xp(defender_army, simulator, 1 if is_player_attacker else 0, atk_strength)
+
 	# Handle elderbeast survival BEFORE removing dead armies
 	# This may re-add the beast unit to an army if it "flees" with 1 HP
 	_apply_elderbeast_battle_results()
@@ -1344,6 +1348,23 @@ func _apply_battle_results() -> void:
 		defender_army.battle_exhausted = true
 		defender_army.movement_remaining = 0.0
 		_separate_armies_after_stalemate()
+
+	# Faction mechanic: Thunderswarm storm fury rises from battles
+	for fid in [attacker_faction_id, defender_faction_id]:
+		if fid == &"thunderswarm":
+			var tfs: FactionState = GameManager.state.faction_states.get(fid)
+			if tfs:
+				tfs.storm_fury = mini(tfs.storm_fury + 15, 100)
+
+	# Faction mechanic: Sunblessed solar faith changes from battle results
+	for battle_pair in [[attacker_faction_id, attacker_alive], [defender_faction_id, defender_alive]]:
+		if battle_pair[0] == &"sunblessed":
+			var sfs: FactionState = GameManager.state.faction_states.get(battle_pair[0])
+			if sfs:
+				if battle_pair[1]:
+					sfs.solar_faith = mini(sfs.solar_faith + 10, 100)
+				else:
+					sfs.solar_faith = maxi(sfs.solar_faith - 15, 0)
 
 	if attacker_alive and not defender_alive:
 		EventBus.battle_resolved.emit(attacker_faction_id, battle_hex_pos)
@@ -1397,16 +1418,27 @@ func _apply_battle_results() -> void:
 	if GameManager.city_system.get_city_at_hex(battle_hex_pos):
 		base_context.append(&"in_city")
 
-	# Collect faced unit tags from both sides
+	# Collect used and faced unit tags from both sides
+	var unit_tag_types := ["cavalry", "ranged", "mage", "infantry", "beast", "monster", "construct"]
+	var atk_used_tags: Dictionary = {}
 	var def_faced_tags: Dictionary = {}
-	for f in simulator.defender_formations:
-		for tag in f.tags:
-			if tag in ["cavalry", "ranged", "mage", "infantry", "beast"]:
-				def_faced_tags[tag] = true
-	var atk_faced_tags: Dictionary = {}
 	for f in simulator.attacker_formations:
 		for tag in f.tags:
-			if tag in ["cavalry", "ranged", "mage", "infantry", "beast"]:
+			if tag in unit_tag_types:
+				atk_used_tags[tag] = true
+	for f in simulator.defender_formations:
+		for tag in f.tags:
+			if tag in unit_tag_types:
+				def_faced_tags[tag] = true
+	var def_used_tags: Dictionary = {}
+	var atk_faced_tags: Dictionary = {}
+	for f in simulator.defender_formations:
+		for tag in f.tags:
+			if tag in unit_tag_types:
+				def_used_tags[tag] = true
+	for f in simulator.attacker_formations:
+		for tag in f.tags:
+			if tag in unit_tag_types:
 				atk_faced_tags[tag] = true
 
 	var atk_context: Array[StringName] = base_context.duplicate()
@@ -1415,6 +1447,8 @@ func _apply_battle_results() -> void:
 	atk_context.append(StringName("enemy_" + defender_faction_id))
 	for tag in def_faced_tags:
 		atk_context.append(StringName("faced_" + tag))
+	for tag in atk_used_tags:
+		atk_context.append(StringName("used_" + tag))
 
 	var def_context: Array[StringName] = base_context.duplicate()
 	def_context.append(&"was_defender")
@@ -1422,6 +1456,8 @@ func _apply_battle_results() -> void:
 	def_context.append(StringName("enemy_" + attacker_faction_id))
 	for tag in atk_faced_tags:
 		def_context.append(StringName("faced_" + tag))
+	for tag in def_used_tags:
+		def_context.append(StringName("used_" + tag))
 
 	# Commander XP and item drops (use cached refs since remove_army nulls them)
 	if atk_commander:
@@ -1444,6 +1480,17 @@ func _update_army_survivors(army: ArmyState, survivors: Array[BattleSimulatorV3.
 			unit.current_hp = surviving_ids[unit.instance_id]
 			updated_units.append(unit)
 	army.units = updated_units
+
+func _grant_unit_veterancy_xp(army: ArmyState, sim: BattleSimulatorV3, side: int, enemy_strength: int) -> void:
+	var formations := sim.get_surviving_formations(side)
+	var formation_damage: Dictionary = {} # instance_id -> damage_dealt
+	for f in formations:
+		formation_damage[f.instance_id] = f.damage_dealt
+	var base_xp := 8 + mini(enemy_strength / 50, 20)
+	for unit in army.units:
+		var dmg: int = formation_damage.get(unit.instance_id, 0)
+		var damage_bonus := mini(dmg / 40, 10)
+		unit.grant_xp(base_xp + damage_bonus)
 
 func _separate_armies_after_stalemate() -> void:
 	# Move each army 1 tile away from the other
@@ -1554,9 +1601,9 @@ func _apply_elderbeast_building_bonuses() -> void:
 			if beast.buildings.has(&"chitin_walls"):
 				f.defense += 8
 
-			# T1: Feeding Tendrils — HP regen while fighting (1 HP/tick, only during combat)
+			# T1: Feeding Tendrils — HP regen during melee combat (0.33 HP/tick)
 			if beast.buildings.has(&"shard_conduit"):
-				f.hp_regen_per_tick = 1.0
+				f.hp_regen_per_tick = 0.33
 				f.regen_requires_combat = true
 
 			# T1: Chitin Forge — +10 attack
