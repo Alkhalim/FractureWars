@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crossbow_range"
+display_name = "Crossbow Range II"
+description = "A training ground where crossbow specialists master the art of ranged fire. Their bolts pierce the heaviest armor."
+faction_id = &"cinderguard"
+category = &"military"
+build_cost = {0: 400, 1: 50, 5: 50}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"ember_crossbow", &"forge_warden"])
+required_capital_level = 2
+upgrades_from = &"forgeborn_barracks"
+class_loyalty_bonus = {"peasants": -4, "nobles": 3}

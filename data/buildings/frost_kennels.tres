@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"frost_kennels"
+display_name = "Frost Kennels I"
+description = "Frozen dens where moonhounds are raised from pups. The bond between handler and beast is forged in the bitter cold."
+faction_id = &"moonspear"
+category = &"military"
+build_cost = {0: 100, 3: 30, 5: 25}
+build_time = 2
+population_growth_bonus = 1
+unlocks_units = Array[StringName]([&"moonhound"])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 1}

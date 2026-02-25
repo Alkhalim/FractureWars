@@ -451,9 +451,8 @@ static func get_loyalty_breakdown(city: CityState, faction_id: StringName) -> Ar
 
 static func _count_military_tags_at_city(city: CityState) -> Dictionary:
 	var tags := {infantry = 0, cavalry = 0, mage = 0, construct = 0, monster = 0}
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.hex_pos != city.hex_pos or army.faction_id != city.faction_id:
+	for army: ArmyState in GameManager.get_armies_at_tile(city.hex_pos):
+		if army.faction_id != city.faction_id:
 			continue
 		for unit in army.units:
 			var ud := DataManager.get_unit(unit.unit_data_id)

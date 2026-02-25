@@ -236,6 +236,11 @@ func _accumulate_army_bonuses(bonuses: Dictionary, effects: Dictionary, level: i
 		bonuses.movement_bonus += effects.army_movement_bonus * level
 	if effects.has("heal_per_turn"):
 		bonuses.heal_per_turn += effects.heal_per_turn * level
+	# Tag-specific bonuses (e.g. cavalry_attack_bonus, vs_ranged_defense_bonus, terrain_forest_attack_bonus)
+	for key in effects:
+		if key.ends_with("_attack_bonus") or key.ends_with("_defense_bonus") or key.ends_with("_speed_bonus"):
+			if not key.begins_with("army_"):
+				bonuses[key] = bonuses.get(key, 0) + effects[key] * level
 
 func get_commander_city_effects(commander: CommanderState, is_friendly: bool) -> Dictionary:
 	var effects_total := {}

@@ -17,6 +17,7 @@ extends Resource
 @export var siege_faction: StringName = &""
 @export var siege_turns: int = 0
 @export var is_capital: bool = false
+@export var is_settlement: bool = false
 @export var can_found_settlement: bool = false
 @export var loyalty: int = 20              # -100 to 100 (computed weighted average)
 @export var class_loyalty: Dictionary = {
@@ -143,7 +144,7 @@ func get_display_name() -> String:
 	if city_name != "":
 		return city_name
 	var region: RegionData = DataManager.get_region(region_id)
-	var suffix := " Capital" if is_capital else " Settlement"
+	var suffix := " Capital" if is_capital else (" Settlement" if is_settlement else "")
 	if region:
 		return region.display_name + suffix
 	return str(region_id) + suffix

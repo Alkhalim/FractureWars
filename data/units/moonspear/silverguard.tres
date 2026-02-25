@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"silverguard"
+display_name = "Silverguard"
+description = "Elite warriors clad in moonsilver plate. Their disciplined formations are the backbone of the Moonspear war host."
+faction_id = &"moonspear"
+max_hp = 1500
+attack = 14
+defense = 12
+speed = 4
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 19
+movement_points = 3.5
+upkeep_cost = {0: 5, 1: 2, 3: 3}
+recruit_cost = {0: 140, 1: 40}
+recruit_time = 3
+population_cost = 16
+terrain_bonuses = {6: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "tundrawalker"])
+base_morale = 75

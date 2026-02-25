@@ -22,5 +22,5 @@ recruit_time = 2
 population_cost = 15
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["infantry", "ranged"])
+tags = Array[String](["infantry", "ranged", "cinderguard"])
 base_morale = 60

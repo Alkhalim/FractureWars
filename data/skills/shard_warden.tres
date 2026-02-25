@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"shard_warden"
 display_name = "Shard Warden"
-description = "Draws power from the corrupted wastelands near shattered shards."
+description = "+2 defense in shard wastes. +3 HP healed per turn."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1, "heal_per_turn": 2}
+effects = {"terrain_shard_wastes_defense_bonus": 2, "heal_per_turn": 3}
 context_tags = Array[StringName]([&"terrain_shard_wastes"])

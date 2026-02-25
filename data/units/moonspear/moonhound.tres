@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moonhound"
+display_name = "Moonhound Pack"
+description = "Silver-furred beasts that hunt in packs beneath the aurora. Their howls chill the blood of any who hear them."
+faction_id = &"moonspear"
+max_hp = 700
+attack = 11
+defense = 4
+speed = 7
+attack_range = 1
+squad_size = 8
+hp_per_soldier = 87
+tiles_per_entity = 2
+movement_points = 4.0
+upkeep_cost = {0: 3, 3: 2}
+recruit_cost = {0: 90, 3: 40}
+recruit_time = 2
+population_cost = 0
+terrain_bonuses = {6: 0.15}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast", "swarm"])
+base_morale = 55
+morale_aura = -2
+fear_radius = 3
+captive_chance = 0.0

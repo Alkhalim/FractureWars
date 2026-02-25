@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"monster_slayer"
 display_name = "Monster Slayer"
-description = "Veteran of countless hunts against the most terrible beasts."
+description = "+5 attack vs monsters, +3 attack vs beasts."
 category = &"combat"
 is_minor = false
-effects = {"army_attack_bonus": 4}
+effects = {"vs_monster_attack_bonus": 5, "vs_beast_attack_bonus": 3}
 context_tags = Array[StringName]([&"faced_beast", &"faced_monster"])

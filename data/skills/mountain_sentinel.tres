@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"mountain_sentinel"
 display_name = "Mountain Sentinel"
-description = "A steadfast defender of highland passes."
+description = "+2 defense for all units when fighting in mountains."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1}
+effects = {"terrain_mountains_defense_bonus": 2}
 context_tags = Array[StringName]([&"terrain_mountains"])

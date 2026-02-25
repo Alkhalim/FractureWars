@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"frost_volunteer"
+display_name = "Frost Volunteer"
+description = "Hardy tundra folk who answer the Moonspear's call to arms. They are many, eager, and expendable."
+faction_id = &"moonspear"
+max_hp = 1000
+attack = 7
+defense = 3
+speed = 5
+attack_range = 1
+squad_size = 120
+hp_per_soldier = 8
+movement_points = 3.5
+upkeep_cost = {0: 1, 3: 2}
+recruit_cost = {0: 40, 5: 15}
+recruit_time = 1
+population_cost = 24
+terrain_bonuses = {6: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "swarm", "tundrawalker"])
+base_morale = 35
+captive_chance = 0.45

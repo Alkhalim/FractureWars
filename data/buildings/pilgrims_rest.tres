@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pilgrims_rest"
+display_name = "Pilgrim's Rest I"
+description = "A welcoming haven for travelers and pilgrims. The moon's blessing draws settlers from far and wide."
+faction_id = &"moonspear"
+category = &"cultural"
+build_cost = {0: 120, 5: 40}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 10
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 1, "nobles": 1}

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sunfire_mage"
+display_name = "Sunfire Mage"
+description = "Mages who channel the sun's raw power. Their solar bolts burn with purifying flame that cleanses corruption."
+faction_id = &"sunblessed"
+max_hp = 500
+attack = 14
+defense = 4
+speed = 4
+attack_range = 5
+squad_size = 25
+hp_per_soldier = 20
+movement_points = 3.5
+upkeep_cost = {0: 5, 2: 1}
+recruit_cost = {0: 120, 1: 20, 2: 25}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {1: 0.2}
+tags = Array[String](["mage", "ranged"])
+base_morale = 55

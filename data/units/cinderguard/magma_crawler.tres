@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"magma_crawler"
+display_name = "Magma Crawler"
+description = "Massive lava-born beasts that burrow through molten rock. Their touch sets the earth ablaze."
+faction_id = &"cinderguard"
+max_hp = 1500
+attack = 22
+defense = 12
+speed = 5
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 8
+movement_points = 3.0
+upkeep_cost = {0: 12, 1: 4, 3: 5}
+recruit_cost = {0: 300, 1: 80, 3: 60}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "beast", "melee", "cinderguard"])
+base_morale = 75
+morale_aura = -4
+fear_radius = 4
+captive_chance = 0.0

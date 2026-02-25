@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dawn_crusader"
+display_name = "Dawn Crusader"
+description = "Holy knights who have sworn the Dawn Oath. Their shining armor and blessed blades are the pride of the Sunblessed."
+faction_id = &"sunblessed"
+max_hp = 1400
+attack = 14
+defense = 11
+speed = 5
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 17
+movement_points = 4.0
+upkeep_cost = {0: 5, 1: 1, 3: 3}
+recruit_cost = {0: 130, 1: 35, 5: 25}
+recruit_time = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 80

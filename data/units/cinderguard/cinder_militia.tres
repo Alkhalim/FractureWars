@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cinder_militia"
+display_name = "Cinder Militia"
+description = "Common folk of the ashen wastes armed with iron and determination. Numbers are their greatest weapon."
+faction_id = &"cinderguard"
+max_hp = 900
+attack = 7
+defense = 4
+speed = 5
+attack_range = 1
+squad_size = 100
+hp_per_soldier = 9
+movement_points = 3.0
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 50, 1: 15}
+recruit_time = 1
+population_cost = 20
+terrain_bonuses = {3: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "swarm", "desertstrider", "cinderguard"])
+base_morale = 40
+captive_chance = 0.45

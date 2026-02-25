@@ -10,6 +10,7 @@ extends Resource
 @export var item_storage: Array[StringName] = []
 @export var follower_storage: Array[StringName] = []
 @export var is_defeated: bool = false
+@export var leader_bonuses: Dictionary = {} # e.g. {"army_attack": 5, "income_gold": 10}
 
 # Research
 @export var current_research_id: StringName = &""

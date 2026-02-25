@@ -22,5 +22,5 @@ recruit_time = 2
 population_cost = 12
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["infantry", "melee", "fast"])
+tags = Array[String](["infantry", "melee", "fast", "desertstrider"])
 base_morale = 30

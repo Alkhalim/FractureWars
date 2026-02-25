@@ -5,10 +5,15 @@ const MAX_ZOOM := 3.0
 const ZOOM_SPEED := 0.1
 const PAN_SPEED := 400.0
 const MAP_MARGIN := 100.0
+const EDGE_PAN_MARGIN := 20.0
+const EDGE_PAN_SPEED := 600.0
 
 var _is_panning := false
 var _pan_start := Vector2.ZERO
 var _did_pan := false # True if mouse moved while panning (distinguishes drag from click)
+var _target_zoom := 1.0
+var _zoom_focus_world := Vector2.ZERO
+var _zoom_focus_screen := Vector2.ZERO
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Don't process mouse events if hovering over UI
@@ -18,9 +23,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Zoom with mouse wheel
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom_focus_screen = get_viewport().get_mouse_position()
+			_zoom_focus_world = get_global_mouse_position()
 			_zoom_camera(ZOOM_SPEED)
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom_focus_screen = get_viewport().get_mouse_position()
+			_zoom_focus_world = get_global_mouse_position()
 			_zoom_camera(-ZOOM_SPEED)
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_MIDDLE:
@@ -68,10 +77,40 @@ func _process(delta: float) -> void:
 		position += pan_dir.normalized() * PAN_SPEED * delta / zoom.x
 		_clamp_position()
 
+	# Edge-of-screen panning (only when window is focused)
+	if not _is_panning and DisplayServer.window_is_focused():
+		var mouse_pos := get_viewport().get_mouse_position()
+		var vp_size := get_viewport_rect().size
+		var edge_dir := Vector2.ZERO
+		if mouse_pos.x < EDGE_PAN_MARGIN:
+			edge_dir.x = -1.0
+		elif mouse_pos.x > vp_size.x - EDGE_PAN_MARGIN:
+			edge_dir.x = 1.0
+		if mouse_pos.y < EDGE_PAN_MARGIN:
+			edge_dir.y = -1.0
+		elif mouse_pos.y > vp_size.y - EDGE_PAN_MARGIN:
+			edge_dir.y = 1.0
+		if edge_dir != Vector2.ZERO:
+			position += edge_dir.normalized() * EDGE_PAN_SPEED * delta / zoom.x
+			_clamp_position()
+
+	# Smooth zoom lerp toward target
+	if not is_equal_approx(zoom.x, _target_zoom):
+		var old_zoom := zoom.x
+		var new_zoom := lerpf(zoom.x, _target_zoom, 1.0 - exp(-12.0 * delta))
+		if absf(new_zoom - _target_zoom) < 0.001:
+			new_zoom = _target_zoom
+		zoom = Vector2(new_zoom, new_zoom)
+		# Adjust position so the world point under the cursor stays stable
+		var mouse_screen := _zoom_focus_screen
+		var vp_size_zoom := get_viewport_rect().size
+		var old_world_at_mouse := position + (mouse_screen - vp_size_zoom / 2.0) / Vector2(old_zoom, old_zoom)
+		var new_world_at_mouse := position + (mouse_screen - vp_size_zoom / 2.0) / Vector2(new_zoom, new_zoom)
+		position += old_world_at_mouse - new_world_at_mouse
+		_clamp_position()
+
 func _zoom_camera(amount: float) -> void:
-	var new_zoom := clampf(zoom.x + amount, MIN_ZOOM, MAX_ZOOM)
-	zoom = Vector2(new_zoom, new_zoom)
-	_clamp_position()
+	_target_zoom = clampf(_target_zoom + amount, MIN_ZOOM, MAX_ZOOM)
 
 func _is_mouse_over_ui() -> bool:
 	# Check if the mouse is hovering over any visible UI panel
@@ -79,9 +118,11 @@ func _is_mouse_over_ui() -> bool:
 	if hud == null:
 		return false
 	var mouse_pos: Vector2 = hud.get_global_mouse_position()
+	# Only check top-level visible panels (not deep-iterating)
 	for child in hud.get_children():
-		if child is Control and child.visible and child.get_global_rect().has_point(mouse_pos):
-			return true
+		if child is Control and child.visible and child.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			if child.get_global_rect().has_point(mouse_pos):
+				return true
 	return false
 
 func _clamp_position() -> void:

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"storm_harvest"
+display_name = "Storm Harvest II"
+description = "Lightning-charged irrigation channels feed vast highland farms. The storms that terrify others bring life here."
+faction_id = &"thunderswarm"
+category = &"economic"
+build_cost = {0: 190, 5: 50}
+build_time = 3
+income_bonus = {3: 35}
+population_growth_bonus = 8
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"highland_terrace"
+class_loyalty_bonus = {"peasants": 3}

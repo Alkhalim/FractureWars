@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"cavalry_counter"
 display_name = "Cavalry Counter"
-description = "Knows how to stop a mounted charge."
+description = "All units gain +3 defense against cavalry."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1}
+effects = {"vs_cavalry_defense_bonus": 3}
 context_tags = Array[StringName]([&"faced_cavalry"])

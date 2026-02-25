@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ashen_citadel"
+display_name = "Ashen Citadel III"
+description = "An impregnable fortress of volcanic stone and forged iron. The Cinderguard's ultimate bastion."
+faction_id = &"cinderguard"
+category = &"military"
+build_cost = {0: 780, 1: 100, 5: 70}
+build_time = 4
+income_bonus = {}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"ashen_champion", &"iron_colossus", &"flame_templar"])
+required_capital_level = 3
+defense_bonus = 5
+recruit_speed_bonus = 1
+upgrades_from = &"crossbow_range"
+class_loyalty_bonus = {"nobles": 5}

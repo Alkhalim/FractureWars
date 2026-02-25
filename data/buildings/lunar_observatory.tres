@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"lunar_observatory"
+display_name = "Lunar Observatory II"
+description = "A tower of silver and glass where astronomers chart the moon's movements. Their discoveries advance all fields of knowledge."
+faction_id = &"moonspear"
+category = &"cultural"
+build_cost = {0: 240, 5: 50}
+build_time = 3
+income_bonus = {2: 20}
+population_growth_bonus = 5
+unlocks_units = Array[StringName]([&"starweaver"])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 1, "scholars": 3, "nobles": 1}
+upgrades_from = &"moon_shrine"

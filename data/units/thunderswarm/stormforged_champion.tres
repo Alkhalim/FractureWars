@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"stormforged_champion"
+display_name = "Stormforged Champion"
+description = "Warriors reforged by lightning rituals. Their bodies crackle with power and their blows shatter stone."
+faction_id = &"thunderswarm"
+max_hp = 1800
+attack = 22
+defense = 13
+speed = 5
+attack_range = 1
+squad_size = 60
+hp_per_soldier = 30
+movement_points = 3.5
+upkeep_cost = {0: 10, 1: 3, 3: 5}
+recruit_cost = {0: 240, 1: 80, 5: 40}
+recruit_time = 4
+population_cost = 12
+terrain_bonuses = {2: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 85
+captive_chance = 0.1

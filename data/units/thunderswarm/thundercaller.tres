@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"thundercaller"
+display_name = "Thundercaller"
+description = "Storm mages who call lightning from clear skies. Their bolts strike with devastating precision."
+faction_id = &"thunderswarm"
+max_hp = 480
+attack = 15
+defense = 3
+speed = 5
+attack_range = 5
+squad_size = 25
+hp_per_soldier = 19
+movement_points = 3.5
+upkeep_cost = {0: 4, 2: 1}
+recruit_cost = {0: 110, 1: 20, 2: 25}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged"])
+base_morale = 45

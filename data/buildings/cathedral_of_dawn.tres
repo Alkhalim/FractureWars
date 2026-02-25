@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cathedral_of_dawn"
+display_name = "Cathedral of Dawn III"
+description = "The holiest cathedral of the Sunblessed. Its golden spires catch the first light of every dawn."
+faction_id = &"sunblessed"
+category = &"cultural"
+build_cost = {0: 540, 5: 70, 1: 25}
+build_time = 4
+income_bonus = {2: 42}
+population_growth_bonus = 8
+upgrades_from = &"radiant_temple"
+unlocks_units = Array[StringName]([&"sun_oracle"])
+required_capital_level = 3
+class_loyalty_bonus = {"peasants": 2, "scholars": 5, "nobles": 3}

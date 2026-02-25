@@ -26,4 +26,5 @@ tags = Array[String](["support", "ranged"])
 base_morale = 80
 morale_aura = 10
 fear_radius = 5
+healing_aura = 0.5
 captive_chance = 0.0

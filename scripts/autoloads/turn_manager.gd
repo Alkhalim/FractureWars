@@ -5,6 +5,10 @@ var current_faction_index: int = 0
 var is_player_turn: bool = true
 var shardfall_system: ShardfallSystem = ShardfallSystem.new()
 
+# AI turn speed controls
+var ai_speed_multiplier: float = 1.0
+var skip_ai_turn: bool = false
+
 # AI settlement targets
 var _ai_settlement_targets: Dictionary = {} # faction_id -> Vector2i target hex
 
@@ -95,6 +99,16 @@ func _on_log_army_destroyed(army_id: StringName, faction_id: StringName) -> void
 	var name: String = fd.display_name if fd else str(faction_id)
 	turn_log.append({type = "army", text = "A %s army was destroyed" % name})
 
+func _ai_wait() -> void:
+	# Respects skip and speed multiplier during AI turns
+	if skip_ai_turn:
+		return
+	if ai_speed_multiplier >= 4.0:
+		return
+	await _ai_wait()
+	if ai_speed_multiplier <= 1.0:
+		await _ai_wait()
+
 func start_game() -> void:
 	faction_order.clear()
 	faction_order.append(GameManager.state.player_faction_id)
@@ -112,7 +126,7 @@ func _start_faction_turn() -> void:
 
 	# Refresh caches for this faction's turn
 	GameManager.movement_system.refresh_caches()
-	_border_cache.clear()
+	GameManager.rebuild_faction_army_cache()
 
 	# Process city system: income, growth, queues, sieges
 	GameManager.city_system.process_turn(faction_id)
@@ -139,21 +153,16 @@ func _start_faction_turn() -> void:
 	_grant_passive_commander_xp(faction_id)
 
 	# Reset army movement for this faction (skip garrisons)
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id and not army.is_garrison:
-			army.movement_remaining = army.get_max_movement()
-			# Road bonus: +0.6 MP per road level
-			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
-			if tile and tile.road_level >= 1:
-				army.movement_remaining += 0.6 * tile.road_level
-			# Moonspear: Waxing Moon (phase 1) grants +0.5 movement
-			if faction_id == &"moonspear":
-				var mfs: FactionState = GameManager.state.faction_states.get(faction_id)
-				if mfs and mfs.lunar_phase == 1:
-					army.movement_remaining += 0.5
-			army.has_moved = false
-			army.battle_exhausted = false
+	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
+		if army.is_garrison:
+			continue
+		army.movement_remaining = army.get_max_movement()
+		# Road bonus: +0.6 MP per road level
+		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+		if tile and tile.road_level >= 1:
+			army.movement_remaining += 0.6 * tile.road_level
+		army.has_moved = false
+		army.battle_exhausted = false
 
 	# Decay temp effects
 	_decay_temp_effects(faction_id)
@@ -161,17 +170,21 @@ func _start_faction_turn() -> void:
 	EventBus.turn_started.emit(GameManager.state.current_turn, faction_id)
 
 	if is_player_turn:
+		skip_ai_turn = false
 		_check_random_events(faction_id)
 	else:
 		_ai_assign_commanders(faction_id)
 		_consolidate_ai_armies(faction_id)
+		await _ai_wait()
 		_execute_ai_city_management(faction_id)
 		_execute_ai_settlement_building(faction_id)
+		await _ai_wait()
 		GameManager.diplomacy_system.execute_ai_diplomacy(faction_id)
 		GameManager.research_system.execute_ai_research(faction_id)
 		if faction_id == &"empire":
 			_ai_handle_forsaken_offer(faction_id)
 			_ai_handle_senate_dilemma(faction_id)
+		await _ai_wait()
 		if faction_id == &"shardhorde":
 			_execute_shardhorde_ai()
 		elif faction_id == &"gladehost":
@@ -200,6 +213,7 @@ func _end_current_faction_turn() -> void:
 		_start_faction_turn()
 
 func _end_round() -> void:
+	_border_cache.clear()  # Reset for next round (territory may have changed mid-round)
 	EventBus.round_ended.emit(GameManager.state.current_turn)
 	shardfall_system.check_shardfall(GameManager.state.current_turn)
 
@@ -259,12 +273,7 @@ func _check_victory_conditions() -> void:
 
 		# Check Defeat — no cities, no armies (no elderbeasts for Shardhorde)
 		var has_cities := fs.owned_cities.size() > 0
-		var has_armies := false
-		for army_id in GameManager.state.armies:
-			var army: ArmyState = GameManager.state.armies[army_id]
-			if army.faction_id == faction_id and not army.is_garrison:
-				has_armies = true
-				break
+		var has_armies := GameManager.get_faction_armies(faction_id).size() > 0
 		var has_beasts := false
 		if faction_id == &"shardhorde":
 			for beast_id in GameManager.state.elderbeasts:
@@ -389,9 +398,8 @@ func _ai_handle_senate_dilemma(faction_id: StringName) -> void:
 # ── Commander XP ─────────────────────────────────────────────
 
 func _grant_passive_commander_xp(faction_id: StringName) -> void:
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id and army.commander:
+	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
+		if army.commander:
 			var context: Array[StringName] = []
 			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 			if tile:
@@ -414,9 +422,8 @@ func _ai_assign_commanders(faction_id: StringName) -> void:
 		return
 	# Get armies without commanders, sorted by size (largest first)
 	var armies_no_cmd: Array[ArmyState] = []
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id and army.commander == null:
+	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
+		if army.commander == null and not army.is_garrison:
 			armies_no_cmd.append(army)
 	armies_no_cmd.sort_custom(func(a: ArmyState, b: ArmyState): return a.units.size() > b.units.size())
 	for army in armies_no_cmd:
@@ -501,10 +508,7 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 	# Count existing army composition
 	var tag_counts := {"infantry": 0, "ranged": 0, "cavalry": 0, "mage": 0}
 	var total_units := 0
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id != faction_id:
-			continue
+	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 		for unit in army.units:
 			var ud := DataManager.get_unit(unit.unit_data_id)
 			if ud:
@@ -521,10 +525,8 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 		if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
 			continue
 		var enemy_units := 0
-		for army_id in GameManager.state.armies:
-			var army: ArmyState = GameManager.state.armies[army_id]
-			if army.faction_id == other_id and not army.is_garrison:
-				enemy_units += army.units.size()
+		for enemy_army: ArmyState in GameManager.get_faction_armies(other_id):
+			enemy_units += enemy_army.units.size()
 		max_enemy_units = maxi(max_enemy_units, enemy_units)
 
 	var recruit_threshold := maxi(8, max_enemy_units + 4)
@@ -605,9 +607,7 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 						closest_dist = d
 						closest_army = army
 				if closest_army and closest_army.movement_remaining > 0:
-					var path := _ai_find_path(closest_army, target_hex, faction_id)
-					if path.size() > 0:
-						GameManager.move_army_along_path(closest_army.army_id, path)
+					_ai_move_army_safe(closest_army, target_hex, faction_id)
 			return
 
 		# Evaluate best settlement tile (limit to 20 closest candidates)
@@ -642,7 +642,11 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 
 func _execute_ai_turn(faction_id: StringName) -> void:
 	var armies := GameManager.get_faction_armies(faction_id)
+	var army_count := 0
 	for army in armies:
+		army_count += 1
+		if army_count % 3 == 0:
+			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
 
@@ -651,13 +655,11 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 			# Move toward nearest friendly city to consolidate
 			var nearest_city := _find_nearest_faction_city(army.hex_pos, faction_id)
 			if nearest_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, nearest_city) > 1:
-				var path := _ai_find_path(army, nearest_city, faction_id)
-				if path.size() > 0:
-					GameManager.move_army_along_path(army.army_id, path)
-					if not GameManager.state.armies.has(army.army_id):
-						continue
-					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-						return
+				_ai_move_army_safe(army, nearest_city, faction_id)
+				if not GameManager.state.armies.has(army.army_id):
+					continue
+				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+					return
 			continue
 
 		# Find target: enemy armies first, then enemy regions
@@ -667,15 +669,13 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 		if target_hex == Vector2i(-1, -1):
 			continue
 
-		var path := _ai_find_path(army, target_hex, faction_id)
-		if path.size() > 0:
-			GameManager.move_army_along_path(army.army_id, path)
-			if not GameManager.state.armies.has(army.army_id):
-				continue
-			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-				return
+		_ai_move_army_safe(army, target_hex, faction_id)
+		if not GameManager.state.armies.has(army.army_id):
+			continue
+		if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+			return
 
-	await get_tree().process_frame
+	await _ai_wait()
 	_end_current_faction_turn()
 
 # ── Skulloath AI (Raider) ────────────────────────────────────
@@ -686,14 +686,18 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 		# Defensive phase: recruit, defend own cities, don't attack
 		_ai_aggression_cooldown[faction_id] = cooldown - 1
 		_execute_defensive_skulloath(faction_id)
-		await get_tree().process_frame
+		await _ai_wait()
 		_end_current_faction_turn()
 		return
 
 	# Aggressive phase
 	var armies := GameManager.get_faction_armies(faction_id)
 	var attacked := false
+	var army_count := 0
 	for army in armies:
+		army_count += 1
+		if army_count % 3 == 0:
+			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
 
@@ -707,14 +711,12 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 		if target_hex == Vector2i(-1, -1):
 			target_hex = _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
 		if target_hex != Vector2i(-1, -1):
-			var path := _ai_find_path(army, target_hex, faction_id)
-			if path.size() > 0:
-				GameManager.move_army_along_path(army.army_id, path)
+			if _ai_move_army_safe(army, target_hex, faction_id):
 				attacked = true
-				if not GameManager.state.armies.has(army.army_id):
-					continue
-				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-					return
+			if not GameManager.state.armies.has(army.army_id):
+				continue
+			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+				return
 
 	# Track aggressive turns; after 3, enter cooldown
 	if attacked:
@@ -724,7 +726,7 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 			_ai_aggression_cooldown[faction_id] = 4
 			_ai_attack_counters[faction_id] = 0
 
-	await get_tree().process_frame
+	await _ai_wait()
 	_end_current_faction_turn()
 
 func _execute_defensive_skulloath(faction_id: StringName) -> void:
@@ -738,9 +740,7 @@ func _execute_defensive_skulloath(faction_id: StringName) -> void:
 func _move_to_nearest_city(army: ArmyState, faction_id: StringName) -> void:
 	var nearest_city := _find_nearest_faction_city(army.hex_pos, faction_id)
 	if nearest_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, nearest_city) > 1:
-		var path := _ai_find_path(army, nearest_city, faction_id)
-		if path.size() > 0:
-			GameManager.move_army_along_path(army.army_id, path)
+		_ai_move_army_safe(army, nearest_city, faction_id)
 
 # ── Gladehost AI (Defensive Patrol) ──────────────────────────
 
@@ -750,20 +750,22 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 	# Check for intruders first
 	var intruder := _find_nearest_intruder(faction_id, 3)
 
+	var army_count := 0
 	for army in armies:
+		army_count += 1
+		if army_count % 3 == 0:
+			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
 
 		if intruder != Vector2i(-1, -1):
 			# Attack intruder
-			var path := _ai_find_path(army, intruder, faction_id)
-			if path.size() > 0:
-				GameManager.move_army_along_path(army.army_id, path)
-				if not GameManager.state.armies.has(army.army_id):
-					_gladehost_waypoints.erase(army.army_id)
-					continue
-				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-					return
+			_ai_move_army_safe(army, intruder, faction_id)
+			if not GameManager.state.armies.has(army.army_id):
+				_gladehost_waypoints.erase(army.army_id)
+				continue
+			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+				return
 		else:
 			# Patrol between settlements
 			if not _gladehost_waypoints.has(army.army_id):
@@ -779,16 +781,14 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 			if army.hex_pos == target or HexHelper.hex_distance(army.hex_pos, target) <= 1:
 				wp_data["index"] = (wp_data["index"] + 1) % waypoints.size()
 				target = waypoints[wp_data["index"]]
-			var path := _ai_find_path(army, target, faction_id)
-			if path.size() > 0:
-				GameManager.move_army_along_path(army.army_id, path)
-				if not GameManager.state.armies.has(army.army_id):
-					_gladehost_waypoints.erase(army.army_id)
-					continue
-				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-					return
+			_ai_move_army_safe(army, target, faction_id)
+			if not GameManager.state.armies.has(army.army_id):
+				_gladehost_waypoints.erase(army.army_id)
+				continue
+			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+				return
 
-	await get_tree().process_frame
+	await _ai_wait()
 	_end_current_faction_turn()
 
 func _build_gladehost_patrol(faction_id: StringName) -> Array:
@@ -810,7 +810,11 @@ func _build_gladehost_patrol(faction_id: StringName) -> Array:
 
 func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 	var armies := GameManager.get_faction_armies(faction_id)
+	var army_count := 0
 	for army in armies:
+		army_count += 1
+		if army_count % 3 == 0:
+			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
 
@@ -818,26 +822,22 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 		if army.units.size() < 4:
 			var nearest_city := _find_nearest_faction_city(army.hex_pos, faction_id)
 			if nearest_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, nearest_city) > 1:
-				var path := _ai_find_path(army, nearest_city, faction_id)
-				if path.size() > 0:
-					GameManager.move_army_along_path(army.army_id, path)
-					if not GameManager.state.armies.has(army.army_id):
-						_jade_patrol_index.erase(army.army_id)
-						continue
-					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-						return
+				_ai_move_army_safe(army, nearest_city, faction_id)
+				if not GameManager.state.armies.has(army.army_id):
+					_jade_patrol_index.erase(army.army_id)
+					continue
+				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+					return
 			continue
 
 		# Actively seek to conquer
 		var intruder := _find_nearest_intruder(faction_id, 3)
 		if intruder != Vector2i(-1, -1):
-			var path := _ai_find_path(army, intruder, faction_id)
-			if path.size() > 0:
-				GameManager.move_army_along_path(army.army_id, path)
-				if not GameManager.state.armies.has(army.army_id):
-					continue
-				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-					return
+			_ai_move_army_safe(army, intruder, faction_id)
+			if not GameManager.state.armies.has(army.army_id):
+				continue
+			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+				return
 		else:
 			# Expand toward enemy regions
 			var target_hex := _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
@@ -856,16 +856,14 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 					target_hex = borders[idx]
 
 			if target_hex != Vector2i(-1, -1):
-				var path := _ai_find_path(army, target_hex, faction_id)
-				if path.size() > 0:
-					GameManager.move_army_along_path(army.army_id, path)
-					if not GameManager.state.armies.has(army.army_id):
-						_jade_patrol_index.erase(army.army_id)
-						continue
-					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-						return
+				_ai_move_army_safe(army, target_hex, faction_id)
+				if not GameManager.state.armies.has(army.army_id):
+					_jade_patrol_index.erase(army.army_id)
+					continue
+				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+					return
 
-	await get_tree().process_frame
+	await _ai_wait()
 	_end_current_faction_turn()
 
 # ── Shardhorde AI (Nomadic) ──────────────────────────────────
@@ -888,7 +886,11 @@ func _execute_shardhorde_ai() -> void:
 
 	# Move armies (elderbeasts attached to armies move automatically via move_army_along_path)
 	var armies := GameManager.get_faction_armies(faction_id)
+	var army_count := 0
 	for army in armies:
+		army_count += 1
+		if army_count % 3 == 0:
+			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
 
@@ -901,13 +903,11 @@ func _execute_shardhorde_ai() -> void:
 			# Armies with beasts attack within 6 hexes, raiding armies go further
 			var max_range := 6 if has_beast else 10
 			if HexHelper.hex_distance(army.hex_pos, target_hex) <= max_range:
-				var path := _ai_find_path(army, target_hex, faction_id)
-				if path.size() > 0:
-					GameManager.move_army_along_path(army.army_id, path)
-					if not GameManager.state.armies.has(army.army_id):
-						continue
-					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-						return
+				_ai_move_army_safe(army, target_hex, faction_id)
+				if not GameManager.state.armies.has(army.army_id):
+					continue
+				if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+					return
 				continue
 
 		# Beast armies wander toward shard wastes
@@ -919,13 +919,11 @@ func _execute_shardhorde_ai() -> void:
 			if nearest_beast_pos != Vector2i(-1, -1):
 				var dist := HexHelper.hex_distance(army.hex_pos, nearest_beast_pos)
 				if dist > 5:
-					var path := _ai_find_path(army, nearest_beast_pos, faction_id)
-					if path.size() > 0:
-						GameManager.move_army_along_path(army.army_id, path)
-						if not GameManager.state.armies.has(army.army_id):
-							continue
-						if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
-							return
+					_ai_move_army_safe(army, nearest_beast_pos, faction_id)
+					if not GameManager.state.armies.has(army.army_id):
+						continue
+					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+						return
 
 	# Build on elderbeasts
 	_shardhorde_ai_build()
@@ -933,7 +931,7 @@ func _execute_shardhorde_ai() -> void:
 	# Recruit at elderbeasts
 	_shardhorde_recruit()
 
-	await get_tree().process_frame
+	await _ai_wait()
 	_end_current_faction_turn()
 
 func _move_beast_army_toward_wastes(army: ArmyState) -> void:
@@ -1103,9 +1101,8 @@ func _spawn_unit_at_hex(unit_data_id: StringName, faction_id: StringName, hex_po
 	instance.init_from_data(unit_data, GameManager.state.generate_id())
 	# Find existing army at hex
 	var existing: ArmyState = null
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.hex_pos == hex_pos and army.faction_id == faction_id:
+	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
+		if army.hex_pos == hex_pos:
 			existing = army
 			break
 	if existing:
@@ -1118,6 +1115,7 @@ func _spawn_unit_at_hex(unit_data_id: StringName, faction_id: StringName, hex_po
 		army.units.append(instance)
 		army.movement_remaining = army.get_max_movement()
 		GameManager.state.armies[army.army_id] = army
+		GameManager.invalidate_faction_army_cache()
 
 # ── Elderbeast Processing ────────────────────────────────────
 
@@ -1276,10 +1274,7 @@ func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:
 # ── Healing & Replenishment ──────────────────────────────────
 
 func _heal_armies_in_settlements(faction_id: StringName) -> void:
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id != faction_id:
-			continue
+	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 
 		var city_at := GameManager.city_system.get_city_at_hex(army.hex_pos)
 		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
@@ -1344,9 +1339,8 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 	var is_nature := fd and fd.realm_affinity == Enums.Realm.NATURE
 	var is_void := fd and fd.realm_affinity == Enums.Realm.VOID
 
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id != faction_id or army.is_garrison:
+	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
+		if army.is_garrison:
 			continue
 
 		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
@@ -1419,15 +1413,9 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 	# Remove dead units (HP <= 0 shouldn't happen since we floor at 1, but clean up 0-hp units)
 	_clean_dead_units(faction_id)
 
-func _clean_dead_units(faction_id: StringName) -> void:
-	var armies_to_remove: Array[StringName] = []
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id != faction_id:
-			continue
-		# Remove units at 1 HP that would realistically be dead from sustained attrition
-		# (units don't die from attrition alone — they just get weakened)
+func _clean_dead_units(_faction_id: StringName) -> void:
 	# No auto-removal: attrition weakens but doesn't kill. Units die in battle.
+	pass
 
 # ── Terrain Upkeep Modifier ─────────────────────────────────
 
@@ -1626,15 +1614,47 @@ const RANDOM_EVENTS := [
 func _check_random_events(faction_id: StringName) -> void:
 	if GameManager.state.current_turn <= 1:
 		return
-	# Cooldown: no events within 3 turns of each other
+	# Cooldown: no events within 2 turns of each other
 	if _event_cooldown > 0:
 		_event_cooldown -= 1
 		return
-	if randf() > 0.12:
-		return # 12% chance per turn
+
+	var turn := GameManager.state.current_turn
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+
+	# Check if player has any free follower slots across all commanders
+	var has_follower_slots := false
+	if fs:
+		for army_id in GameManager.state.armies:
+			var army: ArmyState = GameManager.state.armies[army_id]
+			if army.faction_id == faction_id and army.commander:
+				if army.commander.followers.size() < CommanderSystem.get_max_follower_slots(army.commander):
+					has_follower_slots = true
+					break
+		if not has_follower_slots and fs.follower_storage.size() > 0:
+			has_follower_slots = false # storage has items but no slots - skip follower events
+
+	# Check if player has no followers yet (for guaranteed first follower)
+	var has_no_followers := true
+	if fs:
+		if fs.follower_storage.size() > 0:
+			has_no_followers = false
+		else:
+			for army_id in GameManager.state.armies:
+				var army: ArmyState = GameManager.state.armies[army_id]
+				if army.faction_id == faction_id and army.commander and army.commander.followers.size() > 0:
+					has_no_followers = false
+					break
+
+	# Guaranteed first follower on turn 3-5 if player has none
+	var force_follower := false
+	if has_no_followers and turn >= 3 and turn <= 5 and faction_id == GameManager.state.player_faction_id:
+		force_follower = true
+
+	if not force_follower and randf() > 0.20:
+		return # 20% chance per turn (up from 12%)
 
 	# Weight events by game stage
-	var turn := GameManager.state.current_turn
 	var stage_preference: String
 	if turn <= 10:
 		stage_preference = "early"
@@ -1652,17 +1672,36 @@ func _check_random_events(faction_id: StringName) -> void:
 		# Skip events requiring a weak neighbor if none exists
 		if ev.get("requires_weak_neighbor", false) and weak_neighbor_id == &"":
 			continue
+		var ev_type: String = ev.get("type", "")
+		# Skip follower events if no slots available
+		if ev_type == "follower" and not has_follower_slots and (fs == null or fs.follower_storage.size() == 0):
+			continue
 		var ev_stage: String = ev.get("stage", "early")
 		if ev_stage == stage_preference:
 			weighted_pool.append(ev)
 			weighted_pool.append(ev) # Double weight for matching stage
 		else:
 			weighted_pool.append(ev)
+		# Give follower events 3x weight when player has free slots
+		if ev_type == "follower" and has_follower_slots:
+			weighted_pool.append(ev)
+			weighted_pool.append(ev) # +2 extra copies = 3x total base weight
 
 	if weighted_pool.is_empty():
 		return
 
-	var event: Dictionary = weighted_pool[randi() % weighted_pool.size()].duplicate()
+	# If forcing follower event, pick the follower event directly
+	var event: Dictionary
+	if force_follower:
+		for ev in RANDOM_EVENTS:
+			if ev.get("type", "") == "follower":
+				event = ev.duplicate()
+				break
+		if event.is_empty():
+			return
+	else:
+		event = weighted_pool[randi() % weighted_pool.size()].duplicate()
+
 	event["faction_id"] = faction_id
 	event["selected_army_id"] = GameManager.state.selected_army_id
 
@@ -1674,7 +1713,7 @@ func _check_random_events(faction_id: StringName) -> void:
 		event["text"] = "An emissary from %s arrives at your border, seeking to negotiate." % target_name
 		event["choice_b"] = "Demand tribute from %s (+30 Iron, -10 standing)" % target_name
 
-	_event_cooldown = 3
+	_event_cooldown = 2
 	EventBus.random_event_triggered.emit(event)
 
 func _find_weak_neighbor(faction_id: StringName) -> StringName:
@@ -1797,12 +1836,12 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 			var target_name: String = target_fd.display_name if target_fd else "a neighboring faction"
 			if choice == "a":
 				if target_fid != &"":
-					GameManager.diplomacy_system.modify_standing(faction_id, target_fid, 5)
+					GameManager.diplomacy_system.modify_standing(faction_id, target_fid, 5, "Diplomatic envoy")
 				return "Relations improved with %s. (+5 standing)" % target_name
 			else:
 				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 30
 				if target_fid != &"":
-					GameManager.diplomacy_system.modify_standing(faction_id, target_fid, -10)
+					GameManager.diplomacy_system.modify_standing(faction_id, target_fid, -10, "Demanded tribute")
 				return "Demanded tribute from %s. +30 Iron, -10 standing with %s." % [target_name, target_name]
 
 		"follower":
@@ -1828,6 +1867,14 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 							break
 				if target_cmd:
 					target_cmd.followers.append(follower_id)
+					# Clamp movement_remaining for all armies with this commander
+					for a_id in GameManager.state.armies:
+						var a: ArmyState = GameManager.state.armies[a_id]
+						if a.commander == target_cmd:
+							var new_max := a.get_max_movement()
+							a.movement_remaining = minf(a.movement_remaining, new_max)
+					# Invalidate movement cache so reachable tiles refresh
+					GameManager.movement_system._cache_valid = false
 					return "%s joined %s as a follower." % [follower.display_name, target_cmd.name]
 				else:
 					fs.follower_storage.append(follower_id)
@@ -1972,7 +2019,7 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 					if other_id == faction_id or GameManager.is_npc_faction(other_id):
 						continue
 					if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
-						GameManager.diplomacy_system.modify_standing(faction_id, other_id, 15)
+						GameManager.diplomacy_system.modify_standing(faction_id, other_id, 15, "Marriage alliance")
 						return "Marriage alliance formed. +15 standing with a neighbor."
 				return "No suitable faction for marriage."
 			else:
@@ -2005,19 +2052,19 @@ func _get_army_strength(army: ArmyState) -> int:
 func _find_nearest_enemy_army_hex(from: Vector2i, faction_id: StringName, min_strength: int = 0) -> Vector2i:
 	var best_hex := Vector2i(-1, -1)
 	var best_dist := 9999
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id:
+	# Only iterate armies of factions we're at war with
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id:
 			continue
-		if GameManager.get_relation(faction_id, army.faction_id) != Enums.FactionRelation.WAR:
+		if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
 			continue
-		# Skip targets that are too strong if we have a minimum strength filter
-		if min_strength > 0 and _get_army_strength(army) > min_strength * 2:
-			continue
-		var dist := HexHelper.hex_distance(from, army.hex_pos)
-		if dist < best_dist:
-			best_dist = dist
-			best_hex = army.hex_pos
+		for army: ArmyState in GameManager.get_faction_armies(other_id):
+			if min_strength > 0 and _get_army_strength(army) > min_strength * 2:
+				continue
+			var dist := HexHelper.hex_distance(from, army.hex_pos)
+			if dist < best_dist:
+				best_dist = dist
+				best_hex = army.hex_pos
 	return best_hex
 
 func _find_nearest_enemy_region_hex(from: Vector2i, faction_id: StringName) -> Vector2i:
@@ -2075,23 +2122,24 @@ func _find_nearest_intruder(faction_id: StringName, range_limit: int) -> Vector2
 		owned_centers.append(MapGenerator.get_region_center(region_id))
 	var best_hex := Vector2i(-1, -1)
 	var best_dist := 9999
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id:
+	# Only iterate armies of factions at war with us
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id:
 			continue
-		if GameManager.get_relation(faction_id, army.faction_id) != Enums.FactionRelation.WAR:
+		if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
 			continue
-		var tile := hex_map.get_tile(army.hex_pos)
-		if tile and tile.owner_faction == faction_id:
-			if best_dist > 0:
-				best_dist = 0
-				best_hex = army.hex_pos
-			continue
-		for center in owned_centers:
-			var d := HexHelper.hex_distance(army.hex_pos, center)
-			if d <= range_limit + 5 and d < best_dist:
-				best_dist = d
-				best_hex = army.hex_pos
+		for army: ArmyState in GameManager.get_faction_armies(other_id):
+			var tile := hex_map.get_tile(army.hex_pos)
+			if tile and tile.owner_faction == faction_id:
+				if best_dist > 0:
+					best_dist = 0
+					best_hex = army.hex_pos
+				continue
+			for center in owned_centers:
+				var d := HexHelper.hex_distance(army.hex_pos, center)
+				if d <= range_limit + 5 and d < best_dist:
+					best_dist = d
+					best_hex = army.hex_pos
 	if best_dist <= range_limit + 5:
 		return best_hex
 	return Vector2i(-1, -1)
@@ -2124,7 +2172,7 @@ func _ai_find_path(army: ArmyState, target: Vector2i, faction_id: StringName) ->
 	# Capped AI pathfinding: search within 3x movement range, truncate to 1 turn of movement
 	var max_cost := army.movement_remaining * 3.0
 	var path := GameManager.movement_system.find_path(
-		army.hex_pos, target, faction_id, max_cost, &"", army.can_cross_mountains())
+		army.hex_pos, target, faction_id, max_cost, &"", army.can_cross_mountains(), army)
 	if path.is_empty():
 		return path
 	# Truncate path to what the army can actually walk this turn
@@ -2132,11 +2180,25 @@ func _ai_find_path(army: ArmyState, target: Vector2i, faction_id: StringName) ->
 	var remaining := army.movement_remaining
 	for coord in path:
 		var cost := GameManager.state.hex_map.get_movement_cost(coord, faction_id)
+		var tile := GameManager.state.hex_map.get_tile(coord)
+		if tile:
+			cost *= army.get_terrain_stride_modifier(tile.terrain)
 		if remaining < cost:
 			break
 		remaining -= cost
 		truncated.append(coord)
 	return truncated
+
+## Convenience wrapper: find a path and move the army along it.
+## Returns true if the army actually moved (path was found and non-empty).
+func _ai_move_army_safe(army: ArmyState, target: Vector2i, faction_id: StringName) -> bool:
+	if army.hex_pos == target:
+		return false
+	var path := _ai_find_path(army, target, faction_id)
+	if path.is_empty():
+		return false
+	GameManager.move_army_along_path(army.army_id, path)
+	return true
 
 func _can_afford_faction(fs: FactionState, cost: Dictionary) -> bool:
 	for res_type in cost:
@@ -2257,7 +2319,7 @@ func _process_skulloath_corruption(fs: FactionState) -> void:
 				continue
 			var fd: FactionData = DataManager.get_faction(other_id)
 			if fd and fd.realm_affinity != Enums.Realm.VOID:
-				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, penalty)
+				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, penalty, "High corruption")
 
 	# Traditional path: diplomacy bonus with non-war factions
 	if fs.corruption <= 30:
@@ -2268,7 +2330,7 @@ func _process_skulloath_corruption(fs: FactionState) -> void:
 			if other_fs.is_defeated:
 				continue
 			if GameManager.get_relation(&"skulloath", other_id) != Enums.FactionRelation.WAR:
-				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, 1)
+				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, 1, "Traditional path")
 
 # ── Tainted Jade: Anti-Magic / Taint Power ─────────────────
 # Taint power from shard destruction + captive sacrifice + jungle building chains
@@ -2324,7 +2386,7 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 				continue
 			# Small standing bonus with non-shard factions
 			if other_fs.owned_shards.size() <= 2:
-				GameManager.diplomacy_system.modify_standing(&"tainted_jade", other_id, 1)
+				GameManager.diplomacy_system.modify_standing(&"tainted_jade", other_id, 1, "Anti-shard stance")
 
 	# Very high taint: population growth penalty (the land itself is scarred)
 	if fs.taint_power >= 70:
@@ -2432,7 +2494,7 @@ func _process_gladehost_seasons(fs: FactionState) -> void:
 			if other_fs.is_defeated:
 				continue
 			if GameManager.get_relation(&"gladehost", other_id) != Enums.FactionRelation.WAR:
-				GameManager.diplomacy_system.modify_standing(&"gladehost", other_id, diplo_bonus)
+				GameManager.diplomacy_system.modify_standing(&"gladehost", other_id, diplo_bonus, "High harmony")
 
 	# Seasonal shrine: +2 harmony per shrine, boosts seasonal income effects
 	if has_seasonal_shrine:
@@ -2531,13 +2593,11 @@ func _process_moonspear_lunar(fs: FactionState) -> void:
 
 	# Waning moon (phase 3): heal all armies slightly
 	if fs.lunar_phase == 3:
-		for army_id in GameManager.state.armies:
-			var army: ArmyState = GameManager.state.armies[army_id]
-			if army.faction_id == &"moonspear" and not army.is_garrison:
-				for unit in army.units:
+		for army: ArmyState in GameManager.get_faction_armies(&"moonspear"):
+			for unit in army.units:
 					var ud := DataManager.get_unit(unit.unit_data_id)
 					if ud:
-						unit.current_hp = mini(unit.current_hp + 5, ud.hp * ud.squad_size)
+						unit.current_hp = mini(unit.current_hp + 5, ud.max_hp * ud.squad_size)
 
 	# Full moon (phase 2): loyalty bonus to capital
 	if fs.lunar_phase == 2:
@@ -2567,12 +2627,10 @@ func _process_thunderswarm_fury(fs: FactionState) -> void:
 		fs.storm_fury = maxi(fs.storm_fury - 5, 0)
 
 	# Thunderswarm armies in mountains/highlands gain +2 fury per turn (storms gather)
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == &"thunderswarm" and not army.is_garrison:
-			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
-			if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
-				fs.storm_fury = mini(fs.storm_fury + 2, 100)
+	for army: ArmyState in GameManager.get_faction_armies(&"thunderswarm"):
+		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
+			fs.storm_fury = mini(fs.storm_fury + 2, 100)
 
 	# High fury: slight diplomacy penalty (seen as aggressive)
 	if fs.storm_fury >= 80:
@@ -2582,7 +2640,7 @@ func _process_thunderswarm_fury(fs: FactionState) -> void:
 			var other_fs: FactionState = GameManager.state.faction_states[other_id]
 			if other_fs.is_defeated:
 				continue
-			GameManager.diplomacy_system.modify_standing(&"thunderswarm", other_id, -1)
+			GameManager.diplomacy_system.modify_standing(&"thunderswarm", other_id, -1, "Excessive storm fury")
 
 # ── Cinderguard: Forge Heat ──────────────────────────────
 # High heat (70+): cheaper iron costs for buildings/units, faster recruitment
@@ -2709,15 +2767,13 @@ func _process_sunblessed_faith(fs: FactionState) -> void:
 	# High faith: heal armies in owned territory
 	if fs.solar_faith >= 70:
 		var heal_amount := 3 if fs.solar_faith >= 85 else 2
-		for army_id in GameManager.state.armies:
-			var army: ArmyState = GameManager.state.armies[army_id]
-			if army.faction_id == &"sunblessed" and not army.is_garrison:
-				var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
-				if tile and tile.region_id in fs.owned_regions:
+		for army: ArmyState in GameManager.get_faction_armies(&"sunblessed"):
+			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+			if tile and tile.region_id in fs.owned_regions:
 						for unit in army.units:
 							var ud := DataManager.get_unit(unit.unit_data_id)
 							if ud:
-								unit.current_hp = mini(unit.current_hp + heal_amount, ud.hp * ud.squad_size)
+								unit.current_hp = mini(unit.current_hp + heal_amount, ud.max_hp * ud.squad_size)
 
 	# High faith: loyalty bonus
 	if fs.solar_faith >= 70:

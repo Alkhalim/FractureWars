@@ -7,9 +7,14 @@ var load_button: Button
 var options_button: Button
 
 # Faction selection
-var _faction_select_panel: PanelContainer
+var _faction_select_panel: Control
 
 func _ready() -> void:
+	# Load background image
+	var bg_tex := load("res://assets/sprites/ui/MainMenuBackground.png") as Texture2D
+	if bg_tex:
+		$Background.texture = bg_tex
+
 	new_game_button.pressed.connect(_on_new_game)
 	quit_button.pressed.connect(_on_quit)
 
@@ -79,6 +84,226 @@ var _faction_color_rect: ColorRect
 var _faction_start_btn: Button
 var _faction_buttons: Dictionary = {} # faction_id -> Button
 var _faction_emblem: _FactionEmblem
+var _leader_name_label: Label
+var _leader_bonus_label: Label
+var _selected_leader_indices: Dictionary = {} # faction_id -> int
+
+const FACTION_LEADERS := {
+	&"empire": [
+		{"name": "Emperor Aurelian III", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "Legionaries cost -20% Gold", &"key": "unit_discount_legionary", &"value": 20},
+			{&"label": "+10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": 10},
+			{&"label": "Starts with Market Square", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
+		], "starting_building": "market_square", "army_override": [&"legionary", &"legionary", &"legionary", &"emberlight_auxilia", &"centurion_guard"]},
+		{"name": "Senator Livia", "portrait": "merchant_leader", "bonuses": [
+			{&"label": "+20% Gold Income", &"key": "income_gold", &"value": 20},
+			{&"label": "All upkeep costs -15%", &"key": "upkeep_reduction", &"value": 15},
+			{&"label": "+15 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": 15},
+			{&"label": "-10% Army Attack", &"key": "army_attack", &"value": -10},
+		], "army_override": [&"levy_conscripts", &"levy_conscripts", &"legionary", &"border_mercenaries", &"border_mercenaries"]},
+		{"name": "General Crassus", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "Elite Legionaries cost -25% Gold", &"key": "unit_discount_elite_legionaries", &"value": 25},
+			{&"label": "+8% Army Attack", &"key": "army_attack", &"value": 8},
+			{&"label": "Starts with Shieldwall Grounds", &"key": "starting_building", &"value": 0},
+			{&"label": "-15% Gold Income", &"key": "income_gold", &"value": -15},
+		], "starting_building": "shieldwall_grounds", "army_override": [&"legionary", &"legionary", &"elite_legionaries", &"emberlight_auxilia", &"border_mercenaries"]},
+	],
+	&"skulloath": [
+		{"name": "Khan Borlag the Pale", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "Steppe Riders cost -20% Gold", &"key": "unit_discount_steppe_rider", &"value": 20},
+			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
+			{&"label": "Starts with Beast Pens", &"key": "starting_building", &"value": 0},
+			{&"label": "-15% Food Income", &"key": "income_food", &"value": -15},
+		], "starting_building": "beast_pens", "army_override": [&"warband_raider", &"steppe_rider", &"steppe_rider", &"steppe_archers", &"bonecaller"]},
+		{"name": "Bone Witch Vashra", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
+			{&"label": "Ancestor Spirits cost -25% Gold", &"key": "unit_discount_ancestor_spirit", &"value": 25},
+			{&"label": "Corruption drifts -1 per turn", &"key": "corruption_drift", &"value": -1},
+			{&"label": "-8% Army Defense", &"key": "army_defense", &"value": -8},
+		], "army_override": [&"warband_raider", &"warband_raider", &"bonecaller", &"pale_touched", &"ancestor_spirit"]},
+		{"name": "Warlord Dregg", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+10% Army Defense", &"key": "army_defense", &"value": 10},
+			{&"label": "+15% Iron Income", &"key": "income_iron", &"value": 15},
+			{&"label": "Starts with War Forge", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
+		], "starting_building": "war_forge", "army_override": [&"warband_raider", &"warband_raider", &"warband_raider", &"steppe_archers", &"steppe_archers"]},
+	],
+	&"gladehost": [
+		{"name": "Archdruid Thalwen", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+10 Harmony at start", &"key": "harmony_bonus", &"value": 10},
+			{&"label": "Dryads cost -20% Gold", &"key": "unit_discount_dryad", &"value": 20},
+			{&"label": "Starts with Sacred Grove", &"key": "starting_building", &"value": 0},
+			{&"label": "-8% Army Attack", &"key": "army_attack", &"value": -8},
+		], "starting_building": "sacred_grove", "army_override": [&"grove_warden", &"grove_warden", &"thornbow_scout", &"dryad", &"hawk_scout"]},
+		{"name": "Warden Elowen", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "Stag Riders cost -20% Gold", &"key": "unit_discount_stag_rider", &"value": 20},
+			{&"label": "+8% Army Defense", &"key": "army_defense", &"value": 8},
+			{&"label": "+10% Food Income", &"key": "income_food", &"value": 10},
+			{&"label": "-10% Gold Income", &"key": "income_gold", &"value": -10},
+		], "army_override": [&"grove_warden", &"grove_warden", &"stag_rider", &"stag_rider", &"thornbow_scout"]},
+		{"name": "Grove Speaker Faelen", "portrait": "merchant_leader", "bonuses": [
+			{&"label": "+15% Gold Income", &"key": "income_gold", &"value": 15},
+			{&"label": "+15 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": 15},
+			{&"label": "All upkeep costs -10%", &"key": "upkeep_reduction", &"value": 10},
+			{&"label": "-10% Army HP", &"key": "army_hp", &"value": -10},
+		], "army_override": [&"grove_warden", &"grove_warden", &"thornbow_scout", &"hawk_scout", &"hawk_scout"]},
+	],
+	&"moonspear": [
+		{"name": "High Priestess Selara", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
+			{&"label": "Starweavers cost -25% Gold", &"key": "unit_discount_starweaver", &"value": 25},
+			{&"label": "Starts with Moon Shrine", &"key": "starting_building", &"value": 0},
+			{&"label": "-8% Army Defense", &"key": "army_defense", &"value": -8},
+		], "starting_building": "moon_shrine", "army_override": [&"moonspear_sentinel", &"moonspear_sentinel", &"lunar_archer", &"starweaver", &"moonhound"]},
+		{"name": "Moon Guardian Theron", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "Silverguard cost -20% Gold", &"key": "unit_discount_silverguard", &"value": 20},
+			{&"label": "+10% Army Defense", &"key": "army_defense", &"value": 10},
+			{&"label": "Starts with Sentinel Hall", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Gold Income", &"key": "income_gold", &"value": -10},
+		], "starting_building": "sentinel_hall", "army_override": [&"moonspear_sentinel", &"moonspear_sentinel", &"moonspear_sentinel", &"silverguard", &"lunar_archer"]},
+		{"name": "Starweaver Lunara", "portrait": "merchant_leader", "bonuses": [
+			{&"label": "+15% Gold Income", &"key": "income_gold", &"value": 15},
+			{&"label": "+10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": 10},
+			{&"label": "All upkeep costs -10%", &"key": "upkeep_reduction", &"value": 10},
+			{&"label": "-8% Army Attack", &"key": "army_attack", &"value": -8},
+		], "army_override": [&"moonspear_sentinel", &"moonspear_sentinel", &"lunar_archer", &"lunar_archer", &"frost_volunteer"]},
+	],
+	&"thunderswarm": [
+		{"name": "Warchief Groth", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+12% Army Attack", &"key": "army_attack", &"value": 12},
+			{&"label": "Warriors cost -15% Gold", &"key": "unit_discount_thunderswarm_warrior", &"value": 15},
+			{&"label": "+10 Storm Fury at start", &"key": "storm_fury_bonus", &"value": 10},
+			{&"label": "-15% Gold Income", &"key": "income_gold", &"value": -15},
+		], "army_override": [&"thunderswarm_warrior", &"thunderswarm_warrior", &"thunderswarm_warrior", &"thunderswarm_warrior", &"highland_skirmisher"]},
+		{"name": "Storm Shaman Kira", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
+			{&"label": "Storm Hounds cost -25% Gold", &"key": "unit_discount_storm_hound", &"value": 25},
+			{&"label": "Starts with Lightning Shrine", &"key": "starting_building", &"value": 0},
+			{&"label": "-8% Army Defense", &"key": "army_defense", &"value": -8},
+		], "starting_building": "lightning_shrine", "army_override": [&"thunderswarm_warrior", &"thunderswarm_warrior", &"storm_hound", &"storm_hound", &"storm_shaman"]},
+		{"name": "Thundercaller Borak", "portrait": "merchant_leader", "bonuses": [
+			{&"label": "+15% Iron Income", &"key": "income_iron", &"value": 15},
+			{&"label": "+10% Army Defense", &"key": "army_defense", &"value": 10},
+			{&"label": "Starts with Storm Forge", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
+		], "starting_building": "storm_forge", "army_override": [&"thunderswarm_warrior", &"thunderswarm_warrior", &"thunderswarm_warrior", &"highland_skirmisher", &"highland_skirmisher"]},
+	],
+	&"tainted_jade": [
+		{"name": "Serpent Queen Ixchala", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
+			{&"label": "Jade Fangs cost -20% Gold", &"key": "unit_discount_jade_fang", &"value": 20},
+			{&"label": "+5 Taint Power at start", &"key": "taint_power_bonus", &"value": 5},
+			{&"label": "-10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": -10},
+		], "army_override": [&"jade_fang", &"jade_fang", &"jade_fang", &"jungle_stalker", &"coatl_shaman"]},
+		{"name": "Venom Lord Sethis", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+12% Army HP", &"key": "army_hp", &"value": 12},
+			{&"label": "+8% Army Defense", &"key": "army_defense", &"value": 8},
+			{&"label": "Starts with Serpent Pit", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
+		], "starting_building": "serpent_pit", "army_override": [&"jade_fang", &"jade_fang", &"jungle_stalker", &"thrall_swarm", &"thrall_swarm"]},
+		{"name": "Jade Seer Mayana", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Gold Income", &"key": "income_gold", &"value": 15},
+			{&"label": "+10% Shard Essence Income", &"key": "income_shard", &"value": 10},
+			{&"label": "All upkeep costs -10%", &"key": "upkeep_reduction", &"value": 10},
+			{&"label": "-10% Army Attack", &"key": "army_attack", &"value": -10},
+		], "army_override": [&"jade_fang", &"jade_fang", &"coatl_shaman", &"coatl_shaman", &"thrall_swarm"]},
+	],
+	&"cinderguard": [
+		{"name": "Forgemaster Valdris", "portrait": "merchant_leader", "bonuses": [
+			{&"label": "+20% Iron Income", &"key": "income_iron", &"value": 20},
+			{&"label": "Forgeborn cost -15% Gold", &"key": "unit_discount_cinderguard_forgeborn", &"value": 15},
+			{&"label": "Starts with Ember Foundry", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
+		], "starting_building": "ember_foundry", "army_override": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow", &"ember_crossbow"]},
+		{"name": "Flame Templar Ignis", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+10% Army Defense", &"key": "army_defense", &"value": 10},
+			{&"label": "+8% Army HP", &"key": "army_hp", &"value": 8},
+			{&"label": "+10 Forge Heat at start", &"key": "forge_heat_bonus", &"value": 10},
+			{&"label": "-15% Gold Income", &"key": "income_gold", &"value": -15},
+		], "army_override": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow"]},
+		{"name": "Ember Priestess Pyra", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
+			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
+			{&"label": "Starts with Flame Sanctum", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Iron Income", &"key": "income_iron", &"value": -10},
+		], "starting_building": "flame_sanctum", "army_override": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow", &"ember_mage", &"cinder_militia"]},
+	],
+	&"forsaken": [
+		{"name": "The Hollow King", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+12% Army HP", &"key": "army_hp", &"value": 12},
+			{&"label": "Wretches cost -30% Gold", &"key": "unit_discount_forsaken_wretch", &"value": 30},
+			{&"label": "Starts with Plague Workshop", &"key": "starting_building", &"value": 0},
+			{&"label": "-10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": -10},
+		], "starting_building": "plague_workshop", "army_override": [&"forsaken_wretch", &"forsaken_wretch", &"forsaken_wretch", &"forsaken_wretch", &"plague_thrower"]},
+		{"name": "Plague Mother Neth", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Food Income", &"key": "income_food", &"value": 15},
+			{&"label": "Bat Swarms cost -25% Gold", &"key": "unit_discount_bat_swarm", &"value": 25},
+			{&"label": "+8% Army HP", &"key": "army_hp", &"value": 8},
+			{&"label": "-10% Army Attack", &"key": "army_attack", &"value": -10},
+		], "army_override": [&"forsaken_wretch", &"forsaken_wretch", &"bat_swarm", &"bat_swarm", &"bat_swarm"]},
+		{"name": "Void Prophet Malachar", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
+			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
+			{&"label": "Starts with Blighted Shrine", &"key": "starting_building", &"value": 0},
+			{&"label": "-15% Army Defense", &"key": "army_defense", &"value": -15},
+		], "starting_building": "blighted_shrine", "army_override": [&"forsaken_wretch", &"forsaken_wretch", &"plague_thrower", &"plague_thrower", &"bat_swarm"]},
+	],
+	&"ivoryscar": [
+		{"name": "Oracle Medusa", "portrait": "merchant_leader", "bonuses": [
+			{&"label": "+20% Gold Income", &"key": "income_gold", &"value": 20},
+			{&"label": "+10% Shard Essence Income", &"key": "income_shard", &"value": 10},
+			{&"label": "+10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": 10},
+			{&"label": "-10% Army Attack", &"key": "army_attack", &"value": -10},
+		], "army_override": [&"ivoryscar_seeker", &"ivoryscar_seeker", &"scarab_swarm", &"scarab_swarm", &"relic_skirmisher"]},
+		{"name": "Tomb King Ankaris", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+12% Army Defense", &"key": "army_defense", &"value": 12},
+			{&"label": "Tomb Guards cost -20% Gold", &"key": "unit_discount_tomb_guard", &"value": 20},
+			{&"label": "Starts with Bone Arsenal", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
+		], "starting_building": "bone_arsenal", "army_override": [&"ivoryscar_seeker", &"tomb_guard", &"tomb_guard", &"scarab_swarm", &"bone_archer"]},
+		{"name": "Relic Seeker Dara", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+20% Shard Essence Income", &"key": "income_shard", &"value": 20},
+			{&"label": "+8% Army Speed", &"key": "army_speed", &"value": 8},
+			{&"label": "Starts with Seekers Lodge", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Army Defense", &"key": "army_defense", &"value": -10},
+		], "starting_building": "seekers_lodge", "army_override": [&"ivoryscar_seeker", &"ivoryscar_seeker", &"ivoryscar_seeker", &"scarab_swarm", &"relic_skirmisher"]},
+	],
+	&"shardhorde": [
+		{"name": "The Crystalmind", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
+			{&"label": "+8% Army Attack", &"key": "army_attack", &"value": 8},
+			{&"label": "Elderbeast HP +10%", &"key": "elderbeast_hp", &"value": 10},
+			{&"label": "-10% Army Defense", &"key": "army_defense", &"value": -10},
+		]},
+		{"name": "Shard Matriarch", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+12% Army HP", &"key": "army_hp", &"value": 12},
+			{&"label": "+10% Army Defense", &"key": "army_defense", &"value": 10},
+			{&"label": "Elderbeast Regen +2/turn", &"key": "elderbeast_regen", &"value": 2},
+			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
+		]},
+	],
+	&"sunblessed": [
+		{"name": "Solar Archon Kael", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
+			{&"label": "+10 Solar Faith at start", &"key": "solar_faith_bonus", &"value": 10},
+			{&"label": "Starts with Sunfire Altar", &"key": "starting_building", &"value": 0},
+			{&"label": "-10% Food Income", &"key": "income_food", &"value": -10},
+		], "starting_building": "sunfire_altar", "army_override": [&"dawn_militia", &"dawn_militia", &"sun_archer", &"sun_archer", &"dawn_crusader"]},
+		{"name": "Dawn Priestess Amara", "portrait": "scholar_leader", "bonuses": [
+			{&"label": "+15% Food Income", &"key": "income_food", &"value": 15},
+			{&"label": "+15 Solar Faith at start", &"key": "solar_faith_bonus", &"value": 15},
+			{&"label": "+10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": 10},
+			{&"label": "-10% Army Attack", &"key": "army_attack", &"value": -10},
+		], "army_override": [&"dawn_militia", &"dawn_militia", &"dawn_militia", &"sun_archer", &"radiant_priest"]},
+		{"name": "Radiant Champion Sol", "portrait": "warrior_leader", "bonuses": [
+			{&"label": "+10% Army Defense", &"key": "army_defense", &"value": 10},
+			{&"label": "Dawn Crusaders cost -20% Gold", &"key": "unit_discount_dawn_crusader", &"value": 20},
+			{&"label": "Starts with Solar Chapter House", &"key": "starting_building", &"value": 0},
+			{&"label": "-15% Gold Income", &"key": "income_gold", &"value": -15},
+		], "starting_building": "solar_chapter_house", "army_override": [&"dawn_militia", &"dawn_militia", &"dawn_crusader", &"sun_archer", &"sun_archer"]},
+	],
+}
 
 const FACTION_DETAILS := {
 	&"empire": {
@@ -142,18 +367,40 @@ func _show_faction_select() -> void:
 	if _faction_select_panel:
 		_faction_select_panel.queue_free()
 
-	# Full-screen overlay
-	_faction_select_panel = PanelContainer.new()
-	var bg_style := StyleBoxFlat.new()
-	bg_style.bg_color = Color(0.08, 0.06, 0.12, 1.0)
-	_faction_select_panel.add_theme_stylebox_override("panel", bg_style)
+	# Full-screen container
+	_faction_select_panel = Control.new()
 	_faction_select_panel.anchor_left = 0
 	_faction_select_panel.anchor_top = 0
 	_faction_select_panel.anchor_right = 1
 	_faction_select_panel.anchor_bottom = 1
 	add_child(_faction_select_panel)
 
+	# Background image
+	var bg_img := TextureRect.new()
+	bg_img.texture = load("res://assets/sprites/ui/factionselectionbackground.png") as Texture2D
+	bg_img.anchor_left = 0
+	bg_img.anchor_top = 0
+	bg_img.anchor_right = 1
+	bg_img.anchor_bottom = 1
+	bg_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg_img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_faction_select_panel.add_child(bg_img)
+
+	# Dark overlay for readability
+	var overlay := ColorRect.new()
+	overlay.anchor_left = 0
+	overlay.anchor_top = 0
+	overlay.anchor_right = 1
+	overlay.anchor_bottom = 1
+	overlay.color = Color(0.05, 0.03, 0.08, 0.6)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_faction_select_panel.add_child(overlay)
+
 	var margin := MarginContainer.new()
+	margin.anchor_left = 0
+	margin.anchor_top = 0
+	margin.anchor_right = 1
+	margin.anchor_bottom = 1
 	margin.add_theme_constant_override("margin_left", 24)
 	margin.add_theme_constant_override("margin_right", 24)
 	margin.add_theme_constant_override("margin_top", 16)
@@ -256,20 +503,10 @@ func _show_faction_select() -> void:
 	right_vbox.add_theme_constant_override("separation", 10)
 	right_margin.add_child(right_vbox)
 
-	# Top row: faction name + emblem
-	var top_hbox := HBoxContainer.new()
-	top_hbox.add_theme_constant_override("separation", 16)
-	right_vbox.add_child(top_hbox)
-
-	# Left column of top row: name + color bar
-	var name_vbox := VBoxContainer.new()
-	name_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_vbox.add_theme_constant_override("separation", 8)
-	top_hbox.add_child(name_vbox)
-
+	# Header row: color bar + faction name
 	var header_hbox := HBoxContainer.new()
 	header_hbox.add_theme_constant_override("separation", 10)
-	name_vbox.add_child(header_hbox)
+	right_vbox.add_child(header_hbox)
 
 	_faction_color_rect = ColorRect.new()
 	_faction_color_rect.custom_minimum_size = Vector2(6, 36)
@@ -282,24 +519,11 @@ func _show_faction_select() -> void:
 	_faction_info_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.6))
 	header_hbox.add_child(_faction_info_label)
 
-	# Leader name under faction name
-	var leader_label := Label.new()
-	leader_label.name = "LeaderLabel"
-	leader_label.text = ""
-	leader_label.add_theme_font_size_override("font_size", 13)
-	leader_label.add_theme_color_override("font_color", Color(0.7, 0.68, 0.58))
-	name_vbox.add_child(leader_label)
+	var sep_top := HSeparator.new()
+	sep_top.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	right_vbox.add_child(sep_top)
 
-	# Right column of top row: emblem portrait
-	_faction_emblem = _FactionEmblem.new()
-	_faction_emblem.custom_minimum_size = Vector2(140, 170)
-	top_hbox.add_child(_faction_emblem)
-
-	var sep := HSeparator.new()
-	sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
-	right_vbox.add_child(sep)
-
-	# Description (scrollable for long text)
+	# ── Faction Overview (scrollable) ──
 	var desc_scroll := ScrollContainer.new()
 	desc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -307,7 +531,7 @@ func _show_faction_select() -> void:
 
 	var desc_vbox := VBoxContainer.new()
 	desc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	desc_vbox.add_theme_constant_override("separation", 12)
+	desc_vbox.add_theme_constant_override("separation", 10)
 	desc_scroll.add_child(desc_vbox)
 
 	_faction_desc_label = Label.new()
@@ -317,7 +541,6 @@ func _show_faction_select() -> void:
 	_faction_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_vbox.add_child(_faction_desc_label)
 
-	# Traits
 	_faction_traits_label = Label.new()
 	_faction_traits_label.text = ""
 	_faction_traits_label.add_theme_font_size_override("font_size", 13)
@@ -325,7 +548,6 @@ func _show_faction_select() -> void:
 	_faction_traits_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_vbox.add_child(_faction_traits_label)
 
-	# Starting region
 	_faction_region_label = Label.new()
 	_faction_region_label.text = ""
 	_faction_region_label.add_theme_font_size_override("font_size", 13)
@@ -333,10 +555,78 @@ func _show_faction_select() -> void:
 	_faction_region_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_vbox.add_child(_faction_region_label)
 
+	# ── Leader Selection Section (below faction overview) ──
+	var sep_leader := HSeparator.new()
+	sep_leader.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	right_vbox.add_child(sep_leader)
+
+	# Leader name + counter
+	_leader_name_label = Label.new()
+	_leader_name_label.name = "LeaderLabel"
+	_leader_name_label.text = ""
+	_leader_name_label.add_theme_font_size_override("font_size", 15)
+	_leader_name_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	right_vbox.add_child(_leader_name_label)
+
+	# Leader row: portrait (left) + bonuses (right)
+	var leader_section := HBoxContainer.new()
+	leader_section.add_theme_constant_override("separation", 14)
+	right_vbox.add_child(leader_section)
+
+	# Portrait column with arrows below
+	var portrait_section := VBoxContainer.new()
+	portrait_section.add_theme_constant_override("separation", 4)
+	portrait_section.alignment = BoxContainer.ALIGNMENT_CENTER
+	leader_section.add_child(portrait_section)
+
+	_faction_emblem = _FactionEmblem.new()
+	_faction_emblem.custom_minimum_size = Vector2(160, 200)
+	portrait_section.add_child(_faction_emblem)
+
+	var arrow_hbox := HBoxContainer.new()
+	arrow_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	arrow_hbox.add_theme_constant_override("separation", 12)
+	portrait_section.add_child(arrow_hbox)
+
+	var left_arrow := Button.new()
+	left_arrow.text = "< Prev"
+	left_arrow.custom_minimum_size = Vector2(65, 26)
+	left_arrow.add_theme_font_size_override("font_size", 12)
+	left_arrow.pressed.connect(_cycle_leader.bind(-1))
+	arrow_hbox.add_child(left_arrow)
+
+	var right_arrow := Button.new()
+	right_arrow.text = "Next >"
+	right_arrow.custom_minimum_size = Vector2(65, 26)
+	right_arrow.add_theme_font_size_override("font_size", 12)
+	right_arrow.pressed.connect(_cycle_leader.bind(1))
+	arrow_hbox.add_child(right_arrow)
+
+	# Bonus list column (right of portrait)
+	var bonus_vbox := VBoxContainer.new()
+	bonus_vbox.name = "LeaderBonusVBox"
+	bonus_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bonus_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bonus_vbox.add_theme_constant_override("separation", 3)
+	leader_section.add_child(bonus_vbox)
+
+	var bonus_header := Label.new()
+	bonus_header.text = "Leader Bonuses:"
+	bonus_header.add_theme_font_size_override("font_size", 13)
+	bonus_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	bonus_vbox.add_child(bonus_header)
+
+	# Placeholder label (replaced dynamically by _update_leader_display)
+	_leader_bonus_label = Label.new()
+	_leader_bonus_label.text = ""
+	_leader_bonus_label.add_theme_font_size_override("font_size", 12)
+	_leader_bonus_label.visible = false
+	bonus_vbox.add_child(_leader_bonus_label)
+
 	# Start button (disabled until faction selected)
 	_faction_start_btn = Button.new()
 	_faction_start_btn.text = "START GAME"
-	_faction_start_btn.custom_minimum_size = Vector2(0, 56)
+	_faction_start_btn.custom_minimum_size = Vector2(0, 50)
 	_faction_start_btn.add_theme_font_size_override("font_size", 20)
 	_faction_start_btn.disabled = true
 	_faction_start_btn.pressed.connect(_on_faction_confirmed)
@@ -374,16 +664,9 @@ func _on_faction_list_clicked(faction_id: StringName) -> void:
 	_faction_color_rect.color = faction_data.color
 	_faction_info_label.text = faction_data.display_name
 
-	# Update emblem
-	_faction_emblem.faction_id = faction_id
+	# Update emblem and leader display
 	_faction_emblem.faction_color = faction_data.color
-	_faction_emblem.queue_redraw()
-
-	# Update leader name
-	var leader_label: Label = _faction_select_panel.find_child("LeaderLabel", true, false)
-	if leader_label:
-		var leader_name: String = GameManager.FACTION_LEADER_NAMES.get(faction_id, "")
-		leader_label.text = leader_name if leader_name != "" else ""
+	_update_leader_display()
 
 	var details: Dictionary = FACTION_DETAILS.get(faction_id, {})
 	var desc_text := faction_data.description
@@ -412,6 +695,71 @@ func _on_faction_list_clicked(faction_id: StringName) -> void:
 	_faction_start_btn.disabled = false
 	_faction_start_btn.text = "START AS " + faction_data.display_name.to_upper()
 
+func _cycle_leader(delta: int) -> void:
+	if _selected_faction_id == &"":
+		return
+	var leaders: Array = FACTION_LEADERS.get(_selected_faction_id, [])
+	if leaders.is_empty():
+		return
+	AudioManager.play_sfx(&"ui_click")
+	var idx: int = _selected_leader_indices.get(_selected_faction_id, 0)
+	idx = (idx + delta) % leaders.size()
+	if idx < 0:
+		idx += leaders.size()
+	_selected_leader_indices[_selected_faction_id] = idx
+	_update_leader_display()
+
+func _update_leader_display() -> void:
+	if _selected_faction_id == &"":
+		return
+	var leaders: Array = FACTION_LEADERS.get(_selected_faction_id, [])
+	var idx: int = _selected_leader_indices.get(_selected_faction_id, 0)
+	if leaders.is_empty():
+		_faction_emblem.faction_id = _selected_faction_id
+		_faction_emblem.queue_redraw()
+		if _leader_name_label:
+			_leader_name_label.text = GameManager.FACTION_LEADER_NAMES.get(_selected_faction_id, "")
+		_clear_bonus_labels()
+		return
+	var leader: Dictionary = leaders[idx]
+	# Update portrait
+	_faction_emblem.faction_id = _selected_faction_id
+	_faction_emblem.portrait_key = leader.get("portrait", "")
+	_faction_emblem.queue_redraw()
+	# Update leader name
+	if _leader_name_label:
+		_leader_name_label.text = "Leader: %s  (%d/%d)" % [leader.get("name", ""), idx + 1, leaders.size()]
+	# Update bonus list with individually colored lines
+	_clear_bonus_labels()
+	var bonus_vbox: VBoxContainer = _faction_select_panel.find_child("LeaderBonusVBox", true, false) if _faction_select_panel else null
+	if bonus_vbox == null:
+		return
+	var bonuses: Array = leader.get("bonuses", [])
+	for bonus in bonuses:
+		var lbl := Label.new()
+		lbl.name = "BonusLine"
+		var label_text: String = bonus.get(&"label", "")
+		lbl.text = label_text
+		lbl.add_theme_font_size_override("font_size", 13)
+		var val: int = bonus.get(&"value", 0)
+		if val >= 0:
+			lbl.add_theme_color_override("font_color", Color(0.45, 0.85, 0.4))
+		else:
+			lbl.add_theme_color_override("font_color", Color(0.9, 0.35, 0.3))
+		bonus_vbox.add_child(lbl)
+
+func _clear_bonus_labels() -> void:
+	var bonus_vbox: VBoxContainer = _faction_select_panel.find_child("LeaderBonusVBox", true, false) if _faction_select_panel else null
+	if bonus_vbox == null:
+		return
+	var to_remove: Array[Node] = []
+	for child in bonus_vbox.get_children():
+		if String(child.name).begins_with("BonusLine"):
+			to_remove.append(child)
+	for child in to_remove:
+		bonus_vbox.remove_child(child)
+		child.free()
+
 func _on_faction_confirmed() -> void:
 	if _selected_faction_id == &"":
 		return
@@ -430,9 +778,80 @@ func _on_faction_confirmed() -> void:
 		if cb:
 			tutorial_on = cb.button_pressed
 		_faction_select_panel.queue_free()
+	# Get selected leader data before starting game
+	var leader_idx: int = _selected_leader_indices.get(_selected_faction_id, 0)
+	var leaders: Array = FACTION_LEADERS.get(_selected_faction_id, [])
+	var selected_leader: Dictionary = leaders[leader_idx] if leader_idx < leaders.size() else {}
+
+	# Pass army override to GameManager so _init_armies uses it
+	var army_override: Array = selected_leader.get("army_override", [])
+	if not army_override.is_empty():
+		GameManager._leader_army_override = army_override
+		GameManager._leader_army_override_faction = _selected_faction_id
+	else:
+		GameManager._leader_army_override = []
+		GameManager._leader_army_override_faction = &""
+
 	GameManager.new_game(_selected_faction_id)
 	if GameManager.state:
 		GameManager.state.tutorial_enabled = tutorial_on
+		# Apply selected leader bonuses and name
+		if not selected_leader.is_empty():
+			var player_fs: FactionState = GameManager.state.faction_states.get(_selected_faction_id)
+			if player_fs:
+				# Convert bonus array to flat dict: {key: value, ...}
+				var flat_bonuses: Dictionary = {}
+				var bonus_arr: Array = selected_leader.get("bonuses", [])
+				for b in bonus_arr:
+					var k: String = b.get(&"key", "")
+					if k != "":
+						flat_bonuses[k] = flat_bonuses.get(k, 0) + b.get(&"value", 0)
+				player_fs.leader_bonuses = flat_bonuses
+
+				# ── Starting building: place in city with most free slots ──
+				var start_bld: String = selected_leader.get("starting_building", "")
+				if start_bld != "":
+					var best_city: CityState = null
+					var best_free_slots: int = -1
+					for city_id in GameManager.state.cities:
+						var city: CityState = GameManager.state.cities[city_id]
+						if city.faction_id == _selected_faction_id:
+							var free: int = city.get_available_building_slots()
+							if free > best_free_slots:
+								best_free_slots = free
+								best_city = city
+					if best_city and best_free_slots > 0:
+						if not best_city.buildings.has(StringName(start_bld)):
+							best_city.buildings.append(StringName(start_bld))
+
+				# ── Diplomacy standing bonus ──
+				var diplo_bonus: int = flat_bonuses.get("diplomacy_standing", 0)
+				if diplo_bonus != 0:
+					for other_fid in GameManager.state.faction_states:
+						if other_fid != _selected_faction_id and not GameManager.is_npc_faction(other_fid):
+							GameManager.diplomacy_system.modify_standing(_selected_faction_id, other_fid, diplo_bonus, "Leader bonus")
+
+				# ── Faction-specific mechanic bonuses ──
+				if flat_bonuses.has("harmony_bonus"):
+					player_fs.harmony = clampi(player_fs.harmony + int(flat_bonuses["harmony_bonus"]), 0, 100)
+				if flat_bonuses.has("storm_fury_bonus"):
+					player_fs.storm_fury = clampi(player_fs.storm_fury + int(flat_bonuses["storm_fury_bonus"]), 0, 100)
+				if flat_bonuses.has("forge_heat_bonus"):
+					player_fs.forge_heat = clampi(player_fs.forge_heat + int(flat_bonuses["forge_heat_bonus"]), 0, 100)
+				if flat_bonuses.has("solar_faith_bonus"):
+					player_fs.solar_faith = clampi(player_fs.solar_faith + int(flat_bonuses["solar_faith_bonus"]), 0, 100)
+				if flat_bonuses.has("taint_power_bonus"):
+					player_fs.taint_power = clampi(player_fs.taint_power + int(flat_bonuses["taint_power_bonus"]), 0, 100)
+				if flat_bonuses.has("corruption_drift"):
+					# corruption_drift is per-turn, store it; initial corruption stays at default
+					pass # Already stored in leader_bonuses, applied during turn processing
+
+			# Override leader name with the selected one
+			GameManager.FACTION_LEADER_NAMES[_selected_faction_id] = selected_leader.get("name", "")
+
+	# Clean up temporary override state
+	GameManager._leader_army_override = []
+	GameManager._leader_army_override_faction = &""
 
 # ── Load Menu ───────────────────────────────────────────────
 
@@ -457,17 +876,39 @@ func _show_load_menu() -> void:
 
 	var slot_names := ["Auto-Save", "Save Slot 1", "Save Slot 2", "Save Slot 3"]
 	for i in range(0, 4):
+		var slot_box := VBoxContainer.new()
+		slot_box.add_theme_constant_override("separation", 2)
+
 		var btn := Button.new()
-		btn.text = slot_names[i]
-		btn.disabled = not GameManager.has_save(i)
-		btn.custom_minimum_size = Vector2(0, 96)
-		btn.add_theme_font_size_override("font_size", 18)
+		var has_save := GameManager.has_save(i)
+		btn.disabled = not has_save
+		btn.custom_minimum_size = Vector2(0, 48)
+		btn.add_theme_font_size_override("font_size", 16)
 		var slot := i
+
+		# Show metadata if available
+		var meta := GameManager.get_save_metadata(i)
+		if has_save and not meta.is_empty():
+			btn.text = "%s  —  %s  |  Turn %d  |  %s" % [slot_names[i], meta.get("faction_name", ""), meta.get("turn", 0), meta.get("date", "")]
+		else:
+			btn.text = slot_names[i]
+
 		btn.pressed.connect(func():
 			panel.queue_free()
 			GameManager.load_game(slot)
 		)
-		vbox.add_child(btn)
+		slot_box.add_child(btn)
+
+		# Metadata subtitle
+		if has_save and not meta.is_empty():
+			var meta_lbl := Label.new()
+			meta_lbl.text = "Saved: %s" % meta.get("timestamp", "Unknown")
+			meta_lbl.add_theme_font_size_override("font_size", 10)
+			meta_lbl.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45))
+			meta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			slot_box.add_child(meta_lbl)
+
+		vbox.add_child(slot_box)
 
 	var cancel := Button.new()
 	cancel.text = "Cancel"
@@ -481,13 +922,7 @@ func _show_load_menu() -> void:
 class _FactionEmblem extends Control:
 	var faction_color: Color = Color(0.3, 0.3, 0.3)
 	var faction_id: StringName = &""
-
-	const FACTION_EMBLEMS := {
-		&"empire": "shield", &"gladehost": "tree", &"moonspear": "crescent",
-		&"thunderswarm": "bolt", &"tainted_jade": "serpent", &"skulloath": "skull",
-		&"cinderguard": "flame", &"forsaken": "eye", &"ivoryscar": "diamond",
-		&"shardhorde": "crystal", &"sunblessed": "sun",
-	}
+	var portrait_key: String = ""
 
 	func _draw() -> void:
 		var rect := Rect2(Vector2.ZERO, size)
@@ -495,97 +930,33 @@ class _FactionEmblem extends Control:
 		draw_rect(rect, faction_color.darkened(0.75))
 		# Border
 		draw_rect(rect, faction_color.darkened(0.2), false, 2.0)
-		# Inner panel
-		var inner := Rect2(rect.position + Vector2(4, 4), rect.size - Vector2(8, 8))
-		draw_rect(inner, faction_color.darkened(0.65))
 
 		if faction_id == &"":
-			# Placeholder when no faction selected
 			var font := ThemeDB.fallback_font
 			draw_string(font, Vector2(size.x * 0.5 - 10, size.y * 0.5 + 4), "?", HORIZONTAL_ALIGNMENT_CENTER, 20, 24, Color(0.4, 0.38, 0.35))
 			return
 
-		var cx := size.x * 0.5
-		var cy := size.y * 0.4
-		# Scale factor relative to the original 100x130 portrait
-		var s := minf(size.x / 100.0, size.y / 130.0)
-		var emblem: String = FACTION_EMBLEMS.get(faction_id, "shield")
-		var col := faction_color.lightened(0.2)
+		# Leader portrait image - use portrait_key if set, otherwise fall back to faction default
+		var portrait: Texture2D = null
+		if portrait_key != "":
+			var path := "res://assets/sprites/leaders/%s.png" % portrait_key
+			if ResourceLoader.exists(path):
+				portrait = load(path) as Texture2D
+		if portrait == null:
+			portrait = DataManager.get_leader_portrait(faction_id)
+		if portrait:
+			var inner := Rect2(Vector2(3, 3), size - Vector2(6, 6))
+			draw_texture_rect(portrait, inner, false, Color(1, 1, 1, 1))
+			# Faction color tint overlay at bottom for name
+			draw_rect(Rect2(3, size.y - 26, size.x - 6, 23), Color(faction_color.r * 0.3, faction_color.g * 0.3, faction_color.b * 0.3, 0.75))
+		else:
+			var inner := Rect2(rect.position + Vector2(4, 4), rect.size - Vector2(8, 8))
+			draw_rect(inner, faction_color.darkened(0.65))
 
-		match emblem:
-			"shield":
-				var pts: PackedVector2Array = [
-					Vector2(cx, cy - 42 * s), Vector2(cx + 30 * s, cy - 25 * s),
-					Vector2(cx + 30 * s, cy + 12 * s), Vector2(cx, cy + 40 * s),
-					Vector2(cx - 30 * s, cy + 12 * s), Vector2(cx - 30 * s, cy - 25 * s),
-				]
-				draw_colored_polygon(pts, col)
-				draw_polyline(pts, Color.WHITE * Color(1, 1, 1, 0.6), 2.0, true)
-			"tree":
-				draw_rect(Rect2(cx - 5 * s, cy + 8 * s, 10 * s, 35 * s), col.darkened(0.3))
-				var pts: PackedVector2Array = [
-					Vector2(cx, cy - 42 * s), Vector2(cx + 28 * s, cy + 8 * s), Vector2(cx - 28 * s, cy + 8 * s),
-				]
-				draw_colored_polygon(pts, col)
-			"crescent":
-				draw_arc(Vector2(cx, cy), 30 * s, deg_to_rad(30), deg_to_rad(330), 32, col, 5.0 * s)
-				draw_circle(Vector2(cx + 10 * s, cy - 10 * s), 7 * s, col)
-			"bolt":
-				var pts: PackedVector2Array = [
-					Vector2(cx + 7 * s, cy - 42 * s), Vector2(cx - 11 * s, cy - 3 * s),
-					Vector2(cx + 3 * s, cy - 3 * s), Vector2(cx - 7 * s, cy + 42 * s),
-					Vector2(cx + 11 * s, cy + 3 * s), Vector2(cx - 3 * s, cy + 3 * s),
-				]
-				draw_colored_polygon(pts, col)
-			"serpent":
-				draw_arc(Vector2(cx, cy - 7 * s), 25 * s, deg_to_rad(0), deg_to_rad(300), 28, col, 5.0 * s)
-				draw_circle(Vector2(cx + 22 * s, cy - 14 * s), 6 * s, col.lightened(0.2))
-			"skull":
-				draw_arc(Vector2(cx, cy - 7 * s), 28 * s, deg_to_rad(180), deg_to_rad(540), 28, col, 4.0 * s)
-				draw_rect(Rect2(cx - 21 * s, cy - 7 * s, 42 * s, 25 * s), col)
-				draw_circle(Vector2(cx - 10 * s, cy - 7 * s), 7 * s, Color(0.1, 0.09, 0.12))
-				draw_circle(Vector2(cx + 10 * s, cy - 7 * s), 7 * s, Color(0.1, 0.09, 0.12))
-			"flame":
-				var pts: PackedVector2Array = [
-					Vector2(cx, cy - 40 * s), Vector2(cx + 19 * s, cy + 7 * s),
-					Vector2(cx + 8 * s, cy - 7 * s), Vector2(cx + 25 * s, cy + 20 * s),
-					Vector2(cx, cy + 35 * s), Vector2(cx - 25 * s, cy + 20 * s),
-					Vector2(cx - 8 * s, cy - 7 * s), Vector2(cx - 19 * s, cy + 7 * s),
-				]
-				draw_colored_polygon(pts, col)
-			"eye":
-				var pts: PackedVector2Array = [
-					Vector2(cx - 35 * s, cy), Vector2(cx, cy - 20 * s), Vector2(cx + 35 * s, cy),
-					Vector2(cx, cy + 20 * s),
-				]
-				draw_colored_polygon(pts, col)
-				draw_circle(Vector2(cx, cy), 11 * s, Color(0.15, 0.1, 0.2))
-				draw_circle(Vector2(cx, cy), 6 * s, col.lightened(0.3))
-			"diamond":
-				var pts: PackedVector2Array = [
-					Vector2(cx, cy - 35 * s), Vector2(cx + 25 * s, cy),
-					Vector2(cx, cy + 35 * s), Vector2(cx - 25 * s, cy),
-				]
-				draw_colored_polygon(pts, col)
-				draw_polyline(pts, Color.WHITE * Color(1, 1, 1, 0.6), 2.0, true)
-			"crystal":
-				for i in 5:
-					var angle := deg_to_rad(i * 72.0 - 90.0)
-					var tip := Vector2(cx + cos(angle) * 30 * s, cy + sin(angle) * 30 * s)
-					var left := Vector2(cx + cos(angle + 0.4) * 11 * s, cy + sin(angle + 0.4) * 11 * s)
-					var right := Vector2(cx + cos(angle - 0.4) * 11 * s, cy + sin(angle - 0.4) * 11 * s)
-					draw_colored_polygon([tip, left, right], col)
-			"sun":
-				draw_circle(Vector2(cx, cy), 19 * s, col)
-				for i in 12:
-					var angle := deg_to_rad(i * 30.0)
-					var start := Vector2(cx + cos(angle) * 22 * s, cy + sin(angle) * 22 * s)
-					var end_pt := Vector2(cx + cos(angle) * 36 * s, cy + sin(angle) * 36 * s)
-					draw_line(start, end_pt, col, 3.0 * s)
-
-		# Faction name below emblem
+		# Faction name at bottom
 		var font := ThemeDB.fallback_font
+		var s := minf(size.x / 100.0, size.y / 130.0)
 		var font_size := int(11 * s)
 		var faction_data: FactionData = DataManager.get_faction(faction_id)
 		if faction_data:
-			draw_string(font, Vector2(4, size.y - 8 * s), faction_data.display_name, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, font_size, faction_color.lightened(0.4))
+			draw_string(font, Vector2(4, size.y - 8 * s), faction_data.display_name, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, font_size, Color(0.95, 0.9, 0.8))

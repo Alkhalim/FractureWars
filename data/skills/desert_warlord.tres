@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"desert_warlord"
 display_name = "Desert Warlord"
-description = "Forged in sand and sun."
+description = "+4 attack and +3 speed in deserts."
 category = &"combat"
 is_minor = false
-effects = {"army_attack_bonus": 3, "army_speed_bonus": 2}
+effects = {"terrain_desert_attack_bonus": 4, "terrain_desert_speed_bonus": 3}
 context_tags = Array[StringName]([&"terrain_desert"])

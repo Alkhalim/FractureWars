@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"forest_ambush"
 display_name = "Forest Ambush"
-description = "Expert at woodland ambush tactics."
+description = "+2 attack for all units when fighting in forests."
 category = &"combat"
 is_minor = true
-effects = {"army_attack_bonus": 1}
+effects = {"terrain_forest_attack_bonus": 2}
 context_tags = Array[StringName]([&"terrain_forest", &"terrain_jungle"])

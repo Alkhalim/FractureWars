@@ -27,6 +27,31 @@ var _magic_projs: Array[Dictionary] = []
 var _impact_marks: Node2D
 const MAX_IMPACT_MARKS := 200
 
+# --- Dust Particles ---
+const DUST_COLORS := {
+	Enums.BattleTerrain.OPEN:    Color(0.45, 0.40, 0.30, 0.5),
+	Enums.BattleTerrain.FOREST:  Color(0.30, 0.35, 0.20, 0.4),
+	Enums.BattleTerrain.ROCK:    Color(0.50, 0.48, 0.45, 0.5),
+	Enums.BattleTerrain.WATER:   Color(0.35, 0.45, 0.55, 0.4),
+	Enums.BattleTerrain.SAND:    Color(0.65, 0.55, 0.35, 0.5),
+	Enums.BattleTerrain.MUD:     Color(0.40, 0.30, 0.18, 0.5),
+	Enums.BattleTerrain.ICE:     Color(0.60, 0.70, 0.80, 0.4),
+	Enums.BattleTerrain.CRYSTAL: Color(0.55, 0.40, 0.60, 0.4),
+	Enums.BattleTerrain.BRUSH:   Color(0.38, 0.42, 0.28, 0.4),
+}
+var _dust_throttle: Dictionary = {} # formation instance_id -> tick counter
+
+# --- Object Pools ---
+var _label_pool: Array[Label] = []
+var _particle_pool: Array[Polygon2D] = []
+var _proj_pool: Array[ColorRect] = []
+
+# --- Portrait Cache ---
+var _portrait_cache: Dictionary = {} # unit_id -> Texture2D
+
+# --- Formation Lookup ---
+var _formation_lookup: Dictionary = {} # instance_id -> BattleFormationV3
+
 # Simulation state
 var sim_speed: float = 0.1
 var sim_timer: float = 0.0
@@ -38,9 +63,21 @@ var is_paused: bool = false
 var _dragging_formation: BattleSimulatorV3.BattleFormationV3 = null
 var _drag_offset: Vector2 = Vector2.ZERO
 
+# Battle camera pan/zoom
+var _battle_panning := false
+var _battle_pan_start := Vector2.ZERO
+const BATTLE_MIN_ZOOM := 0.6
+const BATTLE_MAX_ZOOM := 2.5
+
 # Screen shake
 var _shake_intensity: float = 0.0
 var _shake_decay: float = 8.0
+
+# Hover highlight state
+var hovered_formation: BattleSimulatorV3.BattleFormationV3 = null
+var _roster_rows: Dictionary = {} # formation instance_id -> row Control
+var _roster_hp_refs: Dictionary = {} # formation instance_id -> {bar_fill, bar_bg, hp_lbl}
+var _roster_structure_key: String = "" # Fingerprint to detect when full rebuild is needed
 
 # UI nodes
 var renderer: Node2D
@@ -112,6 +149,9 @@ func _ready() -> void:
 
 	# Apply building bonuses to elderbeast formations (stats, ranged, aura, spawning)
 	_apply_elderbeast_building_bonuses()
+
+	# Build formation lookup dictionary for O(1) access by instance_id
+	_build_formation_lookup()
 
 	# AI assigns orders for enemy side
 	simulator.assign_ai_orders(1)
@@ -328,8 +368,10 @@ func _build_ui() -> void:
 
 	var player_title := Label.new()
 	player_title.text = "YOUR FORCES"
-	player_title.add_theme_font_size_override("font_size", 12)
+	player_title.add_theme_font_size_override("font_size", 14)
 	player_title.add_theme_color_override("font_color", Color(0.25, 0.75, 0.4))
+	player_title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	player_title.add_theme_constant_override("outline_size", 2)
 	player_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	roster_vbox.add_child(player_title)
 
@@ -343,8 +385,10 @@ func _build_ui() -> void:
 
 	var enemy_title := Label.new()
 	enemy_title.text = "ENEMY FORCES"
-	enemy_title.add_theme_font_size_override("font_size", 12)
+	enemy_title.add_theme_font_size_override("font_size", 14)
 	enemy_title.add_theme_color_override("font_color", Color(0.85, 0.3, 0.25))
+	enemy_title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	enemy_title.add_theme_constant_override("outline_size", 2)
 	enemy_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	roster_vbox.add_child(enemy_title)
 
@@ -468,75 +512,196 @@ func _populate_unit_list() -> void:
 func _update_roster() -> void:
 	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
 	var enemy_formations := simulator.defender_formations if player_side == 0 else simulator.attacker_formations
-	_rebuild_roster_side(player_roster_container, player_formations, true)
-	_rebuild_roster_side(enemy_roster_container, enemy_formations, false)
+	# Build a fingerprint to detect structural changes (deaths, routs)
+	var key := ""
+	for f in player_formations:
+		key += str(f.instance_id) + ("d" if f.is_dead or f.is_fled else "a") + ","
+	key += "|"
+	for f in enemy_formations:
+		key += str(f.instance_id) + ("d" if f.is_dead or f.is_fled else "a") + ","
+	if key != _roster_structure_key:
+		# Structure changed - full rebuild
+		_roster_structure_key = key
+		_roster_rows.clear()
+		_roster_hp_refs.clear()
+		_rebuild_roster_side(player_roster_container, player_formations, true)
+		_rebuild_roster_side(enemy_roster_container, enemy_formations, false)
+	else:
+		# Structure same - just update HP bars in place
+		_update_roster_bars(player_formations, true)
+		_update_roster_bars(enemy_formations, false)
 
-func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimulatorV3.BattleFormationV3], is_player: bool) -> void:
-	for child in container.get_children():
-		child.queue_free()
+func _update_roster_bars(formations: Array[BattleSimulatorV3.BattleFormationV3], is_player: bool) -> void:
 	for f in formations:
-		var row := VBoxContainer.new()
-		row.add_theme_constant_override("separation", 0)
-
-		var is_dead := f.is_dead or f.is_fled
-
-		# Name + HP text
-		var name_hbox := HBoxContainer.new()
-		name_hbox.add_theme_constant_override("separation", 4)
-		var name_lbl := Label.new()
-		name_lbl.text = f.display_name
-		name_lbl.add_theme_font_size_override("font_size", 11)
-		if is_dead:
-			name_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35))
-		elif is_player:
-			name_lbl.add_theme_color_override("font_color", Color(0.8, 0.85, 0.75))
-		else:
-			name_lbl.add_theme_color_override("font_color", Color(0.85, 0.75, 0.7))
-		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_hbox.add_child(name_lbl)
-
-		# HP numbers + entity count
-		var hp_text := "%d/%d HP  %d/%d" % [maxi(0, f.current_hp), f.max_hp, f.entities_alive, f.total_entities]
-		var hp_lbl := Label.new()
-		hp_lbl.text = hp_text
-		hp_lbl.add_theme_font_size_override("font_size", 9)
-		hp_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35) if is_dead else Color(0.65, 0.6, 0.55))
-		name_hbox.add_child(hp_lbl)
-		row.add_child(name_hbox)
-
-		# HP bar
-		var bar_bg := ColorRect.new()
-		bar_bg.custom_minimum_size = Vector2(280, 6)
-		bar_bg.color = Color(0.2, 0.18, 0.15, 0.8) if not is_dead else Color(0.15, 0.13, 0.12, 0.5)
-		row.add_child(bar_bg)
-
-		if not is_dead and f.max_hp > 0:
+		if not _roster_hp_refs.has(f.instance_id):
+			continue
+		var refs: Dictionary = _roster_hp_refs[f.instance_id]
+		var hp_lbl: Label = refs.get("hp_lbl")
+		var bar_fill: ColorRect = refs.get("bar_fill")
+		var bar_bg: ColorRect = refs.get("bar_bg")
+		if hp_lbl:
+			hp_lbl.text = "%d/%d  %d/%d ent" % [maxi(0, f.current_hp), f.max_hp, f.entities_alive, f.total_entities]
+		if bar_fill and bar_bg and f.max_hp > 0:
 			var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
-			var bar_fill := ColorRect.new()
-			bar_fill.size = Vector2(280.0 * hp_ratio, 6)
-			bar_fill.position = Vector2.ZERO
+			bar_fill.size = Vector2(bar_bg.size.x * hp_ratio, bar_bg.size.y)
 			if hp_ratio > 0.6:
 				bar_fill.color = Color(0.25, 0.65, 0.35) if is_player else Color(0.7, 0.25, 0.2)
 			elif hp_ratio > 0.3:
 				bar_fill.color = Color(0.75, 0.65, 0.2)
 			else:
 				bar_fill.color = Color(0.8, 0.3, 0.2)
+
+func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimulatorV3.BattleFormationV3], is_player: bool) -> void:
+	for child in container.get_children():
+		child.queue_free()
+
+	# Group formations by unit type
+	var groups: Array[Array] = []  # Array of [unit_data_id, Array[formation]]
+	var group_map: Dictionary = {} # unit_data_id -> index in groups
+	for f in formations:
+		if group_map.has(f.unit_data_id):
+			groups[group_map[f.unit_data_id]][1].append(f)
+		else:
+			group_map[f.unit_data_id] = groups.size()
+			groups.append([f.unit_data_id, [f]])
+
+	for group in groups:
+		var unit_id: StringName = group[0]
+		var group_formations: Array = group[1]
+		var first_f: BattleSimulatorV3.BattleFormationV3 = group_formations[0]
+		var all_dead := true
+		for gf_idx in group_formations.size():
+			var gf: BattleSimulatorV3.BattleFormationV3 = group_formations[gf_idx]
+			if not gf.is_dead and not gf.is_fled:
+				all_dead = false
+				break
+
+		var group_box := VBoxContainer.new()
+		group_box.add_theme_constant_override("separation", 2)
+
+		# Portrait + Name header row
+		var header_hbox := HBoxContainer.new()
+		header_hbox.add_theme_constant_override("separation", 6)
+
+		# Full portrait (not cropped)
+		var portrait_tex := _get_cached_portrait(unit_id)
+		if portrait_tex:
+			var portrait := TextureRect.new()
+			portrait.texture = portrait_tex
+			portrait.custom_minimum_size = Vector2(48, 60)
+			portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+			portrait.mouse_filter = Control.MOUSE_FILTER_PASS
+			if all_dead:
+				portrait.modulate = Color(0.5, 0.45, 0.4, 0.6)
+			header_hbox.add_child(portrait)
+
+		# Name + count
+		var name_col := VBoxContainer.new()
+		name_col.add_theme_constant_override("separation", 0)
+		name_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+		var name_lbl := Label.new()
+		var count_str := " (x%d)" % group_formations.size() if group_formations.size() > 1 else ""
+		name_lbl.text = first_f.display_name + count_str
+		name_lbl.add_theme_font_size_override("font_size", 13)
+		name_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		name_lbl.add_theme_constant_override("outline_size", 2)
+		if all_dead:
+			name_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35))
+		elif is_player:
+			name_lbl.add_theme_color_override("font_color", Color(0.8, 0.85, 0.75))
+		else:
+			name_lbl.add_theme_color_override("font_color", Color(0.85, 0.75, 0.7))
+		name_col.add_child(name_lbl)
+
+		# Tags line
+		var tags_lbl := Label.new()
+		tags_lbl.text = ", ".join(first_f.tags)
+		tags_lbl.add_theme_font_size_override("font_size", 10)
+		tags_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		tags_lbl.add_theme_constant_override("outline_size", 2)
+		tags_lbl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.42))
+		name_col.add_child(tags_lbl)
+
+		header_hbox.add_child(name_col)
+		name_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+		tags_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+		name_col.mouse_filter = Control.MOUSE_FILTER_PASS
+		header_hbox.mouse_filter = Control.MOUSE_FILTER_PASS
+		group_box.add_child(header_hbox)
+
+		# Individual HP bars for each formation of this type
+		for f_idx in group_formations.size():
+			var f: BattleSimulatorV3.BattleFormationV3 = group_formations[f_idx]
+			var is_dead: bool = f.is_dead or f.is_fled
+			var bar_row := HBoxContainer.new()
+			bar_row.add_theme_constant_override("separation", 4)
+
+			# HP text
+			var hp_lbl := Label.new()
+			hp_lbl.text = "%d/%d  %d/%d ent" % [maxi(0, f.current_hp), f.max_hp, f.entities_alive, f.total_entities]
+			hp_lbl.add_theme_font_size_override("font_size", 10)
+			hp_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35) if is_dead else Color(0.6, 0.58, 0.5))
+			hp_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+			hp_lbl.add_theme_constant_override("outline_size", 2)
+			hp_lbl.custom_minimum_size = Vector2(100, 0)
+			bar_row.add_child(hp_lbl)
+
+			# HP bar
+			var bar_bg := ColorRect.new()
+			bar_bg.custom_minimum_size = Vector2(170, 7)
+			bar_bg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar_bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			bar_bg.color = Color(0.2, 0.18, 0.15, 0.8) if not is_dead else Color(0.15, 0.13, 0.12, 0.5)
+			bar_row.add_child(bar_bg)
+
+			var bar_fill := ColorRect.new()
+			bar_fill.position = Vector2.ZERO
+			if not is_dead and f.max_hp > 0:
+				var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
+				bar_fill.size = Vector2(170.0 * hp_ratio, 7)
+				if hp_ratio > 0.6:
+					bar_fill.color = Color(0.25, 0.65, 0.35) if is_player else Color(0.7, 0.25, 0.2)
+				elif hp_ratio > 0.3:
+					bar_fill.color = Color(0.75, 0.65, 0.2)
+				else:
+					bar_fill.color = Color(0.8, 0.3, 0.2)
+			else:
+				bar_fill.size = Vector2.ZERO
 			bar_bg.add_child(bar_fill)
 
-		if is_dead:
-			row.modulate = Color(0.6, 0.55, 0.5, 0.6)
+			# Store refs for in-place updates
+			_roster_hp_refs[f.instance_id] = {"hp_lbl": hp_lbl, "bar_fill": bar_fill, "bar_bg": bar_bg}
 
-		# Right-click opens unit card, left-click selects (player only)
-		# Ensure child controls pass mouse events through to the row
-		name_hbox.mouse_filter = Control.MOUSE_FILTER_PASS
-		name_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
-		hp_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
-		bar_bg.mouse_filter = Control.MOUSE_FILTER_PASS
-		row.mouse_filter = Control.MOUSE_FILTER_STOP
-		var captured_f := f
-		row.gui_input.connect(_on_roster_row_input.bind(captured_f, is_player))
+			if is_dead:
+				bar_row.modulate = Color(0.6, 0.55, 0.5, 0.6)
 
-		container.add_child(row)
+			# Mouse events per formation bar
+			hp_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+			bar_bg.mouse_filter = Control.MOUSE_FILTER_PASS
+			bar_row.mouse_filter = Control.MOUSE_FILTER_STOP
+			var captured_f := f
+			bar_row.gui_input.connect(_on_roster_row_input.bind(captured_f, is_player))
+			bar_row.mouse_entered.connect(_on_roster_row_hover.bind(captured_f))
+			bar_row.mouse_exited.connect(_on_roster_row_hover.bind(null))
+
+			if not is_dead:
+				_roster_rows[f.instance_id] = bar_row
+
+			group_box.add_child(bar_row)
+
+		if all_dead:
+			group_box.modulate = Color(0.6, 0.55, 0.5, 0.6)
+
+		container.add_child(group_box)
+
+func _on_roster_row_hover(f) -> void:
+	if hovered_formation != f:
+		hovered_formation = f
+		_update_roster_highlight()
+		renderer.queue_redraw()
 
 func _on_roster_row_input(event: InputEvent, f: BattleSimulatorV3.BattleFormationV3, is_player: bool) -> void:
 	if event is InputEventMouseButton and event.pressed:
@@ -657,8 +822,36 @@ func _create_panel() -> PanelContainer:
 
 # --- Input ---
 
+func _input(event: InputEvent) -> void:
+	# Handle drag motion in _input so UI panels can't interrupt active drags
+	if _dragging_formation != null:
+		if event is InputEventMouseMotion:
+			var world_pos := _screen_to_world(event.position)
+			_on_drag(world_pos)
+			get_viewport().set_input_as_handled()
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			var world_pos := _screen_to_world(event.position)
+			_on_left_release(world_pos)
+			get_viewport().set_input_as_handled()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
+		# Battle camera zoom with mouse wheel
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom_battle_camera(0.1)
+			get_viewport().set_input_as_handled()
+			return
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom_battle_camera(-0.1)
+			get_viewport().set_input_as_handled()
+			return
+		# Middle-mouse pan
+		elif event.button_index == MOUSE_BUTTON_MIDDLE:
+			_battle_panning = event.pressed
+			_battle_pan_start = event.position
+			get_viewport().set_input_as_handled()
+			return
+
 		var world_pos := _screen_to_world(event.position)
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -667,9 +860,59 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_left_release(world_pos)
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			_on_right_click(world_pos)
-	elif event is InputEventMouseMotion and _dragging_formation != null:
+	elif event is InputEventMouseMotion:
+		if _battle_panning:
+			var cam := $Camera2D
+			var delta_pos := (_battle_pan_start - event.position) / cam.zoom
+			cam.position += delta_pos
+			_battle_pan_start = event.position
+			# Clamp to field bounds with margin
+			cam.position.x = clampf(cam.position.x, -50, BattleSimulatorV3.FIELD_WIDTH + 50)
+			cam.position.y = clampf(cam.position.y, -50, BattleSimulatorV3.FIELD_HEIGHT + 50)
+			get_viewport().set_input_as_handled()
+			return
 		var world_pos := _screen_to_world(event.position)
-		_on_drag(world_pos)
+		_update_battlefield_hover(world_pos)
+	elif event is InputEventKey and event.pressed and not event.echo:
+		_handle_key_input(event)
+
+func _zoom_battle_camera(amount: float) -> void:
+	var cam := $Camera2D
+	var new_zoom := clampf(cam.zoom.x + amount, BATTLE_MIN_ZOOM, BATTLE_MAX_ZOOM)
+	cam.zoom = Vector2(new_zoom, new_zoom)
+
+func _handle_key_input(event: InputEventKey) -> void:
+	match event.keycode:
+		KEY_SPACE:
+			if current_phase == Phase.SIMULATION:
+				_on_pause_toggle()
+				get_viewport().set_input_as_handled()
+			elif current_phase == Phase.SETUP:
+				_on_begin_battle()
+				get_viewport().set_input_as_handled()
+		KEY_1:
+			if current_phase == Phase.SIMULATION:
+				_set_speed(1)
+				get_viewport().set_input_as_handled()
+		KEY_2:
+			if current_phase == Phase.SIMULATION:
+				_set_speed(2)
+				get_viewport().set_input_as_handled()
+		KEY_3:
+			if current_phase == Phase.SIMULATION:
+				_set_speed(4)
+				get_viewport().set_input_as_handled()
+		KEY_4:
+			if current_phase == Phase.SIMULATION:
+				_set_speed(8)
+				get_viewport().set_input_as_handled()
+		KEY_ESCAPE:
+			if selected_formation:
+				_deselect_formation()
+				get_viewport().set_input_as_handled()
+		KEY_TAB:
+			_cycle_player_formation(1 if not event.shift_pressed else -1)
+			get_viewport().set_input_as_handled()
 
 func _screen_to_world(screen_pos: Vector2) -> Vector2:
 	var cam := $Camera2D as Camera2D
@@ -694,14 +937,18 @@ func _on_left_press(world_pos: Vector2) -> void:
 			_update_unit_info(f)
 			_populate_unit_list()
 			renderer.queue_redraw()
+		else:
+			_deselect_formation()
 
-	elif current_phase == Phase.SIMULATION and is_paused:
+	elif current_phase == Phase.SIMULATION:
 		var f := _find_formation_at(world_pos)
 		if f and not f.is_dead and not f.is_fled:
 			selected_formation = f
 			_update_unit_info(f)
 			_populate_unit_list()
 			renderer.queue_redraw()
+		elif not f:
+			_deselect_formation()
 
 func _on_left_release(_world_pos: Vector2) -> void:
 	if _dragging_formation != null:
@@ -732,6 +979,23 @@ func _on_right_click(world_pos: Vector2) -> void:
 			simulator._update_entity_world_positions(selected_formation)
 			renderer.queue_redraw()
 
+func _update_battlefield_hover(world_pos: Vector2) -> void:
+	var f := _find_formation_at(world_pos)
+	if f != hovered_formation:
+		hovered_formation = f
+		_update_roster_highlight()
+		renderer.queue_redraw()
+
+func _update_roster_highlight() -> void:
+	for fid in _roster_rows:
+		var row = _roster_rows[fid]
+		if not is_instance_valid(row):
+			continue
+		if hovered_formation and fid == hovered_formation.instance_id:
+			row.modulate = Color(1.3, 1.2, 0.9, 1.0)
+		else:
+			row.modulate = Color(1, 1, 1, 1)
+
 func _find_formation_at(world_pos: Vector2) -> BattleSimulatorV3.BattleFormationV3:
 	var best: BattleSimulatorV3.BattleFormationV3 = null
 	var best_dist := 40.0  # Click radius
@@ -748,6 +1012,14 @@ func _find_formation_at(world_pos: Vector2) -> BattleSimulatorV3.BattleFormation
 			best_dist = dist
 			best = f
 	return best
+
+func _deselect_formation() -> void:
+	if selected_formation == null:
+		return
+	selected_formation = null
+	unit_info_panel.visible = false
+	_populate_unit_list()
+	renderer.queue_redraw()
 
 func _on_formation_selected(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	selected_formation = f
@@ -779,11 +1051,24 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 2)
 
+	# Portrait + Name header
+	var header_hbox := HBoxContainer.new()
+	header_hbox.add_theme_constant_override("separation", 6)
+	var portrait_tex := _get_cached_portrait(f.unit_data_id)
+	if portrait_tex:
+		var portrait := TextureRect.new()
+		portrait.texture = portrait_tex
+		portrait.custom_minimum_size = Vector2(48, 60)
+		portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+		header_hbox.add_child(portrait)
 	var name_label := Label.new()
 	name_label.text = f.display_name
 	name_label.add_theme_font_size_override("font_size", 13)
 	name_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-	vbox.add_child(name_label)
+	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header_hbox.add_child(name_label)
+	vbox.add_child(header_hbox)
 
 	# Calculate live DPS from formation data
 	var live_dps := 0.0
@@ -880,15 +1165,53 @@ func _on_pause_toggle() -> void:
 	pause_btn.text = "RESUME" if is_paused else "PAUSE"
 
 func _on_speed_up() -> void:
-	if sim_speed <= 0.0125:
-		sim_speed = 0.1
-	else:
-		sim_speed /= 2.0
-	var speed_val := roundi(0.1 / sim_speed)
-	speed_label.text = "%dx" % speed_val
+	var current_multiplier := roundi(0.1 / sim_speed)
+	# Cycle: 1x -> 2x -> 4x -> 8x -> 1x
+	match current_multiplier:
+		1:
+			_set_speed(2)
+		2:
+			_set_speed(4)
+		4:
+			_set_speed(8)
+		_:
+			_set_speed(1)
 
 func _on_skip() -> void:
 	skip_to_end = true
+
+func _set_speed(multiplier: int) -> void:
+	sim_speed = 0.1 / float(multiplier)
+	speed_label.text = "%dx" % multiplier
+	# Flash the speed label to indicate the change
+	speed_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+	var tw := create_tween()
+	tw.tween_property(speed_label, "theme_override_colors/font_color", Color(0.7, 0.65, 0.55), 0.4)
+
+func _cycle_player_formation(direction: int) -> void:
+	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
+	# Filter to alive formations only
+	var alive: Array[BattleSimulatorV3.BattleFormationV3] = []
+	for f in player_formations:
+		if not f.is_dead and not f.is_fled:
+			alive.append(f)
+	if alive.is_empty():
+		return
+	if selected_formation == null or selected_formation.side != player_side:
+		_on_formation_selected(alive[0])
+		return
+	var idx := -1
+	for i in alive.size():
+		if alive[i] == selected_formation:
+			idx = i
+			break
+	if idx == -1:
+		_on_formation_selected(alive[0])
+		return
+	var next_idx := (idx + direction) % alive.size()
+	if next_idx < 0:
+		next_idx += alive.size()
+	_on_formation_selected(alive[next_idx])
 
 func _process(delta: float) -> void:
 	_update_magic_projectiles(delta)
@@ -945,6 +1268,8 @@ func _process_visual_actions(actions: Array[Dictionary]) -> void:
 				if dmg > 15:
 					_shake_intensity = clampf(float(dmg) * 0.15, 2.0, 8.0)
 				renderer.trigger_flash(action.attacker)
+				# Melee sparks
+				_spawn_melee_sparks(def_id)
 			"ranged_hit":
 				var r_dmg: int = action.damage
 				var r_def_id: StringName = action.defender
@@ -964,82 +1289,158 @@ func _process_visual_actions(actions: Array[Dictionary]) -> void:
 			"aura_damage":
 				_spawn_aura_damage_number(action.target, action.damage)
 			"spawn":
-				pass # Spawned unit will be rendered on next redraw
+				_build_formation_lookup() # Rebuild lookup to include new formation
+			"charge":
+				# 3 dust particles per charge tick
+				_spawn_dust_particles(action.id, 3)
+			"rout":
+				# 2 dust particles, throttled to every 3 ticks
+				var rout_id: StringName = action.id
+				var rout_tick: int = _dust_throttle.get(rout_id, 0)
+				if rout_tick <= 0:
+					_spawn_dust_particles(rout_id, 2)
+					_dust_throttle[rout_id] = 3
+				else:
+					_dust_throttle[rout_id] = rout_tick - 1
+			"move":
+				# Dust only for sprinting infantry or cavalry with momentum
+				var move_id: StringName = action.id
+				var mf = _formation_lookup.get(move_id)
+				if mf and (mf.is_sprinting or (mf.tags.has("cavalry") and mf.momentum > 0.5)):
+					var move_tick: int = _dust_throttle.get(move_id, 0)
+					if move_tick <= 0:
+						_spawn_dust_particles(move_id, 2)
+						_dust_throttle[move_id] = 2
+					else:
+						_dust_throttle[move_id] = move_tick - 1
+
+# --- Object Pool Helpers ---
+
+func _pool_get_label() -> Label:
+	if _label_pool.size() > 0:
+		var l: Label = _label_pool.pop_back()
+		l.visible = true
+		return l
+	return Label.new()
+
+func _pool_return_label(l: Label) -> void:
+	l.visible = false
+	if _label_pool.size() < 30:
+		_label_pool.append(l)
+	else:
+		l.queue_free()
+
+func _pool_get_proj() -> ColorRect:
+	if _proj_pool.size() > 0:
+		var p: ColorRect = _proj_pool.pop_back()
+		p.visible = true
+		return p
+	return ColorRect.new()
+
+func _pool_return_proj(p: ColorRect) -> void:
+	p.visible = false
+	if _proj_pool.size() < 50:
+		_proj_pool.append(p)
+	else:
+		p.queue_free()
+
+func _pool_get_particle() -> Polygon2D:
+	if _particle_pool.size() > 0:
+		var p: Polygon2D = _particle_pool.pop_back()
+		p.visible = true
+		p.modulate = Color(1, 1, 1, 1)
+		p.scale = Vector2(1, 1)
+		return p
+	var poly := Polygon2D.new()
+	var pts := PackedVector2Array()
+	for k in 5:
+		var a := TAU * float(k) / 5.0
+		pts.append(Vector2(cos(a), sin(a)) * 2.0)
+	poly.polygon = pts
+	return poly
+
+func _pool_return_particle(p: Polygon2D) -> void:
+	p.visible = false
+	if _particle_pool.size() < 150:
+		_particle_pool.append(p)
+	else:
+		p.queue_free()
+
+# --- Portrait Cache Helper ---
+
+func _get_cached_portrait(unit_id: StringName) -> Texture2D:
+	if _portrait_cache.has(unit_id):
+		return _portrait_cache[unit_id]
+	var tex := DataManager.get_unit_portrait(unit_id)
+	_portrait_cache[unit_id] = tex
+	return tex
+
+# --- Damage / Projectile Spawning ---
 
 func _spawn_damage_number(formation_id: StringName, damage: int) -> void:
-	var pos := Vector2.ZERO
-	for f in simulator.attacker_formations + simulator.defender_formations:
-		if f.instance_id == formation_id:
-			pos = f.position
-			break
+	var pos := _get_formation_pos(formation_id)
 
-	var label := Label.new()
+	var label := _pool_get_label()
 	label.text = str(damage)
 	label.position = pos + Vector2(randf_range(-12, 12), -10)
-	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_font_size_override("font_size", 14)
 	label.add_theme_color_override("font_color", Color(1, 0.3, 0.2))
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	label.add_theme_constant_override("outline_size", 2)
 	label.z_index = 10
-	effects_layer.add_child(label)
+	label.modulate = Color(1, 1, 1, 1)
+	if not label.is_inside_tree():
+		effects_layer.add_child(label)
 
 	var tween := create_tween()
 	tween.tween_property(label, "position:y", label.position.y - 25, 0.8)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.8)
-	tween.tween_callback(label.queue_free)
+	tween.tween_callback(_pool_return_label.bind(label))
 
 func _spawn_aura_damage_number(formation_id: StringName, damage: int) -> void:
-	var pos := Vector2.ZERO
-	for f in simulator.attacker_formations + simulator.defender_formations:
-		if f.instance_id == formation_id:
-			pos = f.position
-			break
-	var label := Label.new()
+	var pos := _get_formation_pos(formation_id)
+	var label := _pool_get_label()
 	label.text = str(damage)
 	label.position = pos + Vector2(randf_range(-8, 8), -6)
 	label.add_theme_font_size_override("font_size", 10)
 	label.add_theme_color_override("font_color", Color(0.7, 0.3, 0.9))
 	label.z_index = 10
-	effects_layer.add_child(label)
+	label.modulate = Color(1, 1, 1, 1)
+	if not label.is_inside_tree():
+		effects_layer.add_child(label)
 	var tween := create_tween()
 	tween.tween_property(label, "position:y", label.position.y - 18, 0.6)
 	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.6)
-	tween.tween_callback(label.queue_free)
+	tween.tween_callback(_pool_return_label.bind(label))
 
 func _spawn_projectile_from_pos(from_pos: Vector2, to_pos: Vector2, is_hit: bool) -> void:
-	var proj := ColorRect.new()
-	proj.size = Vector2(3, 3)
-	proj.color = Color(0.9, 0.8, 0.3) if is_hit else Color(0.5, 0.45, 0.3, 0.5)
-	proj.position = from_pos
-	proj.z_index = 10
-	effects_layer.add_child(proj)
-
 	var dir := (to_pos - from_pos).normalized()
+	var arrow := _pool_get_particle()
+	# Thin 4-point arrow polygon
+	arrow.polygon = PackedVector2Array([
+		Vector2(4, 0), Vector2(-2, -1.2), Vector2(-1, 0), Vector2(-2, 1.2)
+	])
+	arrow.color = Color(0.9, 0.8, 0.3) if is_hit else Color(0.5, 0.45, 0.3, 0.5)
+	arrow.position = from_pos
+	arrow.rotation = dir.angle()
+	arrow.scale = Vector2(1, 1)
+	arrow.z_index = 10
+	arrow.modulate = Color(1, 1, 1, 1)
+	if not arrow.is_inside_tree():
+		effects_layer.add_child(arrow)
+
 	var mark_alpha := 0.4 if is_hit else 0.2
 	var tween := create_tween()
-	tween.tween_property(proj, "position", to_pos, 0.3)
+	tween.tween_property(arrow, "position", to_pos, 0.25)
 	tween.tween_callback(func():
-		proj.queue_free()
-		_spawn_arrow_mark(to_pos, dir, mark_alpha)
+		_pool_return_particle(arrow)
+		_spawn_arrow_ground_mark(to_pos, dir, mark_alpha, is_hit)
 	)
 
 func _spawn_projectile(attacker_id: StringName, defender_id: StringName) -> void:
-	var from_pos := Vector2.ZERO
-	var to_pos := Vector2.ZERO
-	for f in simulator.attacker_formations + simulator.defender_formations:
-		if f.instance_id == attacker_id:
-			from_pos = f.position
-		if f.instance_id == defender_id:
-			to_pos = f.position
-
-	var proj := ColorRect.new()
-	proj.size = Vector2(4, 4)
-	proj.color = Color(0.9, 0.8, 0.3)
-	proj.position = from_pos
-	proj.z_index = 10
-	effects_layer.add_child(proj)
-
-	var tween := create_tween()
-	tween.tween_property(proj, "position", to_pos, 0.3)
-	tween.tween_callback(proj.queue_free)
+	var from_pos := _get_formation_pos(attacker_id)
+	var to_pos := _get_formation_pos(defender_id)
+	_spawn_projectile_from_pos(from_pos, to_pos, true)
 
 func _get_magic_color(faction_id: StringName) -> Color:
 	match faction_id:
@@ -1110,6 +1511,10 @@ func _update_magic_projectiles(delta: float) -> void:
 						magic_col = Color(body_node.color.r, body_node.color.g, body_node.color.b, 0.25)
 				p.node.queue_free()
 				_spawn_crater_mark(impact_pos, magic_col)
+				# Impact burst particles
+				_spawn_impact_burst(impact_pos, magic_col)
+				# Bright flash
+				_spawn_magic_flash(impact_pos, magic_col)
 			_magic_projs.remove_at(i)
 			i -= 1
 			continue
@@ -1125,6 +1530,24 @@ func _update_magic_projectiles(delta: float) -> void:
 
 		var final_pos := base_pos + perp * osc
 		p.node.position = final_pos
+
+		# Spawn trail particle every 3rd frame
+		if Engine.get_process_frames() % 3 == 0 and t < 0.85:
+			var trail := _pool_get_particle()
+			var body_node = p.node.get_child(1) if p.node.get_child_count() > 1 else null
+			var trail_color := Color(0.4, 0.6, 1.0, 0.4)
+			if body_node is Polygon2D:
+				trail_color = Color(body_node.color.r, body_node.color.g, body_node.color.b, 0.4)
+			trail.color = trail_color
+			trail.position = final_pos
+			trail.scale = Vector2(0.8, 0.8)
+			trail.z_index = 9
+			if not trail.is_inside_tree():
+				effects_layer.add_child(trail)
+			var tw := create_tween()
+			tw.tween_property(trail, "modulate:a", 0.0, 0.3)
+			tw.parallel().tween_property(trail, "scale", Vector2(0.2, 0.2), 0.3)
+			tw.tween_callback(_pool_return_particle.bind(trail))
 
 		# Rotate teardrop to face movement direction
 		var look_t := minf(t + 0.02, 1.0)
@@ -1143,14 +1566,108 @@ func _clear_magic_projectiles() -> void:
 			p.node.queue_free()
 	_magic_projs.clear()
 
+# --- Spell / Melee Effects ---
+
+func _spawn_impact_burst(pos: Vector2, color: Color) -> void:
+	for k in 5:
+		var particle := _pool_get_particle()
+		particle.color = Color(color.r, color.g, color.b, 0.7)
+		particle.position = pos
+		particle.scale = Vector2(1.0, 1.0)
+		particle.z_index = 10
+		if not particle.is_inside_tree():
+			effects_layer.add_child(particle)
+		var angle := TAU * float(k) / 5.0 + randf_range(-0.3, 0.3)
+		var dist := randf_range(8.0, 18.0)
+		var target := pos + Vector2(cos(angle), sin(angle)) * dist
+		var tw := create_tween()
+		tw.tween_property(particle, "position", target, 0.3).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(particle, "modulate:a", 0.0, 0.3)
+		tw.parallel().tween_property(particle, "scale", Vector2(0.3, 0.3), 0.3)
+		tw.tween_callback(_pool_return_particle.bind(particle))
+
+func _spawn_magic_flash(pos: Vector2, color: Color) -> void:
+	var flash := _pool_get_particle()
+	# Circle shape for flash
+	var pts := PackedVector2Array()
+	for k in 12:
+		var a := TAU * float(k) / 12.0
+		pts.append(Vector2(cos(a), sin(a)) * 2.0)
+	flash.polygon = pts
+	flash.color = Color(1.0, 1.0, 1.0, 0.9)
+	flash.position = pos
+	flash.scale = Vector2(1.0, 1.0)
+	flash.z_index = 11
+	flash.modulate = Color(1, 1, 1, 1)
+	if not flash.is_inside_tree():
+		effects_layer.add_child(flash)
+	var tw := create_tween()
+	tw.tween_property(flash, "scale", Vector2(5.0, 5.0), 0.2).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(flash, "modulate:a", 0.0, 0.2)
+	tw.tween_callback(_pool_return_particle.bind(flash))
+
+func _spawn_melee_sparks(formation_id: StringName) -> void:
+	var pos := _get_formation_pos(formation_id)
+	if pos == Vector2.ZERO:
+		return
+	for k in 3:
+		var spark := _pool_get_particle()
+		spark.color = Color(1.0, 0.9, 0.5, 0.8)
+		spark.position = pos + Vector2(randf_range(-5, 5), randf_range(-5, 5))
+		spark.scale = Vector2(0.5, 0.5)
+		spark.z_index = 10
+		if not spark.is_inside_tree():
+			effects_layer.add_child(spark)
+		var angle := randf() * TAU
+		var target := spark.position + Vector2(cos(angle), sin(angle)) * randf_range(6.0, 12.0)
+		var tw := create_tween()
+		tw.tween_property(spark, "position", target, 0.15).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(spark, "modulate:a", 0.0, 0.15)
+		tw.tween_callback(_pool_return_particle.bind(spark))
+
+# --- Dust Particles ---
+
+func _spawn_dust_particles(formation_id: StringName, count: int) -> void:
+	var f: BattleSimulatorV3.BattleFormationV3 = _formation_lookup.get(formation_id)
+	if f == null:
+		return
+	var terrain: Enums.BattleTerrain = simulator.get_terrain_at(f.position)
+	var dust_color: Color = DUST_COLORS.get(terrain, DUST_COLORS[Enums.BattleTerrain.OPEN])
+	var facing: Vector2 = f.get_facing_vector()
+	# Spawn behind formation (opposite facing direction)
+	var behind: Vector2 = -facing
+	for k in count:
+		var particle := _pool_get_particle()
+		particle.color = dust_color
+		var offset: Vector2 = behind * randf_range(3.0, 8.0) + Vector2(randf_range(-4, 4), randf_range(-4, 4))
+		particle.position = f.position + offset
+		particle.scale = Vector2(randf_range(0.6, 1.2), randf_range(0.6, 1.2))
+		particle.z_index = 2
+		particle.modulate = Color(1, 1, 1, 1)
+		if not particle.is_inside_tree():
+			effects_layer.add_child(particle)
+		var drift: Vector2 = behind * randf_range(6.0, 14.0) + Vector2(randf_range(-5, 5), randf_range(-5, 5))
+		var duration := randf_range(0.4, 0.7)
+		var tw := create_tween()
+		tw.tween_property(particle, "position", particle.position + drift, duration).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(particle, "modulate:a", 0.0, duration)
+		tw.parallel().tween_property(particle, "scale", Vector2(0.2, 0.2), duration)
+		tw.tween_callback(_pool_return_particle.bind(particle))
+
 # --- Impact Marks ---
 
-func _spawn_arrow_mark(pos: Vector2, dir: Vector2, alpha: float) -> void:
+func _spawn_arrow_ground_mark(pos: Vector2, dir: Vector2, alpha: float, is_hit: bool) -> void:
 	var mark := Polygon2D.new()
-	var half_len := 2.0
-	mark.polygon = PackedVector2Array([
-		Vector2(-half_len, 0), Vector2(half_len, 0)
-	])
+	if is_hit:
+		# Small fletching shape sticking up from impact point
+		mark.polygon = PackedVector2Array([
+			Vector2(0, 0), Vector2(-1.5, -3.5), Vector2(0, -2.5), Vector2(1.5, -3.5)
+		])
+	else:
+		# Small flat arrow lying on ground
+		mark.polygon = PackedVector2Array([
+			Vector2(3, 0), Vector2(-1.5, -0.8), Vector2(-0.5, 0), Vector2(-1.5, 0.8)
+		])
 	mark.color = Color(0.35, 0.25, 0.15, alpha)
 	mark.position = pos
 	mark.rotation = dir.angle()
@@ -1239,21 +1756,21 @@ func _show_result() -> void:
 	if player_captives > 0:
 		text += "\nCaptives gained: %d" % player_captives
 
-	if player_won:
-		var enemy_strength: int
-		if is_player_attacker:
-			enemy_strength = defender_army.get_total_strength()
-		else:
-			enemy_strength = attacker_army.get_total_strength()
-		var loot_gold := int(enemy_strength * 0.1)
-		var loot_iron := int(enemy_strength * 0.03)
+	if player_won and _battle_loot.size() > 0:
+		var res_names := {
+			Enums.ResourceType.GOLD: "Gold",
+			Enums.ResourceType.IRON: "Iron",
+			Enums.ResourceType.WOOD: "Wood",
+			Enums.ResourceType.FOOD: "Food",
+		}
 		var loot_parts: Array[String] = []
-		if loot_gold > 0:
-			loot_parts.append("+%d Gold" % loot_gold)
-		if loot_iron > 0:
-			loot_parts.append("+%d Iron" % loot_iron)
+		for res_type in _battle_loot:
+			var amount: int = _battle_loot[res_type]
+			if amount > 0:
+				var rname: String = res_names.get(res_type, "???")
+				loot_parts.append("+%d %s" % [amount, rname])
 		if loot_parts.size() > 0:
-			text += "\nResources gained: %s" % ", ".join(loot_parts)
+			text += "\nResources looted: %s" % ", ".join(loot_parts)
 
 	casualty_label.text = text
 	vbox.add_child(casualty_label)
@@ -1293,9 +1810,21 @@ func _on_continue() -> void:
 		_return_to_campaign()
 	)
 
+func _calculate_army_value(army: ArmyState) -> Dictionary:
+	# Returns {gold: int, iron: int} based on total recruit cost of all units
+	var total_gold := 0
+	var total_iron := 0
+	for unit in army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud:
+			total_gold += ud.recruit_cost.get(Enums.ResourceType.GOLD, 0)
+			total_iron += ud.recruit_cost.get(Enums.ResourceType.IRON, 0)
+	return {gold = total_gold, iron = total_iron}
+
 func _apply_battle_results() -> void:
-	var atk_strength := attacker_army.get_total_strength()
-	var def_strength := defender_army.get_total_strength()
+	# Calculate army values BEFORE removing survivors (for loot scaling)
+	var atk_value := _calculate_army_value(attacker_army)
+	var def_value := _calculate_army_value(defender_army)
 
 	if is_player_attacker:
 		_update_army_survivors(attacker_army, simulator.get_surviving_formations(0))
@@ -1331,12 +1860,28 @@ func _apply_battle_results() -> void:
 	var atk_commander: CommanderState = attacker_army.commander
 	var def_commander: CommanderState = defender_army.commander
 
-	if not attacker_alive:
-		GameManager.remove_army(attacker_army.army_id)
 	if not defender_alive:
 		GameManager.remove_army(defender_army.army_id)
 
-	# Remove surviving garrison armies
+	# Garrison assault failure: attacker didn't win — force retreat 1 tile
+	var garrison_retreat := false
+	if defender_army.is_garrison and defender_alive:
+		GameManager.remove_army(defender_army.army_id) # garrison regenerates next attack
+		defender_alive = false
+		if attacker_alive:
+			# Retreat attacker 1 tile away from the city
+			var retreat_hex := _find_garrison_retreat_hex(attacker_army, battle_hex_pos)
+			if retreat_hex != Vector2i(-1, -1):
+				attacker_army.hex_pos = retreat_hex
+			attacker_army.movement_remaining = 0.0
+			attacker_army.battle_exhausted = true
+			garrison_retreat = true
+		else:
+			GameManager.remove_army(attacker_army.army_id)
+	elif not attacker_alive:
+		GameManager.remove_army(attacker_army.army_id)
+
+	# Remove surviving garrison armies (non-garrison-retreat case)
 	if defender_alive and defender_army.is_garrison:
 		GameManager.remove_army(defender_army.army_id)
 		defender_alive = false
@@ -1366,7 +1911,7 @@ func _apply_battle_results() -> void:
 				else:
 					sfs.solar_faith = maxi(sfs.solar_faith - 15, 0)
 
-	if attacker_alive and not defender_alive:
+	if attacker_alive and not defender_alive and not garrison_retreat:
 		EventBus.battle_resolved.emit(attacker_faction_id, battle_hex_pos)
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 		if city_at and city_at.faction_id != attacker_faction_id:
@@ -1375,6 +1920,8 @@ func _apply_battle_results() -> void:
 			GameManager.city_system.break_siege(city_at.city_id)
 		# Auto-claim shard after defeating guardians
 		GameManager._try_claim_shard(battle_hex_pos, attacker_faction_id)
+	elif garrison_retreat:
+		EventBus.battle_resolved.emit(defender_faction_id, battle_hex_pos)
 	elif defender_alive and not attacker_alive:
 		EventBus.battle_resolved.emit(defender_faction_id, battle_hex_pos)
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
@@ -1383,32 +1930,48 @@ func _apply_battle_results() -> void:
 		# Auto-claim shard after defeating guardians
 		GameManager._try_claim_shard(battle_hex_pos, defender_faction_id)
 
-	# Battle loot
+	# Battle loot — scales with enemy army recruit cost (15% of gold/iron, 5% as wood/food)
 	_battle_loot.clear()
 	if attacker_alive and not defender_alive:
-		var loot_gold := int(def_strength * 0.1)
-		var loot_iron := int(def_strength * 0.03)
-		if loot_gold > 0 or loot_iron > 0:
-			var fs: FactionState = GameManager.state.faction_states.get(attacker_faction_id)
-			if fs:
-				if loot_gold > 0:
-					fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
-					_battle_loot[Enums.ResourceType.GOLD] = loot_gold
-				if loot_iron > 0:
-					fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
-					_battle_loot[Enums.ResourceType.IRON] = loot_iron
+		var enemy_val := def_value
+		var loot_gold := int(enemy_val.gold * 0.15)
+		var loot_iron := int(enemy_val.iron * 0.15)
+		var loot_wood := int((enemy_val.gold + enemy_val.iron) * 0.05)
+		var loot_food := int((enemy_val.gold + enemy_val.iron) * 0.05)
+		var fs: FactionState = GameManager.state.faction_states.get(attacker_faction_id)
+		if fs:
+			if loot_gold > 0:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
+				_battle_loot[Enums.ResourceType.GOLD] = loot_gold
+			if loot_iron > 0:
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
+				_battle_loot[Enums.ResourceType.IRON] = loot_iron
+			if loot_wood > 0:
+				fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + loot_wood
+				_battle_loot[Enums.ResourceType.WOOD] = loot_wood
+			if loot_food > 0:
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + loot_food
+				_battle_loot[Enums.ResourceType.FOOD] = loot_food
 	elif defender_alive and not attacker_alive:
-		var loot_gold := int(atk_strength * 0.1)
-		var loot_iron := int(atk_strength * 0.03)
-		if loot_gold > 0 or loot_iron > 0:
-			var fs: FactionState = GameManager.state.faction_states.get(defender_faction_id)
-			if fs:
-				if loot_gold > 0:
-					fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
-					_battle_loot[Enums.ResourceType.GOLD] = loot_gold
-				if loot_iron > 0:
-					fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
-					_battle_loot[Enums.ResourceType.IRON] = loot_iron
+		var enemy_val := atk_value
+		var loot_gold := int(enemy_val.gold * 0.15)
+		var loot_iron := int(enemy_val.iron * 0.15)
+		var loot_wood := int((enemy_val.gold + enemy_val.iron) * 0.05)
+		var loot_food := int((enemy_val.gold + enemy_val.iron) * 0.05)
+		var fs: FactionState = GameManager.state.faction_states.get(defender_faction_id)
+		if fs:
+			if loot_gold > 0:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
+				_battle_loot[Enums.ResourceType.GOLD] = loot_gold
+			if loot_iron > 0:
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
+				_battle_loot[Enums.ResourceType.IRON] = loot_iron
+			if loot_wood > 0:
+				fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + loot_wood
+				_battle_loot[Enums.ResourceType.WOOD] = loot_wood
+			if loot_food > 0:
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + loot_food
+				_battle_loot[Enums.ResourceType.FOOD] = loot_food
 
 	# Build battle context for context-aware skill selection
 	var base_context: Array[StringName] = []
@@ -1491,6 +2054,23 @@ func _grant_unit_veterancy_xp(army: ArmyState, sim: BattleSimulatorV3, side: int
 		var dmg: int = formation_damage.get(unit.instance_id, 0)
 		var damage_bonus := mini(dmg / 40, 10)
 		unit.grant_xp(base_xp + damage_bonus)
+
+func _find_garrison_retreat_hex(army: ArmyState, city_hex: Vector2i) -> Vector2i:
+	# Find adjacent hex farthest from the city and passable
+	var neighbors := HexHelper.get_neighbors(army.hex_pos)
+	var best_hex := Vector2i(-1, -1)
+	var best_dist := -1
+	for n in neighbors:
+		if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			continue
+		var tile := GameManager.state.hex_map.get_tile(n) if GameManager.state and GameManager.state.hex_map else null
+		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		var dist := HexHelper.hex_distance(n, city_hex)
+		if dist > best_dist:
+			best_dist = dist
+			best_hex = n
+	return best_hex
 
 func _separate_armies_after_stalemate() -> void:
 	# Move each army 1 tile away from the other
@@ -1653,6 +2233,20 @@ func _apply_elderbeast_building_bonuses() -> void:
 
 			break
 
+func _build_formation_lookup() -> void:
+	_formation_lookup.clear()
+	for f in simulator.attacker_formations:
+		_formation_lookup[f.instance_id] = f
+	for f in simulator.defender_formations:
+		_formation_lookup[f.instance_id] = f
+
+func _get_formation_pos(formation_id: StringName) -> Vector2:
+	var f = _formation_lookup.get(formation_id)
+	if f:
+		return f.position
+	return Vector2.ZERO
+
 func _return_to_campaign() -> void:
 	GameManager.current_phase = Enums.GamePhase.CAMPAIGN
 	get_tree().change_scene_to_file("res://scenes/campaign/campaign.tscn")
+	GameManager.call_deferred("_fade_in", 0.5)

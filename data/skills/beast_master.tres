@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"beast_master"
 display_name = "Beast Master"
-description = "Commands creatures with natural authority, turning beasts into weapons."
+description = "Beast units gain +2 attack in battle."
 category = &"combat"
 is_minor = true
-effects = {"army_attack_bonus": 1}
+effects = {"beast_attack_bonus": 2}
 context_tags = Array[StringName]([&"used_beast", &"faced_beast"])

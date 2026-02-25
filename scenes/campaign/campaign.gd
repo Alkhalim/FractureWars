@@ -58,6 +58,8 @@ var _hex_visuals: Dictionary = {} # Vector2i -> Node2D (hex tile container)
 var _city_markers: Dictionary = {} # city_id -> Node2D
 var _is_animating_move := false # Block input during movement animation
 var _hovered_region_id: StringName = &"" # Currently hovered region for highlighting
+var _last_path_preview_hex: Vector2i = Vector2i(-1, -1) # Cache last path-preview target
+var _city_markers_dirty := true # Dirty flag for city marker rebuilds
 var _region_highlight_nodes: Array[Node2D] = [] # Highlight overlay polygons for hovered region
 var _region_tiles_cache: Dictionary = {} # region_id -> Array[Vector2i]
 var _city_panel_open := false
@@ -65,15 +67,15 @@ var _selected_city_id: StringName = &""
 var _elderbeast_markers: Dictionary = {} # beast_id -> Node2D
 var _building_tile_markers: Array[Node2D] = [] # building markers on hex tiles
 
-# Animated terrain timers
-var _water_timer: float = 0.0
-var _shard_waste_timer: float = 0.0
-var _animated_tiles: Array[Dictionary] = []  # [{coord, fill, terrain, base_color}] — cached for perf
+# Viewport culling for hex tiles
+var _last_cull_cam_pos := Vector2.ZERO
+var _last_cull_cam_zoom := 1.0
 
 # Minimap viewport tracking (to refresh when camera moves/zooms)
 var _minimap_last_cam_pos := Vector2.ZERO
 var _minimap_last_cam_zoom := 1.0
 var _minimap_update_timer := 0.0
+var _minimap_dirty := true  # Set true when content changes (turn/capture), redraw on next tick
 
 # Pre-battle dialog state
 var _pending_battle_attacker_id: StringName = &""
@@ -104,9 +106,13 @@ var _beast_terrain_overlays: Array[Node2D] = []
 # Terrain textures (loaded once in _render_hex_map)
 var _terrain_textures: Dictionary = {}
 
+# Pre-computed hex polygons keyed by radius (avoids recomputing trig every call)
+var _hex_polygon_cache: Dictionary = {} # float -> PackedVector2Array
+var _terrain_detail_node: Node2D  # Batched terrain detail draw node
+
 # Fog of war
 var _fog_of_war_enabled := true
-var _fog_overlay_nodes: Dictionary = {} # coord -> Polygon2D
+var _fog_draw_node: Node2D = null  # Batched fog draw node
 var _explored_tiles: Dictionary = {} # coord -> true (tiles that have been seen at least once)
 
 @onready var hex_map_layer: Node2D = $HexMapLayer
@@ -131,6 +137,7 @@ func _ready() -> void:
 	_create_city_markers()
 	_create_building_tile_markers()
 	_create_army_markers()
+	_city_markers_dirty = false  # Initial markers just created; skip redundant rebuild
 
 	EventBus.army_moved.connect(_on_army_moved)
 	EventBus.army_destroyed.connect(_on_army_destroyed)
@@ -151,6 +158,9 @@ func _ready() -> void:
 	_create_elderbeast_markers()
 	_build_region_tiles_cache()
 	_create_fog_overlay()
+	# Ensure labels render above region borders
+	region_labels_node.z_index = 2
+	city_markers_node.z_index = 2
 	_create_minimap()
 	EventBus.elderbeast_moved.connect(_on_elderbeast_moved)
 
@@ -171,6 +181,7 @@ func _ready() -> void:
 			_cam_target = _hex_to_pixel(c.hex_pos)
 			break
 	camera.position = _cam_target
+	_cull_hex_tiles()
 
 	AudioManager.play_faction_music(GameManager.state.player_faction_id, &"campaign")
 
@@ -182,33 +193,30 @@ func _ready() -> void:
 			TurnManager._end_current_faction_turn()
 
 func _process(delta: float) -> void:
-	# Animated water color cycling
-	_water_timer += delta * 0.5
-	# Shard waste shimmer
-	_shard_waste_timer += delta * 1.2
+	# Animated tiles now handled by shaders (hex_water.gdshader, hex_shard.gdshader)
 
-	# Pre-compute sin values once per frame
-	var water_sin1 := 0.02 * sin(_water_timer * 2.0)
-	var water_sin2 := 0.04 * sin(_water_timer)
-	var shard_sin1 := 0.04 * sin(_shard_waste_timer)
-	var shard_sin2 := 0.06 * sin(_shard_waste_timer * 0.7)
-
-	# Only iterate cached animated tiles (water + shard_wastes)
-	for entry in _animated_tiles:
-		var bc: Color = entry.base_color
-		if entry.terrain == Enums.TerrainType.WATER:
-			entry.fill.color = bc + Color(0, water_sin1, water_sin2, 0)
-		else:
-			entry.fill.color = bc + Color(shard_sin1, 0, shard_sin2, 0)
-
-	# Refresh minimap viewport rect when camera moves or zooms
+	# Refresh minimap on timer: dirty flag for content changes, camera for viewport
 	_minimap_update_timer += delta
-	if _minimap_update_timer >= 0.2:
+	if _minimap_update_timer >= 0.5:
 		_minimap_update_timer = 0.0
-		if camera and (camera.position != _minimap_last_cam_pos or camera.zoom.x != _minimap_last_cam_zoom):
-			_minimap_last_cam_pos = camera.position
-			_minimap_last_cam_zoom = camera.zoom.x
+		var cam_moved := camera and (camera.position != _minimap_last_cam_pos or camera.zoom.x != _minimap_last_cam_zoom)
+		if cam_moved or _minimap_dirty:
+			if camera:
+				_minimap_last_cam_pos = camera.position
+				_minimap_last_cam_zoom = camera.zoom.x
+			_minimap_dirty = false
 			_update_minimap()
+
+	# Viewport culling for hex tiles
+	if camera:
+		var cam_pos := camera.position
+		var cam_zoom := camera.zoom.x
+		# Only re-cull when camera has moved significantly (>1 hex worth)
+		var hex_threshold := 40.0  # approximately 1 hex width
+		if cam_pos.distance_to(_last_cull_cam_pos) > hex_threshold or absf(cam_zoom - _last_cull_cam_zoom) > 0.05:
+			_last_cull_cam_pos = cam_pos
+			_last_cull_cam_zoom = cam_zoom
+			_cull_hex_tiles()
 
 # ── Hex geometry ──────────────────────────────────────────────
 
@@ -234,11 +242,45 @@ func _pixel_to_hex(pixel: Vector2) -> Vector2i:
 	return best
 
 func _make_hex_polygon(radius: float) -> PackedVector2Array:
+	if _hex_polygon_cache.has(radius):
+		return _hex_polygon_cache[radius]
 	var points := PackedVector2Array()
 	for i in 6:
 		var angle := deg_to_rad(60.0 * i)
 		points.append(Vector2(cos(angle) * radius, sin(angle) * radius))
+	_hex_polygon_cache[radius] = points
 	return points
+
+## Build an array of world-space hex polygons for [param coords] using a local
+## polygon of [param radius].  This is the common overlay-tile pattern used by
+## reachable tiles, path preview, region highlight, settlement overlay, etc.
+func _build_world_hex_polys(coords: Array, radius: float) -> Array:
+	var hex_poly := _make_hex_polygon(radius)
+	var polys: Array = []
+	for coord in coords:
+		var pos := _hex_to_pixel(coord)
+		var world_poly := PackedVector2Array()
+		for p in hex_poly:
+			world_poly.append(p + pos)
+		polys.append(world_poly)
+	return polys
+
+# ── Viewport culling ──────────────────────────────────────────
+
+func _cull_hex_tiles() -> void:
+	var vp_size := get_viewport_rect().size
+	var cam_pos := camera.position
+	var cam_zoom := camera.zoom.x
+	# Visible area in world space (with 2 hex margin)
+	var margin := 80.0  # ~2 hexes
+	var half_w := (vp_size.x / cam_zoom) / 2.0 + margin
+	var half_h := (vp_size.y / cam_zoom) / 2.0 + margin
+	var vis_rect := Rect2(cam_pos.x - half_w, cam_pos.y - half_h, half_w * 2.0, half_h * 2.0)
+
+	for coord in _hex_visuals:
+		var node: Node2D = _hex_visuals[coord]
+		var node_pos := node.position
+		node.visible = vis_rect.has_point(node_pos)
 
 # ── Rendering ─────────────────────────────────────────────────
 
@@ -290,6 +332,28 @@ func _render_hex_map() -> void:
 	for point in fill_poly:
 		hex_uvs.append(Vector2(point.x / (2.0 * fill_r) + 0.5, point.y / (2.0 * fill_r) + 0.5))
 
+	# Batch all hex borders into a single draw node (saves ~9000 Polygon2D)
+	var all_border_polys: Array = []
+	for coord in hex_map.tiles:
+		var pixel_pos := _hex_to_pixel(coord)
+		var elevation: float = TERRAIN_ELEVATION.get(hex_map.tiles[coord].terrain, 0.0)
+		var offset := Vector2(pixel_pos.x, pixel_pos.y - elevation)
+		var world_poly := PackedVector2Array()
+		for p in border_poly:
+			world_poly.append(p + offset)
+		all_border_polys.append(world_poly)
+	var border_batch := _OverlayDrawNode.new()
+	border_batch.polys = all_border_polys
+	border_batch.color = HEX_BORDER_COLOR
+	hex_map_layer.add_child(border_batch)
+
+	# Create batched terrain detail node (replaces individual Polygon2D/Line2D children)
+	_terrain_detail_node = _BatchedTerrainDetailNode.new()
+	_terrain_detail_node.z_index = 1
+
+	var _water_shader := load("res://assets/shaders/hex_water.gdshader") as Shader
+	var _shard_shader := load("res://assets/shaders/hex_shard.gdshader") as Shader
+
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
 		var pixel_pos := _hex_to_pixel(coord)
@@ -297,15 +361,9 @@ func _render_hex_map() -> void:
 		var elevation: float = TERRAIN_ELEVATION.get(tile.terrain, 0.0)
 		_hex_elevations[coord] = elevation
 
-		# Container node with vertical offset for elevation
+		# Container node with vertical offset for elevation (no border child needed)
 		var container := Node2D.new()
 		container.position = Vector2(pixel_pos.x, pixel_pos.y - elevation)
-
-		# Border hex (slightly larger)
-		var border := Polygon2D.new()
-		border.polygon = border_poly
-		border.color = HEX_BORDER_COLOR
-		container.add_child(border)
 
 		# Fill hex — pick a random texture variant based on tile coordinate
 		var fill := Polygon2D.new()
@@ -332,6 +390,18 @@ func _render_hex_map() -> void:
 			fill.color = base_color
 		container.add_child(fill)
 
+		# Apply shader material for animated terrains
+		if tile.terrain == Enums.TerrainType.WATER and _water_shader:
+			var mat := ShaderMaterial.new()
+			mat.shader = _water_shader
+			mat.set_shader_parameter("base_color", base_color)
+			fill.material = mat
+		elif tile.terrain == Enums.TerrainType.SHARD_WASTES and _shard_shader:
+			var mat := ShaderMaterial.new()
+			mat.shader = _shard_shader
+			mat.set_shader_parameter("base_color", base_color)
+			fill.material = mat
+
 		# Procedural terrain details (only for terrains without textures)
 		if not tex:
 			_add_terrain_detail(container, tile.terrain, fill_poly, base_color)
@@ -339,25 +409,8 @@ func _render_hex_map() -> void:
 		hex_map_layer.add_child(container)
 		_hex_visuals[coord] = container
 
-	# Cache animated tiles (water + shard wastes) for fast _process iteration
-	_animated_tiles.clear()
-	for coord in _hex_visuals:
-		var tile: HexMapData.TileState = hex_map.tiles.get(coord)
-		if tile == null:
-			continue
-		if tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.SHARD_WASTES:
-			continue
-		var cont: Node2D = _hex_visuals[coord]
-		if cont.get_child_count() <= 1:
-			continue
-		var f: Polygon2D = cont.get_child(1)
-		var has_tex := f.texture != null
-		var bc: Color = Color.WHITE if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
-		if tile.owner_faction != &"":
-			var fd: FactionData = DataManager.get_faction(tile.owner_faction)
-			if fd:
-				bc = bc.lerp(fd.color, 0.12)
-		_animated_tiles.append({coord = coord, fill = f, terrain = tile.terrain, base_color = bc})
+	# Add batched terrain detail node (all terrain decorations in one draw call)
+	hex_map_layer.add_child(_terrain_detail_node)
 
 	# Draw elevation shadow edges after all tiles
 	_draw_elevation_edges()
@@ -370,6 +423,11 @@ func _draw_elevation_edges() -> void:
 	if hex_map == null:
 		return
 	var hex_points := _make_hex_polygon(HEX_RADIUS * 0.96)
+	var cliff_polys: Array = []
+	var medium_polys: Array = []
+	var subtle_polys: Array = []
+	var highlight_edges: Array = []
+
 	for coord in hex_map.tiles:
 		var my_elev: float = _hex_elevations.get(coord, 0.0)
 		var my_pixel := _hex_to_pixel(coord)
@@ -383,12 +441,9 @@ func _draw_elevation_edges() -> void:
 			var elev_diff := my_elev - n_elev
 			if elev_diff <= 0:
 				continue
-
-			# Draw shadow quad on the lower side of the shared edge
 			var e: int = edge_lut[i]
 			var v1: Vector2 = my_pixel + hex_points[e]
 			var v2: Vector2 = my_pixel + hex_points[(e + 1) % 6]
-			# Offset vertices down by elevation difference
 			var drop := elev_diff * 1.5
 			var shadow_poly := PackedVector2Array([
 				Vector2(v1.x, v1.y - my_elev),
@@ -396,35 +451,36 @@ func _draw_elevation_edges() -> void:
 				Vector2(v2.x, v2.y - my_elev + drop),
 				Vector2(v1.x, v1.y - my_elev + drop),
 			])
-			var shadow := Polygon2D.new()
-			shadow.polygon = shadow_poly
 			if elev_diff >= 3.0:
-				shadow.color = Color(0.06, 0.05, 0.04, 0.7)  # Cliff
+				cliff_polys.append(shadow_poly)
 			elif elev_diff >= 1.5:
-				shadow.color = Color(0.08, 0.07, 0.06, 0.5)  # Medium
+				medium_polys.append(shadow_poly)
 			else:
-				shadow.color = Color(0.1, 0.09, 0.08, 0.35)  # Subtle
-			hex_map_layer.add_child(shadow)
+				subtle_polys.append(shadow_poly)
 
 		# Mountain highlight on top edges (edges 4 and 5 = north-facing)
 		if hex_map.tiles[coord].terrain == Enums.TerrainType.MOUNTAINS:
 			for edge_i in [4, 5]:
 				var hv1: Vector2 = my_pixel + hex_points[edge_i]
 				var hv2: Vector2 = my_pixel + hex_points[(edge_i + 1) % 6]
-				var highlight := Line2D.new()
-				highlight.points = PackedVector2Array([
+				highlight_edges.append([
 					Vector2(hv1.x, hv1.y - my_elev),
 					Vector2(hv2.x, hv2.y - my_elev),
 				])
-				highlight.width = 1.5
-				highlight.default_color = Color(0.65, 0.6, 0.55, 0.4)
-				hex_map_layer.add_child(highlight)
+
+	var elev_node := _ElevationDrawNode.new()
+	elev_node.cliff_polys = cliff_polys
+	elev_node.medium_polys = medium_polys
+	elev_node.subtle_polys = subtle_polys
+	elev_node.highlight_edges = highlight_edges
+	hex_map_layer.add_child(elev_node)
 
 func _draw_mountain_outlines() -> void:
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
 		return
 	var hex_points := _make_hex_polygon(HEX_RADIUS)
+	var all_outlines: Array = []
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
 		if tile.terrain != Enums.TerrainType.MOUNTAINS:
@@ -436,115 +492,62 @@ func _draw_mountain_outlines() -> void:
 		for i in 6:
 			var neighbor: Vector2i = neighbors[i]
 			var ntile := hex_map.get_tile(neighbor)
-			# Only draw outline on edges facing non-mountain tiles
 			if ntile == null or ntile.terrain != Enums.TerrainType.MOUNTAINS:
 				var e: int = edge_lut[i]
 				var v1: Vector2 = my_pixel + hex_points[e]
 				var v2: Vector2 = my_pixel + hex_points[(e + 1) % 6]
-				var outline := Line2D.new()
-				outline.points = PackedVector2Array([
+				all_outlines.append([
 					Vector2(v1.x, v1.y - my_elev),
 					Vector2(v2.x, v2.y - my_elev),
 				])
-				outline.width = 3.0
-				outline.default_color = Color(0.05, 0.04, 0.03, 0.9)
-				hex_map_layer.add_child(outline)
+	var outline_node := _BorderDrawNode.new()
+	outline_node.edges = all_outlines
+	outline_node.line_color = Color(0.05, 0.04, 0.03, 0.9)
+	outline_node.line_width = 3.0
+	hex_map_layer.add_child(outline_node)
 
 func _add_terrain_detail(container: Node2D, terrain: Enums.TerrainType, _hex_poly: PackedVector2Array, base_color: Color) -> void:
+	# Collect terrain details into batched draw node instead of individual child nodes
+	if _terrain_detail_node == null:
+		return
+	var pos := container.position  # World position of this hex
 	var r := HEX_RADIUS * 0.96
 	match terrain:
 		Enums.TerrainType.FOREST:
-			# Tree circles
 			for offset in [Vector2(-6, -5), Vector2(4, -3), Vector2(-2, 5), Vector2(6, 4)]:
-				var tree := Polygon2D.new()
-				tree.polygon = _make_circle(4.0, 6)
-				tree.position = offset
-				tree.color = base_color.darkened(0.25)
-				container.add_child(tree)
+				_terrain_detail_node.polygon_data.append([_make_circle_at(pos + offset, 4.0, 6), base_color.darkened(0.25)])
 		Enums.TerrainType.JUNGLE:
-			# Dense vegetation - more and bigger circles
 			for offset in [Vector2(-7, -6), Vector2(5, -4), Vector2(-3, 6), Vector2(7, 3), Vector2(0, -1), Vector2(-5, 2)]:
-				var tree := Polygon2D.new()
-				tree.polygon = _make_circle(4.5, 6)
-				tree.position = offset
-				tree.color = base_color.darkened(0.2)
-				container.add_child(tree)
+				_terrain_detail_node.polygon_data.append([_make_circle_at(pos + offset, 4.5, 6), base_color.darkened(0.2)])
 		Enums.TerrainType.MOUNTAINS:
-			# Triangle peaks
-			var peak := Polygon2D.new()
-			peak.polygon = PackedVector2Array([Vector2(0, -8), Vector2(-6, 4), Vector2(6, 4)])
-			peak.color = base_color.lightened(0.15)
-			container.add_child(peak)
-			var peak2 := Polygon2D.new()
-			peak2.polygon = PackedVector2Array([Vector2(-7, -3), Vector2(-12, 5), Vector2(-2, 5)])
-			peak2.color = base_color.lightened(0.1)
-			container.add_child(peak2)
+			_terrain_detail_node.polygon_data.append([PackedVector2Array([pos + Vector2(0, -8), pos + Vector2(-6, 4), pos + Vector2(6, 4)]), base_color.lightened(0.15)])
+			_terrain_detail_node.polygon_data.append([PackedVector2Array([pos + Vector2(-7, -3), pos + Vector2(-12, 5), pos + Vector2(-2, 5)]), base_color.lightened(0.1)])
 		Enums.TerrainType.DESERT:
-			# Dune lines
-			var line := Line2D.new()
-			line.points = PackedVector2Array([Vector2(-r * 0.5, 2), Vector2(0, -2), Vector2(r * 0.5, 2)])
-			line.width = 1.5
-			line.default_color = base_color.lightened(0.15)
-			container.add_child(line)
-			var line2 := Line2D.new()
-			line2.points = PackedVector2Array([Vector2(-r * 0.4, 7), Vector2(r * 0.1, 4), Vector2(r * 0.4, 7)])
-			line2.width = 1.5
-			line2.default_color = base_color.lightened(0.12)
-			container.add_child(line2)
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(-r * 0.5, 2), pos + Vector2(0, -2), pos + Vector2(r * 0.5, 2)]), 1.5, base_color.lightened(0.15)])
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(-r * 0.4, 7), pos + Vector2(r * 0.1, 4), pos + Vector2(r * 0.4, 7)]), 1.5, base_color.lightened(0.12)])
 		Enums.TerrainType.SWAMP:
-			# Wavy water lines
-			var line := Line2D.new()
-			line.points = PackedVector2Array([Vector2(-8, 0), Vector2(-3, -3), Vector2(3, 3), Vector2(8, 0)])
-			line.width = 1.5
-			line.default_color = Color(0.25, 0.5, 0.35, 0.6)
-			container.add_child(line)
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(-8, 0), pos + Vector2(-3, -3), pos + Vector2(3, 3), pos + Vector2(8, 0)]), 1.5, Color(0.25, 0.5, 0.35, 0.6)])
 		Enums.TerrainType.WATER:
-			# Wave lines
-			var line := Line2D.new()
-			line.points = PackedVector2Array([Vector2(-8, -2), Vector2(-3, -5), Vector2(3, -2), Vector2(8, -5)])
-			line.width = 1.5
-			line.default_color = base_color.lightened(0.2)
-			container.add_child(line)
-			var line2 := Line2D.new()
-			line2.points = PackedVector2Array([Vector2(-6, 4), Vector2(-1, 1), Vector2(5, 4), Vector2(10, 1)])
-			line2.width = 1.5
-			line2.default_color = base_color.lightened(0.15)
-			container.add_child(line2)
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(-8, -2), pos + Vector2(-3, -5), pos + Vector2(3, -2), pos + Vector2(8, -5)]), 1.5, base_color.lightened(0.2)])
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(-6, 4), pos + Vector2(-1, 1), pos + Vector2(5, 4), pos + Vector2(10, 1)]), 1.5, base_color.lightened(0.15)])
 		Enums.TerrainType.TUNDRA:
-			# Ice crystal dots
 			for offset in [Vector2(-5, -3), Vector2(4, 5), Vector2(6, -4)]:
-				var dot := Polygon2D.new()
-				dot.polygon = PackedVector2Array([Vector2(0, -2), Vector2(2, 0), Vector2(0, 2), Vector2(-2, 0)])
-				dot.position = offset
-				dot.color = Color(0.85, 0.88, 0.95, 0.6)
-				container.add_child(dot)
+				_terrain_detail_node.polygon_data.append([PackedVector2Array([pos + offset + Vector2(0, -2), pos + offset + Vector2(2, 0), pos + offset + Vector2(0, 2), pos + offset + Vector2(-2, 0)]), Color(0.85, 0.88, 0.95, 0.6)])
 		Enums.TerrainType.SHARD_WASTES:
-			# Glowing shard fragments
 			for offset in [Vector2(-4, -3), Vector2(5, 2), Vector2(-1, 6)]:
-				var shard := Polygon2D.new()
-				shard.polygon = PackedVector2Array([Vector2(0, -3), Vector2(2, 0), Vector2(0, 3), Vector2(-2, 0)])
-				shard.position = offset
-				shard.color = Color(0.7, 0.3, 0.8, 0.7)
-				container.add_child(shard)
+				_terrain_detail_node.polygon_data.append([PackedVector2Array([pos + offset + Vector2(0, -3), pos + offset + Vector2(2, 0), pos + offset + Vector2(0, 3), pos + offset + Vector2(-2, 0)]), Color(0.7, 0.3, 0.8, 0.7)])
 		Enums.TerrainType.PLAINS:
-			# Subtle grass lines
-			var line := Line2D.new()
-			line.points = PackedVector2Array([Vector2(-4, 2), Vector2(-3, -2), Vector2(-2, 2)])
-			line.width = 1.0
-			line.default_color = base_color.lightened(0.12)
-			container.add_child(line)
-			var line2 := Line2D.new()
-			line2.points = PackedVector2Array([Vector2(3, 1), Vector2(4, -3), Vector2(5, 1)])
-			line2.width = 1.0
-			line2.default_color = base_color.lightened(0.12)
-			container.add_child(line2)
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(-4, 2), pos + Vector2(-3, -2), pos + Vector2(-2, 2)]), 1.0, base_color.lightened(0.12)])
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(3, 1), pos + Vector2(4, -3), pos + Vector2(5, 1)]), 1.0, base_color.lightened(0.12)])
 		Enums.TerrainType.WETLANDS:
-			# Wetlands reeds
-			var line := Line2D.new()
-			line.points = PackedVector2Array([Vector2(-7, 3), Vector2(-2, 0), Vector2(4, 3), Vector2(8, 1)])
-			line.width = 1.5
-			line.default_color = Color(0.65, 0.6, 0.45, 0.5)
-			container.add_child(line)
+			_terrain_detail_node.line_data.append([PackedVector2Array([pos + Vector2(-7, 3), pos + Vector2(-2, 0), pos + Vector2(4, 3), pos + Vector2(8, 1)]), 1.5, Color(0.65, 0.6, 0.45, 0.5)])
+
+func _make_circle_at(center: Vector2, radius: float, segments: int) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for i in segments:
+		var angle := TAU * i / segments
+		points.append(center + Vector2(cos(angle) * radius, sin(angle) * radius))
+	return points
 
 func _make_circle(radius: float, segments: int) -> PackedVector2Array:
 	var points := PackedVector2Array()
@@ -607,47 +610,111 @@ func _draw_faction_borders() -> void:
 	if hex_map == null:
 		return
 
-	# Build visual ownership map: use region ownership to fill mountain/water gaps
-	# so borders follow region boundaries cleanly instead of outlining every unowned tile.
+	# Build visual ownership via Voronoi against all cities (including independent).
+	# This fills mountains/water gaps and assigns independent city territories.
 	_visual_faction_owner.clear()
 	var visual_owner := _visual_faction_owner
 
-	# Determine which faction controls each region (majority of cities)
-	var region_faction_counts: Dictionary = {}  # region_id -> {faction_id -> count}
+	# Group cities by region for efficient lookup
+	var region_cities: Dictionary = {}
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
-		if city.faction_id == &"" or city.faction_id == &"independent":
-			continue
-		if not region_faction_counts.has(city.region_id):
-			region_faction_counts[city.region_id] = {}
-		var rc: Dictionary = region_faction_counts[city.region_id]
-		rc[city.faction_id] = rc.get(city.faction_id, 0) + 1
-	var region_owners: Dictionary = {}  # region_id -> faction_id
-	for region_id in region_faction_counts:
-		var rc: Dictionary = region_faction_counts[region_id]
-		var best_fid: StringName = &""
-		var best_count := 0
-		for fid in rc:
-			if rc[fid] > best_count:
-				best_count = rc[fid]
-				best_fid = fid
-		if best_fid != &"":
-			region_owners[region_id] = best_fid
+		if not region_cities.has(city.region_id):
+			region_cities[city.region_id] = []
+		region_cities[city.region_id].append(city)
 
-	# Assign visual ownership: owned tiles use actual owner, unowned use region owner
+	# Visual Voronoi: every tile gets the faction of the closest city in its region
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		if tile.owner_faction != &"" and tile.owner_faction != &"independent":
-			visual_owner[coord] = tile.owner_faction
-		elif tile.region_id != &"":
-			var reg_owner: StringName = region_owners.get(tile.region_id, &"")
-			if reg_owner != &"":
-				visual_owner[coord] = reg_owner
+		if tile.region_id == &"":
+			continue
+		var rcities: Array = region_cities.get(tile.region_id, [])
+		if rcities.is_empty():
+			continue
+		var closest_fid: StringName = &""
+		var closest_dist := 999
+		for city in rcities:
+			var dist := HexHelper.hex_distance(coord, city.hex_pos)
+			if dist < closest_dist:
+				closest_dist = dist
+				closest_fid = city.faction_id
+		if closest_fid != &"":
+			visual_owner[coord] = closest_fid
 
-	# Use full HEX_RADIUS (no 0.96 inset) so shared vertices between adjacent hexes
-	# match exactly — required for reliable snap-based vertex matching in pruning.
+	# Pocket cleanup: BFS connected components per faction, reassign small isolated ones.
+	# Run multiple passes to handle cascading reassignment.
+	for _cleanup_pass in 3:
+		var cleanup_changed := false
+		var comp_id: Dictionary = {}
+		var components: Array = []
+		var current_comp := 0
+		for coord in visual_owner:
+			if comp_id.has(coord):
+				continue
+			var faction: StringName = visual_owner[coord]
+			var comp_tiles: Array = [coord]
+			comp_id[coord] = current_comp
+			var bfs: Array = [coord]
+			while not bfs.is_empty():
+				var c: Vector2i = bfs.pop_back()
+				for n in HexHelper.get_neighbors(c):
+					if comp_id.has(n):
+						continue
+					if visual_owner.get(n, &"") == faction:
+						comp_id[n] = current_comp
+						comp_tiles.append(n)
+						bfs.append(n)
+			components.append({faction_id = faction, tiles = comp_tiles})
+			current_comp += 1
+
+		# Find largest component per faction
+		var largest_per_faction: Dictionary = {}
+		for comp in components:
+			var sz: int = comp.tiles.size()
+			if sz > largest_per_faction.get(comp.faction_id, 0):
+				largest_per_faction[comp.faction_id] = sz
+
+		for comp in components:
+			var sz: int = comp.tiles.size()
+			var largest: int = largest_per_faction.get(comp.faction_id, sz)
+			# Skip if this IS the largest component or is big enough
+			if sz == largest:
+				continue
+			if sz >= 8 and float(sz) / float(largest) >= 0.15:
+				continue
+			var surround_counts: Dictionary = {}
+			for coord in comp.tiles:
+				for n in HexHelper.get_neighbors(coord):
+					var nf: StringName = visual_owner.get(n, &"")
+					if nf != &"" and nf != comp.faction_id:
+						surround_counts[nf] = surround_counts.get(nf, 0) + 1
+			var best_faction: StringName = &""
+			var best_count := 0
+			for f in surround_counts:
+				if surround_counts[f] > best_count:
+					best_count = surround_counts[f]
+					best_faction = f
+			if best_faction != &"":
+				for coord in comp.tiles:
+					visual_owner[coord] = best_faction
+				cleanup_changed = true
+		if not cleanup_changed:
+			break
+
+	# Build faction color map (includes independent as grey)
+	var faction_colors: Dictionary = {}
+	for fid in GameManager.state.faction_states:
+		var fd: FactionData = DataManager.get_faction(fid)
+		if fd:
+			var c: Color = fd.color.lightened(0.1)
+			c.a = 0.7
+			faction_colors[fid] = c
+	faction_colors[&"independent"] = Color(0.7, 0.7, 0.7, 0.7)
+
+	# Collect double-border edges: [v1, v2, inner_fid, outer_fid]
+	# Collect from smaller coord only to avoid duplicates on shared edges
 	var hex_points := _make_hex_polygon(HEX_RADIUS)
-	var border_edges: Dictionary = {}  # faction_id -> Array of [v1, v2]
+	var all_border_edges: Array = []
 
 	for coord in visual_owner:
 		var my_faction: StringName = visual_owner[coord]
@@ -657,49 +724,47 @@ func _draw_faction_borders() -> void:
 
 		for i in 6:
 			var neighbor: Vector2i = neighbors[i]
-			var draw_border := false
+			var n_faction: StringName = visual_owner.get(neighbor, &"")
 
-			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-				draw_border = true
-			else:
-				var n_faction: StringName = visual_owner.get(neighbor, &"")
-				if n_faction != my_faction:
-					draw_border = true
+			if n_faction == my_faction:
+				continue
 
-			if draw_border:
-				var e: int = edge_lut[i]
-				var v1: Vector2 = pixel_pos + hex_points[e]
-				var v2: Vector2 = pixel_pos + hex_points[(e + 1) % 6]
-				if not border_edges.has(my_faction):
-					border_edges[my_faction] = []
-				border_edges[my_faction].append([v1, v2])
+			# For shared edges between two owned hexes, collect from smaller coord only
+			var is_map_edge := not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT)
+			if not is_map_edge and n_faction != &"":
+				if coord.x > neighbor.x or (coord.x == neighbor.x and coord.y > neighbor.y):
+					continue
 
-	for faction_id in border_edges:
-		var fd: FactionData = DataManager.get_faction(faction_id)
-		var border_color: Color = fd.color.lightened(0.1) if fd else Color.WHITE
-		border_color.a = 0.7
-		var clean := _prune_faction_border_edges(border_edges[faction_id])
-		var draw_node := _BorderDrawNode.new()
-		draw_node.edges = clean
-		draw_node.line_color = border_color
-		draw_node.line_width = 2.5
-		_faction_border_node.add_child(draw_node)
+			var e: int = edge_lut[i]
+			var v1: Vector2 = pixel_pos + hex_points[e]
+			var v2: Vector2 = pixel_pos + hex_points[(e + 1) % 6]
+			all_border_edges.append([v1, v2, my_faction, n_faction])
+
+	var clean := _prune_faction_border_edges(all_border_edges)
+	var draw_node := _DoubleBorderDrawNode.new()
+	draw_node.edges = clean
+	draw_node.faction_colors = faction_colors
+	draw_node.line_width = 2.0
+	draw_node.offset = 1.2
+	_faction_border_node.add_child(draw_node)
 
 # Removes dead-end stubs and small isolated loops from faction border edges.
 # Uses coarse spatial hashing (÷16) for vertex matching — shared corners differ by
 # ~0.002px (always same bucket), distinct corners are 32+px apart (always different buckets).
+# Input/output edges are [v1, v2, inner_fid, outer_fid].
 func _prune_faction_border_edges(raw_edges: Array) -> Array:
 	if raw_edges.size() < 3:
 		return raw_edges
 
 	# Snap vertices to coarse grid for reliable matching
-	var snap_edges: Array = []  # [Vector2i snap_v1, Vector2i snap_v2, Vector2 real_v1, Vector2 real_v2]
+	# [snap_v1, snap_v2, real_v1, real_v2, inner_fid, outer_fid]
+	var snap_edges: Array = []
 	for edge in raw_edges:
 		var v1: Vector2 = edge[0]
 		var v2: Vector2 = edge[1]
 		var s1 := Vector2i(roundi(v1.x / 16.0), roundi(v1.y / 16.0))
 		var s2 := Vector2i(roundi(v2.x / 16.0), roundi(v2.y / 16.0))
-		snap_edges.append([s1, s2, v1, v2])
+		snap_edges.append([s1, s2, v1, v2, edge[2], edge[3]])
 
 	# Build adjacency: vertex -> edge indices
 	var adj: Dictionary = {}
@@ -750,7 +815,7 @@ func _prune_faction_border_edges(raw_edges: Array) -> Array:
 		if not adj2.has(s2): adj2[s2] = []
 		adj2[s2].append(idx)
 
-	# BFS connected components — filter out small ones (< 12 edges)
+	# BFS connected components — filter out very small artifact loops (< 3 edges)
 	var visited: Dictionary = {}
 	var result: Array = []
 	for start_idx in surviving:
@@ -768,9 +833,10 @@ func _prune_faction_border_edges(raw_edges: Array) -> Array:
 					if not visited.has(nb):
 						visited[nb] = true
 						bfs.append(nb)
-		if comp.size() >= 12:
+		if comp.size() >= 3:
 			for eidx in comp:
-				result.append([snap_edges[eidx][2], snap_edges[eidx][3]])
+				var se: Array = snap_edges[eidx]
+				result.append([se[2], se[3], se[4], se[5]])
 	return result
 
 class _BorderDrawNode extends Node2D:
@@ -780,6 +846,75 @@ class _BorderDrawNode extends Node2D:
 	func _draw() -> void:
 		for edge in edges:
 			draw_line(edge[0], edge[1], line_color, line_width, true)
+
+class _OverlayDrawNode extends Node2D:
+	var polys: Array = []  # Array of PackedVector2Array (world-space)
+	var color: Color = Color.WHITE
+	func _draw() -> void:
+		for poly in polys:
+			draw_colored_polygon(poly, color)
+
+class _MultiColorOverlayDrawNode extends Node2D:
+	var entries: Array = []  # Array of [PackedVector2Array, Color]
+	func _draw() -> void:
+		for entry in entries:
+			draw_colored_polygon(entry[0], entry[1])
+
+class _FogDrawNode extends Node2D:
+	var tile_polys: Dictionary = {}   # coord -> PackedVector2Array (world-space)
+	var tile_alphas: Dictionary = {}  # coord -> float (0.0=visible, 0.45=explored, 0.75=hidden)
+	func _draw() -> void:
+		var fog_base := Color(0.03, 0.02, 0.05)
+		for coord in tile_alphas:
+			var alpha: float = tile_alphas[coord]
+			if alpha <= 0.0:
+				continue
+			draw_colored_polygon(tile_polys[coord], Color(fog_base.r, fog_base.g, fog_base.b, alpha))
+
+class _ElevationDrawNode extends Node2D:
+	var cliff_polys: Array = []
+	var medium_polys: Array = []
+	var subtle_polys: Array = []
+	var highlight_edges: Array = []
+	func _draw() -> void:
+		for poly in cliff_polys:
+			draw_colored_polygon(poly, Color(0.06, 0.05, 0.04, 0.7))
+		for poly in medium_polys:
+			draw_colored_polygon(poly, Color(0.08, 0.07, 0.06, 0.5))
+		for poly in subtle_polys:
+			draw_colored_polygon(poly, Color(0.1, 0.09, 0.08, 0.35))
+		for e in highlight_edges:
+			draw_line(e[0], e[1], Color(0.65, 0.6, 0.55, 0.4), 1.5, true)
+
+class _BatchedTerrainDetailNode extends Node2D:
+	var polygon_data: Array = []  # Array of [PackedVector2Array, Color]
+	var line_data: Array = []  # Array of [PackedVector2Array, float width, Color]
+	func _draw() -> void:
+		for entry in polygon_data:
+			draw_colored_polygon(entry[0], entry[1])
+		for entry in line_data:
+			draw_polyline(entry[0], entry[2], entry[1])
+
+class _DoubleBorderDrawNode extends Node2D:
+	var edges: Array = []  # [v1, v2, inner_fid, outer_fid]
+	var faction_colors: Dictionary = {}
+	var line_width := 2.0
+	var offset := 1.8
+	var separator_width := 1.0
+	func _draw() -> void:
+		for edge in edges:
+			var d: Vector2 = edge[1] - edge[0]
+			# n points inward (toward source hex center) for CCW polygon winding
+			var n := Vector2(-d.y, d.x).normalized()
+			var ic: Color = faction_colors.get(edge[2], Color(0.7, 0.7, 0.7, 0.7))
+			# Inner faction line on inner side (+n = toward source hex)
+			draw_line(edge[0] + n * offset, edge[1] + n * offset, ic, line_width, true)
+			if edge[3] != &"":
+				# Outer faction line on outer side (-n = toward neighbor hex)
+				var oc: Color = faction_colors.get(edge[3], Color(0.7, 0.7, 0.7, 0.7))
+				draw_line(edge[0] - n * offset, edge[1] - n * offset, oc, line_width, true)
+				# Black separator line between the two colored lines
+				draw_line(edge[0], edge[1], Color(0.0, 0.0, 0.0, 0.85), separator_width, true)
 
 func _refresh_faction_borders() -> void:
 	_draw_faction_borders()
@@ -813,13 +948,13 @@ func _create_region_labels() -> void:
 
 		var label := Label.new()
 		label.text = region.display_name
-		label.add_theme_font_size_override("font_size", 10)
+		label.add_theme_font_size_override("font_size", 13)
 		label.add_theme_color_override("font_color", Color(0.95, 0.9, 0.7, 0.95))
 		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 		label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 		label.add_theme_constant_override("shadow_offset_x", 1)
 		label.add_theme_constant_override("shadow_offset_y", 1)
-		label.add_theme_constant_override("outline_size", 2)
+		label.add_theme_constant_override("outline_size", 3)
 		panel.add_child(label)
 
 		panel.position = pixel_pos + Vector2(-50, 14)
@@ -837,24 +972,46 @@ func _update_political_overlay() -> void:
 	if hex_map == null:
 		return
 
+	var political_blend := 0.55 if _minimap_political_mode else 0.12
+
 	for coord in _hex_visuals:
 		var container: Node2D = _hex_visuals[coord]
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
 
-		# The fill polygon is child 1 (child 0 is border)
-		if container.get_child_count() > 1:
-			var fill: Polygon2D = container.get_child(1)
+		# The fill polygon is child 0 (borders are batched separately)
+		if container.get_child_count() > 0:
+			var fill: Polygon2D = container.get_child(0)
 			var has_texture := fill.texture != null
 			var base_color: Color = Color.WHITE if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
-			if tile.owner_faction != &"":
+			if tile.owner_faction != &"" and tile.owner_faction != &"independent":
 				var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
 				if faction_data:
-					base_color = base_color.lerp(faction_data.color, 0.12)
+					base_color = base_color.lerp(faction_data.color, political_blend)
+			elif _minimap_political_mode:
+				# In political mode, darken unowned tiles to make ownership stand out
+				base_color = base_color.darkened(0.2)
 			fill.color = base_color
 
 # ── Army markers ──────────────────────────────────────────────
 
 func _create_army_markers() -> void:
+	# Only rebuild if army set changed; otherwise just update positions
+	var need_rebuild := false
+	if _army_markers.size() != GameManager.state.armies.size():
+		need_rebuild = true
+	else:
+		for army_id in GameManager.state.armies:
+			if not _army_markers.has(army_id):
+				need_rebuild = true
+				break
+	if not need_rebuild:
+		# Fast path: just update positions
+		for army_id in _army_markers:
+			var army: ArmyState = GameManager.state.armies.get(army_id)
+			if army:
+				_army_markers[army_id].position = _hex_to_pixel(army.hex_pos)
+		return
+
 	for child in army_markers_node.get_children():
 		child.queue_free()
 	_army_markers.clear()
@@ -935,54 +1092,72 @@ func _create_city_marker(city: CityState) -> void:
 	var faction_data: FactionData = DataManager.get_faction(city.faction_id)
 	var faction_color: Color = faction_data.color if faction_data else Color.WHITE
 
-	# Castle base (square with crenellations)
-	var base := Polygon2D.new()
-	base.polygon = PackedVector2Array([
-		Vector2(-10, -8), Vector2(10, -8), Vector2(10, 8),
-		Vector2(-10, 8)
-	])
-	base.color = faction_color.darkened(0.2)
-	marker.add_child(base)
-
-	# Tower left
-	var tower_l := Polygon2D.new()
-	tower_l.polygon = PackedVector2Array([
-		Vector2(-12, -14), Vector2(-6, -14), Vector2(-6, -6), Vector2(-12, -6)
-	])
-	tower_l.color = faction_color.darkened(0.1)
-	marker.add_child(tower_l)
-
-	# Tower right
-	var tower_r := Polygon2D.new()
-	tower_r.polygon = PackedVector2Array([
-		Vector2(6, -14), Vector2(12, -14), Vector2(12, -6), Vector2(6, -6)
-	])
-	tower_r.color = faction_color.darkened(0.1)
-	marker.add_child(tower_r)
-
-	# Center tower (taller)
-	var is_player_capital := city.is_capital and city.faction_id == GameManager.state.player_faction_id
-	var tower_c := Polygon2D.new()
-	tower_c.polygon = PackedVector2Array([
-		Vector2(-4, -18), Vector2(4, -18), Vector2(4, -6), Vector2(-4, -6)
-	])
-	tower_c.color = faction_color.lightened(0.15) if is_player_capital else faction_color
-	marker.add_child(tower_c)
-
-	# Gold diamond indicator on player capital
-	if is_player_capital:
-		var crown := Polygon2D.new()
-		crown.polygon = PackedVector2Array([
-			Vector2(0, -24), Vector2(4, -20), Vector2(0, -16), Vector2(-4, -20)
+	if city.is_settlement:
+		# Settlement icon: smaller house shape
+		var house := Polygon2D.new()
+		house.polygon = PackedVector2Array([
+			Vector2(-7, 4), Vector2(-7, -3), Vector2(0, -9), Vector2(7, -3), Vector2(7, 4)
 		])
-		crown.color = Color(0.95, 0.85, 0.3)
-		marker.add_child(crown)
+		house.color = faction_color.darkened(0.15)
+		marker.add_child(house)
+		# Door
+		var door := Polygon2D.new()
+		door.polygon = PackedVector2Array([
+			Vector2(-2, 4), Vector2(-2, 0), Vector2(2, 0), Vector2(2, 4)
+		])
+		door.color = faction_color.darkened(0.4)
+		marker.add_child(door)
+	else:
+		# City/Capital icon: castle with towers
+		var base := Polygon2D.new()
+		base.polygon = PackedVector2Array([
+			Vector2(-10, -8), Vector2(10, -8), Vector2(10, 8),
+			Vector2(-10, 8)
+		])
+		base.color = faction_color.darkened(0.2)
+		marker.add_child(base)
+
+		# Tower left
+		var tower_l := Polygon2D.new()
+		tower_l.polygon = PackedVector2Array([
+			Vector2(-12, -14), Vector2(-6, -14), Vector2(-6, -6), Vector2(-12, -6)
+		])
+		tower_l.color = faction_color.darkened(0.1)
+		marker.add_child(tower_l)
+
+		# Tower right
+		var tower_r := Polygon2D.new()
+		tower_r.polygon = PackedVector2Array([
+			Vector2(6, -14), Vector2(12, -14), Vector2(12, -6), Vector2(6, -6)
+		])
+		tower_r.color = faction_color.darkened(0.1)
+		marker.add_child(tower_r)
+
+		# Center tower (taller)
+		var is_player_capital := city.is_capital and city.faction_id == GameManager.state.player_faction_id
+		var tower_c := Polygon2D.new()
+		tower_c.polygon = PackedVector2Array([
+			Vector2(-4, -18), Vector2(4, -18), Vector2(4, -6), Vector2(-4, -6)
+		])
+		tower_c.color = faction_color.lightened(0.15) if is_player_capital else faction_color
+		marker.add_child(tower_c)
+
+		# Gold diamond indicator on player capital
+		if is_player_capital:
+			var crown := Polygon2D.new()
+			crown.polygon = PackedVector2Array([
+				Vector2(0, -24), Vector2(4, -20), Vector2(0, -16), Vector2(-4, -20)
+			])
+			crown.color = Color(0.95, 0.85, 0.3)
+			marker.add_child(crown)
 
 	# City level glow — scales with city level, larger for capitals
 	if city.faction_id == GameManager.state.player_faction_id:
 		var glow_base_radius := 14.0 + city.level * 2.0
 		if city.is_capital:
 			glow_base_radius += 6.0
+		elif city.is_settlement:
+			glow_base_radius -= 4.0
 		var glow_alpha := clampf(0.15 + city.level * 0.04, 0.15, 0.45)
 		# Outer soft glow
 		var glow_outer := Polygon2D.new()
@@ -1006,8 +1181,9 @@ func _create_city_marker(city: CityState) -> void:
 	# Level label
 	var label := Label.new()
 	label.text = str(city.level)
-	label.position = Vector2(-4, -16)
-	label.add_theme_font_size_override("font_size", 10)
+	var label_offset := Vector2(-3, -8) if city.is_settlement else Vector2(-4, -16)
+	label.position = label_offset
+	label.add_theme_font_size_override("font_size", 8 if city.is_settlement else 10)
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	label.add_theme_constant_override("shadow_offset_x", 1)
@@ -1024,6 +1200,37 @@ func _create_city_marker(city: CityState) -> void:
 
 	if city.is_under_siege:
 		_animate_siege_ring(siege_ring)
+
+	# City name plaque below the marker — all cities except settlements
+	if not city.is_settlement:
+		var city_text: String = city.city_name if city.city_name != "" else str(city.city_id)
+		var plaque := PanelContainer.new()
+		plaque.name = "CityPlaque"
+		var plaque_style := StyleBoxFlat.new()
+		plaque_style.bg_color = Color(faction_color.r * 0.3, faction_color.g * 0.3, faction_color.b * 0.3, 0.85)
+		plaque_style.border_color = Color(faction_color.r, faction_color.g, faction_color.b, 0.6)
+		plaque_style.set_border_width_all(1)
+		plaque_style.set_corner_radius_all(2)
+		plaque_style.set_content_margin_all(0)
+		plaque_style.content_margin_left = 3
+		plaque_style.content_margin_right = 3
+		plaque_style.content_margin_top = 1
+		plaque_style.content_margin_bottom = 1
+		plaque.add_theme_stylebox_override("panel", plaque_style)
+		var name_label := Label.new()
+		name_label.text = city_text
+		name_label.add_theme_font_size_override("font_size", 11)
+		name_label.add_theme_color_override("font_color", Color(0.9, 0.88, 0.8))
+		name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		name_label.add_theme_constant_override("outline_size", 2)
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		plaque.add_child(name_label)
+		# Size to text width + padding, centered under marker
+		var char_width := city_text.length() * 5.0 + 10.0
+		var plaque_w := maxf(char_width, 24.0)
+		plaque.size = Vector2(plaque_w, 14)
+		plaque.position = Vector2(-plaque_w * 0.5, 10)
+		marker.add_child(plaque)
 
 	# Colored outline around castle shape based on relationship to player
 	var outline := Line2D.new()
@@ -1137,6 +1344,23 @@ func _add_building_tile_marker(tile_pos: Vector2i, building: BuildingData, facti
 # ── Elderbeast markers ────────────────────────────────────────
 
 func _create_elderbeast_markers() -> void:
+	# Only rebuild if beast set changed; otherwise just update positions
+	var need_rebuild := false
+	if _elderbeast_markers.size() != GameManager.state.elderbeasts.size():
+		need_rebuild = true
+	else:
+		for beast_id in GameManager.state.elderbeasts:
+			if not _elderbeast_markers.has(beast_id):
+				need_rebuild = true
+				break
+	if not need_rebuild:
+		# Fast path: just update positions
+		for beast_id in _elderbeast_markers:
+			var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id)
+			if beast:
+				_elderbeast_markers[beast_id].position = _hex_to_pixel(beast.hex_pos)
+		return
+
 	for child in elderbeast_markers_node.get_children():
 		child.queue_free()
 	_elderbeast_markers.clear()
@@ -1231,7 +1455,12 @@ func _animate_siege_ring(ring: Polygon2D) -> void:
 	tween.tween_property(ring, "modulate:a", 0.3, 0.6)
 	tween.tween_property(ring, "modulate:a", 1.0, 0.6)
 
+## Rebuild city markers only when something has changed (_city_markers_dirty).
+## Multiple callers in the same frame will only trigger one actual rebuild.
 func _refresh_city_markers() -> void:
+	if not _city_markers_dirty:
+		return
+	_city_markers_dirty = false
 	_create_city_markers()
 	_create_building_tile_markers()
 	_update_city_glow_states()
@@ -1338,15 +1567,12 @@ func _update_region_hover(world_pos: Vector2) -> void:
 		return
 
 	var tiles: Array = _region_tiles_cache.get(region_id, [])
-	var highlight_poly := _make_hex_polygon(HEX_RADIUS * 0.94)
-	for coord in tiles:
-		var pixel_pos := _hex_to_pixel(coord)
-		var polygon := Polygon2D.new()
-		polygon.polygon = highlight_poly
-		polygon.position = pixel_pos
-		polygon.color = Color(1.0, 0.9, 0.5, 0.12)
-		region_highlight_node.add_child(polygon)
-		_region_highlight_nodes.append(polygon)
+	var polys := _build_world_hex_polys(tiles, HEX_RADIUS * 0.94)
+	var draw_node := _OverlayDrawNode.new()
+	draw_node.polys = polys
+	draw_node.color = Color(1.0, 0.9, 0.5, 0.12)
+	region_highlight_node.add_child(draw_node)
+	_region_highlight_nodes.append(draw_node)
 
 func _clear_region_highlight() -> void:
 	for node in _region_highlight_nodes:
@@ -1401,12 +1627,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 
 		if selected_army_id != &"":
-			# Army is selected: left-click on another player army = switch selection
+			# Army is selected: left-click on another army
 			var clicked_army := _get_army_at_click(world_pos)
 			if clicked_army != &"" and clicked_army != selected_army_id:
 				var clicked: ArmyState = GameManager.state.armies.get(clicked_army)
 				if clicked and clicked.faction_id == GameManager.state.player_faction_id:
 					_select_army(clicked_army)
+					return
+				elif clicked and clicked.faction_id != GameManager.state.player_faction_id:
+					# Inspect enemy army WITHOUT deselecting player army
+					_show_inspect_army(clicked)
 					return
 			# Otherwise deselect, then handle the hex
 			_deselect_all()
@@ -1424,10 +1654,30 @@ func _unhandled_input(event: InputEvent) -> void:
 			if selected_army_id != &"":
 				_handle_move_command(hex_coord)
 
-	# Fog of war toggle
-	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
-		_fog_of_war_enabled = not _fog_of_war_enabled
-		_update_fog_of_war()
+	# Keyboard shortcuts
+	if event is InputEventKey and event.pressed:
+		match event.keycode:
+			KEY_F:
+				_fog_of_war_enabled = not _fog_of_war_enabled
+				_update_fog_of_war()
+			KEY_SPACE, KEY_ENTER:
+				if TurnManager.is_player_turn:
+					EventBus.end_turn_pressed.emit()
+			KEY_TAB:
+				_cycle_player_armies()
+			KEY_ESCAPE:
+				_deselect_all()
+				if _city_panel_open:
+					_city_panel_open = false
+					if city_markers_node:
+						$UILayer/HUD._close_city_panel()
+			KEY_C:
+				if _selected_city_id != &"":
+					$UILayer/HUD._show_city_panel(_selected_city_id)
+			KEY_M:
+				_toggle_minimap()
+			KEY_A:
+				$UILayer/HUD._toggle_army_overview()
 
 	# Hover: region highlighting + path preview
 	if event is InputEventMouseMotion:
@@ -1525,7 +1775,7 @@ func _get_army_at_click(world_pos: Vector2) -> StringName:
 
 func _move_army_to(army: ArmyState, hex_coord: Vector2i) -> void:
 	var path := GameManager.movement_system.find_path(
-		army.hex_pos, hex_coord, army.faction_id, army.movement_remaining, army.army_id, army.can_cross_mountains())
+		army.hex_pos, hex_coord, army.faction_id, army.movement_remaining, army.army_id, army.can_cross_mountains(), army)
 	if path.size() > 0:
 		_clear_reachable_overlay()
 		_clear_path_overlay()
@@ -1562,10 +1812,13 @@ func _animate_army_along_path(army_id: StringName, path: Array[Vector2i]) -> voi
 
 		# Animate marker to next tile position BEFORE processing game logic
 		if marker:
+			var prev_pos := marker.position
 			var target_pixel := _hex_to_pixel(tile_coord)
 			var tween := create_tween()
 			tween.tween_property(marker, "position", target_pixel, 0.15)
 			await tween.finished
+			# Spawn dust cloud at previous position
+			_spawn_dust_cloud(prev_pos, army.hex_pos)
 
 		# Now process this single step via GameManager
 		var single_step: Array[Vector2i] = [tile_coord]
@@ -1577,6 +1830,10 @@ func _animate_army_along_path(army_id: StringName, path: Array[Vector2i]) -> voi
 		if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 			return
 
+	# Flush deferred fog/overlay updates now that movement is complete
+	if _fog_update_pending:
+		_fog_update_pending = false
+		_update_fog_of_war()
 	_update_political_overlay()
 	_create_army_markers()
 	# Re-show selection ring on the moving army if it still exists
@@ -1588,6 +1845,38 @@ func _animate_army_along_path(army_id: StringName, path: Array[Vector2i]) -> voi
 				ring.visible = true
 		# Refresh army panel
 		EventBus.army_selected.emit(army_id)
+
+func _spawn_dust_cloud(world_pos: Vector2, hex_pos: Vector2i) -> void:
+	# Spawn 3-4 small circles that fade out over 0.5s with slight upward drift
+	var tile := GameManager.state.hex_map.get_tile(hex_pos)
+	var dust_color := Color(0.55, 0.48, 0.35, 0.4)  # Default tan
+	if tile:
+		match tile.terrain:
+			Enums.TerrainType.FOREST, Enums.TerrainType.JUNGLE:
+				dust_color = Color(0.35, 0.38, 0.28, 0.35)
+			Enums.TerrainType.DESERT:
+				dust_color = Color(0.65, 0.55, 0.38, 0.45)
+			Enums.TerrainType.TUNDRA:
+				dust_color = Color(0.7, 0.7, 0.72, 0.35)
+			Enums.TerrainType.SWAMP, Enums.TerrainType.WETLANDS:
+				dust_color = Color(0.4, 0.38, 0.28, 0.3)
+			Enums.TerrainType.MOUNTAINS:
+				dust_color = Color(0.5, 0.48, 0.44, 0.4)
+	for j in randi_range(3, 4):
+		var particle := Polygon2D.new()
+		var r := randf_range(3.0, 6.0)
+		var pts := PackedVector2Array()
+		for k in 6:
+			var angle := TAU * float(k) / 6.0
+			pts.append(Vector2(cos(angle) * r, sin(angle) * r))
+		particle.polygon = pts
+		particle.color = dust_color
+		particle.position = world_pos + Vector2(randf_range(-8, 8), randf_range(-4, 4))
+		army_markers_node.add_child(particle)
+		var tw := create_tween()
+		tw.tween_property(particle, "position:y", particle.position.y - randf_range(8, 14), 0.5)
+		tw.parallel().tween_property(particle, "modulate:a", 0.0, 0.5)
+		tw.tween_callback(particle.queue_free)
 
 func _find_closest_reachable_toward(from: Vector2i, target: Vector2i) -> Vector2i:
 	# Find the reachable tile closest to the target
@@ -1662,6 +1951,28 @@ func _deselect_all() -> void:
 	EventBus.army_deselected.emit()
 	EventBus.hex_tile_deselected.emit()
 
+func _cycle_player_armies() -> void:
+	var player_armies: Array[StringName] = []
+	for aid in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[aid]
+		if army.faction_id == GameManager.state.player_faction_id and not army.is_garrison:
+			player_armies.append(aid)
+	if player_armies.is_empty():
+		return
+	var current_idx := -1
+	if selected_army_id != &"":
+		current_idx = player_armies.find(selected_army_id)
+	var next_idx := (current_idx + 1) % player_armies.size()
+	_select_army(player_armies[next_idx])
+	var army: ArmyState = GameManager.state.armies.get(player_armies[next_idx])
+	if army and camera:
+		camera.position = _hex_to_pixel(army.hex_pos)
+
+func _toggle_minimap() -> void:
+	var minimap := get_node_or_null("UILayer/Minimap")
+	if minimap:
+		minimap.visible = not minimap.visible
+
 func _hide_all_selection_rings() -> void:
 	for army_id in _army_markers:
 		var marker: Node2D = _army_markers[army_id]
@@ -1674,43 +1985,68 @@ func _hide_all_selection_rings() -> void:
 		if ring:
 			ring.visible = false
 
+var _reachable_draw_node: Node2D = null
+var _path_draw_node: Node2D = null
+
 func _show_reachable_tiles(army: ArmyState) -> void:
 	_clear_reachable_overlay()
 	_reachable_tiles = GameManager.movement_system.get_reachable_tiles(
-		army.hex_pos, army.movement_remaining, army.faction_id, army.army_id, army.can_cross_mountains())
+		army.hex_pos, army.movement_remaining, army.faction_id, army.army_id, army.can_cross_mountains(), army)
 
-	for coord in _reachable_tiles:
-		var pixel_pos := _hex_to_pixel(coord)
-		var polygon := Polygon2D.new()
-		polygon.polygon = _make_hex_polygon(HEX_RADIUS * 0.88)
-		polygon.position = pixel_pos
-		polygon.color = Color(0.2, 0.8, 0.2, 0.25)
-		reachable_overlay.add_child(polygon)
+	var polys := _build_world_hex_polys(_reachable_tiles.keys(), HEX_RADIUS * 0.88)
+	_reachable_draw_node = _OverlayDrawNode.new()
+	_reachable_draw_node.polys = polys
+	_reachable_draw_node.color = Color(0.2, 0.8, 0.2, 0.25)
+	reachable_overlay.add_child(_reachable_draw_node)
 
 func _show_path_preview(target: Vector2i) -> void:
+	# Skip recomputation if hovered hex hasn't changed
+	if target == _last_path_preview_hex:
+		return
 	_clear_path_overlay()
+	_last_path_preview_hex = target
 	var army: ArmyState = GameManager.state.armies.get(selected_army_id)
 	if army == null:
 		return
 	var path := GameManager.movement_system.find_path(
-		army.hex_pos, target, army.faction_id, army.movement_remaining, army.army_id, army.can_cross_mountains())
-	for coord in path:
-		var pixel_pos := _hex_to_pixel(coord)
-		var polygon := Polygon2D.new()
-		polygon.polygon = _make_hex_polygon(HEX_RADIUS * 0.6)
-		polygon.position = pixel_pos
-		polygon.color = Color(1.0, 1.0, 0.3, 0.45)
-		path_overlay.add_child(polygon)
+		army.hex_pos, target, army.faction_id, army.movement_remaining, army.army_id, army.can_cross_mountains(), army)
+	var polys := _build_world_hex_polys(path, HEX_RADIUS * 0.6)
+	_path_draw_node = _OverlayDrawNode.new()
+	_path_draw_node.polys = polys
+	_path_draw_node.color = Color(1.0, 1.0, 0.3, 0.45)
+	path_overlay.add_child(_path_draw_node)
+	# Movement cost label at end of path
+	if path.size() > 0:
+		var total_cost := 0.0
+		for tile_coord in path:
+			total_cost += GameManager.state.hex_map.get_movement_cost(tile_coord, army.faction_id)
+		var cost_label := Label.new()
+		cost_label.text = "MP: %.1f" % total_cost
+		cost_label.add_theme_font_size_override("font_size", 11)
+		cost_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.6))
+		cost_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		cost_label.add_theme_constant_override("outline_size", 2)
+		cost_label.position = _hex_to_pixel(path[-1]) + Vector2(-20, -24)
+		path_overlay.add_child(cost_label)
 
 func _clear_reachable_overlay() -> void:
+	if _reachable_draw_node and is_instance_valid(_reachable_draw_node):
+		_reachable_draw_node.queue_free()
+	_reachable_draw_node = null
 	for child in reachable_overlay.get_children():
 		child.queue_free()
 
 func _clear_path_overlay() -> void:
+	_last_path_preview_hex = Vector2i(-1, -1)
+	if _path_draw_node and is_instance_valid(_path_draw_node):
+		_path_draw_node.queue_free()
+	_path_draw_node = null
 	for child in path_overlay.get_children():
 		child.queue_free()
 
 # ── Signal handlers ───────────────────────────────────────────
+
+var _fog_update_pending := false  # Deferred fog update during animated movement
 
 func _on_army_moved(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i) -> void:
 	var army: ArmyState = GameManager.state.armies.get(army_id)
@@ -1736,15 +2072,23 @@ func _on_army_moved(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i) -
 				# Snap position silently (marker is hidden by fog anyway)
 				marker.position = _hex_to_pixel(to_hex)
 
+	# During animated player movement, defer heavy fog/overlay updates to movement end.
+	# This avoids rebuilding the entire visible tile cache on EVERY tile step.
+	if _is_animating_move:
+		_fog_update_pending = true
+		_minimap_dirty = true
+		return
+
 	# Only update heavy visuals if move was visible to player
 	if move_visible:
 		_update_fog_of_war()
-		_update_political_overlay()
-		_update_minimap()
+		if is_player_army:
+			_update_political_overlay()
+		_minimap_dirty = true
 	elif is_player_army:
 		# Player army moved — always update fog
 		_update_fog_of_war()
-		_update_minimap()
+		_minimap_dirty = true
 
 func _on_army_destroyed(army_id: StringName, _faction_id: StringName) -> void:
 	var marker: Node2D = _army_markers.get(army_id)
@@ -1756,6 +2100,7 @@ func _on_region_ownership_changed(_region_id: StringName, _old: StringName, _new
 	_update_political_overlay()
 	_refresh_faction_borders()
 	_update_fog_of_war()
+	_minimap_terrain_dirty = true
 
 func _on_battle_initiated(attacker_id: StringName, defender_id: StringName, hex_pos: Vector2i) -> void:
 	var attacker_army: ArmyState = GameManager.state.armies.get(attacker_id)
@@ -1970,7 +2315,7 @@ func _on_battle_dialog_manual() -> void:
 	GameManager.set_meta("battle_attacker", _pending_battle_attacker_id)
 	GameManager.set_meta("battle_defender", _pending_battle_defender_id)
 	GameManager.set_meta("battle_hex_pos", _pending_battle_hex)
-	get_tree().change_scene_to_file("res://scenes/battle/battle_v3.tscn")
+	GameManager.transition_to_scene("res://scenes/battle/battle_v3.tscn")
 
 func _on_battle_dialog_retreat() -> void:
 	if _battle_dialog:
@@ -2073,10 +2418,28 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 			if wfs:
 				wfs.resources[Enums.ResourceType.CAPTIVES] = wfs.resources.get(Enums.ResourceType.CAPTIVES, 0) + winner_captives
 
-	if not atk_alive:
-		GameManager.remove_army(attacker_id)
 	if not def_alive:
 		GameManager.remove_army(defender_id)
+
+	# Garrison assault failure: attacker didn't win — force retreat 1 tile
+	var garrison_retreat := false
+	var def_faction_id := defender_army.faction_id
+	if defender_army.is_garrison and def_alive:
+		# Attacker failed to defeat garrison — retreat with survivors or die
+		GameManager.remove_army(defender_id) # garrison regenerates next attack
+		def_alive = false
+		if atk_alive:
+			# Retreat attacker 1 tile back from the city
+			var retreat_hex := _find_retreat_hex(attacker_army, hex_pos)
+			if retreat_hex != Vector2i(-1, -1):
+				attacker_army.hex_pos = retreat_hex
+			attacker_army.movement_remaining = 0.0
+			attacker_army.battle_exhausted = true
+			garrison_retreat = true
+		else:
+			GameManager.remove_army(attacker_id)
+	elif not atk_alive:
+		GameManager.remove_army(attacker_id)
 
 	# Remove surviving garrison armies (they regenerate on next attack)
 	if def_alive and defender_army.is_garrison:
@@ -2092,13 +2455,15 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 		_separate_armies_stalemate(attacker_army, defender_army)
 
 	# Handle siege consequences (same as manual battle)
-	if atk_alive and not def_alive:
+	if atk_alive and not def_alive and not garrison_retreat:
 		EventBus.battle_resolved.emit(attacker_army.faction_id, hex_pos)
 		var city_at := GameManager.city_system.get_city_at_hex(hex_pos)
 		if city_at and city_at.faction_id != attacker_army.faction_id:
 			GameManager.city_system.start_siege(city_at.city_id, attacker_army.faction_id)
 		elif city_at and city_at.faction_id == attacker_army.faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
+	elif garrison_retreat:
+		EventBus.battle_resolved.emit(def_faction_id, hex_pos)
 	elif def_alive and not atk_alive:
 		EventBus.battle_resolved.emit(defender_army.faction_id, hex_pos)
 		var city_at := GameManager.city_system.get_city_at_hex(hex_pos)
@@ -2440,18 +2805,21 @@ func _flash_turn_transition() -> void:
 	tween.tween_callback(fade.queue_free)
 
 func _on_turn_started(_turn: int, faction_id: StringName) -> void:
-	# Brief turn transition fade
-	_flash_turn_transition()
-	if faction_id == GameManager.state.player_faction_id:
+	var is_player := faction_id == GameManager.state.player_faction_id
+	# Brief turn transition fade — only on player turn to avoid AI flicker
+	if is_player:
+		_flash_turn_transition()
 		AudioManager.play_sfx(&"turn_chime")
 		_show_notification("Your turn - Turn " + str(GameManager.state.current_turn))
-	# Refresh markers
-	_refresh_city_markers()
+		# Full marker refresh only on player turn
+		_city_markers_dirty = true
+		_refresh_city_markers()
+		_minimap_terrain_dirty = true
+	# Army/beast position updates are cheap (smart rebuild)
 	_create_army_markers()
 	_create_elderbeast_markers()
 	_update_fog_of_war()
-	_update_minimap()
-	_update_city_glow_states()
+	_minimap_dirty = true
 	if selected_army_id != &"":
 		var army: ArmyState = GameManager.state.armies.get(selected_army_id)
 		if army:
@@ -2561,9 +2929,11 @@ func _on_city_captured(city_id: StringName, _old_owner: StringName, new_owner: S
 			var faction: FactionData = DataManager.get_faction(new_owner)
 			var fname: String = faction.display_name if faction else str(new_owner)
 			_show_notification(fname + " captured " + city.get_display_name() + "!")
+	_city_markers_dirty = true
 	_refresh_city_markers()
 	_update_political_overlay()
 	_refresh_faction_borders()
+	_minimap_terrain_dirty = true
 
 func _on_siege_started(city_id: StringName, faction_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
@@ -2572,6 +2942,7 @@ func _on_siege_started(city_id: StringName, faction_id: StringName) -> void:
 			var faction: FactionData = DataManager.get_faction(faction_id)
 			var fname: String = faction.display_name if faction else str(faction_id)
 			_show_notification(fname + " is besieging " + city.get_display_name() + "!")
+	_city_markers_dirty = true
 	_refresh_city_markers()
 
 func _on_siege_broken(city_id: StringName) -> void:
@@ -2579,6 +2950,7 @@ func _on_siege_broken(city_id: StringName) -> void:
 	if city:
 		if _is_tile_visible(city.hex_pos):
 			_show_notification("Siege of " + city.get_display_name() + " broken!")
+	_city_markers_dirty = true
 	_refresh_city_markers()
 
 func _on_building_completed(city_id: StringName, building_id: StringName) -> void:
@@ -2765,16 +3137,19 @@ func _create_fog_overlay() -> void:
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
 		return
-	var fog_poly := _make_hex_polygon(HEX_RADIUS)
+	var hex_points := _make_hex_polygon(HEX_RADIUS)
+	_fog_draw_node = _FogDrawNode.new()
+	_fog_draw_node.z_index = 1
 	for coord in hex_map.tiles:
 		var elevation: float = _hex_elevations.get(coord, 0.0)
-		var fog := Polygon2D.new()
-		fog.polygon = fog_poly
-		fog.position = Vector2(_hex_to_pixel(coord).x, _hex_to_pixel(coord).y - elevation)
-		fog.color = Color(0.03, 0.02, 0.05, 0.75)
-		fog.z_index = 1  # Render above terrain
-		fog_overlay_node.add_child(fog)
-		_fog_overlay_nodes[coord] = fog
+		var pos := _hex_to_pixel(coord)
+		pos.y -= elevation
+		var world_poly := PackedVector2Array()
+		for p in hex_points:
+			world_poly.append(p + pos)
+		_fog_draw_node.tile_polys[coord] = world_poly
+		_fog_draw_node.tile_alphas[coord] = 0.75
+	fog_overlay_node.add_child(_fog_draw_node)
 	_update_fog_of_war()
 
 var _visible_tile_cache: Dictionary = {}  # coord -> bool, rebuilt per fog update
@@ -2788,22 +3163,6 @@ func _rebuild_visible_tile_cache() -> void:
 		return
 	var player_id := GameManager.state.player_faction_id
 
-	# Collect player cities and armies once
-	var player_cities: Array[Vector2i] = []
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		if city.faction_id == player_id:
-			player_cities.append(city.hex_pos)
-
-	var player_army_sources: Array[Dictionary] = []  # [{pos, radius}]
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == player_id:
-			var sr := FOG_SCOUT_RADIUS
-			if army.commander:
-				sr += CommanderSystem.get_scouting_bonus(army.commander)
-			player_army_sources.append({pos = army.hex_pos, radius = sr})
-
 	# Cache allied factions
 	var allied_factions: Dictionary = {}
 	for faction_id in DataManager.factions:
@@ -2813,34 +3172,49 @@ func _rebuild_visible_tile_cache() -> void:
 		if rel == Enums.FactionRelation.FRIENDLY or rel == Enums.FactionRelation.ALLIED:
 			allied_factions[faction_id] = true
 
-	# Build visibility for all tiles in one pass
-	const SETTLEMENT_LOS_BONUS := 2
+	# Fast pass: mark all player-owned and ally-owned tiles visible
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		# Owned by player
 		if tile.owner_faction == player_id:
 			_visible_tile_cache[coord] = true
-			continue
-		# Owned by ally
-		if tile.owner_faction != &"" and allied_factions.has(tile.owner_faction):
+		elif tile.owner_faction != &"" and allied_factions.has(tile.owner_faction):
 			_visible_tile_cache[coord] = true
+
+	# BFS from player cities (radius 2) — O(cities * radius^2) instead of O(tiles * cities)
+	const SETTLEMENT_LOS_BONUS := 2
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != player_id:
 			continue
-		# Near player city
-		var found := false
-		for city_pos in player_cities:
-			if HexHelper.hex_distance(coord, city_pos) <= SETTLEMENT_LOS_BONUS:
-				found = true
-				break
-		if found:
-			_visible_tile_cache[coord] = true
-			continue
-		# Near player army
-		for src in player_army_sources:
-			if HexHelper.hex_distance(coord, src.pos) <= src.radius:
-				found = true
-				break
-		if found:
-			_visible_tile_cache[coord] = true
+		_mark_visible_bfs(city.hex_pos, SETTLEMENT_LOS_BONUS)
+
+	# BFS from player armies (scout radius) — O(player_armies * radius^2)
+	for army: ArmyState in GameManager.get_all_faction_armies(player_id):
+		var sr := FOG_SCOUT_RADIUS
+		if army.commander:
+			sr += CommanderSystem.get_scouting_bonus(army.commander)
+		_mark_visible_bfs(army.hex_pos, sr)
+
+func _mark_visible_bfs(center: Vector2i, radius: int) -> void:
+	if radius <= 0:
+		_visible_tile_cache[center] = true
+		return
+	# BFS outward from center up to radius (hex distance)
+	var visited: Dictionary = {center: true}
+	_visible_tile_cache[center] = true
+	var frontier: Array[Vector2i] = [center]
+	for _r in radius:
+		var next_frontier: Array[Vector2i] = []
+		for coord in frontier:
+			for n in HexHelper.get_neighbors(coord):
+				if visited.has(n):
+					continue
+				if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+					continue
+				visited[n] = true
+				_visible_tile_cache[n] = true
+				next_frontier.append(n)
+		frontier = next_frontier
 
 func _is_tile_visible(coord: Vector2i) -> bool:
 	if not _fog_of_war_enabled:
@@ -2850,18 +3224,24 @@ func _is_tile_visible(coord: Vector2i) -> bool:
 func _update_fog_of_war() -> void:
 	_rebuild_visible_tile_cache()
 
-	for coord in _fog_overlay_nodes:
-		var fog: Polygon2D = _fog_overlay_nodes[coord]
-		var visible_tile: bool = bool(_visible_tile_cache.get(coord, false)) if _fog_of_war_enabled else true
-		if visible_tile:
-			_explored_tiles[coord] = true
-			fog.visible = false
-		elif _explored_tiles.has(coord):
-			fog.visible = true
-			fog.color = Color(0.03, 0.02, 0.05, 0.45)
-		else:
-			fog.visible = true
-			fog.color = Color(0.03, 0.02, 0.05, 0.75)
+	if _fog_draw_node:
+		var changed := false
+		for coord in _fog_draw_node.tile_alphas:
+			var visible_tile: bool = bool(_visible_tile_cache.get(coord, false)) if _fog_of_war_enabled else true
+			var new_alpha: float
+			if visible_tile:
+				_explored_tiles[coord] = true
+				new_alpha = 0.0
+			elif _explored_tiles.has(coord):
+				new_alpha = 0.45
+			else:
+				new_alpha = 0.75
+			if _fog_draw_node.tile_alphas[coord] != new_alpha:
+				_fog_draw_node.tile_alphas[coord] = new_alpha
+				changed = true
+		if changed:
+			_fog_draw_node.queue_redraw()
+			_minimap_fog_dirty = true
 
 	var player_id := GameManager.state.player_faction_id
 
@@ -2937,20 +3317,23 @@ func _on_settlement_placement_requested(city_id: StringName) -> void:
 		min_val = mini(min_val, total)
 		max_val = maxi(max_val, total)
 
-	# Show overlay on valid tiles with resource-based gradient
+	# Show overlay on valid tiles with resource-based gradient (batched)
+	var hex_poly := _make_hex_polygon(HEX_RADIUS * 0.88)
+	var entries: Array = []
 	for coord in _settlement_valid_tiles:
-		var pixel_pos := _hex_to_pixel(coord)
-		var polygon := Polygon2D.new()
-		polygon.polygon = _make_hex_polygon(HEX_RADIUS * 0.88)
-		polygon.position = pixel_pos
+		var pos := _hex_to_pixel(coord)
+		var world_poly := PackedVector2Array()
+		for p in hex_poly:
+			world_poly.append(p + pos)
 		var val: int = resource_values.get(coord, 0)
 		var t := 0.5
 		if max_val > min_val:
 			t = float(val - min_val) / float(max_val - min_val)
-		# Red (low) -> Green (high)
-		polygon.color = Color(0.8 * (1.0 - t), 0.8 * t, 0.1, 0.35)
-		reachable_overlay.add_child(polygon)
-		_settlement_overlay_nodes.append(polygon)
+		entries.append([world_poly, Color(0.8 * (1.0 - t), 0.8 * t, 0.1, 0.35)])
+	var draw_node := _MultiColorOverlayDrawNode.new()
+	draw_node.entries = entries
+	reachable_overlay.add_child(draw_node)
+	_settlement_overlay_nodes.append(draw_node)
 
 	_show_notification("Click a highlighted tile to found a settlement (Right-click to cancel)")
 
@@ -2974,7 +3357,8 @@ func _handle_settlement_click(hex_coord: Vector2i) -> void:
 
 	if new_city_id != &"":
 		_cancel_settlement_placement()
-		_create_city_markers()
+		_city_markers_dirty = true
+		_refresh_city_markers()
 		_show_notification("Settlement founded!")
 
 # ── Building Tile Placement Mode ──────────────────────────────
@@ -2995,30 +3379,32 @@ func _on_building_tile_selection_requested(city_id: StringName, building_id: Str
 			if HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				all_neighbors.append(neighbor)
 
-	# Show green overlay on valid tiles, red on invalid neighbors
+	# Show green overlay on valid tiles, red on invalid neighbors (batched)
 	var hex_poly := _make_hex_polygon(HEX_RADIUS * 0.88)
+	var entries: Array = []
 	for coord in all_neighbors:
-		var pixel_pos := _hex_to_pixel(coord)
-		var polygon := Polygon2D.new()
-		polygon.polygon = hex_poly
-		polygon.position = pixel_pos
+		var pos := _hex_to_pixel(coord)
+		var world_poly := PackedVector2Array()
+		for p in hex_poly:
+			world_poly.append(p + pos)
 		if _building_tile_valid.has(coord):
-			polygon.color = Color(0.15, 0.8, 0.25, 0.4)  # Green = valid
+			entries.append([world_poly, Color(0.15, 0.8, 0.25, 0.4)])
 		else:
-			polygon.color = Color(0.8, 0.2, 0.15, 0.3)  # Red = invalid
-		reachable_overlay.add_child(polygon)
-		_building_tile_overlays.append(polygon)
+			entries.append([world_poly, Color(0.8, 0.2, 0.15, 0.3)])
 
 	# Also highlight any valid tiles that aren't direct neighbors (e.g. upgrade tiles)
 	for coord in _building_tile_valid:
 		if not all_neighbors.has(coord):
-			var pixel_pos := _hex_to_pixel(coord)
-			var polygon := Polygon2D.new()
-			polygon.polygon = hex_poly
-			polygon.position = pixel_pos
-			polygon.color = Color(0.15, 0.8, 0.25, 0.4)
-			reachable_overlay.add_child(polygon)
-			_building_tile_overlays.append(polygon)
+			var pos := _hex_to_pixel(coord)
+			var world_poly := PackedVector2Array()
+			for p in hex_poly:
+				world_poly.append(p + pos)
+			entries.append([world_poly, Color(0.15, 0.8, 0.25, 0.4)])
+
+	var draw_node := _MultiColorOverlayDrawNode.new()
+	draw_node.entries = entries
+	reachable_overlay.add_child(draw_node)
+	_building_tile_overlays.append(draw_node)
 
 	_show_notification("Click a GREEN tile to place the building (Right-click to cancel)")
 
@@ -3134,16 +3520,19 @@ func _show_beast_terrain_overlay(beast: ElderbeastState) -> void:
 	for n in HexHelper.get_neighbors(beast.hex_pos):
 		if HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 			tiles.append(n)
+	var entries: Array = []
 	for tile_pos in tiles:
 		var depletion_mult := beast.get_depletion_multiplier(tile_pos)
-		# Green (full yield) → Red (depleted), lerp based on multiplier
 		var color := Color(0.15, 0.8, 0.25, 0.35).lerp(Color(0.8, 0.2, 0.15, 0.35), 1.0 - depletion_mult)
-		var polygon := Polygon2D.new()
-		polygon.polygon = hex_poly
-		polygon.position = _hex_to_pixel(tile_pos)
-		polygon.color = color
-		reachable_overlay.add_child(polygon)
-		_beast_terrain_overlays.append(polygon)
+		var pos := _hex_to_pixel(tile_pos)
+		var world_poly := PackedVector2Array()
+		for p in hex_poly:
+			world_poly.append(p + pos)
+		entries.append([world_poly, color])
+	var draw_node := _MultiColorOverlayDrawNode.new()
+	draw_node.entries = entries
+	reachable_overlay.add_child(draw_node)
+	_beast_terrain_overlays.append(draw_node)
 
 func _clear_beast_terrain_overlay() -> void:
 	for node in _beast_terrain_overlays:
@@ -3153,12 +3542,16 @@ func _clear_beast_terrain_overlay() -> void:
 
 # ── Minimap ──────────────────────────────────────────────────
 
-const MINIMAP_SIZE := Vector2(354, 220)
+const MINIMAP_SIZE := Vector2(380, 240)
 const MINIMAP_MARGIN := Vector2(10, 10)
 var _minimap_panel: PanelContainer
 var _minimap_image: TextureRect
 var _minimap_political_mode := false
 var _minimap_dragging := false
+var _minimap_terrain_cache: Image  # Cached terrain-only base image (no fog/armies/viewport)
+var _minimap_terrain_dirty := true  # True when territory/ownership changes require terrain recache
+var _minimap_fogged_cache: Image  # Terrain + fog dimming (no armies/viewport)
+var _minimap_fog_dirty := true  # True when fog state changes
 
 func _create_minimap() -> void:
 	# Outer container for button + minimap
@@ -3174,7 +3567,9 @@ func _create_minimap() -> void:
 	toggle_btn.toggled.connect(func(pressed: bool):
 		_minimap_political_mode = pressed
 		toggle_btn.text = "Terrain View" if pressed else "Political View"
+		_minimap_terrain_dirty = true
 		_update_minimap()
+		_update_political_overlay()
 	)
 	outer_vbox.add_child(toggle_btn)
 
@@ -3220,6 +3615,139 @@ func _create_minimap() -> void:
 	$UILayer/HUD.add_child(outer_vbox)
 	_update_minimap()
 
+func _rebuild_minimap_terrain_cache() -> void:
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+	var w: int = HexMapData.MAP_WIDTH
+	var h: int = HexMapData.MAP_HEIGHT
+	var px_w: int = w * 4
+	var px_h: int = h * 4
+	var img := Image.create(px_w, px_h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.08, 0.07, 0.1, 1.0))
+
+	var faction_colors: Dictionary = {}
+	for fid in GameManager.state.faction_states:
+		var fd := DataManager.get_faction(fid)
+		faction_colors[fid] = fd.color if fd else Color(0.5, 0.5, 0.5)
+
+	# Draw terrain/ownership (no fog — this is the base layer)
+	for x in w:
+		for y in h:
+			var coord := Vector2i(x, y)
+			var tile := hex_map.get_tile(coord)
+			if tile == null:
+				continue
+			var color: Color
+			if _minimap_political_mode:
+				if tile.owner_faction != &"" and tile.owner_faction != &"independent" and faction_colors.has(tile.owner_faction):
+					color = faction_colors[tile.owner_faction].darkened(0.15)
+				else:
+					color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3)).darkened(0.3)
+			else:
+				color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3))
+				if tile.owner_faction != &"" and tile.owner_faction != &"independent" and faction_colors.has(tile.owner_faction):
+					color = color.lerp(faction_colors[tile.owner_faction], 0.15)
+				color = color.darkened(0.3)
+			var px := x * 4
+			var py := y * 4
+			for dx in 4:
+				for dy in 4:
+					if px + dx < px_w and py + dy < px_h:
+						img.set_pixel(px + dx, py + dy, color)
+
+	# Draw faction territory borders
+	for x in w:
+		for y in h:
+			var coord := Vector2i(x, y)
+			var my_faction: StringName = _visual_faction_owner.get(coord, &"")
+			if my_faction == &"":
+				continue
+			var fc: Color = faction_colors.get(my_faction, Color.WHITE)
+			var border_color: Color = fc.darkened(0.2) if _minimap_political_mode else fc.darkened(0.1)
+			border_color.a = 0.9
+			for n in HexHelper.get_neighbors(coord):
+				var n_faction: StringName = _visual_faction_owner.get(n, &"")
+				if n_faction != my_faction:
+					var ddx: int = n.x - coord.x
+					var ddy: int = n.y - coord.y
+					var bx: int = coord.x * 4 + 2 + clampi(ddx, -1, 1)
+					var by: int = coord.y * 4 + 2 + clampi(ddy, -1, 1)
+					if bx >= 0 and bx < px_w and by >= 0 and by < px_h:
+						img.set_pixel(bx, by, border_color)
+
+	# Draw cities (static positions)
+	var player_id := GameManager.state.player_faction_id
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		var px: int = city.hex_pos.x * 4 + 2
+		var py: int = city.hex_pos.y * 4 + 2
+		var city_color: Color
+		if city.faction_id == player_id:
+			city_color = Color(0.3, 0.5, 1.0)
+		elif city.faction_id == &"" or city.faction_id == &"independent" or city.faction_id == &"rebels":
+			city_color = Color(0.9, 0.9, 0.9)
+		else:
+			var rel := GameManager.get_relation(player_id, city.faction_id)
+			if rel == Enums.FactionRelation.ALLIED or rel == Enums.FactionRelation.FRIENDLY:
+				city_color = Color(0.2, 0.85, 0.3)
+			elif rel == Enums.FactionRelation.WAR or rel == Enums.FactionRelation.HOSTILE:
+				city_color = Color(0.95, 0.2, 0.15)
+			else:
+				city_color = Color(0.9, 0.9, 0.9)
+		if px >= 0 and px < px_w and py >= 0 and py < px_h:
+			img.set_pixel(px, py, city_color)
+
+	_minimap_terrain_cache = img
+	_minimap_terrain_dirty = false
+
+func _rebuild_minimap_fogged_cache() -> void:
+	if _minimap_terrain_cache == null:
+		return
+	var w: int = HexMapData.MAP_WIDTH
+	var h: int = HexMapData.MAP_HEIGHT
+	var px_w: int = w * 4
+	var px_h: int = h * 4
+	var img := _minimap_terrain_cache.duplicate()
+
+	if _fog_of_war_enabled:
+		var dark_color := Color(0.05, 0.04, 0.07)
+		var explored_dim := 0.6
+		for x in w:
+			for y in h:
+				var coord := Vector2i(x, y)
+				var is_visible: bool = bool(_visible_tile_cache.get(coord, false))
+				if is_visible:
+					continue
+				var is_explored: bool = bool(_explored_tiles.get(coord, false))
+				var px := x * 4
+				var py := y * 4
+				if not is_explored:
+					for ddx in 4:
+						for ddy in 4:
+							if px + ddx < px_w and py + ddy < px_h:
+								img.set_pixel(px + ddx, py + ddy, dark_color)
+				else:
+					for ddx in 4:
+						for ddy in 4:
+							if px + ddx < px_w and py + ddy < px_h:
+								var c: Color = img.get_pixel(px + ddx, py + ddy)
+								img.set_pixel(px + ddx, py + ddy, c.darkened(explored_dim))
+
+	# Dim explored-but-not-visible cities
+	if _fog_of_war_enabled:
+		for city_id in GameManager.state.cities:
+			var city: CityState = GameManager.state.cities[city_id]
+			if not bool(_visible_tile_cache.get(city.hex_pos, false)) and bool(_explored_tiles.get(city.hex_pos, false)):
+				var px: int = city.hex_pos.x * 4 + 2
+				var py: int = city.hex_pos.y * 4 + 2
+				if px >= 0 and px < px_w and py >= 0 and py < px_h:
+					var c: Color = img.get_pixel(px, py)
+					img.set_pixel(px, py, c.darkened(0.4))
+
+	_minimap_fogged_cache = img
+	_minimap_fog_dirty = false
+
 func _update_minimap() -> void:
 	if _minimap_image == null:
 		return
@@ -3227,94 +3755,37 @@ func _update_minimap() -> void:
 	if hex_map == null:
 		return
 
+	# Layer 1: Rebuild terrain base if ownership/political mode changed
+	if _minimap_terrain_dirty or _minimap_terrain_cache == null:
+		_rebuild_minimap_terrain_cache()
+		_minimap_fog_dirty = true  # Terrain changed, fog layer needs rebuild too
+
+	# Layer 2: Rebuild fogged layer if fog state changed
+	if _minimap_fog_dirty or _minimap_fogged_cache == null:
+		_rebuild_minimap_fogged_cache()
+
 	var w: int = HexMapData.MAP_WIDTH
 	var h: int = HexMapData.MAP_HEIGHT
-	# Each hex becomes ~3x3 pixels for a compact minimap
-	var px_w: int = w * 3
-	var px_h: int = h * 3
-	var img := Image.create(px_w, px_h, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0.08, 0.07, 0.1, 1.0))
+	var px_w: int = w * 4
+	var px_h: int = h * 4
 
-	# Faction color map (exclude independent)
+	# Copy the fogged cache (terrain + fog dimming), then overlay dynamic elements
+	var img := _minimap_fogged_cache.duplicate()
+	var fog_active := _fog_of_war_enabled
+
+	# Faction color map for army dots
 	var faction_colors: Dictionary = {}
 	for fid in GameManager.state.faction_states:
 		var fd := DataManager.get_faction(fid)
 		faction_colors[fid] = fd.color if fd else Color(0.5, 0.5, 0.5)
-
-	var fog_active := _fog_of_war_enabled
-
-	# Draw terrain/ownership
-	for x in w:
-		for y in h:
-			var coord := Vector2i(x, y)
-			var tile := hex_map.get_tile(coord)
-			if tile == null:
-				continue
-
-			# Fog of war check for minimap
-			var is_visible: bool = not fog_active or bool(_visible_tile_cache.get(coord, false))
-			var is_explored: bool = not fog_active or bool(_explored_tiles.get(coord, false))
-
-			var color: Color
-			if not is_explored:
-				# Never seen — dark
-				color = Color(0.05, 0.04, 0.07)
-			elif not is_visible:
-				# Explored but not currently visible — muted terrain only
-				color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3))
-				color = color.darkened(0.6)
-			elif _minimap_political_mode:
-				# Political view: faction-owned tiles show faction color
-				if tile.owner_faction != &"" and tile.owner_faction != &"independent" and faction_colors.has(tile.owner_faction):
-					color = faction_colors[tile.owner_faction]
-					color = color.darkened(0.15)
-				else:
-					color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3))
-					color = color.darkened(0.3)
-			else:
-				# Terrain view: subtle faction tint
-				color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3))
-				if tile.owner_faction != &"" and tile.owner_faction != &"independent" and faction_colors.has(tile.owner_faction):
-					color = color.lerp(faction_colors[tile.owner_faction], 0.15)
-				color = color.darkened(0.3)
-
-			var px := x * 3
-			var py := y * 3
-			for dx in 3:
-				for dy in 3:
-					if px + dx < px_w and py + dy < px_h:
-						img.set_pixel(px + dx, py + dy, color)
-
-	# Draw faction territory borders on minimap using visual ownership (fills mountain/water gaps)
-	for x in w:
-		for y in h:
-			var coord := Vector2i(x, y)
-			var my_faction: StringName = _visual_faction_owner.get(coord, &"")
-			if my_faction == &"":
-				continue
-			if fog_active and not bool(_visible_tile_cache.get(coord, false)) and not bool(_explored_tiles.get(coord, false)):
-				continue
-			var fc: Color = faction_colors.get(my_faction, Color.WHITE)
-			var border_color: Color = fc.darkened(0.2) if _minimap_political_mode else fc.darkened(0.1)
-			border_color.a = 0.9
-			# Check if any neighbor has a different visual owner
-			for n in HexHelper.get_neighbors(coord):
-				var n_faction: StringName = _visual_faction_owner.get(n, &"")
-				if n_faction != my_faction:
-					var dx: int = n.x - coord.x
-					var dy: int = n.y - coord.y
-					var bx: int = coord.x * 3 + 1 + clampi(dx, -1, 1)
-					var by: int = coord.y * 3 + 1 + clampi(dy, -1, 1)
-					if bx >= 0 and bx < px_w and by >= 0 and by < px_h:
-						img.set_pixel(bx, by, border_color)
 
 	# Draw armies as bright dots (only if visible)
 	for army_id in GameManager.state.armies:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		if fog_active and not bool(_visible_tile_cache.get(army.hex_pos, false)):
 			continue
-		var px: int = army.hex_pos.x * 3 + 1
-		var py: int = army.hex_pos.y * 3 + 1
+		var px: int = army.hex_pos.x * 4 + 2
+		var py: int = army.hex_pos.y * 4 + 2
 		var a_color: Color = faction_colors.get(army.faction_id, Color.WHITE).lightened(0.4)
 		if px >= 0 and px < px_w and py >= 0 and py < px_h:
 			img.set_pixel(px, py, a_color)
@@ -3323,47 +3794,20 @@ func _update_minimap() -> void:
 			if py + 1 < px_h:
 				img.set_pixel(px, py + 1, a_color)
 
-	# Draw cities (only if visible or explored)
-	var player_id := GameManager.state.player_faction_id
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		if fog_active and not bool(_visible_tile_cache.get(city.hex_pos, false)) and not bool(_explored_tiles.get(city.hex_pos, false)):
-			continue
-		var px: int = city.hex_pos.x * 3 + 1
-		var py: int = city.hex_pos.y * 3 + 1
-		var city_color: Color
-		if city.faction_id == player_id:
-			city_color = Color(0.3, 0.5, 1.0)  # Blue — own
-		elif city.faction_id == &"" or city.faction_id == &"independent" or city.faction_id == &"rebels":
-			city_color = Color(0.9, 0.9, 0.9)  # White — neutral
-		else:
-			var rel := GameManager.get_relation(player_id, city.faction_id)
-			if rel == Enums.FactionRelation.ALLIED or rel == Enums.FactionRelation.FRIENDLY:
-				city_color = Color(0.2, 0.85, 0.3)  # Green — allied/friendly
-			elif rel == Enums.FactionRelation.WAR or rel == Enums.FactionRelation.HOSTILE:
-				city_color = Color(0.95, 0.2, 0.15)  # Red — enemy
-			else:
-				city_color = Color(0.9, 0.9, 0.9)  # White — neutral
-		if fog_active and not bool(_visible_tile_cache.get(city.hex_pos, false)):
-			city_color = city_color.darkened(0.4)  # Explored but not visible: dim
-		if px >= 0 and px < px_w and py >= 0 and py < px_h:
-			img.set_pixel(px, py, city_color)
-
 	# Draw shards as purple dots (only if visible)
 	for shard_id in GameManager.state.active_shards:
 		var shard: ShardInstance = GameManager.state.active_shards[shard_id]
 		if fog_active and not bool(_visible_tile_cache.get(shard.hex_pos, false)):
 			continue
-		var px: int = shard.hex_pos.x * 3 + 1
-		var py: int = shard.hex_pos.y * 3 + 1
+		var px: int = shard.hex_pos.x * 4 + 2
+		var py: int = shard.hex_pos.y * 4 + 2
 		if px >= 0 and px < px_w and py >= 0 and py < px_h:
 			img.set_pixel(px, py, Color(0.7, 0.3, 0.9))
 
-	# Draw camera viewport indicator (account for camera zoom)
+	# Draw camera viewport indicator
 	var viewport_size := get_viewport_rect().size / camera.zoom
 	var cam_top_left := camera.position - viewport_size / 2.0
 	var cam_bottom_right := camera.position + viewport_size / 2.0
-	# Convert world coords to minimap pixels
 	var map_pixel_w := float(w) * HEX_H_SPACING
 	var map_pixel_h := float(h) * HEX_V_SPACING
 	var vp_left: int = clampi(int(cam_top_left.x / map_pixel_w * float(px_w)), 0, px_w - 1)

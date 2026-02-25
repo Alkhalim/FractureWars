@@ -33,3 +33,5 @@ extends Resource
 @export var captive_chance: float = 0.3
 @export var morale_aura: int = 0         # +N boosts friendly morale; -N scares enemies
 @export var fear_radius: int = 0         # Range of morale_aura in tiles (0=no aura)
+@export var healing_aura: float = 0.0    # HP per tick healed to nearby allies (uses fear_radius)
+@export var armor_aura: int = 0          # Defense bonus to nearby allies (uses fear_radius)

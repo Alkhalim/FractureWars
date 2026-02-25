@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"windrunner"
+display_name = "Windrunner"
+description = "Lightning-fast cavalry mounted on storm-bred steeds. They strike like a thunderbolt and vanish before retaliation."
+faction_id = &"thunderswarm"
+max_hp = 900
+attack = 18
+defense = 7
+speed = 9
+attack_range = 1
+squad_size = 20
+hp_per_soldier = 45
+tiles_per_entity = 2
+movement_points = 4.5
+upkeep_cost = {0: 6, 1: 2, 3: 2}
+recruit_cost = {0: 160, 1: 45, 5: 25}
+recruit_time = 3
+population_cost = 8
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 65

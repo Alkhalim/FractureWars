@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"plague_workshop"
+display_name = "Plague Workshop II"
+description = "A workshop where plague-tipped weapons are crafted. The stench alone keeps the uninvited away."
+faction_id = &"forsaken"
+category = &"military"
+build_cost = {0: 260, 1: 30, 5: 40}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 2
+recruit_speed_bonus = 1
+upgrades_from = &"wretched_pit"
+unlocks_units = Array[StringName]([&"blightsworn", &"plague_rider", &"cursed_archer"])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": -4, "nobles": 3}

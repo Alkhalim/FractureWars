@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"lunar_priestess"
+display_name = "Lunar Priestess"
+description = "Sacred healers whose moonlit prayers mend wounds and bolster spirits. Their presence turns the tide of battle."
+faction_id = &"moonspear"
+max_hp = 400
+attack = 5
+defense = 6
+speed = 4
+attack_range = 2
+squad_size = 20
+hp_per_soldier = 20
+movement_points = 3.5
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 100, 5: 30}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {1: 0.2}
+tags = Array[String](["support", "ranged"])
+base_morale = 85
+morale_aura = 8
+fear_radius = 4

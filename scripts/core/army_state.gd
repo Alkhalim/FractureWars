@@ -38,6 +38,11 @@ func get_max_movement() -> float:
 	var r_eff := GameManager.research_system.get_research_effects(faction_id)
 	base_mp += r_eff.get("movement_bonus", 0)
 	base_mp += r_eff.get("army_movement_bonus", 0)
+	# Moonspear waxing moon bonus (lunar_phase 1)
+	if faction_id == &"moonspear":
+		var mfs: FactionState = GameManager.state.faction_states.get(faction_id) if GameManager.state else null
+		if mfs and mfs.lunar_phase == 1:
+			base_mp += 0.5
 	return base_mp * 1.2
 
 func get_commander_name() -> String:
@@ -61,6 +66,25 @@ func can_cross_mountains() -> bool:
 			if "flying" in ud.tags:
 				flying_count += 1
 	return total > 0 and float(flying_count) / float(total) >= 0.5
+
+## Returns a cost multiplier (<1.0 = cheaper) for the given terrain based on unit tags.
+## If any unit in the army has a terrain-stride tag, the whole army benefits.
+func get_terrain_stride_modifier(terrain: Enums.TerrainType) -> float:
+	for unit in units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud == null:
+			continue
+		match terrain:
+			Enums.TerrainType.JUNGLE:
+				if "junglestrider" in ud.tags:
+					return 0.85
+			Enums.TerrainType.TUNDRA:
+				if "tundrawalker" in ud.tags:
+					return 0.85
+			Enums.TerrainType.DESERT:
+				if "desertstrider" in ud.tags:
+					return 0.85
+	return 1.0
 
 func is_alive() -> bool:
 	for unit in units:

@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"shard_attunement"
 display_name = "Shard Attunement"
-description = "Attuned to the power of shards."
+description = "+2 attack in shard wastes."
 category = &"magic"
 is_minor = true
-effects = {"army_attack_bonus": 1}
+effects = {"terrain_shard_wastes_attack_bonus": 2}
 context_tags = Array[StringName]([&"terrain_shard_wastes", &"elderbeast"])

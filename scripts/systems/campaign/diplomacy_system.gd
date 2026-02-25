@@ -12,7 +12,7 @@ func get_standing(faction_a: StringName, faction_b: StringName) -> int:
 	var key := _standing_key(faction_a, faction_b)
 	return GameManager.state.diplomacy_state.standing.get(key, 0)
 
-func modify_standing(faction_a: StringName, faction_b: StringName, delta: int) -> void:
+func modify_standing(faction_a: StringName, faction_b: StringName, delta: int, reason: String = "") -> void:
 	var key := _standing_key(faction_a, faction_b)
 	var current: int = GameManager.state.diplomacy_state.standing.get(key, 0)
 	var new_val := clampi(current + delta, -100, 100)
@@ -20,7 +20,32 @@ func modify_standing(faction_a: StringName, faction_b: StringName, delta: int) -
 	# Mirror: standing is symmetric
 	var mirror_key := _standing_key(faction_b, faction_a)
 	GameManager.state.diplomacy_state.standing[mirror_key] = new_val
+	# Log the change (store under canonical key — sorted alphabetically)
+	if reason != "" and delta != 0:
+		var log_key := key if str(faction_a) < str(faction_b) else mirror_key
+		var log: Array = GameManager.state.diplomacy_state.standing_log.get(log_key, [])
+		var turn: int = GameManager.state.current_turn if GameManager.state else 0
+		# Merge if same reason already exists for this turn
+		var merged := false
+		for i in range(log.size() - 1, -1, -1):
+			var entry: Dictionary = log[i]
+			if entry.get("reason", "") == reason and entry.get("turn", -1) == turn:
+				entry["delta"] = entry.get("delta", 0) + delta
+				merged = true
+				break
+		if not merged:
+			log.append({reason = reason, delta = delta, turn = turn})
+			# Keep only last 20 entries
+			if log.size() > 20:
+				log = log.slice(log.size() - 20)
+		GameManager.state.diplomacy_state.standing_log[log_key] = log
 	EventBus.standing_changed.emit(faction_a, faction_b, new_val)
+
+func get_standing_log(faction_a: StringName, faction_b: StringName) -> Array:
+	var key := _standing_key(faction_a, faction_b)
+	var mirror_key := _standing_key(faction_b, faction_a)
+	var log_key := key if str(faction_a) < str(faction_b) else mirror_key
+	return GameManager.state.diplomacy_state.standing_log.get(log_key, [])
 
 func _standing_key(a: StringName, b: StringName) -> String:
 	return str(a) + ":" + str(b)
@@ -57,11 +82,7 @@ func _calculate_war_exhaustion(faction_id: StringName) -> float:
 	if fs == null:
 		return 0.0
 	# Fewer armies = more exhausted
-	var army_count := 0
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id and not army.is_garrison:
-			army_count += 1
+	var army_count := GameManager.get_faction_armies(faction_id).size()
 	if army_count <= 1:
 		exhaustion += 0.5
 	# Cities under siege
@@ -79,10 +100,8 @@ func _calculate_war_exhaustion(faction_id: StringName) -> float:
 
 func _calculate_faction_strength(faction_id: StringName) -> int:
 	var strength := 0
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == faction_id and not army.is_garrison:
-			for unit in army.units:
+	for army: ArmyState in GameManager.get_faction_armies(faction_id):
+		for unit in army.units:
 				var ud := DataManager.get_unit(unit.unit_data_id)
 				if ud:
 					# Factor in combat stats, HP, and current health
@@ -116,7 +135,7 @@ func _apply_friendly_action_ripple(actor: StringName, target: StringName, magnit
 			continue
 		var their_relation_to_target := GameManager.get_relation(other_id, target)
 		if their_relation_to_target == Enums.FactionRelation.WAR:
-			modify_standing(actor, other_id, -magnitude)
+			modify_standing(actor, other_id, -magnitude, "Befriended their enemy")
 
 func _apply_hostile_action_ripple(actor: StringName, target: StringName, magnitude: int) -> void:
 	# Factions at war with target like the actor for being hostile to their enemy
@@ -128,7 +147,7 @@ func _apply_hostile_action_ripple(actor: StringName, target: StringName, magnitu
 			continue
 		var their_relation_to_target := GameManager.get_relation(other_id, target)
 		if their_relation_to_target == Enums.FactionRelation.WAR:
-			modify_standing(actor, other_id, magnitude)
+			modify_standing(actor, other_id, magnitude, "Fought their enemy")
 
 # ── Player Actions ──────────────────────────────────────────
 
@@ -137,8 +156,9 @@ func declare_war(attacker: StringName, target: StringName) -> void:
 	var key_ba := StringName(str(target) + ":" + str(attacker))
 	GameManager.state.diplomacy[key_ab] = Enums.FactionRelation.WAR
 	GameManager.state.diplomacy[key_ba] = Enums.FactionRelation.WAR
+	GameManager.clear_relation_cache()
 	_cancel_treaties_between(attacker, target)
-	modify_standing(attacker, target, -30)
+	modify_standing(attacker, target, -30, "Declared war")
 	_apply_hostile_action_ripple(attacker, target, 5)
 	EventBus.diplomacy_action.emit(Enums.DiplomacyAction.DECLARE_WAR, attacker, target)
 
@@ -151,7 +171,8 @@ func propose_peace(proposer: StringName, target: StringName) -> Dictionary:
 		var key_ba := StringName(str(target) + ":" + str(proposer))
 		GameManager.state.diplomacy[key_ab] = Enums.FactionRelation.NEUTRAL
 		GameManager.state.diplomacy[key_ba] = Enums.FactionRelation.NEUTRAL
-		modify_standing(proposer, target, 10)
+		GameManager.clear_relation_cache()
+		modify_standing(proposer, target, 10, "Peace treaty signed")
 		_set_cooldown(proposer, target, "peace", 3)
 		_set_cooldown(target, proposer, "peace", 3)
 		var treaty := TreatyInstance.new()
@@ -177,7 +198,8 @@ func propose_alliance(proposer: StringName, target: StringName) -> Dictionary:
 		var key_ba := StringName(str(target) + ":" + str(proposer))
 		GameManager.state.diplomacy[key_ab] = Enums.FactionRelation.ALLIED
 		GameManager.state.diplomacy[key_ba] = Enums.FactionRelation.ALLIED
-		modify_standing(proposer, target, 15)
+		GameManager.clear_relation_cache()
+		modify_standing(proposer, target, 15, "Alliance formed")
 		var treaty := TreatyInstance.new()
 		treaty.treaty_id = GameManager.state.generate_id()
 		treaty.treaty_type = Enums.TreatyType.ALLIANCE
@@ -199,7 +221,7 @@ func propose_trade(proposer: StringName, target: StringName, give_res: int, give
 		return {accepted = false, reason = "Cannot trade the same resource for itself"}
 	var score := _evaluate_trade(proposer, target, give_res, give_amt, recv_res, recv_amt)
 	if score > 0:
-		modify_standing(proposer, target, 5)
+		modify_standing(proposer, target, 5, "Trade deal accepted")
 		var treaty := TreatyInstance.new()
 		treaty.treaty_id = GameManager.state.generate_id()
 		treaty.treaty_type = Enums.TreatyType.TRADE_DEAL
@@ -231,7 +253,7 @@ func gift_resources(from: StringName, to: StringName, res_type: int, amount: int
 	from_fs.resources[res_type] -= amount
 	to_fs.resources[res_type] = to_fs.resources.get(res_type, 0) + amount
 	var standing_gain := clampi(amount / 5, 1, 20)
-	modify_standing(from, to, standing_gain)
+	modify_standing(from, to, standing_gain, "Gift of resources")
 	_mark_gifted(from, to)
 	_apply_friendly_action_ripple(from, to, 2)
 	EventBus.diplomacy_action.emit(Enums.DiplomacyAction.GIFT_RESOURCES, from, to)
@@ -249,13 +271,13 @@ func offer_shard(from: StringName, to: StringName, shard_id: StringName) -> void
 	to_fs.owned_shards.append(shard_id)
 	shard.claimed_by = to
 	var standing_gain := shard.power_level * 5
-	modify_standing(from, to, standing_gain)
+	modify_standing(from, to, standing_gain, "Shard offered")
 	_apply_friendly_action_ripple(from, to, 3)
 	EventBus.diplomacy_action.emit(Enums.DiplomacyAction.OFFER_SHARD, from, to)
 
 func threaten(threatener: StringName, target: StringName, last_offer: Dictionary) -> Dictionary:
 	# Threatening always costs standing
-	modify_standing(threatener, target, -10)
+	modify_standing(threatener, target, -10, "Threatened")
 	_apply_hostile_action_ripple(threatener, target, 3)
 	EventBus.diplomacy_action.emit(Enums.DiplomacyAction.THREATEN, threatener, target)
 
@@ -283,6 +305,7 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 			var key_ba := StringName(str(target) + ":" + str(threatener))
 			GameManager.state.diplomacy[key_ab] = Enums.FactionRelation.NEUTRAL
 			GameManager.state.diplomacy[key_ba] = Enums.FactionRelation.NEUTRAL
+			GameManager.clear_relation_cache()
 			_set_cooldown(threatener, target, "peace", 3)
 			_set_cooldown(target, threatener, "peace", 3)
 			var treaty := TreatyInstance.new()
@@ -299,6 +322,7 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 			var key_ba := StringName(str(target) + ":" + str(threatener))
 			GameManager.state.diplomacy[key_ab] = Enums.FactionRelation.ALLIED
 			GameManager.state.diplomacy[key_ba] = Enums.FactionRelation.ALLIED
+			GameManager.clear_relation_cache()
 			var treaty := TreatyInstance.new()
 			treaty.treaty_id = GameManager.state.generate_id()
 			treaty.treaty_type = Enums.TreatyType.ALLIANCE
@@ -386,7 +410,7 @@ func propose_trade_relations(proposer: StringName, target: StringName) -> Dictio
 	if score > 0:
 		var res_a := get_top_produced_resource(proposer)
 		var res_b := get_top_produced_resource(target)
-		modify_standing(proposer, target, 5)
+		modify_standing(proposer, target, 5, "Trade relations established")
 		var treaty := TreatyInstance.new()
 		treaty.treaty_id = GameManager.state.generate_id()
 		treaty.treaty_type = Enums.TreatyType.TRADE_RELATIONS
@@ -419,8 +443,11 @@ func _execute_trade_relations(treaty: TreatyInstance) -> void:
 		return
 	var turns_active: int = treaty.terms.get("turns_active", 0)
 	var share_pct := get_trade_relations_share(turns_active) / 100.0
-	var res_a: int = treaty.terms.get("resource_a", 0)
-	var res_b: int = treaty.terms.get("resource_b", 0)
+	# Recalculate top resources each turn (adapts when production focus shifts)
+	var res_a: int = get_top_produced_resource(treaty.faction_a)
+	var res_b: int = get_top_produced_resource(treaty.faction_b)
+	treaty.terms["resource_a"] = res_a
+	treaty.terms["resource_b"] = res_b
 	# Faction A shares their top resource with B
 	var income_a := get_faction_resource_income(treaty.faction_a, res_a)
 	var transfer_to_b := maxi(1, int(float(income_a) * share_pct))
@@ -433,7 +460,7 @@ func _execute_trade_relations(treaty: TreatyInstance) -> void:
 	treaty.terms["turns_active"] = turns_active + 1
 	# Standing bonus every 3 turns
 	if (turns_active + 1) % 3 == 0:
-		modify_standing(treaty.faction_a, treaty.faction_b, 1)
+		modify_standing(treaty.faction_a, treaty.faction_b, 1, "Active trade relations")
 
 # ── Per-Turn Processing ─────────────────────────────────────
 
@@ -485,7 +512,7 @@ func _apply_treaty_enemy_malus(faction_id: StringName, treaty: TreatyInstance) -
 		if fs.is_defeated:
 			continue
 		if GameManager.get_relation(other_id, partner) == Enums.FactionRelation.WAR:
-			modify_standing(faction_id, other_id, -1)
+			modify_standing(faction_id, other_id, -1, "Treaty with their enemy")
 
 func _execute_trade(treaty: TreatyInstance) -> void:
 	var fs_a: FactionState = GameManager.state.faction_states.get(treaty.faction_a)

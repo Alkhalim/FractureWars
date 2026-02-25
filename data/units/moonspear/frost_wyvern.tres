@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"frost_wyvern"
+display_name = "Frost Wyvern"
+description = "Massive winged predators of the frozen peaks. Their icy breath freezes enemies where they stand."
+faction_id = &"moonspear"
+max_hp = 1400
+attack = 22
+defense = 8
+speed = 8
+attack_range = 1
+squad_size = 1
+tiles_per_entity = 8
+movement_points = 4.0
+upkeep_cost = {0: 10, 1: 3, 3: 4}
+recruit_cost = {0: 250, 1: 80, 5: 40}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "melee", "fast", "flying"])
+base_morale = 80
+morale_aura = -3
+fear_radius = 4
+captive_chance = 0.0

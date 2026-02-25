@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ancestor_sanctum"
+display_name = "Ancestor Sanctum III"
+description = "The most sacred site of the Skulloath clans. Here the bonecallers speak directly with the eldest ancestors, whose wisdom holds the corruption at bay."
+faction_id = &"skulloath"
+category = &"cultural"
+build_cost = {0: 520, 5: 70, 2: 30}
+build_time = 4
+income_bonus = {2: 38}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+upgrades_from = &"spirit_lodge"
+class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 5, "nobles": 2}

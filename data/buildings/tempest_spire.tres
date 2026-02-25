@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tempest_spire"
+display_name = "Tempest Spire III"
+description = "A towering spire that harnesses the storm itself. Warriors trained here are imbued with lightning's fury."
+faction_id = &"thunderswarm"
+category = &"military"
+build_cost = {0: 720, 1: 90, 5: 80}
+build_time = 4
+income_bonus = {}
+population_growth_bonus = 2
+recruit_speed_bonus = 1
+unlocks_units = Array[StringName]([&"stormforged_champion", &"lightning_golem", &"tempest_eagle"])
+required_capital_level = 3
+upgrades_from = &"stormrider_eyrie"
+class_loyalty_bonus = {"nobles": 5}

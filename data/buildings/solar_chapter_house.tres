@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"solar_chapter_house"
+display_name = "Solar Chapter House II"
+description = "The chapter house of the solar order. Warriors trained here carry the dawn's blessing into battle."
+faction_id = &"sunblessed"
+category = &"military"
+build_cost = {0: 320, 1: 35, 5: 45}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 2
+recruit_speed_bonus = 1
+upgrades_from = &"pilgrim_training_grounds"
+unlocks_units = Array[StringName]([&"dawn_crusader", &"sunfire_lancer", &"light_crossbow"])
+required_capital_level = 2
+class_loyalty_bonus = {"nobles": 4}

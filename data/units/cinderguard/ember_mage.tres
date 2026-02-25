@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ember_mage"
+display_name = "Ember Mage"
+description = "Fire sorcerers who channel the volcanic heat beneath the desert. Their flames consume all in their path."
+faction_id = &"cinderguard"
+max_hp = 500
+attack = 15
+defense = 4
+speed = 4
+attack_range = 4
+squad_size = 25
+hp_per_soldier = 20
+movement_points = 3.0
+upkeep_cost = {0: 5, 1: 1, 2: 1}
+recruit_cost = {0: 130, 1: 30, 2: 20}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged", "cinderguard"])
+base_morale = 50

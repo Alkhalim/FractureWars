@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"blight_harvest"
+display_name = "Blight Harvest II"
+description = "Fields tended in blighted soil. The crops grow twisted but edible — the Forsaken cannot afford to be choosy."
+faction_id = &"forsaken"
+category = &"economic"
+build_cost = {0: 150, 5: 40}
+build_time = 3
+income_bonus = {3: 28, 5: 15}
+population_growth_bonus = 8
+upgrades_from = &"scavenger_camp"
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 3}

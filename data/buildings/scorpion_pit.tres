@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"scorpion_pit"
+display_name = "Scorpion Pit I"
+description = "Sandy pits where sand scorpions are captured, bred, and trained for war. Their handlers bear many scars."
+faction_id = &"cinderguard"
+category = &"military"
+build_cost = {0: 100, 1: 20, 3: 25}
+build_time = 2
+population_growth_bonus = 1
+unlocks_units = Array[StringName]([&"sand_scorpion"])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 1}

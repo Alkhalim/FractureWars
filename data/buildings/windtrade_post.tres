@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"windtrade_post"
+display_name = "Windtrade Post I"
+description = "A trading post perched on the wind routes. Merchants brave the gusts for the rare goods found here."
+faction_id = &"thunderswarm"
+category = &"economic"
+build_cost = {0: 100, 5: 35}
+build_time = 2
+income_bonus = {0: 22}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"artisans": 1, "nobles": 1}

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bat_caves"
+display_name = "Bat Caves I"
+description = "Dark caves where the Forsaken have learned to command the swarming bats. Fear is a weapon."
+faction_id = &"forsaken"
+category = &"military"
+build_cost = {0: 80, 3: 30}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"bat_swarm", &"plague_rat_pack"])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": -1}

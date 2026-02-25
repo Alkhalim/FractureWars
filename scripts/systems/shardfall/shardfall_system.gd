@@ -12,8 +12,8 @@ const REALM_COLORS := [
 
 var guardian_system: ShardGuardianSystem = ShardGuardianSystem.new()
 var turns_since_last_fall: int = 0
-var base_chance: float = 0.3
-var escalation: float = 0.05
+var base_chance: float = 0.65
+var escalation: float = 0.12
 
 func check_shardfall(current_turn: int) -> void:
 	turns_since_last_fall += 1
@@ -23,16 +23,29 @@ func check_shardfall(current_turn: int) -> void:
 		_trigger_shardfall()
 		return
 
-	# Random chance after that
+	# Guaranteed shardfall if drought lasts 6+ turns
+	if turns_since_last_fall >= 6:
+		_trigger_shardfall()
+		turns_since_last_fall = 0
+		return
+
+	# Scale number of shardfall attempts with map size
+	# Large maps (117x78 = ~9000 tiles) get 2-3 attempts per check
+	var tile_count := HexMapData.MAP_WIDTH * HexMapData.MAP_HEIGHT
+	var attempts := 1 + tile_count / 4000  # ~3 attempts on large map
+
 	var chance := base_chance + (turns_since_last_fall * escalation)
 	chance = min(chance, 0.9)
 
-	if randf() < chance:
-		_trigger_shardfall()
+	var triggered := false
+	for i in attempts:
+		if randf() < chance:
+			_trigger_shardfall()
+			triggered = true
+	if triggered:
+		turns_since_last_fall = 0
 
 func _trigger_shardfall() -> void:
-	turns_since_last_fall = 0
-
 	var realm := _pick_realm()
 	var hex_pos := _pick_hex_position()
 	if hex_pos == Vector2i(-1, -1):
@@ -89,8 +102,8 @@ func _pick_hex_position() -> Vector2i:
 			continue
 
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		# Skip water and wetlands tiles
-		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.WETLANDS:
+		# Skip impassable / unsuitable tiles
+		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.WETLANDS or tile.terrain == Enums.TerrainType.MOUNTAINS:
 			continue
 		candidates.append(coord)
 		if tile.owner_faction == &"":

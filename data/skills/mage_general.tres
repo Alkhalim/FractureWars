@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"mage_general"
 display_name = "Mage General"
-description = "Understands how to integrate arcane forces into battlefield tactics."
+description = "Mage units gain +2 attack in battle."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1}
+effects = {"mage_attack_bonus": 2}
 context_tags = Array[StringName]([&"used_mage"])

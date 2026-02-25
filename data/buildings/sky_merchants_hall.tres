@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sky_merchants_hall"
+display_name = "Sky Merchant's Hall II"
+description = "A grand hall where the sky merchants negotiate. Their aerial trade networks span the mountain ranges."
+faction_id = &"thunderswarm"
+category = &"economic"
+build_cost = {0: 290, 5: 55}
+build_time = 3
+income_bonus = {0: 55}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"windtrade_post"
+class_loyalty_bonus = {"artisans": 2, "nobles": 2}

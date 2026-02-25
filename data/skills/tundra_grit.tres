@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"tundra_grit"
 display_name = "Tundra Grit"
-description = "Hardened by frozen wastelands."
+description = "+2 defense in tundra. +2 HP healed per turn."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1, "heal_per_turn": 1}
+effects = {"terrain_tundra_defense_bonus": 2, "heal_per_turn": 2}
 context_tags = Array[StringName]([&"terrain_tundra"])

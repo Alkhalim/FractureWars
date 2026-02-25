@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"arrow_ward"
 display_name = "Arrow Ward"
-description = "Expert at shielding troops from volleys."
+description = "All units gain +3 defense against ranged attacks."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1}
+effects = {"vs_ranged_defense_bonus": 3}
 context_tags = Array[StringName]([&"faced_ranged", &"faced_mage"])

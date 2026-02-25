@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moonspire_citadel"
+display_name = "Moonspire Citadel III"
+description = "The sacred citadel of the Moonspear order. Its silver spires are visible for leagues, a beacon of divine authority."
+faction_id = &"moonspear"
+category = &"military"
+build_cost = {0: 680, 1: 80, 5: 60}
+build_time = 4
+income_bonus = {}
+population_growth_bonus = 2
+defense_bonus = 3
+recruit_speed_bonus = 1
+unlocks_units = Array[StringName]([&"eclipse_champion", &"moonstone_golem", &"frost_wyvern"])
+required_capital_level = 3
+class_loyalty_bonus = {"nobles": 4}
+upgrades_from = &"lunar_range"

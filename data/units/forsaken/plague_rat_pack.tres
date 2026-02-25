@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"plague_rat_pack"
+display_name = "Plague Rat Pack"
+description = "Swarms of disease-ridden rats that overwhelm enemies by sheer numbers. Their bite spreads festering sickness."
+faction_id = &"forsaken"
+max_hp = 400
+attack = 9
+defense = 2
+speed = 8
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 5
+movement_points = 4.0
+upkeep_cost = {0: 1, 3: 1}
+recruit_cost = {0: 20, 3: 10}
+recruit_time = 1
+population_cost = 8
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast", "swarm"])
+base_morale = 20
+captive_chance = 0.0

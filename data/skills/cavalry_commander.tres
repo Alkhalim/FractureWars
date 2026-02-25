@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"cavalry_commander"
 display_name = "Cavalry Commander"
-description = "Expert at leading mounted forces to outmaneuver the enemy."
+description = "Cavalry units gain +2 speed in battle."
 category = &"combat"
 is_minor = true
-effects = {"army_speed_bonus": 1}
+effects = {"cavalry_speed_bonus": 2}
 context_tags = Array[StringName]([&"used_cavalry"])

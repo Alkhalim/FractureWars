@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tempest_eagle"
+display_name = "Tempest Eagle"
+description = "Enormous raptors that ride the stormwinds. They dive from thunderclouds to rend enemies with lightning-charged talons."
+faction_id = &"thunderswarm"
+max_hp = 800
+attack = 18
+defense = 6
+speed = 9
+attack_range = 1
+squad_size = 1
+tiles_per_entity = 6
+movement_points = 4.0
+upkeep_cost = {0: 8, 3: 4}
+recruit_cost = {0: 200, 1: 50, 3: 60}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast", "flying"])
+base_morale = 70
+captive_chance = 0.0

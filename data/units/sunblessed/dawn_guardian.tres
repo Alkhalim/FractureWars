@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dawn_guardian"
+display_name = "Dawn Guardian"
+description = "Constructs of blessed gold and sacred stone, animated by prayers. They radiate an aura of divine protection."
+faction_id = &"sunblessed"
+max_hp = 600
+attack = 18
+defense = 22
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 6
+movement_points = 3.0
+upkeep_cost = {0: 15, 1: 5, 2: 4}
+recruit_cost = {0: 400, 1: 160, 2: 60}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee"])
+base_morale = 120
+morale_aura = 8
+fear_radius = 5
+captive_chance = 0.0

@@ -7,6 +7,8 @@ var hex_map: HexMapData
 var _beast_positions: Dictionary = {} # Vector2i -> true
 var _army_positions: Dictionary = {} # Vector2i -> Array[ArmyState]
 var _cache_valid: bool = false
+var _path_cache: Dictionary = {} # "from:to:faction:max_cost" -> Array[Vector2i]
+var _reachable_cache: Dictionary = {} # "from:mp:faction" -> Dictionary
 
 func _init(map: HexMapData) -> void:
 	hex_map = map
@@ -14,6 +16,8 @@ func _init(map: HexMapData) -> void:
 func refresh_caches() -> void:
 	_beast_positions.clear()
 	_army_positions.clear()
+	_path_cache.clear()
+	_reachable_cache.clear()
 	for beast_id in GameManager.state.elderbeasts:
 		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 		_beast_positions[beast.hex_pos] = true
@@ -46,11 +50,15 @@ func _has_enemy_at(coord: Vector2i, faction_id: StringName, excluded_army_id: St
 			return true
 	return false
 
-func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: float, excluded_army_id: StringName = &"", can_cross_mountains: bool = false) -> Array[Vector2i]:
+func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: float, excluded_army_id: StringName = &"", can_cross_mountains: bool = false, army: ArmyState = null) -> Array[Vector2i]:
 	# A* pathfinding on hex grid with sorted open set (descending f — pop_back = best)
 	_ensure_cache()
 	if from == to:
 		return []
+
+	var cache_key := "%d,%d:%d,%d:%s:%.1f" % [from.x, from.y, to.x, to.y, faction_id, max_cost]
+	if _path_cache.has(cache_key):
+		return _path_cache[cache_key]
 
 	var came_from: Dictionary = {} # Vector2i -> Vector2i
 	var g_score: Dictionary = {} # Vector2i -> float
@@ -80,6 +88,7 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 			while node != from:
 				path.push_front(node)
 				node = came_from[node]
+			_path_cache[cache_key] = path
 			return path
 
 		var current_g: float = g_score.get(current, INF)
@@ -89,7 +98,8 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 				continue
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				continue
-			if hex_map.get_tile(neighbor) == null:
+			var ntile := hex_map.get_tile(neighbor)
+			if ntile == null:
 				continue
 			if _is_tile_blocked(neighbor, faction_id, excluded_army_id):
 				continue
@@ -101,9 +111,11 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 			if move_cost >= INF:
 				continue
 			if not can_cross_mountains:
-				var check_tile := hex_map.get_tile(neighbor)
-				if check_tile and check_tile.terrain == Enums.TerrainType.MOUNTAINS:
+				if ntile.terrain == Enums.TerrainType.MOUNTAINS:
 					continue
+			# Apply army-specific terrain stride modifiers
+			if army:
+				move_cost *= army.get_terrain_stride_modifier(ntile.terrain)
 
 			var tentative_g := current_g + move_cost
 			if tentative_g > max_cost:
@@ -120,12 +132,16 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 				open_heap.insert(idx, [f, neighbor])
 				in_open[neighbor] = true
 
+	_path_cache[cache_key] = []
 	return [] # No path found
 
-func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: StringName, excluded_army_id: StringName = &"", can_cross_mountains: bool = false) -> Dictionary:
+func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: StringName, excluded_army_id: StringName = &"", can_cross_mountains: bool = false, army: ArmyState = null) -> Dictionary:
 	# Returns Dictionary of Vector2i -> remaining_mp
 	# Dijkstra with sorted open set (ascending remaining — pop_back = best)
 	_ensure_cache()
+	var cache_key := "%d,%d:%.1f:%s" % [from.x, from.y, movement_points, faction_id]
+	if _reachable_cache.has(cache_key):
+		return _reachable_cache[cache_key]
 	var result: Dictionary = {}
 	result[from] = movement_points
 
@@ -143,16 +159,19 @@ func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: Str
 		for neighbor in HexHelper.get_neighbors(current):
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				continue
-			if hex_map.get_tile(neighbor) == null:
+			var ntile := hex_map.get_tile(neighbor)
+			if ntile == null:
 				continue
 			if _is_tile_blocked(neighbor, faction_id, excluded_army_id):
 				continue
 
 			var cost := hex_map.get_movement_cost(neighbor, faction_id)
 			if not can_cross_mountains:
-				var check_tile := hex_map.get_tile(neighbor)
-				if check_tile and check_tile.terrain == Enums.TerrainType.MOUNTAINS:
+				if ntile.terrain == Enums.TerrainType.MOUNTAINS:
 					continue
+			# Apply army-specific terrain stride modifiers
+			if army:
+				cost *= army.get_terrain_stride_modifier(ntile.terrain)
 			var new_remaining := remaining - cost
 
 			if new_remaining < 0.0:
@@ -169,4 +188,5 @@ func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: Str
 					open_heap.insert(idx, [new_remaining, neighbor])
 
 	result.erase(from) # Don't include starting tile
+	_reachable_cache[cache_key] = result
 	return result

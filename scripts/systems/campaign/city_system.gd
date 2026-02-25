@@ -35,6 +35,7 @@ func process_turn(faction_id: StringName) -> void:
 
 	_process_sieges(faction_id)
 	_deduct_upkeep(faction_id)
+	_process_captive_decay(faction_id)
 
 	# Starvation: if faction food reserves are negative, cities lose population
 	_apply_starvation(faction_id)
@@ -120,6 +121,10 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 	# Faction-specific income modifiers
 	_apply_faction_income_modifier(income, faction_id, fs, city)
 
+	# Global wood production reduction (-10%) to offset lower building costs
+	if income.has(Enums.ResourceType.WOOD):
+		income[Enums.ResourceType.WOOD] = int(income[Enums.ResourceType.WOOD] * 0.90)
+
 	# Population food consumption: larger populations eat more
 	var province_pop := get_province_population(city)
 	var food_consumed := province_pop / 40
@@ -158,15 +163,25 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	# Building bonuses — slightly scaled by population (except food)
 	# At pop 100: no bonus. At pop 200: +10%. At pop 500: +40%.
 	var building_pop_mult := maxf(1.0, 1.0 + (float(province_pop) - 100.0) * 0.001)
+	# Captive-dependent buildings produce less without captives
+	var fs_for_captives: FactionState = GameManager.state.faction_states.get(city.faction_id)
+	var faction_captives: int = fs_for_captives.resources.get(Enums.ResourceType.CAPTIVES, 0) if fs_for_captives else 0
+	var captive_buildings: Array[StringName] = [&"labor_camp", &"thrall_quarters", &"captive_processing_camp"]
 	for building_id in city.buildings:
 		var building: BuildingData = DataManager.get_building(building_id)
 		if building == null:
 			continue
+		# Labor camp buildings: scale effectiveness with captive count
+		# 0 captives = 25% output, 10+ captives = 100% output
+		var captive_mult := 1.0
+		if building_id in captive_buildings:
+			captive_mult = clampf(0.25 + 0.75 * (float(faction_captives) / 10.0), 0.25, 1.0)
 		for res_type in building.income_bonus:
 			var bonus: int = building.income_bonus[res_type]
 			# Food production stays flat — growth is handled separately
 			if res_type != Enums.ResourceType.FOOD:
 				bonus = int(float(bonus) * building_pop_mult)
+			bonus = int(float(bonus) * captive_mult)
 			if income.has(res_type):
 				income[res_type] += bonus
 			else:
@@ -383,9 +398,8 @@ func _spawn_recruited_unit(city: CityState, unit_data_id: StringName, faction_id
 
 	# Check if there's already a friendly army at the city hex
 	var existing_army: ArmyState = null
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.hex_pos == city.hex_pos and army.faction_id == faction_id:
+	for army: ArmyState in GameManager.get_armies_at_tile(city.hex_pos):
+		if army.faction_id == faction_id:
 			existing_army = army
 			break
 
@@ -420,9 +434,8 @@ func _process_sieges(faction_id: StringName) -> void:
 
 		# Jungle Traps: besieging armies take attrition damage each siege turn
 		if city.buildings.has(&"jungle_traps"):
-			for army_id in GameManager.state.armies:
-				var army: ArmyState = GameManager.state.armies[army_id]
-				if army.faction_id == faction_id and army.hex_pos == city.hex_pos:
+			for army: ArmyState in GameManager.get_armies_at_tile(city.hex_pos):
+				if army.faction_id == faction_id:
 					for unit in army.units:
 						var ud := DataManager.get_unit(unit.unit_data_id)
 						if ud:
@@ -433,7 +446,11 @@ func _process_sieges(faction_id: StringName) -> void:
 		if city.buildings.has(&"steppe_watchtower"):
 			siege_threshold = 5
 		if city.siege_turns >= siege_threshold:
-			_capture_city(city)
+			# Skulloath player gets a choice: capture, loot, or raze
+			if faction_id == &"skulloath" and faction_id == GameManager.state.player_faction_id:
+				EventBus.siege_choice_needed.emit(city.city_id, faction_id)
+			else:
+				_capture_city(city)
 
 func _capture_city(city: CityState) -> void:
 	var old_owner := city.faction_id
@@ -484,6 +501,106 @@ func _capture_city(city: CityState) -> void:
 	if old_fs and old_fs.owned_cities.is_empty():
 		old_fs.is_defeated = true
 
+## Called by the Skulloath siege choice dialog to execute the "capture" option.
+func apply_siege_choice_capture(city_id: StringName) -> void:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return
+	_capture_city(city)
+
+## Skulloath "Loot" option: steal large resources from the city but don't take it.
+## The city remains with its original owner but loses population and loyalty.
+func apply_siege_choice_loot(city_id: StringName) -> Dictionary:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return {}
+	var looter_id := city.siege_faction
+	var fs: FactionState = GameManager.state.faction_states.get(looter_id)
+	if fs == null:
+		return {}
+
+	# Loot amounts scale with city level and population
+	var loot_mult: float = 1.0 + city.level * 0.3
+	var gold_loot: int = int(60 * loot_mult)
+	var wood_loot: int = int(45 * loot_mult)
+	var iron_loot: int = int(25 * loot_mult)
+	var food_loot: int = int(35 * loot_mult)
+
+	fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + gold_loot
+	fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + wood_loot
+	fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_loot
+	fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + food_loot
+
+	# City suffers: population halved, loyalty tanks
+	city.population = maxi(20, city.population / 2)
+	city.loyalty = clampi(city.loyalty - 40, -100, 100)
+	for cls in city.class_loyalty:
+		city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 30, -100, 100)
+
+	# End siege
+	city.is_under_siege = false
+	city.siege_faction = &""
+	city.siege_turns = 0
+
+	# Diplomacy hit with all factions
+	for other_fid in GameManager.state.faction_states:
+		if other_fid != looter_id and not GameManager.is_npc_faction(other_fid):
+			GameManager.diplomacy_system.modify_standing(looter_id, other_fid, -5, "Looted a city")
+
+	return {"gold": gold_loot, "wood": wood_loot, "iron": iron_loot, "food": food_loot}
+
+## Skulloath "Raze" option: burn the city, downgrading all buildings by 1 tier.
+## Tier 1 buildings are destroyed. City stays with original owner in ruins.
+func apply_siege_choice_raze(city_id: StringName) -> Dictionary:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return {}
+	var razer_id := city.siege_faction
+
+	# Downgrade or destroy each building
+	var destroyed_count := 0
+	var downgraded_count := 0
+	var new_buildings: Array[StringName] = []
+	for bld_id in city.buildings:
+		var bld_data: BuildingData = DataManager.get_building(bld_id)
+		if bld_data == null:
+			continue
+		# Find if this building is an upgrade of something (has upgrades_from)
+		if bld_data.upgrades_from != &"":
+			# Downgrade to parent building
+			new_buildings.append(bld_data.upgrades_from)
+			downgraded_count += 1
+		else:
+			# Tier 1 building: destroy it
+			destroyed_count += 1
+	city.buildings = new_buildings
+
+	# Small loot from razing (less than looting)
+	var fs: FactionState = GameManager.state.faction_states.get(razer_id)
+	var gold_loot := 30
+	var wood_loot := 20
+	if fs:
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + gold_loot
+		fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + wood_loot
+
+	# City devastated: population and loyalty crushed
+	city.population = maxi(10, city.population / 3)
+	city.loyalty = clampi(city.loyalty - 60, -100, 100)
+	for cls in city.class_loyalty:
+		city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 50, -100, 100)
+
+	# End siege
+	city.is_under_siege = false
+	city.siege_faction = &""
+	city.siege_turns = 0
+
+	# Major diplomacy hit
+	for other_fid in GameManager.state.faction_states:
+		if other_fid != razer_id and not GameManager.is_npc_faction(other_fid):
+			GameManager.diplomacy_system.modify_standing(razer_id, other_fid, -10, "Razed a city")
+
+	return {"destroyed": destroyed_count, "downgraded": downgraded_count, "gold": gold_loot, "wood": wood_loot}
+
 func _deduct_upkeep(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null:
@@ -493,12 +610,7 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 	var r_eff := GameManager.research_system.get_research_effects(faction_id)
 	var upkeep_red_pct: float = float(r_eff.get("upkeep_reduction_pct", 0)) / 100.0
 
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id != faction_id:
-			continue
-		if army.is_garrison:
-			continue # garrison armies don't cost upkeep
+	for army: ArmyState in GameManager.get_faction_armies(faction_id):
 		# Terrain upkeep modifier (jungle/desert/wastes etc.)
 		var terrain_mult := TurnManager.get_terrain_upkeep_modifier(army)
 		# Unit upkeep
@@ -511,6 +623,11 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 					var cost := int(unit_data.upkeep_cost[res_type] * terrain_mult)
 					if upkeep_red_pct > 0:
 						cost = int(cost * (1.0 - upkeep_red_pct))
+					# Global upkeep discounts: food -20%, gold -20%
+					if res_type == Enums.ResourceType.FOOD:
+						cost = int(cost * 0.80)
+					elif res_type == Enums.ResourceType.GOLD:
+						cost = int(cost * 0.80)
 					fs.resources[res_type] -= cost
 		# Commander upkeep (only while assigned to army; skip for elderbeast armies)
 		if army.commander != null and army.elderbeast_id == &"":
@@ -519,6 +636,45 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 				var cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= cost
+
+func _process_captive_decay(faction_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return
+	var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+	if captives <= 0:
+		return
+
+	# Count labor-camp-type buildings across all faction cities
+	var labor_camp_count := 0
+	var thrall_count := 0
+	var processing_camp_count := 0
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != faction_id:
+			continue
+		if city.buildings.has(&"labor_camp"):
+			labor_camp_count += 1
+		if city.buildings.has(&"thrall_quarters"):
+			thrall_count += 1
+		if city.buildings.has(&"captive_processing_camp"):
+			processing_camp_count += 1
+
+	# Each camp-type building consumes captives per turn (they die, escape, get worked to death)
+	var decay := 0
+	decay += labor_camp_count * 2        # Labor Camp: -2 captives/turn each
+	decay += thrall_count * 1             # Thrall Quarters: -1 captive/turn each
+	decay += processing_camp_count * 3    # Captive Processing Camp: -3 captives/turn each
+
+	# Blood Altar already consumes 3 captives in _apply_faction_income_modifier
+	# Natural captive attrition: even without camps, 1 captive escapes/dies per 5 turns
+	if decay == 0:
+		# No camp buildings — slow natural decay
+		if GameManager.state.current_turn % 5 == 0:
+			decay = 1
+
+	if decay > 0:
+		fs.resources[Enums.ResourceType.CAPTIVES] = maxi(0, captives - decay)
 
 # ── Loyalty helpers ───────────────────────────────────────────
 
@@ -695,7 +851,9 @@ func get_available_buildings(city: CityState) -> Array[BuildingData]:
 		var building: BuildingData = DataManager.buildings[building_id]
 		# Skip faction-specific buildings that don't belong to this city's faction
 		if building.faction_id != &"" and building.faction_id != city.faction_id:
-			continue
+			var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, &"")
+			if parent_id == &"" or building.faction_id != parent_id or building.required_capital_level > 2:
+				continue
 		# Skip buildings already owned
 		if city.buildings.has(building_id):
 			continue
@@ -767,13 +925,16 @@ func start_building(city_id: StringName, building_id: StringName, tile_pos: Vect
 	elif not valid_tiles.has(tile_pos):
 		return false
 
-	# Check and deduct cost
+	# Check and deduct cost (with global -10 wood discount)
 	var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 	if fs == null:
 		return false
-	if not _can_afford(fs, building.build_cost):
+	var adjusted_cost := building.build_cost.duplicate()
+	if adjusted_cost.has(Enums.ResourceType.WOOD):
+		adjusted_cost[Enums.ResourceType.WOOD] = maxi(0, adjusted_cost[Enums.ResourceType.WOOD] - 10)
+	if not _can_afford(fs, adjusted_cost):
 		return false
-	_deduct_cost(fs, building.build_cost)
+	_deduct_cost(fs, adjusted_cost)
 
 	city.build_queue.append({building_id = building_id, turns_remaining = building.build_time, tile_pos = tile_pos})
 	return true
@@ -794,8 +955,11 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 	if fs == null:
 		return false
 
-	# Check recruit cost
-	if not _can_afford(fs, unit_data.recruit_cost):
+	# Check recruit cost (with global -10% gold discount)
+	var adjusted_recruit := unit_data.recruit_cost.duplicate()
+	if adjusted_recruit.has(Enums.ResourceType.GOLD):
+		adjusted_recruit[Enums.ResourceType.GOLD] = int(adjusted_recruit[Enums.ResourceType.GOLD] * 0.90)
+	if not _can_afford(fs, adjusted_recruit):
 		return false
 
 	# Check province population (shared across all cities in province)
@@ -805,7 +969,7 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 		return false
 
 	# Deduct resources and population from province (subtract from this city first, overflow to others)
-	_deduct_cost(fs, unit_data.recruit_cost)
+	_deduct_cost(fs, adjusted_recruit)
 	_deduct_province_population(city, pop_cost)
 
 	# Calculate recruit time with building bonuses
@@ -870,13 +1034,18 @@ func _get_garrison_composition(city: CityState) -> Array:
 	var units: Array = GARRISON_UNITS.get(city.faction_id, GARRISON_UNITS[&"empire"])
 	var militia: StringName = units[0]
 	var regular: StringName = units[1]
+	# Building bonus: +1 militia per military building (barracks, training_ground, etc.)
+	var building_bonus := 0
+	for bid in city.buildings:
+		if bid in [&"barracks", &"training_ground", &"war_forge", &"fortification", &"watchtower"]:
+			building_bonus += 1
 	match city.level:
-		1: return [{unit_id = militia, count = 2}]
-		2: return [{unit_id = militia, count = 2}, {unit_id = regular, count = 2}]
-		3: return [{unit_id = militia, count = 4}, {unit_id = regular, count = 2}]
-		4: return [{unit_id = militia, count = 4}, {unit_id = regular, count = 4}]
-		5: return [{unit_id = militia, count = 6}, {unit_id = regular, count = 4}]
-		_: return [{unit_id = militia, count = 2}]
+		1: return [{unit_id = militia, count = 5 + building_bonus}]
+		2: return [{unit_id = militia, count = 5 + building_bonus}, {unit_id = regular, count = 3}]
+		3: return [{unit_id = militia, count = 6 + building_bonus}, {unit_id = regular, count = 5}]
+		4: return [{unit_id = militia, count = 7 + building_bonus}, {unit_id = regular, count = 6}]
+		5: return [{unit_id = militia, count = 8 + building_bonus}, {unit_id = regular, count = 8}]
+		_: return [{unit_id = militia, count = 5 + building_bonus}]
 
 func create_garrison_army(city: CityState) -> ArmyState:
 	var garrison_def: Array = _get_garrison_composition(city)
@@ -1038,10 +1207,7 @@ func _get_primary_resource(terrain: Enums.TerrainType) -> int:
 
 func _get_nearby_friendly_commanders(city: CityState) -> Array[CommanderState]:
 	var result: Array[CommanderState] = []
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id != city.faction_id:
-			continue
+	for army: ArmyState in GameManager.get_all_faction_armies(city.faction_id):
 		if army.commander == null:
 			continue
 		if HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= army.commander.influence_radius:

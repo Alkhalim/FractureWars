@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crescent_ranger"
+display_name = "Crescent Ranger"
+description = "Swift scouts who patrol the tundra's edge. Their crescent-bladed arrows find gaps in the thickest armor."
+faction_id = &"moonspear"
+max_hp = 750
+attack = 12
+defense = 4
+speed = 6
+attack_range = 4
+squad_size = 50
+hp_per_soldier = 15
+movement_points = 4.5
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 80, 1: 25, 5: 15}
+recruit_time = 2
+population_cost = 10
+terrain_bonuses = {6: 0.2}
+realm_bonuses = {}
+tags = Array[String](["ranged", "fast", "tundrawalker"])
+base_morale = 50

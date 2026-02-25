@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"city_defender"
 display_name = "City Defender"
-description = "Expert at holding fortifications against overwhelming odds."
+description = "+2 defense for all units when defending a city."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1}
+effects = {"terrain_city_defense_bonus": 2}
 context_tags = Array[StringName]([&"in_city", &"was_defender"])

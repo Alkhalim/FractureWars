@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"plague_shaman"
+display_name = "Plague Shaman"
+description = "Dark sorcerers who channel void energy and pestilence. Their presence weakens enemy morale."
+faction_id = &"forsaken"
+max_hp = 400
+attack = 12
+defense = 3
+speed = 4
+attack_range = 3
+squad_size = 20
+hp_per_soldier = 20
+movement_points = 3.5
+upkeep_cost = {0: 3, 2: 1}
+recruit_cost = {0: 75, 1: 15, 2: 15}
+recruit_time = 3
+population_cost = 4
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged", "support", "undead"])
+base_morale = 35
+morale_aura = -2
+fear_radius = 3

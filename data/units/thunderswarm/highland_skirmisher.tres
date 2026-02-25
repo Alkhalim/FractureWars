@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"highland_skirmisher"
+display_name = "Highland Skirmisher"
+description = "Nimble mountain warriors who rain javelins from above. They know every pass and ledge of the highlands."
+faction_id = &"thunderswarm"
+max_hp = 650
+attack = 10
+defense = 3
+speed = 6
+attack_range = 3
+squad_size = 60
+hp_per_soldier = 11
+movement_points = 4.5
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 45, 1: 15}
+recruit_time = 2
+population_cost = 12
+terrain_bonuses = {2: 0.2}
+realm_bonuses = {}
+tags = Array[String](["ranged", "fast"])
+base_morale = 40

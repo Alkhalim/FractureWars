@@ -8,8 +8,65 @@ var diplomacy_system: DiplomacySystem = DiplomacySystem.new()
 var research_system: ResearchSystem = ResearchSystem.new()
 var policy_system: PolicySystem = PolicySystem.new()
 
+# Faction-indexed army cache — rebuilt via rebuild_faction_army_cache()
+var _faction_army_cache: Dictionary = {} # faction_id -> Array[ArmyState]
+var _faction_army_cache_valid: bool = false
+
+# Integer-keyed relation cache — avoids string allocation in get_relation()
+var _relation_cache: Dictionary = {} # int -> Enums.FactionRelation
+
+# Leader army override (set by main_menu before new_game, consumed in _init_armies)
+var _leader_army_override: Array = []
+var _leader_army_override_faction: StringName = &""
+
+func rebuild_faction_army_cache() -> void:
+	_faction_army_cache.clear()
+	for army_id in state.armies:
+		var army: ArmyState = state.armies[army_id]
+		if not _faction_army_cache.has(army.faction_id):
+			_faction_army_cache[army.faction_id] = []
+		_faction_army_cache[army.faction_id].append(army)
+	_faction_army_cache_valid = true
+
+func invalidate_faction_army_cache() -> void:
+	_faction_army_cache_valid = false
+
 func _ready() -> void:
 	_setup_global_theme()
+	_setup_transition_overlay()
+
+func _setup_transition_overlay() -> void:
+	_transition_layer = CanvasLayer.new()
+	_transition_layer.layer = 128
+	_transition_rect = ColorRect.new()
+	_transition_rect.color = Color(0, 0, 0, 0)
+	_transition_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_transition_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_transition_layer.add_child(_transition_rect)
+	add_child(_transition_layer)
+
+var _is_transitioning := false
+
+func transition_to_scene(path: String, duration := 0.5) -> void:
+	if _is_transitioning:
+		return
+	_is_transitioning = true
+	_transition_rect.mouse_filter = Control.MOUSE_FILTER_STOP
+	var tween := create_tween()
+	tween.tween_property(_transition_rect, "color:a", 1.0, duration)
+	tween.tween_callback(func():
+		get_tree().change_scene_to_file(path)
+		call_deferred("_fade_in", duration)
+	)
+
+func _fade_in(duration: float) -> void:
+	_transition_rect.color.a = 1.0
+	var tween := create_tween()
+	tween.tween_property(_transition_rect, "color:a", 0.0, duration)
+	tween.tween_callback(func():
+		_transition_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_is_transitioning = false
+	)
 
 # ── UI Theme ─────────────────────────────────────────────────
 # All three source images are 1536x1024. We use region_rect to crop
@@ -30,6 +87,9 @@ const _NOTIF_CONTENT := Vector4(240, 290, 240, 210)
 var _btn_texture: Texture2D
 var _frame_texture: Texture2D
 var _notif_texture: Texture2D
+
+var _transition_layer: CanvasLayer
+var _transition_rect: ColorRect
 
 func _setup_global_theme() -> void:
 	_btn_texture = load("res://assets/sprites/ui/button1.png") as Texture2D
@@ -343,7 +403,7 @@ const CULTURE_BONUSES := {
 }
 
 # ── Faction leader names ──────────────────────────────────────
-const FACTION_LEADER_NAMES := {
+var FACTION_LEADER_NAMES := {
 	&"empire": "Emperor Aurelian III",
 	&"gladehost": "Archdruid Thalwen",
 	&"moonspear": "High Priestess Selara",
@@ -576,8 +636,31 @@ func save_game(slot: int) -> void:
 	state.turn_manager_state = TurnManager.serialize_state()
 	DirAccess.make_dir_recursive_absolute("user://saves")
 	ResourceSaver.save(state, "user://saves/save_%d.tres" % slot)
+	# Store metadata alongside save for load menu display
+	var meta := ConfigFile.new()
+	var faction_data := DataManager.get_faction(state.player_faction_id)
+	meta.set_value("save", "turn", state.current_turn)
+	meta.set_value("save", "faction_id", str(state.player_faction_id))
+	meta.set_value("save", "faction_name", faction_data.display_name if faction_data else str(state.player_faction_id))
+	meta.set_value("save", "timestamp", Time.get_datetime_string_from_system())
+	var month_name := DataManager.get_month_name(state.current_month)
+	meta.set_value("save", "date", "%s, %d S.F." % [month_name, state.current_year])
+	meta.save("user://saves/save_%d_meta.cfg" % slot)
 	state.hex_map_data = {} # Clear after save to save memory
 	state.turn_manager_state = {}
+
+static func get_save_metadata(slot: int) -> Dictionary:
+	var cfg := ConfigFile.new()
+	var path := "user://saves/save_%d_meta.cfg" % slot
+	if cfg.load(path) != OK:
+		return {}
+	return {
+		turn = cfg.get_value("save", "turn", 0),
+		faction_id = cfg.get_value("save", "faction_id", ""),
+		faction_name = cfg.get_value("save", "faction_name", "Unknown"),
+		timestamp = cfg.get_value("save", "timestamp", ""),
+		date = cfg.get_value("save", "date", ""),
+	}
 
 func load_game(slot: int) -> void:
 	var path := "user://saves/save_%d.tres" % slot
@@ -587,12 +670,13 @@ func load_game(slot: int) -> void:
 	if state == null:
 		return
 	state.deserialize_hex_map()
+	state.hex_map.build_region_cache()
 	TurnManager.deserialize_state(state.turn_manager_state)
 	state.turn_manager_state = {}
 	movement_system = MovementSystem.new(state.hex_map)
 	current_phase = Enums.GamePhase.CAMPAIGN
 	_commander_name_counters.clear()
-	get_tree().change_scene_to_file("res://scenes/campaign/campaign.tscn")
+	transition_to_scene("res://scenes/campaign/campaign.tscn")
 
 static func has_save(slot: int) -> bool:
 	return ResourceLoader.exists("user://saves/save_%d.tres" % slot)
@@ -603,6 +687,7 @@ func new_game(faction_id: StringName = &"empire") -> void:
 
 	# Generate hex map
 	state.hex_map = MapGenerator.generate_hex_map(DataManager.regions)
+	state.hex_map.build_region_cache()
 	movement_system = MovementSystem.new(state.hex_map)
 
 	_init_factions()
@@ -611,12 +696,13 @@ func new_game(faction_id: StringName = &"empire") -> void:
 	_init_independent_faction()
 	_init_regions()
 	_init_cities()
+	_recompute_all_territory()
 	_init_elderbeasts()
 	_init_armies()
 	_init_commander_pools()
 	_init_diplomacy()
 	current_phase = Enums.GamePhase.CAMPAIGN
-	get_tree().change_scene_to_file("res://scenes/campaign/campaign.tscn")
+	transition_to_scene("res://scenes/campaign/campaign.tscn")
 
 func _init_factions() -> void:
 	_commander_name_counters.clear()
@@ -708,13 +794,43 @@ func _init_independent_faction() -> void:
 	state.faction_states[&"independent"] = fs
 
 func _init_regions() -> void:
-	# Assign starting regions to factions via hex map tile ownership
+	# Track starting region ownership (tile ownership set after cities via Voronoi)
 	for faction_id in DataManager.factions:
 		var faction_data: FactionData = DataManager.factions[faction_id]
 		var fs: FactionState = state.faction_states[faction_id]
 		for region_id in faction_data.starting_regions:
-			state.hex_map.set_region_owner(region_id, faction_id)
 			fs.owned_regions.append(region_id)
+
+func _get_all_cities_array() -> Array:
+	var result: Array = []
+	for city_id in state.cities:
+		result.append(state.cities[city_id])
+	return result
+
+func _recompute_all_territory() -> void:
+	state.hex_map.set_city_territory_owner(_get_all_cities_array())
+
+func _recompute_region_territory(region_id: StringName) -> void:
+	var cities: Array = []
+	for city_id in state.cities:
+		var city: CityState = state.cities[city_id]
+		if city.region_id == region_id:
+			cities.append(city)
+	state.hex_map.set_region_city_territory(region_id, cities)
+
+func _get_region_majority_faction(region_id: StringName) -> StringName:
+	var counts: Dictionary = {}
+	for city_id in state.cities:
+		var city: CityState = state.cities[city_id]
+		if city.region_id == region_id and city.faction_id != &"" and city.faction_id != &"independent":
+			counts[city.faction_id] = counts.get(city.faction_id, 0) + 1
+	var best_fid: StringName = &""
+	var best_count := 0
+	for fid in counts:
+		if counts[fid] > best_count:
+			best_count = counts[fid]
+			best_fid = fid
+	return best_fid
 
 # Hardcoded starting armies for factions with custom unit rosters
 # Mostly tier 1 units with at most 2 tier 2 units per army
@@ -745,8 +861,12 @@ func _init_armies() -> void:
 		var center := MapGenerator.get_region_center(faction_data.starting_regions[0])
 		center = _find_unoccupied_spawn(center, occupied_tiles)
 
-		# Use hardcoded composition if available, otherwise build from faction units
-		var unit_ids: Array = MAJOR_STARTING_ARMIES.get(faction_id, [])
+		# Use leader army override for the player faction, else hardcoded, else generic
+		var unit_ids: Array = []
+		if faction_id == _leader_army_override_faction and not _leader_army_override.is_empty():
+			unit_ids = _leader_army_override.duplicate()
+		else:
+			unit_ids = MAJOR_STARTING_ARMIES.get(faction_id, [])
 		if unit_ids.is_empty():
 			unit_ids = _get_generic_starting_units(faction_id)
 		if unit_ids.is_empty():
@@ -756,8 +876,8 @@ func _init_armies() -> void:
 		state.armies[army.army_id] = army
 		occupied_tiles[center] = true
 
-	# Shardhorde elderbeasts + escort armies
-	_init_shardhorde_armies()
+	# Shardhorde elderbeasts + escort armies (pass occupied tiles to avoid overlap)
+	_init_shardhorde_armies(occupied_tiles)
 
 func _get_generic_starting_units(faction_id: StringName) -> Array:
 	# Build a starting army from whatever units exist for this faction
@@ -841,7 +961,7 @@ func _init_nomadic_army(faction_id: StringName, occupied_tiles: Dictionary) -> v
 	state.armies[army.army_id] = army
 	occupied_tiles[spawn_pos] = true
 
-func _init_shardhorde_armies() -> void:
+func _init_shardhorde_armies(_occupied_tiles: Dictionary = {}) -> void:
 	var beast_ids := state.elderbeasts.keys()
 	if beast_ids.size() >= 1:
 		var beast1: ElderbeastState = state.elderbeasts[beast_ids[0]]
@@ -950,16 +1070,21 @@ func _get_region_starting_faction(region_id: StringName) -> StringName:
 
 const MIN_CITY_DISTANCE := 4
 
-func _find_valid_city_pos(region_center: Vector2i, offset: Vector2i) -> Vector2i:
+func _find_valid_city_pos(region_center: Vector2i, offset: Vector2i, required_region: StringName = &"") -> Vector2i:
 	var target := region_center + offset
 	# Clamp to map bounds
 	target.x = clampi(target.x, 0, HexMapData.MAP_WIDTH - 1)
 	target.y = clampi(target.y, 0, HexMapData.MAP_HEIGHT - 1)
-	# Check if the target tile is valid land and far enough from other cities
+	# Determine the region constraint from the target tile if not provided
+	if required_region == &"":
+		var center_tile := state.hex_map.get_tile(region_center)
+		if center_tile:
+			required_region = center_tile.region_id
+	# Check if the target tile is valid land, in the correct region, and far enough from other cities
 	var tile := state.hex_map.get_tile(target)
-	if tile and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(target):
+	if tile and tile.region_id == required_region and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(target):
 		return target
-	# BFS spiral search for a valid placement that respects minimum distance
+	# BFS spiral search for a valid placement that respects minimum distance and stays in region
 	var visited: Dictionary = {target: true}
 	var frontier: Array[Vector2i] = [target]
 	var steps := 0
@@ -973,11 +1098,16 @@ func _find_valid_city_pos(region_center: Vector2i, offset: Vector2i) -> Vector2i
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				continue
 			var ntile := state.hex_map.get_tile(neighbor)
-			if ntile and ntile.terrain != Enums.TerrainType.WATER and ntile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(neighbor):
+			if ntile == null:
+				continue
+			# Only consider tiles within the same region
+			if required_region != &"" and ntile.region_id != required_region:
+				continue
+			if ntile.terrain != Enums.TerrainType.WATER and ntile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(neighbor):
 				return neighbor
 			frontier.append(neighbor)
-	# Last resort: accept original target even if close
-	if tile and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS:
+	# Last resort: accept original target even if close, but still prefer same region
+	if tile and tile.region_id == required_region and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS:
 		return target
 	return region_center
 
@@ -1008,7 +1138,7 @@ func _init_cities() -> void:
 
 		for i in slots.size():
 			var slot: Dictionary = slots[i]
-			var city_pos := _find_valid_city_pos(region_center, slot.offset)
+			var city_pos := _find_valid_city_pos(region_center, slot.offset, region_id)
 			var city := CityState.new()
 			city.city_id = state.generate_id()
 			city.city_name = slot.name
@@ -1062,22 +1192,30 @@ func _init_elderbeasts() -> void:
 	var region_id: StringName = &"bataarbad"
 	var center := MapGenerator.get_region_center(region_id)
 
+	# Collect already-occupied tiles from existing armies
+	var occupied: Dictionary = {}
+	for army_id in state.armies:
+		var army: ArmyState = state.armies[army_id]
+		occupied[army.hex_pos] = true
+
 	# Find suitable hex positions near center (doesn't need to be in the region)
 	var hex_map := state.hex_map
 	var valid_hexes: Array[Vector2i] = []
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
 		if tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.WETLANDS:
-			if HexHelper.hex_distance(coord, center) <= 8:
+			if HexHelper.hex_distance(coord, center) <= 8 and not occupied.has(coord):
 				valid_hexes.append(coord)
 
-	var beast1_pos := center
-	var beast2_pos := center
-	# Find a second position away from center
+	var beast1_pos := _find_unoccupied_spawn(center, occupied)
+	occupied[beast1_pos] = true
+	var beast2_pos := beast1_pos
+	# Find a second position away from beast1
 	for coord in valid_hexes:
-		if HexHelper.hex_distance(coord, center) >= 3 and HexHelper.hex_distance(coord, center) <= 5:
+		if HexHelper.hex_distance(coord, beast1_pos) >= 3 and HexHelper.hex_distance(coord, beast1_pos) <= 5 and not occupied.has(coord):
 			beast2_pos = coord
 			break
+	occupied[beast2_pos] = true
 
 	# Create first elderbeast with barracks
 	var beast1 := ElderbeastState.new()
@@ -1281,6 +1419,8 @@ func _init_diplomacy() -> void:
 func _set_relation(a: StringName, b: StringName, relation: Enums.FactionRelation) -> void:
 	state.diplomacy[StringName(str(a) + ":" + str(b))] = relation
 	state.diplomacy[StringName(str(b) + ":" + str(a))] = relation
+	_relation_cache[_relation_key(a, b)] = relation
+	_relation_cache[_relation_key(b, a)] = relation
 
 func _get_set_relation(a: StringName, b: StringName) -> int:
 	var key := StringName(str(a) + ":" + str(b))
@@ -1349,6 +1489,12 @@ func get_faction_elderbeasts(faction_id: StringName) -> Array[ElderbeastState]:
 	return result
 
 func get_army_at_tile(coord: Vector2i) -> ArmyState:
+	# Use movement system position cache when valid
+	if movement_system and movement_system._cache_valid:
+		var armies: Array = movement_system._army_positions.get(coord, [])
+		if armies.size() > 0:
+			return armies[0]
+		return null
 	for army_id in state.armies:
 		var army: ArmyState = state.armies[army_id]
 		if army.hex_pos == coord:
@@ -1356,6 +1502,13 @@ func get_army_at_tile(coord: Vector2i) -> ArmyState:
 	return null
 
 func get_armies_at_tile(coord: Vector2i) -> Array[ArmyState]:
+	# Use movement system position cache when valid
+	if movement_system and movement_system._cache_valid:
+		var cached: Array = movement_system._army_positions.get(coord, [])
+		var result: Array[ArmyState] = []
+		for a: ArmyState in cached:
+			result.append(a)
+		return result
 	var result: Array[ArmyState] = []
 	for army_id in state.armies:
 		var army: ArmyState = state.armies[army_id]
@@ -1376,8 +1529,19 @@ func get_enemies_at_tile(coord: Vector2i, my_faction: StringName) -> Array[ArmyS
 func get_relation(faction_a: StringName, faction_b: StringName) -> Enums.FactionRelation:
 	if faction_a == faction_b:
 		return Enums.FactionRelation.ALLIED
-	var key := StringName(str(faction_a) + ":" + str(faction_b))
-	return state.diplomacy.get(key, Enums.FactionRelation.NEUTRAL)
+	var ikey := _relation_key(faction_a, faction_b)
+	if _relation_cache.has(ikey):
+		return _relation_cache[ikey]
+	var skey := StringName(str(faction_a) + ":" + str(faction_b))
+	var rel: Enums.FactionRelation = state.diplomacy.get(skey, Enums.FactionRelation.NEUTRAL)
+	_relation_cache[ikey] = rel
+	return rel
+
+static func _relation_key(a: StringName, b: StringName) -> int:
+	return a.hash() * 31 + b.hash()
+
+func clear_relation_cache() -> void:
+	_relation_cache.clear()
 
 func merge_armies_at_tile(coord: Vector2i, faction_id: StringName, prefer_army_id: StringName = &"") -> void:
 	var armies_here: Array[ArmyState] = []
@@ -1448,6 +1612,7 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	city.level = 1
 	city.population = 50
 	city.is_capital = false
+	city.is_settlement = true
 	city.original_faction_id = faction_id
 	city.loyalty = 50
 	city.class_loyalty = {
@@ -1465,12 +1630,20 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	return city.city_id
 
 func get_faction_armies(faction_id: StringName) -> Array[ArmyState]:
+	if not _faction_army_cache_valid:
+		rebuild_faction_army_cache()
+	var all: Array = _faction_army_cache.get(faction_id, [])
 	var result: Array[ArmyState] = []
-	for army_id in state.armies:
-		var army: ArmyState = state.armies[army_id]
-		if army.faction_id == faction_id and not army.is_garrison:
+	for army: ArmyState in all:
+		if not army.is_garrison:
 			result.append(army)
 	return result
+
+func get_all_faction_armies(faction_id: StringName) -> Array:
+	## Returns ALL armies for faction (including garrisons). Uses cache.
+	if not _faction_army_cache_valid:
+		rebuild_faction_army_cache()
+	return _faction_army_cache.get(faction_id, [])
 
 func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 	var army: ArmyState = state.armies.get(army_id)
@@ -1518,6 +1691,7 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 				# Spawn garrison army and fight before siege can begin
 				var garrison := city_system.create_garrison_army(city_at)
 				state.armies[garrison.army_id] = garrison
+				_faction_army_cache_valid = false
 				EventBus.battle_initiated.emit(army_id, garrison.army_id, tile_coord)
 				return
 
@@ -1589,23 +1763,50 @@ func remove_army(army_id: StringName) -> void:
 			army.commander = null
 		EventBus.army_destroyed.emit(army_id, army.faction_id)
 		state.armies.erase(army_id)
+		_faction_army_cache_valid = false
 
-func change_region_owner(region_id: StringName, new_owner: StringName) -> void:
-	var old_owner := state.get_region_owner(region_id)
+func change_region_owner(region_id: StringName, _new_owner_hint: StringName) -> void:
+	# Find current region owner from owned_regions tracking
+	var old_owner: StringName = &""
+	for fid in state.faction_states:
+		var fs: FactionState = state.faction_states[fid]
+		if region_id in fs.owned_regions:
+			old_owner = fid
+			break
 
-	# Remove from old owner
-	if old_owner != &"":
-		var old_fs: FactionState = state.faction_states.get(old_owner)
-		if old_fs:
-			old_fs.owned_regions.erase(region_id)
+	# Recompute per-city Voronoi territory for this region
+	_recompute_region_territory(region_id)
 
-	# Set all tiles in region to new owner
-	state.hex_map.set_region_owner(region_id, new_owner)
+	# Determine new region owner from city majority
+	var new_owner := _get_region_majority_faction(region_id)
 
-	# Add to new owner
-	if new_owner != &"":
-		var new_fs: FactionState = state.faction_states.get(new_owner)
-		if new_fs and not new_fs.owned_regions.has(region_id):
-			new_fs.owned_regions.append(region_id)
+	# Update owned_regions if changed
+	if old_owner != new_owner:
+		if old_owner != &"":
+			var old_fs: FactionState = state.faction_states.get(old_owner)
+			if old_fs:
+				old_fs.owned_regions.erase(region_id)
+		if new_owner != &"":
+			var new_fs: FactionState = state.faction_states.get(new_owner)
+			if new_fs and not new_fs.owned_regions.has(region_id):
+				new_fs.owned_regions.append(region_id)
+
+	# Grant a new general when a player fully captures a region from another faction
+	if new_owner != &"" and old_owner != &"" and new_owner != old_owner:
+		var all_cities_owned := true
+		for city_id in state.cities:
+			var city: CityState = state.cities[city_id]
+			if city.region_id == region_id and city.faction_id != new_owner:
+				all_cities_owned = false
+				break
+		if all_cities_owned:
+			var cap_fs: FactionState = state.faction_states.get(new_owner)
+			if cap_fs:
+				var cmd := _create_commander(new_owner)
+				cap_fs.commander_pool.append(cmd)
+				TurnManager.turn_log.append({
+					"type": "general",
+					"text": "A new general, %s, has rallied to your banner!" % cmd.name,
+				})
 
 	EventBus.region_ownership_changed.emit(region_id, old_owner, new_owner)

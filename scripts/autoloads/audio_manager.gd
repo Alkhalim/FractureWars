@@ -353,7 +353,7 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(20)
 	panel.add_theme_stylebox_override("panel", style)
-	panel.size = Vector2(380, 280)
+	panel.size = Vector2(380, 480)
 	panel.position = (parent.get_viewport_rect().size - panel.size) / 2.0
 	parent.add_child(panel)
 
@@ -378,6 +378,61 @@ func create_options_panel(parent: Control) -> PanelContainer:
 		set_sfx_volume(val)
 		play_sfx(&"ui_click")
 	)
+
+	# --- Graphics Settings ---
+	var gfx_title := Label.new()
+	gfx_title.text = "GRAPHICS"
+	gfx_title.add_theme_font_size_override("font_size", 14)
+	gfx_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	gfx_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(gfx_title)
+
+	# Fullscreen toggle
+	var fs_row := HBoxContainer.new()
+	fs_row.add_theme_constant_override("separation", 10)
+	vbox.add_child(fs_row)
+	var fs_label := Label.new()
+	fs_label.text = "Fullscreen"
+	fs_label.custom_minimum_size = Vector2(120, 0)
+	fs_label.add_theme_font_size_override("font_size", 13)
+	fs_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	fs_row.add_child(fs_label)
+	var fs_check := CheckButton.new()
+	fs_check.button_pressed = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	fs_check.toggled.connect(func(on: bool):
+		if on:
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		else:
+			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		_save_settings()
+	)
+	fs_row.add_child(fs_check)
+
+	# UI Scale slider
+	_add_volume_row(vbox, "UI Scale", get_tree().root.content_scale_factor, func(val: float):
+		get_tree().root.content_scale_factor = lerpf(1.0, 1.5, val)
+		_save_settings()
+	)
+
+	# Screen Shake toggle
+	var shake_row := HBoxContainer.new()
+	shake_row.add_theme_constant_override("separation", 10)
+	vbox.add_child(shake_row)
+	var shake_label := Label.new()
+	shake_label.text = "Screen Shake"
+	shake_label.custom_minimum_size = Vector2(120, 0)
+	shake_label.add_theme_font_size_override("font_size", 13)
+	shake_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	shake_row.add_child(shake_label)
+	var shake_check := CheckButton.new()
+	shake_check.button_pressed = not GameManager.has_meta("disable_screen_shake")
+	shake_check.toggled.connect(func(on: bool):
+		if on:
+			GameManager.remove_meta("disable_screen_shake")
+		else:
+			GameManager.set_meta("disable_screen_shake", true)
+	)
+	shake_row.add_child(shake_check)
 
 	# Close button
 	var close_btn := Button.new()

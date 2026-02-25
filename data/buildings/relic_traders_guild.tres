@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"relic_traders_guild"
+display_name = "Relic Trader's Guild II"
+description = "The guild that controls the relic trade. Their vaults hold artifacts worth more than kingdoms."
+faction_id = &"ivoryscar"
+category = &"economic"
+build_cost = {0: 300, 5: 55}
+build_time = 3
+income_bonus = {0: 55}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([])
+upgrades_from = &"caravan_depot"
+required_capital_level = 2
+class_loyalty_bonus = {"artisans": 2, "nobles": 3}

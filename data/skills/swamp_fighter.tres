@@ -6,8 +6,8 @@
 script = ExtResource("1")
 id = &"swamp_fighter"
 display_name = "Swamp Fighter"
-description = "Thrives in treacherous wetlands where others flounder."
+description = "+2 defense, +1 attack for all units when fighting in swamps."
 category = &"combat"
 is_minor = true
-effects = {"army_defense_bonus": 1}
+effects = {"terrain_swamp_defense_bonus": 2, "terrain_swamp_attack_bonus": 1}
 context_tags = Array[StringName]([&"terrain_swamp", &"terrain_wetlands"])
