@@ -37,6 +37,11 @@ func process_turn(faction_id: StringName) -> void:
 	_deduct_upkeep(faction_id)
 	_process_captive_decay(faction_id)
 
+	# Tainted Jade jungle spread: tiles near their cities convert to jungle
+	var jade_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	if faction_id == &"tainted_jade" or jade_parent == &"tainted_jade":
+		_process_jungle_spread(faction_id)
+
 	# Starvation: if faction food reserves are negative, cities lose population
 	_apply_starvation(faction_id)
 
@@ -612,7 +617,7 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 
 	for army: ArmyState in GameManager.get_faction_armies(faction_id):
 		# Terrain upkeep modifier (jungle/desert/wastes etc.)
-		var terrain_mult := TurnManager.get_terrain_upkeep_modifier(army)
+		var terrain_mult: float = TurnManager.get_terrain_upkeep_modifier(army)
 		# Unit upkeep
 		for unit in army.units:
 			var unit_data := DataManager.get_unit(unit.unit_data_id)
@@ -675,6 +680,64 @@ func _process_captive_decay(faction_id: StringName) -> void:
 
 	if decay > 0:
 		fs.resources[Enums.ResourceType.CAPTIVES] = maxi(0, captives - decay)
+
+func _process_jungle_spread(faction_id: StringName) -> void:
+	# Tainted Jade: jungle spreads from cities, converting adjacent tiles
+	# Fast + aggressive: 1-2 tiles per turn, disrupts enemy production
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+
+	# Collect all Tainted Jade city hex positions
+	var jade_city_hexes: Array[Vector2i] = []
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id == faction_id:
+			jade_city_hexes.append(city.hex_pos)
+
+	if jade_city_hexes.is_empty():
+		return
+
+	# Also spread from existing jungle tiles near Tainted Jade territory
+	var spread_sources: Array[Vector2i] = []
+	spread_sources.append_array(jade_city_hexes)
+
+	# Add jungle tiles owned by Tainted Jade as spread sources
+	for coord in hex_map.tiles:
+		var tile: HexMapData.TileState = hex_map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.JUNGLE and tile.owner_faction == faction_id:
+			spread_sources.append(coord)
+
+	# Spread: each source tries to convert 1 random neighbor per turn
+	var converted_this_turn := 0
+	var max_conversions := jade_city_hexes.size() * 2 + 1  # Scale with city count
+	var already_tried: Dictionary = {}
+	spread_sources.shuffle()
+
+	for source in spread_sources:
+		if converted_this_turn >= max_conversions:
+			break
+		var neighbors := HexHelper.get_neighbors(source)
+		neighbors.shuffle()
+		for neighbor in neighbors:
+			if already_tried.has(neighbor):
+				continue
+			already_tried[neighbor] = true
+			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var ntile: HexMapData.TileState = hex_map.get_tile(neighbor)
+			if ntile == null:
+				continue
+			# Can't convert water, mountains, or existing jungle
+			if ntile.terrain in [Enums.TerrainType.WATER, Enums.TerrainType.MOUNTAINS, Enums.TerrainType.JUNGLE]:
+				continue
+			# Shard wastes resist conversion (50% chance to fail)
+			if ntile.terrain == Enums.TerrainType.SHARD_WASTES and randf() < 0.5:
+				continue
+			# Convert to jungle
+			ntile.terrain = Enums.TerrainType.JUNGLE
+			converted_this_turn += 1
+			break  # Only 1 conversion per source per turn
 
 # ── Loyalty helpers ───────────────────────────────────────────
 
@@ -846,9 +909,27 @@ func get_available_buildings(city: CityState) -> Array[BuildingData]:
 				break
 			ancestor_id = ancestor.upgrades_from
 
+	# Skulloath corruption-gated buildings: committing to one path locks out the other's T3
+	var skulloath_corruption := -1
+	var skulloath_parent_faction: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, &"")
+	if city.faction_id == &"skulloath" or skulloath_parent_faction == &"skulloath":
+		var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+		if fs == null and skulloath_parent_faction == &"skulloath":
+			fs = GameManager.state.faction_states.get(&"skulloath")
+		if fs:
+			skulloath_corruption = fs.corruption
+
 	var result: Array[BuildingData] = []
 	for building_id in DataManager.buildings:
 		var building: BuildingData = DataManager.buildings[building_id]
+		# Skulloath dual-path restrictions: T3 tradition requires low corruption, T3 void requires high
+		if skulloath_corruption >= 0:
+			# Tradition T3: locked if corruption > 40
+			if building_id in [&"ancestor_sanctum"] and skulloath_corruption > 40:
+				continue
+			# Void T3: locked if corruption < 60
+			if building_id in [&"demon_gate"] and skulloath_corruption < 60:
+				continue
 		# Skip faction-specific buildings that don't belong to this city's faction
 		if building.faction_id != &"" and building.faction_id != city.faction_id:
 			var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, &"")
@@ -907,6 +988,17 @@ func start_building(city_id: StringName, building_id: StringName, tile_pos: Vect
 			return false
 	if city.level < building.required_capital_level:
 		return false
+	# Skulloath dual-path corruption gate
+	var sk_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, &"")
+	if city.faction_id == &"skulloath" or sk_parent == &"skulloath":
+		var sk_fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+		if sk_fs == null and sk_parent == &"skulloath":
+			sk_fs = GameManager.state.faction_states.get(&"skulloath")
+		if sk_fs:
+			if building_id == &"ancestor_sanctum" and sk_fs.corruption > 40:
+				return false
+			if building_id == &"demon_gate" and sk_fs.corruption < 60:
+				return false
 	if building.requires_capital and not city.is_capital:
 		return false
 	if city.buildings.has(building_id):
@@ -1260,7 +1352,27 @@ func _get_hex_ring(center: Vector2i, radius: int) -> Array[Vector2i]:
 # ── Faction-Specific Income Modifiers ─────────────────────
 
 func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, fs: FactionState, city: CityState = null) -> void:
+	# Sub-factions inherit parent faction's income modifiers
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	# For parent mechanic checks, use parent's FactionState if sub-faction
+	if parent_fid != faction_id:
+		var parent_fs: FactionState = GameManager.state.faction_states.get(parent_fid)
+		if parent_fs:
+			fs = parent_fs
+	# Apply sub-faction-specific income bonuses
 	match faction_id:
+		&"miststriders":  # Fog traders: +15% gold
+			if income.has(Enums.ResourceType.GOLD):
+				income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * 0.15)
+		&"oaseans":  # Desert educators: +2 tech flat
+			income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 2
+		&"servants_of_reliquary":  # Building discount proxy: +10% iron (construction materials)
+			if income.has(Enums.ResourceType.IRON):
+				income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * 0.10)
+		&"salt_reavers":  # Raiders: +10% gold from raiding/trade
+			if income.has(Enums.ResourceType.GOLD):
+				income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * 0.10)
+	match parent_fid:
 		&"skulloath":
 			# Low corruption: +15% food. High corruption: -10% food
 			if fs.corruption <= 30:

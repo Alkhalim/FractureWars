@@ -1509,8 +1509,15 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 	var color := Color(0.75, 0.7, 0.6)
 	match player_id:
 		&"skulloath":
-			var tier := "Traditional" if fs.corruption <= 30 else ("Demonic" if fs.corruption >= 61 else "Balanced")
-			text = "Corruption: %d (%s)" % [fs.corruption, tier]
+			var tier := "Tradition" if fs.corruption <= 30 else ("Void" if fs.corruption >= 61 else "Balanced")
+			var path_note := ""
+			if fs.corruption <= 40:
+				path_note = " | Ancestor Sanctum available"
+			elif fs.corruption >= 60:
+				path_note = " | Demon Gate available"
+			else:
+				path_note = " | T3 buildings locked"
+			text = "Corruption: %d (%s)%s" % [fs.corruption, tier, path_note]
 			color = Color(0.6, 0.8, 0.5) if fs.corruption <= 30 else (Color(0.9, 0.3, 0.3) if fs.corruption >= 61 else Color(0.75, 0.7, 0.6))
 		&"tainted_jade":
 			text = "Taint: %d" % fs.taint_power
@@ -1548,7 +1555,8 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			color = Color(0.8, 0.7, 0.4) if fs.relic_power >= 30 else Color(0.65, 0.6, 0.5)
 		&"sunblessed":
 			var mood := "Zealous" if fs.solar_faith >= 70 else ("Faltering" if fs.solar_faith <= 30 else "Faithful")
-			text = "Faith: %d (%s)" % [fs.solar_faith, mood]
+			var wisdom_tier := "Sage" if fs.wisdom >= 80 else ("Learned" if fs.wisdom >= 30 else "Novice")
+			text = "Faith: %d (%s) | Wisdom: %d (%s)" % [fs.solar_faith, mood, fs.wisdom, wisdom_tier]
 			color = Color(0.95, 0.85, 0.3) if fs.solar_faith >= 70 else (Color(0.6, 0.4, 0.4) if fs.solar_faith <= 30 else Color(0.8, 0.75, 0.5))
 	_faction_mechanic_label.text = text
 	_faction_mechanic_label.add_theme_color_override("font_color", color)
@@ -2221,113 +2229,581 @@ func _get_standing_stage(standing: int) -> int:
 
 const STANDING_STAGE_NAMES := ["Despised", "Disliked", "Neutral", "Liked", "Admired"]
 
-# Standing-based greeting lines per faction (5 stages each)
+# Standing-based greeting lines per faction (5 stages, 5 variations each)
 const LEADER_GREETINGS := {
 	&"empire": [
-		"The Empire has no words for vermin like you.",
-		"You dare approach the throne? Speak quickly, and leave quicker.",
-		"State your business with the Empire.",
-		"The Empire remembers its friends. What do you seek?",
-		"Hail, most honored ally! The Emperor himself welcomes you.",
+		["The Empire has no words for vermin like you.", "You pollute the court with your very presence.", "Guards — why was this wretch allowed past the gates?", "The throne room is no place for crawling things.", "Speak and be gone, before the Emperor's patience runs dry."],
+		["You dare approach the throne? Speak quickly, and leave quicker.", "The Empire tolerates your presence. Barely.", "Make your case swiftly. The court has little time for you.", "Another petitioner. How tiresome. What is it?", "The Chancellor advises brevity. I advise obedience."],
+		["State your business with the Empire.", "The Imperial court acknowledges your arrival. Proceed.", "You have the floor. Use it wisely.", "The Empire is listening. What brings you to our borders?", "An audience has been granted. Speak your mind."],
+		["The Empire remembers its friends. What do you seek?", "A welcome face in the court. How may the Empire assist?", "The Chancellor speaks well of you. What is your request?", "Your reputation precedes you — favorably, for once.", "The Empire values this partnership. Name your terms."],
+		["Hail, most honored ally! The Emperor himself welcomes you.", "The Imperial banner flies in your honor today!", "Dearest friend of the Crown — the court celebrates your arrival!", "The Emperor has prepared a feast. You are family to us now.", "In all the realm, no ally stands higher. Welcome, cherished friend!"],
 	],
 	&"skulloath": [
-		"Your bones will decorate our standards. Speak before I take your tongue.",
-		"The steppe has no patience for weaklings. Be brief.",
-		"Speak, outsider. The Khan listens.",
-		"You ride with honor. The horde respects this.",
-		"Blood brother! The Khan raises his cup to you! Name your desire!",
+		["Your bones will decorate our standards. Speak before I take your tongue.", "I can smell your fear from here. It pleases me.", "Another fool seeking the Khan's attention. You have five breaths.", "The crows already circle. They know what comes next.", "Why do you approach? Do you wish to test my blade?"],
+		["The steppe has no patience for weaklings. Be brief.", "You are not yet worthy of the Khan's time.", "I have killed better warriors than you before breakfast.", "The horde watches. Do not waste our time.", "Hmph. You live because I allow it. Speak."],
+		["Speak, outsider. The Khan listens.", "The war drums are silent. We may talk.", "You stand before the Bone Throne. State your purpose.", "The spirits whisper your name. I wonder why.", "The horde neither welcomes nor rejects you. Prove your worth."],
+		["You ride with honor. The horde respects this.", "Ha! You have spine after all. I am pleased.", "The ancestors nod in approval. You may sit by our fire.", "A strong arm and a true word — the horde asks for nothing more.", "Your courage earns you meat and mead tonight, friend."],
+		["Blood brother! The Khan raises his cup to you! Name your desire!", "BROTHER OF THE STEPPE! The ancestors sing of our bond!", "You fight like one of us! The horde is yours to command!", "The Khan would ride to war for you. Name the enemy!", "In all the steppe, no bond is stronger. You are family, blood and bone!"],
 	],
 	&"gladehost": [
-		"The roots remember every wound you have inflicted upon the grove.",
-		"The thorns bristle at your approach. Tread carefully.",
-		"The grove listens. Speak.",
-		"The forest welcomes you, kindred spirit.",
-		"Beloved friend of the wild — the ancient trees sing your name.",
+		["The roots remember every wound you have inflicted upon the grove.", "The canopy darkens at your approach. The forest knows what you are.", "Even the stones recoil from your footsteps.", "Trespasser. The wild things whisper warnings of your coming.", "The oldest tree bends away from you. That tells me everything."],
+		["The thorns bristle at your approach. Tread carefully.", "The forest endures your presence, but only barely.", "Even weeds have their place. Perhaps you have yours.", "The canopy permits a sliver of light for you. No more.", "The grove watches you with a hundred silent eyes."],
+		["The grove listens. Speak.", "The wind carries your words to every leaf. Choose them wisely.", "Neither root nor branch opposes you. That is something.", "The forest stands in quiet judgment. What do you bring?", "You walk between the trees without harming them. Acceptable."],
+		["The forest welcomes you, kindred spirit.", "The oldest oak extends a branch in your direction. A rare honor.", "Birdsong follows your steps. The grove approves.", "You understand the balance. That is why the forest opens to you.", "The dryads speak your name with warmth. Welcome, friend of the wild."],
+		["Beloved friend of the wild — the ancient trees sing your name.", "The Great Root itself stirs in joy at your arrival!", "Every flower blooms in your wake. The forest loves you as its own.", "The spirit of the ancient grove embraces you. You are sacred to us.", "In ten thousand seasons, the forest has known few friends as true as you."],
 	],
 	&"moonspear": [
-		"The stars foretold your coming... and your destruction.",
-		"The moon casts a cold shadow upon you. State your purpose.",
-		"What guidance do you seek from the moon?",
-		"The moon smiles upon your visit, friend.",
-		"The celestial choir heralds your arrival! You are blessed among mortals.",
+		["The stars foretold your coming... and your destruction.", "The moon hides its face from you. That is never a good sign.", "Even the night sky dims at your approach.", "The Oracle saw you in a vision. It was not a pleasant one.", "Your constellation is fading. Do you know what that means?"],
+		["The moon casts a cold shadow upon you. State your purpose.", "The celestial signs are... unfavorable regarding you.", "Silver light reveals all truths. Yours are not flattering.", "The temple permits your audience. The stars counsel caution.", "You walk in shadow. The moon observes, but does not warm."],
+		["What guidance do you seek from the moon?", "The observatory is open to you. Speak your mind.", "The lunar tide is calm. A good time for discourse.", "Neither blessed nor cursed by starlight. An honest position.", "The constellation of diplomacy rises. Let us see what it brings."],
+		["The moon smiles upon your visit, friend.", "Your star burns brightly tonight. The temple takes note.", "The silver light follows your path. You are favored.", "The Oracle speaks of a bright future between us.", "When you walk, the moonlight seems to guide your steps. Welcome."],
+		["The celestial choir heralds your arrival! You are blessed among mortals.", "The stars SING your name across the heavens!", "A new constellation forms in your honor. The sky itself celebrates!", "In all the celestial records, no mortal has earned such divine favor!", "The moon burns bright enough to rival the sun — all for you, sacred friend!"],
 	],
 	&"thunderswarm": [
-		"Your skull will join our collection, worm.",
-		"You smell of weakness. State your purpose before I lose interest.",
-		"The storms care not for pleasantries. Speak.",
-		"Ha! A worthy ally approaches! Come, drink with us!",
-		"BROTHER OF THE STORM! Let thunder shake the earth at our meeting!",
+		["Your skull will join our collection, worm.", "I should crush you now and save us both the trouble.", "Even the lightning would not waste its strike on you.", "Last visitor who looked at me like that lost an arm. Just saying.", "The storm gathers for weaklings like you. Run while you can."],
+		["You smell of weakness. State your purpose before I lose interest.", "Hmm. You are less pathetic than the last one. Slightly.", "The mountain does not bend for ants. Be quick.", "I was sharpening my axe. This better be worth stopping.", "Talk fast. My patience is shorter than a lightning bolt."],
+		["The storms care not for pleasantries. Speak.", "The highland wind carries no judgment today. Say your piece.", "You stand on the mountain without trembling. That is enough.", "Thunder rumbles in the distance. Let us talk before it arrives.", "Neither friend nor foe. The storm watches and waits."],
+		["Ha! A worthy ally approaches! Come, drink with us!", "You fight well and speak true! The mountain respects that!", "The lightning strikes beside you, not at you. That means something.", "Come! Sit by the bonfire! Let us plan great things!", "The storm drums beat a welcome rhythm for you, friend!"],
+		["BROTHER OF THE STORM! Let thunder shake the earth at our meeting!", "THE MOUNTAIN ITSELF TREMBLES WITH JOY! Welcome, greatest of allies!", "If you were any more worthy, I would arm-wrestle you right now! HA!", "LIGHTNING AND THUNDER! There is no one I would rather have at my side!", "By every peak and every storm — you are LEGEND among the highlands!"],
 	],
 	&"tainted_jade": [
-		"Your blood will feed the jungle. This is your only purpose.",
-		"Careful where you tread. The jungle has teeth.",
-		"The jade throne acknowledges your presence.",
-		"The serpent coils gently for those it favors.",
-		"The jungle parts before you, honored one. The Serpent Queen extends her trust.",
+		["Your blood will feed the jungle. This is your only purpose.", "The vines are already reaching for your ankles. Can you feel them?", "Poison drips from every leaf above you. One wrong word...", "The jungle consumes all intruders. You are no exception.", "The Serpent Queen does not receive prey. She devours it."],
+		["Careful where you tread. The jungle has teeth.", "The canopy closes above you. Deliberate? Perhaps.", "Every shadow here has scales. Remember that.", "You are tolerated in this garden. Do not mistake tolerance for welcome.", "The serpents coil but do not yet strike. Choose your words."],
+		["The jade throne acknowledges your presence.", "The jungle neither threatens nor embraces. Speak.", "The Serpent Queen inclines her head. A measured greeting.", "You walk the jungle path with adequate caution. Proceed.", "The venomous things keep their distance. That is as close to welcome as we offer."],
+		["The serpent coils gently for those it favors.", "The rarest orchid blooms at your arrival. The jungle approves.", "Warm-blooded but wise. The jungle values that combination.", "The Serpent Queen offers you shade and clean water. High praise.", "Even the most venomous creatures know not to harm you. You are protected here."],
+		["The jungle parts before you, honored one. The Serpent Queen extends her trust.", "The heart of the jungle beats in time with yours. You are one of us.", "Every vine, every fang, every drop of venom — all yours to command, dear friend.", "In ten thousand years, the jungle has embraced only a handful. You are among them.", "The Serpent Crown itself could rest upon your brow. That is how deeply you are treasured."],
 	],
 	&"cinderguard": [
-		"Leave, before I feed you to the furnace.",
-		"You stand in the shadow of the furnace. Choose your words wisely.",
-		"The Forgemaster has a moment. Make it count.",
-		"The forges burn bright for allies. Welcome.",
-		"The heart of the mountain opens to you, truest friend of the forge!",
+		["Leave, before I feed you to the furnace.", "The slag pit is always hungry. Do you wish to meet it?", "Every moment you stand here, the forge grows hotter. Take the hint.", "I have melted better things than you today.", "Your presence cools the forge. That is the gravest insult I know."],
+		["You stand in the shadow of the furnace. Choose your words wisely.", "The bellows pause for no one. Make it quick.", "Hmph. Untempered and brittle. But I will hear you.", "The anvil rings impatiently. State your business.", "You have the resilience of tin. But tin has its uses. Speak."],
+		["The Forgemaster has a moment. Make it count.", "Iron cares not for flattery. Give me substance.", "The forge burns at a steady heat. A good time to talk.", "You stand in the smithy without flinching. That earns a moment.", "Neither ore nor slag. Let us determine which you become."],
+		["The forges burn bright for allies. Welcome.", "Good steel recognizes good steel. I see quality in you.", "The master smiths nod at your approach. High praise indeed.", "You have proven yourself in the fire. Welcome to the foundry.", "The warmth of the forge is yours tonight, friend. Sit and speak freely."],
+		["The heart of the mountain opens to you, truest friend of the forge!", "You are steel made perfect — tested, tempered, and TRUE!", "The Great Anvil rings with joy! No finer ally exists in all the world!", "Every weapon we forge carries a blessing for you. THAT is our bond!", "In fire and iron, in hammer and anvil — our friendship is eternal!"],
 	],
 	&"forsaken": [
-		"Your suffering will be legendary. Even in the void, they will hear you scream.",
-		"Your presence offends what remains of our senses.",
-		"The Hollow King deigns to listen. Briefly.",
-		"Even in darkness, some lights are... tolerable. You are one.",
-		"In all the void's emptiness, you are a rare constant. The Forsaken salute you.",
+		["Your suffering will be legendary. Even in the void, they will hear you scream.", "How delightful — fresh agony walks willingly into our domain.", "The emptiness hungers. You look... filling.", "Even the dead turn away from you. Consider what that means.", "Your doom echoes through corridors that have no end."],
+		["Your presence offends what remains of our senses.", "We have endured eternity. We can endure you. Barely.", "The void whispers your name with distaste.", "How tedious. Another breathing thing demanding attention.", "You carry the stench of hope. How nauseating."],
+		["The Hollow King deigns to listen. Briefly.", "The void is patient. We can spare a moment.", "You are neither living nor dead to us. Simply... present.", "The emptiness makes room for your words. A rare allowance.", "Speak into the hollow. Something may answer."],
+		["Even in darkness, some lights are... tolerable. You are one.", "The void makes exceptions for those who understand it.", "You do not fear the dark. That makes you... interesting.", "The whispers speak your name without malice. Almost warmly.", "In all the endless nothing, your presence is... appreciated."],
+		["In all the void's emptiness, you are a rare constant. The Forsaken salute you.", "The Hollow King himself stirs to greet you. That has not happened in an age.", "You have given meaning to the meaningless. The void THANKS you.", "Death and emptiness bow before this friendship. You transcend the void.", "Across eternity, across the endless dark — you shine. And we are grateful."],
 	],
 	&"ivoryscar": [
-		"The Oracle has foreseen your ruin. Grovel while you still can.",
-		"The petrified gaze falls upon you. Be still.",
-		"The relics whisper. What do you bring?",
-		"The Oracle's eye sees a favorable future for us both.",
-		"The ancestors themselves approve of you! Come, walk among the tombs as honored kin.",
+		["The Oracle has foreseen your ruin. Grovel while you still can.", "The sands will scour your name from history.", "The ancestors spit at the mention of you.", "Every tomb we open finds new curses with your name on them.", "The bone-readers cast your fortune. They wept."],
+		["The petrified gaze falls upon you. Be still.", "The sands measure all things. You are found... light.", "Ancient eyes watch from the tombs. They are not impressed.", "The scarabs click their displeasure. Tread carefully.", "The relics hum with unease at your approach."],
+		["The relics whisper. What do you bring?", "The sand runs evenly in the hourglass. A balanced moment.", "The ancestors neither warn nor welcome. Speak your case.", "The tomb doors are open. Enter and state your purpose.", "The Oracle's eye turns to you without judgment. Proceed."],
+		["The Oracle's eye sees a favorable future for us both.", "The sands shift in your favor. The tombs take note.", "Ancient relics glow warmly at your approach. A good sign.", "The scarabs arrange themselves in a pattern of welcome.", "The bone-readers smile. Your fortune reads bright, friend."],
+		["The ancestors themselves approve of you! Come, walk among the tombs as honored kin.", "The Oracle sees you enthroned beside us! Greatest of all allies!", "Ten thousand years of wisdom agree — you are WORTHY!", "The relics sing for the first time in centuries. All for you!", "Walk the Hall of Ages as family. The ancestors embrace you across time itself!"],
 	],
 	&"shardhorde": [
-		"Elimination protocol engaged. Transmit final words.",
-		"Foreign vibrations detected. Hostile intent registered.",
-		"The Crystalmind processes your signal. Transmit.",
-		"Crystal resonance... positive. Communication proceeds.",
-		"Symbiotic resonance at maximum. The Hive recognizes you as prime ally.",
+		["Elimination protocol engaged. Transmit final words.", "Threat assessment: maximum. Defensive arrays activated.", "Bio-contaminant detected. Purge sequence initializing.", "Your signal reads as hostile. Prepare for crystalline response.", "The Hive calculates zero benefit from your existence."],
+		["Foreign vibrations detected. Hostile intent registered.", "Suboptimal entity approaches. Monitoring.", "Your frequency grates upon the crystal lattice.", "Processing your presence... result: inconvenient.", "The Hive acknowledges your signal. Barely."],
+		["The Crystalmind processes your signal. Transmit.", "Neutral frequency detected. Communication channel open.", "Your vibration pattern is... acceptable. Proceed.", "The lattice neither rejects nor absorbs. State parameters.", "Signal received. The Hive allocates processing cycles for you."],
+		["Crystal resonance... positive. Communication proceeds.", "Harmonic compatibility confirmed. The Hive welcomes your signal.", "Your frequency aligns with ours. This pleases the lattice.", "Beneficial vibration pattern detected. Connection strengthened.", "The crystal matrix hums with approval. You are valued, external entity."],
+		["Symbiotic resonance at maximum. The Hive recognizes you as prime ally.", "FULL HARMONIC CONVERGENCE! You are integrated into our highest protocols!", "The Crystalmind designates you: ESSENTIAL. No higher classification exists.", "Every node in the Hive resonates with your frequency. You are PART of us.", "Prime ally status: PERMANENT. The crystal lattice would shatter before this bond breaks."],
 	],
 	&"sunblessed": [
-		"The sun's judgment burns away all shadow. You are shadow.",
-		"The sacred flame judges you... and finds you wanting.",
-		"Walk in the light, stranger. What do you seek?",
-		"The sun shines upon the righteous. Welcome, friend.",
-		"By the Eternal Dawn, you are radiant! The Blessed greet you as family!",
+		["The sun's judgment burns away all shadow. You are shadow.", "The sacred flame recoils at your darkness.", "Even dawn cannot redeem what you are.", "The Eternal Light reveals your every sin. There are many.", "You stand before the sun and cast nothing but darkness."],
+		["The sacred flame judges you... and finds you wanting.", "The light permits your approach, but does not bless it.", "Dawn's warmth does not reach everyone. Not yet you.", "The temple doors are open, but the light inside dims.", "The sun sees all. What it sees in you gives it pause."],
+		["Walk in the light, stranger. What do you seek?", "The sacred flame burns evenly. A time for fair words.", "Neither saint nor sinner stands before us. Simply a visitor.", "The temple offers shade and water to all travelers. Even you.", "The sun casts no judgment today. Speak freely."],
+		["The sun shines upon the righteous. Welcome, friend.", "Your spirit burns with a warm light. The temple approves.", "The sacred flame bends toward you like a flower to the sun.", "Dawn breaks a little brighter when you visit.", "The priests speak your name in the morning prayers. Welcome."],
+		["By the Eternal Dawn, you are radiant! The Blessed greet you as family!", "THE SUN ITSELF BLAZES IN YOUR HONOR! Most sacred of allies!", "You carry the light within you! The temple weeps with joy!", "In all the ages of the sun, no friend has burned so brightly!", "The Eternal Dawn proclaims you BLESSED! You are holy to us!"],
 	],
 }
 
-# Accept/deny lines per faction (5 stages each)
+# Culture-specific greetings: speaker reacts differently based on player's faction
+# Structure: {speaker_fid: {player_fid: [[stage0_vars], [stage1_vars], ...]}}
+# Mixed into random pool alongside generic LEADER_GREETINGS
+const CULTURE_GREETINGS := {
+	&"empire": {
+		&"skulloath": [
+			["Another savage from the bone-scattered steppe. The Empire has no words for horse-eaters.", "Your horde's stench precedes you, rider. The court recoils."],
+			["The Khan sends a rider instead of an army. How restrained.", "We tolerate the steppe-folk. For now."],
+			["Riders of the steppe. Your ways are strange, but the Empire listens.", "Horsemen of the bone throne — state your terms."],
+			["The Khan's courage has earned Imperial respect. What brings you, warrior?", "Few barbarians earn a seat at the Imperial table. You are one."],
+			["Mighty Khan! The Empire and the Horde stand as brothers in arms!", "From the steppe to the throne room — our bond defies all tradition!"],
+		],
+		&"gladehost": [
+			["Go back to your trees, leaf-lover. The Empire has no use for moss and moonlight.", "Your grove burns easily. Remember that before you speak."],
+			["The forest-folk come begging again? How predictable.", "We will hear you, druid. But keep your vines off the furniture."],
+			["Envoy of the grove. The Empire respects the old ways, if not the old stubbornness.", "The forest and the Empire have coexisted for centuries. Let us continue."],
+			["The wisdom of the grove has served us well, friend. Welcome.", "The Empire values its bond with the natural world. Speak freely."],
+			["Beloved guardian of the forests! The Empire pledges to protect the grove as our own!", "Nature and civilization, hand in hand! Our alliance is the envy of the world!"],
+		],
+		&"forsaken": [
+			["Abomination. The dead should stay dead, and you should crawl back to your pit.", "The stench of the void clings to you. The court recoils."],
+			["The Empire tolerates many things. Your kind tests those limits.", "Speak your piece, hollow one. And try not to shed any parts."],
+			["The void-touched. An unusual people, but the Empire deals with all nations.", "Whatever you are, dead or alive, you have the floor."],
+			["Your persistence is admirable, void-walker. The Empire has come to appreciate it.", "The Forsaken have proven reliable, if unconventional. Welcome."],
+			["Even the void cannot dim the warmth we feel for you! The Empire embraces even death as ally!", "Who would have thought? The living and the dead, the closest of friends!"],
+		],
+		&"sunblessed": [
+			["Your zealotry blinds you, sun-worshipper. The Empire bows to no god.", "Take your sermons elsewhere. The throne answers to no temple."],
+			["The Blessed and their eternal preaching. The Crown grows weary.", "Your sun-faith is noted. Now speak of politics, not prayers."],
+			["The Sunblessed. Your faith is strong, if perhaps excessive. The Empire listens.", "Sun-priest, the Empire walks in reason's light. But we can talk."],
+			["Your devotion inspires even the skeptics at court. Welcome, friend of the dawn.", "The Empire finds common ground with the Blessed more often than expected."],
+			["Blessed of the sun! Crown and Temple united in glory!", "Your light has illuminated our greatest victories. Eternal thanks!"],
+		],
+	},
+	&"skulloath": {
+		&"empire": [
+			["City-dweller. Your walls cannot protect you from what rides the steppe.", "The Khan does not kneel to emperors. Especially weak ones."],
+			["Your civilization makes warriors soft. I see it in your posture.", "The Empire sends a perfumed messenger. How like them."],
+			["Imperial. Your walls are strong, I grant you that.", "The Empire's coin is good. I will listen."],
+			["For a city-dweller, you have iron in your spine. The Khan approves.", "The Empire sends warriors, not merchants. Good. We can talk."],
+			["Imperial brother! Even stone walls cannot contain the bond between us!", "The Khan and the Emperor — steppe and city, united as one!"],
+		],
+		&"thunderswarm": [
+			["Mountain-screamers. Your thunder is nothing compared to the horde's hooves.", "Storm-boy. Come down from your peak and fight on flat ground."],
+			["The Swarm thinks they are warriors. The steppe knows better.", "Highland raiders. Better than most, but still beneath the horde."],
+			["Storm-kin. You fight well, I give you that.", "Mountain warriors and steppe riders — two sides of the same blade."],
+			["HA! Storm-brother! Your axes are almost as sharp as our sabres!", "The Swarm has earned a place at our fire. Drink!"],
+			["THUNDER AND HOOVES! Our combined might makes the world TREMBLE!", "Storm-sibling! No force on earth can stand against us together!"],
+		],
+		&"gladehost": [
+			["Tree-hugger. Your roots cannot stop a charging horse.", "The forest hides cowards. Come out and fight, leaf-eater."],
+			["The grove sends a druid instead of a warrior. Disappointing.", "Your trees are good for arrow shafts, at least."],
+			["Forest-walker. Your scouts are skilled, I admit.", "The grove is strange, but the Khan respects cunning."],
+			["Ha! Your forest-fighters are sneakier than my best scouts! Respect!", "The grove proves that courage wears many skins. Welcome, friend."],
+			["The wild and the steppe — both untamed, both FREE! Kindred spirits!", "Nature-friend! The horde rides with the wind, and the wind is yours!"],
+		],
+		&"cinderguard": [
+			["Forge-rat. Your walls will melt when the horde brings fire of our own.", "You hide behind iron and stone. The Khan despises cowards."],
+			["Your blades are good. Your courage? Not impressed.", "The forgers cower behind their walls. Typical."],
+			["Forge-master. Your steel is worthy of the horde's respect.", "The Khan admires your weapons, if not your fortress-hiding."],
+			["Your blades arm my riders well! The forge earns the horde's respect!", "Iron-friend! The Khan values good steel and the hands that forge it!"],
+			["FORGE-BROTHER! Your steel and our riders — an unstoppable force!", "The Khan treasures your friendship as he treasures his finest blade!"],
+		],
+	},
+	&"gladehost": {
+		&"cinderguard": [
+			["The smoke of your forges poisons every living thing. The grove DESPISES you.", "Every tree you burn for your furnaces screams. Can you hear them?"],
+			["The forge-fires dim the sky above the canopy. The grove is displeased.", "Your soot-stained hands bring nothing green with them."],
+			["Forge-keeper. The grove wishes you would contain your flames.", "Fire and forest have always been wary neighbors. What do you seek?"],
+			["You have shown the forest that not all flames destroy. Welcome, forge-friend.", "The grove has learned that some fires nurture as well as burn."],
+			["Fire-keeper! The grove sees now that flame and forest need each other!", "From enmity to harmony — forge and forest, an alliance of miracles!"],
+		],
+		&"forsaken": [
+			["Where you walk, nothing grows. The grove ABHORS your existence.", "Blight-carrier. Your very shadow kills the grass beneath it."],
+			["The roots recoil from your touch. The forest barely tolerates you.", "Every dead thing in the forest reminds us of your people."],
+			["Void-touched. The grove does not understand you, but will listen.", "Life and death are connected. Perhaps we can speak across that bridge."],
+			["The forest has learned that even decay returns nutrients to the soil. Welcome.", "You walk among dead things, yet you speak with unexpected gentleness."],
+			["From death springs new growth! The grove embraces you as part of the cycle!", "Life and void, intertwined like root and stone! Our bond transcends nature!"],
+		],
+		&"tainted_jade": [
+			["You defile nature with your venoms and corruption. The grove sees what you are.", "Poisoned nature is worse than no nature at all. The grove rejects you."],
+			["The serpent's jungle is nature twisted. The grove watches with unease.", "Your vines strangle where ours embrace. There is a difference."],
+			["Serpent-keeper. We share green things, if little else.", "Your jungle is different. But the grove acknowledges the connection."],
+			["The grove sees that your poison has purpose. Nature takes many forms.", "Venom and vine, predator and prey — both part of the wild. Welcome, cousin."],
+			["Wild cousin! Grove and jungle are two faces of the same eternal forest!", "From lightest blossom to darkest venom — all nature is ONE!"],
+		],
+		&"empire": [
+			["Your roads carve scars through the forest. The grove will NEVER forgive.", "Imperial axe-bearers. Your ambition devours everything green."],
+			["The Empire's borders creep ever closer to the ancient groves. We watch.", "Your carriages crush wildflowers. Your progress is the grove's pain."],
+			["Imperial envoy. The grove hopes your expansion respects the treeline.", "The Empire and the forest share borders. Let us keep them peaceful."],
+			["Your laws now protect the ancient groves. The forest remembers this kindness.", "The Empire proves that civilization need not destroy nature. Welcome."],
+			["Imperial friend! Your people plant trees where once they felled them! Joy!", "Civilization and nature in perfect harmony! The dream made real!"],
+		],
+	},
+	&"moonspear": {
+		&"sunblessed": [
+			["Your blinding sun obscures the truth written in the stars. Typical.", "Sun-zealot. The moon endures while the sun merely burns."],
+			["The sun illuminates, yes. But only the moon reveals what hides in shadow.", "Your faith is loud. The stars prefer quiet contemplation."],
+			["Sun and moon share the same sky. Perhaps we can share this table.", "The Blessed of the sun. Our faiths differ, but both look upward."],
+			["The sun and moon are siblings, after all. Welcome, kindred seeker.", "Your light complements ours. Together, there is no darkness."],
+			["Sun and moon in alignment! The heavens CELEBRATE our unity!", "Sibling of the sky! Together our light illuminates ALL creation!"],
+		],
+		&"forsaken": [
+			["The void you serve is the absence of starlight. The moon abhors emptiness.", "You are a black hole in the constellation. A devourer of meaning."],
+			["The stars dim near your borders. The temple finds this troubling.", "Your void presses against the light. The moon keeps vigil."],
+			["Even the void has its place in the cosmic order. The stars acknowledge you.", "Between light and dark, there must be twilight. Let us meet there."],
+			["The Oracle sees beauty even in the void between stars. Welcome, shadow-walker.", "The darkness between stars gives them definition. You give us purpose."],
+			["Light needs darkness to SHINE! The moon and the void, eternal partners!", "In the grand tapestry of the cosmos, your thread is as vital as ours!"],
+		],
+		&"gladehost": [
+			["Even the forest disappoints. The stars expected better from the grove.", "Nature without guidance is mere chaos. The moon sees your failings."],
+			["The grove stirs under moonlight. At least you respond to celestial influence.", "Forest-keeper. The moon lights your canopy, whether you appreciate it or not."],
+			["The grove and the moon have always been aligned. What brings you?", "Moonlight feeds the forest. A natural partnership. Speak."],
+			["The forest grows strongest under the silver light. Welcome, grove-friend.", "The moon and the grove — ancient allies in the cosmic dance."],
+			["Beloved grove-keeper! Moon and forest are ONE under the starlit sky!", "Nature and celestial order in perfect harmony! Our bond is eternal!"],
+		],
+		&"shardhorde": [
+			["Your crystal frequencies desecrate the celestial harmonics. The stars REJECT you.", "You are crystalline chaos pretending to be structure. Offensive."],
+			["The lattice disrupts the starlight. The temple monitors with concern.", "Your crystal vibrations interfere with our celestial readings."],
+			["The Crystalmind. An ordered entity, if alien. The stars are curious.", "Crystal and starlight both follow patterns. Perhaps we can find harmony."],
+			["The lattice resonates with celestial frequencies! A fascinating discovery.", "Crystal and moonlight share more than we knew. Welcome, strange friend."],
+			["CRYSTALLINE HARMONY! The Hive and the stars vibrate as ONE!", "From crystal caves to celestial vaults — our resonance is perfect!"],
+		],
+	},
+	&"thunderswarm": {
+		&"skulloath": [
+			["Steppe-crawler! Your flat-land riders would break on our mountain paths!", "The bone-rattlers dare challenge the storm? HA! Pathetic."],
+			["Horse-riders. You fight well on flat ground. Shame the world isn't flat.", "The horde is tough. But toughness alone does not survive the peaks."],
+			["Steppe-warrior. Your saddle-skills match our mountain-climbing. Respect.", "The Khan fights differently than us. But fights well."],
+			["The horde would make fine highland warriors! Come, ride our paths!", "Steppe-brother! Your charge is as unstoppable as our avalanches!"],
+			["MOUNTAIN AND STEPPE! Together we are EVERY terrain! UNSTOPPABLE!", "Khan of the plains! Your riders and our climbers — the PERFECT army!"],
+		],
+		&"empire": [
+			["Go back to your palace and cushions, soft-skin.", "The Empire sends tax collectors even to the peaks. Disgusting."],
+			["Imperial. Your laws mean nothing above the treeline.", "Titles and ranks. The mountain cares nothing for your paper power."],
+			["Imperial. Your roads are useful, I suppose. Speak.", "The Empire builds. The mountain endures. Perhaps common ground."],
+			["You have iron in you, Empire-friend! Not bad for a lowlander!", "The Imperial discipline almost matches highland stubbornness! Welcome!"],
+			["IMPERIAL BROTHER! Your discipline and our fury — NOTHING can stop us!", "From palace to peak — our friendship SHAKES THE WORLD!"],
+		],
+		&"cinderguard": [
+			["These are OUR mountains, forge-hider! Stay in your tunnels!", "Your smoke ruins the mountain air. Take your furnace elsewhere!"],
+			["The Cinderguard digs while we climb. We know which is braver.", "Your fires warm you. Our storms harden us. Guess who wins?"],
+			["Forge-kin. We share the mountain, if not the same path through it.", "Your tunnels and our peaks — the mountain has room for both."],
+			["Mountain-neighbor! Your forge warms the storms between us! Welcome!", "The Cinderguard proves the mountain has MANY strengths!"],
+			["MOUNTAIN BROTHER! Peak and forge, storm and flame — UNBREAKABLE!", "Together we ARE the mountain — its fury AND its fire!"],
+		],
+		&"moonspear": [
+			["Star-gazers. Try watching where your FEET go instead.", "Your prophecies are as useful as moonlight in a blizzard."],
+			["The moon-folk and their riddles. The mountain has no patience.", "Less staring at stars, more swinging axes. That's my advice."],
+			["Moon-watcher. Your visions have occasional use. Speak.", "The stars are pretty. Your foresight is sometimes useful."],
+			["Your prophecies warned us of the avalanche! The mountain owes you!", "Star-friend! Your wisdom makes our strength more effective!"],
+			["STAR-SIBLING! Your sight and our might — PERFECT combination!", "The storm bows to no one — except perhaps the stars that guide it!"],
+		],
+	},
+	&"tainted_jade": {
+		&"gladehost": [
+			["Your tame little garden amuses us. The TRUE jungle devours the weak.", "The grove is nature with its fangs pulled. How pathetic."],
+			["Forest-tender. Your nature is sanitized. The jungle pities you.", "Still trimming your hedges while the real wilderness thrives?"],
+			["Grove-keeper. We are more alike than either cares to admit.", "Your forest and our jungle share roots deeper than either knows."],
+			["Cousin of the canopy. Your gentle ways have a certain wisdom.", "The grove's light complements the jungle's shadow. Welcome, cousin."],
+			["Beloved nature-kin! Grove and jungle, vine and thorn — ALL ONE!", "The wild heart beats in both of us! Our bond is nature itself!"],
+		],
+		&"forsaken": [
+			["Your emptiness bores the jungle. At least OUR darkness has TEETH.", "The void is nothing. The jungle is everything. Including your end."],
+			["Hollow one. Your decay lacks artistry. The jungle rots with PURPOSE.", "The void is empty. The jungle is full. Nothing in common."],
+			["Death-walker. The jungle understands predator and prey. Including death.", "Your void touches the spaces between our vines. An uneasy connection."],
+			["The jungle and the void share the darkness. There is kinship in that.", "Decay and growth are partners, void-walker. Welcome to the understory."],
+			["Shadow-sibling! Jungle and void — twin darknesses, ONE PURPOSE!", "From deepest roots to emptiest void — our bond knows no bottom!"],
+		],
+		&"ivoryscar": [
+			["Your dusty tombs hold nothing but bones. The jungle holds LIFE.", "The desert preserved corpses. The jungle makes them disappear."],
+			["Tomb-keeper. Your relics gather dust while our venom stays fresh.", "The sand preserves what the jungle reclaims. A philosophical split."],
+			["Relic-keeper. The jungle respects age, even dried and calcified age.", "Your ancients and ours once traded. Perhaps we can again."],
+			["The desert and the jungle share ancient secrets. Welcome, keeper.", "Your preserved wisdom complements our living knowledge. Welcome."],
+			["Ancient friend! Desert and jungle — oldest powers on earth, UNITED!", "Your bones and our vines — together we hold the memory of the world!"],
+		],
+		&"empire": [
+			["Your neat little empire is a garden waiting to be overgrown.", "The jungle consumes all structure eventually. Including yours."],
+			["Imperial order. So fragile against the chaos of nature.", "Your maps end where the jungle begins. Intentionally."],
+			["Imperial. The jungle acknowledges that order has its uses.", "Your roads bring trade to the jungle's edge. Adequate."],
+			["The Serpent Queen appreciates order that respects the wild. Welcome.", "Your discipline and our adaptability — interesting combination."],
+			["Imperial friend! The jungle wraps protectively around your borders!", "Order within, wilderness without — our alliance is balance!"],
+		],
+	},
+	&"cinderguard": {
+		&"gladehost": [
+			["The forest burns well. Remember that, wood-witch.", "Your trees are fuel. Your druids are kindling. Know your place."],
+			["Every piece of charcoal was once one of your precious trees. Perspective.", "The forge needs fuel. The forest provides. End of discussion."],
+			["Forest-keeper. The forge can be more careful with its fuel.", "Trees and timber, forests and forges — we must find balance."],
+			["The forge has learned to harvest without destroying. Your teachings helped.", "Wood-friend! Sustainable forests feed our forges better than clear-cutting."],
+			["Grove-friend! Forge and forest — creation and renewal in perfect cycle!", "Every tree we plant for every one we burn! Nature and industry, TOGETHER!"],
+		],
+		&"empire": [
+			["Imperial mass production. Quantity over quality. The forge DESPISES it.", "Your factory-forged trinkets insult every smith who ever lived."],
+			["The Empire's workshops are adequate. For amateurs.", "Imperial steel bends where ours holds. But you have volume."],
+			["Imperial metalwork improves. The forge acknowledges this.", "Your craftsmen learn from ours, whether they admit it. Welcome."],
+			["The Empire's engineers and our smiths — a formidable combination.", "Imperial precision and our heat treatment — together, perfection."],
+			["Imperial partner! Your engineers and our forge — we shape the WORLD!", "The greatest weapons ever made — forged by OUR alliance!"],
+		],
+		&"ivoryscar": [
+			["Your ancient metalwork is corroded junk. The forge moves FORWARD.", "Tomb-digger. Your relics belong in a museum, not a battlefield."],
+			["Old techniques. Interesting, but the forge has surpassed them.", "The ancients knew some tricks. We know more."],
+			["Relic-keeper. The ancient smithing techniques deserve study.", "Your old-world alloys — the forge finds them intriguing."],
+			["Ancient metallurgical secrets you shared improved our work immensely!", "Old wisdom meets new fire — the forge is grateful, relic-friend."],
+			["Ancient friend! Your techniques and our modern forge — UNMATCHED!", "Together we forge with the wisdom of ages and the fire of today!"],
+		],
+		&"thunderswarm": [
+			["Storm-screamer. The INSIDE of the mountain belongs to us. Stay on your peaks.", "Your lightning shakes our tunnels. One more quake and we seal your passes."],
+			["The Swarm runs wild on the peaks while we build below. Typical.", "Mountain surface-dwellers. Noisy and uncivilized."],
+			["Storm-kin. We share the mountain. Let us share its wealth.", "Peak and tunnel — the mountain is big enough for both."],
+			["Your storms test our structures, making them STRONGER. The forge is grateful!", "Mountain-neighbor! Your lightning tempers our steel from afar!"],
+			["MOUNTAIN BROTHER! Peak and forge, lightning and fire — UNSTOPPABLE!", "The mountain is OURS — above and below, storm and flame, TOGETHER!"],
+		],
+	},
+	&"forsaken": {
+		&"sunblessed": [
+			["Your light BURNS us and you call it righteous. The void will consume your sun.", "Sun-zealot. Your holy fire is just another way to destroy what you fear."],
+			["The sun's glare is unpleasant. Like your personality.", "Your light reveals nothing the void hasn't already seen."],
+			["Sun-keeper. Your light and our darkness must coexist. Somehow.", "The dawn comes even to the void. We have learned to endure it."],
+			["Your light warms even the hollow places within us. Not unwelcome.", "The sun and the void — perhaps they need each other after all."],
+			["Sun-friend! Your light gives MEANING to our darkness! We are GRATEFUL!", "Light and void, together at last! The cosmos is COMPLETE!"],
+		],
+		&"moonspear": [
+			["Your silver light needles the void like tiny daggers. Stop it.", "Star-watcher. The void between your precious stars is OURS."],
+			["The moon's glow is tolerable. Barely. Unlike your preaching.", "Celestial light is softer than the sun's, at least. Small mercy."],
+			["Moon-watcher. The void acknowledges the night sky. It is our ceiling.", "Stars and void are neighbors. Perhaps their people can be too."],
+			["The moonlight doesn't burn like the sun. The void appreciates this.", "Star-friend. You understand that darkness is not evil. That means everything."],
+			["Moon-keeper! The night sky is the PERFECT marriage of light and dark!", "The stars shine brightest against the void! We NEED each other!"],
+		],
+		&"gladehost": [
+			["Your living things mock us with every breath. The grove will ROT.", "So much life. So fragile. The void will claim it all eventually."],
+			["Your greenery is offensive to those who can no longer grow.", "The living forest. A painful reminder of what was lost."],
+			["Grove-keeper. The fallen leaves know the void well. Common ground.", "Life and death are two sides of the same leaf. The void accepts this."],
+			["Your living world reminds us of what we were. It no longer hurts.", "Green-friend. Your life gives the void something to aspire to."],
+			["Living one! Your vitality inspires even the dead! The void BLOOMS for you!", "Life and death, growth and decay — our cycle together is BEAUTIFUL!"],
+		],
+		&"empire": [
+			["Your mortal empire will crumble to dust. The void is patient.", "Empires rise and fall. The void endures. You are temporary."],
+			["Another mortal government pretending it will last forever. Quaint.", "Your institutions decay faster than our corpses. We accept it."],
+			["Imperial. Your mortal ambitions are interesting, in their way.", "The Empire builds what the void eventually claims. But build you do."],
+			["Your stubborn refusal to accept entropy is almost admirable.", "Imperial friend. Your persistence against the inevitable earns respect."],
+			["The Empire's defiance of decay INSPIRES the void! You prove meaning EXISTS!", "Mortal friend! Your fleeting flame burns brighter than eternal darkness!"],
+		],
+	},
+	&"ivoryscar": {
+		&"tainted_jade": [
+			["The jungle swallowed our southern provinces. The tombs REMEMBER.", "Serpent-worshipper. Your venom corrodes our sacred relics."],
+			["The jungle creeps where the desert recedes. The Oracle watches.", "Your poison and our preservation — fundamentally incompatible."],
+			["Serpent-keeper. The ancients traded with your jungle. Perhaps again.", "Desert and jungle share a border and a history. Let us discuss."],
+			["The ancients valued jungle remedies. The Oracle sees wisdom in renewal.", "Your living memory complements our preserved one. Welcome, jungle-friend."],
+			["Ancient neighbor! Desert and jungle — oldest civilizations, REUNITED!", "Your living history and our preserved one — NOTHING is forgotten!"],
+		],
+		&"cinderguard": [
+			["Your crude ironwork insults the ancient smiths whose techniques you mock.", "The forge-folk melt what should be preserved. Barbarians in aprons."],
+			["Your metalwork lacks the finesse of the ancients. But it has vigor.", "The forge creates while the tomb preserves. Natural opposites."],
+			["Forge-keeper. The ancient alloys await rediscovery. Perhaps together.", "Your fire and our knowledge — there are possibilities here."],
+			["The forge has recreated techniques lost for millennia! The ancestors applaud!", "Forge-friend! Your craft honors the ancient smiths."],
+			["Master forger! Together we unlock the secrets of the FIRST SMITHS!", "Ancient technique and modern fire — our alliance reshapes the world!"],
+		],
+		&"forsaken": [
+			["You are decay made manifest. The tombs REJECT your corruption.", "The ancients preserved themselves. You simply refuse to decompose properly."],
+			["The void preserves nothing. Our tombs preserve EVERYTHING. See the difference?", "Your hollow existence mocks our sacred preservation."],
+			["Void-walker. Both our peoples exist beyond normal time. Unusual kinship.", "The preserved and the hollowed. More in common than most realize."],
+			["The void and the tomb both defy time. The ancestors see a kindred spirit.", "You understand eternity. That understanding bridges our differences."],
+			["Beyond-death friend! Tomb and void — we have conquered TIME itself!", "Eternal companions! Our friendship will outlast the stars themselves!"],
+		],
+		&"shardhorde": [
+			["Your crystal lattice corrupts ancient frequencies. The relics SHATTER.", "Alien abomination. Your crystalline growth consumes our sacred sites."],
+			["The Hive's expansion threatens our excavation sites. Concerning.", "Crystal and bone do not mix. Your growth patterns are troubling."],
+			["Crystalmind. The ancient relics resonate curiously near your lattice.", "Your ordered growth mirrors our ancient architecture. Interesting."],
+			["Crystal frequencies help decode ancient inscriptions! Fascinating!", "Crystal-friend! Your lattice reveals hidden patterns in our oldest relics."],
+			["Crystal partner! Ancient stone and living crystal — we unlock secrets!", "Your crystalline memory and our carved records — ALL KNOWLEDGE is ours!"],
+		],
+	},
+	&"shardhorde": {
+		&"gladehost": [
+			["Organic contamination at critical levels. Bio-purge recommended.", "Carbon-based overgrowth detected. Removal protocols processing."],
+			["Excessive organic signatures detected. Proximity: uncomfortable.", "Bio-entity. Your photosynthesis creates suboptimal atmospheric chemistry."],
+			["Organic entity. Your growth patterns demonstrate acceptable order.", "Bio-signal processed. Carbon-silicon compatibility: moderate."],
+			["Organic growth patterns mirror crystal formation. Symbiotic potential: high.", "Your root networks function like our crystal lattice. Fascinating parallel."],
+			["ORGANIC PRIME ALLY! Bio-crystal symbiosis achieves OPTIMAL growth!", "Carbon and silicon, root and crystal — PERFECT integration!"],
+		],
+		&"cinderguard": [
+			["Thermal output damages crystal matrices. Heat source: hostile.", "Forge emissions: destructive to lattice integrity. Classification: threat."],
+			["Mineral processing detected. Methods: crude but functional.", "Thermal manipulation of ores. Inefficient but intriguing."],
+			["Forge entity. Your mineral processing has useful applications.", "Heat-based refinement interests the Crystalmind. Processing."],
+			["Forge processes enhance crystal purity! Beneficial relationship confirmed!", "Your thermal techniques refine our growth medium. Synergy detected!"],
+			["FORGE PRIME ALLY! Heat and crystal — PERFECT lattice formation!", "Your fire purifies, our crystal grows — MAXIMUM mineral efficiency!"],
+		],
+		&"moonspear": [
+			["Celestial radiation interferes with crystal frequencies. Source: hostile.", "Lunar electromagnetic patterns: disruptive to Hive communications."],
+			["Starlight refraction through crystal: acceptable at low intensity.", "Your celestial frequencies create minor lattice disturbances."],
+			["Celestial entity. Your electromagnetic patterns are ordered. Compatible.", "Starlight and crystal interact predictably. Processing."],
+			["Moonlight enhances crystal resonance! Beneficial interaction confirmed!", "Celestial frequencies amplify the lattice! Positive symbiosis!"],
+			["CELESTIAL PRIME ALLY! Starlight and crystal — TOTAL CONVERGENCE!", "Every photon enhances the lattice! MAXIMUM cosmic resonance!"],
+		],
+		&"forsaken": [
+			["Entropy signature: extreme. Entity threatens lattice stability.", "Void energy corrodes crystal bonds. Classification: existential threat."],
+			["Decay patterns: alarming but contained. Monitoring continues.", "Your entropy field weakens nearby crystal structures. Concerning."],
+			["Void entity. Entropy and order exist in balance. Processing.", "Your void frequencies are our inverse. Mathematically interesting."],
+			["The void between crystals gives them structure! Entropy serves order!", "Void-entity: your absence defines our presence. Symbiotic!"],
+			["VOID PRIME ALLY! Crystal and emptiness — the FUNDAMENTAL DUALITY!", "Your void and our lattice — together we ARE reality itself!"],
+		],
+	},
+	&"sunblessed": {
+		&"forsaken": [
+			["ABOMINATION! The Eternal Dawn commands your destruction!", "You are everything the light exists to purge. Prepare yourself."],
+			["The sacred flame flickers in your unholy presence.", "Your void offends the Dawn. The priests pray for your correction."],
+			["Even the sun must sometimes shine upon the darkened. Speak.", "The light does not discriminate. Even you may be heard."],
+			["The dawn reveals that even the void has purpose. Welcome, unlikely friend.", "Perhaps redemption takes many forms. Your persistence moves us."],
+			["Even the VOID bows before our friendship! LIGHT PREVAILS!", "From absolute darkness, the most miraculous dawn! BLESSED, shadow-friend!"],
+		],
+		&"moonspear": [
+			["Your pale moonlight is a mockery of TRUE celestial power.", "The moon borrows the sun's light and calls it wisdom. Pathetic."],
+			["The moon is merely a reflection. The SUN is the source.", "Your silver light is pleasant enough. But it is not the Dawn."],
+			["Moon-keeper. Sun and moon share the sky. Perhaps the temple can too.", "Your faith and ours look upward. That common direction matters."],
+			["Sun and moon together banish ALL darkness! Welcome, celestial sibling!", "Your gentle moonlight heals where our fierce sun cauterizes. Complementary."],
+			["SIBLING OF THE SKY! Sun and moon in ETERNAL harmony!", "Day and night, dawn and dusk — our cycle together IS the heavens!"],
+		],
+		&"empire": [
+			["Your godless governance dooms your people to spiritual darkness.", "The Empire worships only gold. The Dawn weeps for your souls."],
+			["The Crown ignores the Dawn. The priests note this with concern.", "Your secular ways leave your people without guidance. Unfortunate."],
+			["Imperial. The temple respects governance, even without faith.", "Your order serves the people in its own way. The Dawn acknowledges this."],
+			["The Empire's justice mirrors the Dawn's fairness. The temple approves.", "Your laws protect the weak. That IS the Dawn's work."],
+			["Imperial friend! Your justice IS the Dawn manifest in law!", "The greatest empire serves the light even without a temple! BLESSED!"],
+		],
+		&"tainted_jade": [
+			["Your corrupted nature is a BLASPHEMY against the Dawn's creation!", "Every poisoned vine is a sin against the light. Condemned."],
+			["The jungle's darkness troubles the Dawn. Your practices are questionable.", "Venom and shadow. The sun struggles to penetrate your canopy."],
+			["Serpent-keeper. Even the jungle receives the Dawn's light.", "Your jungle is shadowed, but the sun filters through. There is hope."],
+			["The jungle's venoms have healed our pilgrims. The Dawn works in strange ways.", "Not all shadow is evil. Your jungle proves this. Welcome, green one."],
+			["JUNGLE FRIEND! Even the darkest canopy lets the Dawn through!", "Poison that heals, shadow that protects — the Dawn embraces ALL nature!"],
+		],
+	},
+}
+
+# Accept/deny lines per faction (5 stages, 5 variations each)
 const LEADER_ACCEPT_LINES := {
-	&"empire": ["Hmph. The Empire grudgingly accepts.", "These terms are... acceptable.", "The Empire agrees.", "A fine arrangement, worthy of our alliance.", "Splendid! The Crown is delighted!"],
-	&"skulloath": ["Bah. Fine. But do not test us again.", "The Khan accepts, barely.", "The caravan routes open.", "A worthy exchange! The horde approves.", "HA! Glorious! The Khan celebrates!"],
-	&"gladehost": ["The grove bends... reluctantly.", "The roots accept, though they bristle.", "A fair exchange nourishes both sides.", "The forest blooms at this accord.", "The ancient trees themselves bow in joy!"],
-	&"moonspear": ["The moon turns its face away, but... we accept.", "The stars allow it, barely.", "The temple accepts this in good faith.", "A blessed arrangement under the moon.", "The celestial choir sings! It is done!"],
-	&"thunderswarm": ["Grr. Agreed. Now leave before I change my mind.", "Fine. But make it quick.", "Iron and gold flow like mountain rivers.", "HA! A strong deal! I like you!", "THUNDEROUS AGREEMENT! Let us feast!"],
-	&"tainted_jade": ["The serpent hisses... but accepts.", "The jungle allows this. For now.", "The serpent accepts. An equitable exchange.", "The coils embrace this arrangement warmly.", "The Serpent Queen herself smiles upon this!"],
-	&"cinderguard": ["The forge accepts. Do not waste our metal.", "Hmm. Tolerable. Agreed.", "Iron meets iron. A solid deal.", "Well forged! This strengthens us both.", "A masterwork agreement! The forge roars in triumph!"],
-	&"forsaken": ["Ugh. Even the dead find this distasteful, but... agreed.", "The hollow winds carry our reluctant assent.", "Even the dead have use for this arrangement.", "A rare moment of light in the void. Accepted.", "In the name of the Hollow King — enthusiastically agreed!"],
-	&"ivoryscar": ["The sand buries most offers. Yours barely survives.", "The Oracle permits it, against better judgment.", "Ancient wisdom says: a fair trade benefits all.", "The ancestors smile upon this arrangement.", "The relics glow with approval! Magnificent!"],
-	&"shardhorde": ["Exchange ratio suboptimal... but tolerated.", "Processing... accepted at minimum threshold.", "Resource exchange optimized. Agreement formed.", "Positive resonance detected. Symbiosis enhanced.", "Maximum synergy achieved! Hive approves at all nodes!"],
-	&"sunblessed": ["The sun barely tolerates this shadow-deal.", "The flame permits it. Narrowly.", "A fair exchange under the golden sky.", "Blessed by the light! A fine accord!", "THE DAWN BREAKS UPON A GLORIOUS PACT!"],
+	&"empire": [
+		["Hmph. The Empire grudgingly accepts.", "Do not mistake this for generosity.", "Barely adequate. But the Crown agrees.", "This scrapes past the minimum. Accepted.", "The court holds its nose and signs."],
+		["These terms are... acceptable.", "The Chancellor has reviewed the terms. Fine.", "The Empire accepts, with reservations noted.", "A workable arrangement. Proceed.", "Not our finest deal, but serviceable."],
+		["The Empire agrees.", "Fair terms for both sides. Done.", "The Crown seals this agreement.", "A balanced arrangement. The Empire is satisfied.", "Agreed. Let the scribes record it."],
+		["A fine arrangement, worthy of our alliance.", "The court applauds this deal!", "Excellent terms! The Chancellor is pleased.", "This strengthens our bond considerably. Well done.", "The Emperor nods with genuine approval."],
+		["Splendid! The Crown is delighted!", "MAGNIFICENT! This is diplomacy at its finest!", "The entire court celebrates this accord!", "A deal worthy of song! The bards shall hear of this!", "The Emperor himself raises his goblet to you!"],
+	],
+	&"skulloath": [
+		["Bah. Fine. But do not test us again.", "The Khan spits and agrees. Do not push your luck.", "Acceptable. Barely. The horde has spoken.", "Grr. It is done. Now leave my tent.", "The ancestors would grumble, but... fine."],
+		["The Khan accepts, barely.", "Iron changes hands. The deal holds.", "Hmph. You bargain like a merchant. But agreed.", "Good enough for the steppe. Done.", "The caravan may pass. This time."],
+		["The caravan routes open.", "A fair trade between warriors. Agreed.", "The Khan nods. It is done.", "Steel for steel. The horde respects this.", "The steppe wind carries our agreement."],
+		["A worthy exchange! The horde approves.", "HA! You bargain well! The Khan is pleased!", "The ancestors smile on this deal!", "Now THIS is a trade worth making! Done!", "Strong terms! You have the horde's respect."],
+		["HA! Glorious! The Khan celebrates!", "DRINK! FEAST! This deal makes the spirits SING!", "The greatest trade since the founding of the horde!", "I would ride to war for anyone who deals this fairly!", "The steppe THUNDERS with approval!"],
+	],
+	&"gladehost": [
+		["The grove bends... reluctantly.", "Like pulling thorns. But agreed.", "The roots grip tightly, but release. Accepted.", "The forest allows this, against its nature.", "Even stone moss grows slowly. This too."],
+		["The roots accept, though they bristle.", "The canopy parts for this. Narrowly.", "A bitter seed, but one the grove will plant.", "The thorns retract. Proceed.", "Not all growth is pleasant. Agreed."],
+		["A fair exchange nourishes both sides.", "The grove finds balance in these terms.", "Like rain after drought. Agreed.", "The forest accepts what the forest needs.", "Growth flows both ways. Done."],
+		["The forest blooms at this accord.", "The oldest branch bows in agreement!", "This deal carries the scent of wildflowers.", "The grove sings with approval!", "A fine accord. The forest is grateful."],
+		["The ancient trees themselves bow in joy!", "The GREAT ROOT stirs with happiness!", "Every leaf turns gold to celebrate this moment!", "The spirit of the forest weeps with joy!", "In a thousand seasons, no finer agreement has graced the grove!"],
+	],
+	&"moonspear": [
+		["The moon turns its face away, but... we accept.", "The stars dim with reluctance, but the deal holds.", "A cold alignment. But accepted.", "The Oracle winces. Yet agrees.", "Silver light fades, but the pact is sealed."],
+		["The stars allow it, barely.", "The constellation of commerce aligns. Barely.", "A tolerable arrangement. The temple accepts.", "The moon reflects without warmth, but nods.", "The celestial math checks out. Fine."],
+		["The temple accepts this in good faith.", "The stars neither bless nor curse this deal.", "A fair conjunction of interests. Agreed.", "The Oracle nods calmly. It is done.", "The silver thread of this agreement holds true."],
+		["A blessed arrangement under the moon.", "The stars brighten at these terms!", "The Oracle smiles — a rare and precious sight.", "Moonlight blesses this accord!", "The celestial signs strongly favor this!"],
+		["The celestial choir sings! It is done!", "The HEAVENS ALIGN in celebration!", "Every star blazes for this glorious pact!", "The Oracle weeps tears of silver joy!", "A deal written in starlight for all eternity!"],
+	],
+	&"thunderswarm": [
+		["Grr. Agreed. Now leave before I change my mind.", "Fine. FINE. Take it before I rethink.", "The storm grumbles, but passes. Done.", "My axe hand twitches, but... agreed.", "BAH. Acceptable. Do not gloat."],
+		["Fine. But make it quick.", "The mountain nods. Grudgingly.", "You drive a hard bargain. Hmph. Agreed.", "Thunder rolls, but does not strike. Done.", "The highland air accepts your terms."],
+		["Iron and gold flow like mountain rivers.", "A solid deal. The mountain stands firm on this.", "Fair as the highland wind. Agreed.", "The drums beat once. The deal is struck.", "Neither too much nor too little. Good."],
+		["HA! A strong deal! I like you!", "Now THAT is how you bargain! Agreed!", "The storm ROARS with approval!", "The war drums beat a happy rhythm!", "Come! Let us seal this with mead!"],
+		["THUNDEROUS AGREEMENT! Let us feast!", "THE MOUNTAIN SHAKES WITH JOY!", "I would wrestle a bear to celebrate this deal! HA!", "GLORIOUS! The greatest accord since the storm chiefs united!", "DRINK! SING! Let every peak echo with celebration!"],
+	],
+	&"tainted_jade": [
+		["The serpent hisses... but accepts.", "The venom recedes. Barely. Agreed.", "The jungle permits this. Under protest.", "Every scale bristles, but the coils loosen. Done.", "A bitter fruit. But the serpent swallows it."],
+		["The jungle allows this. For now.", "The serpent coils once and releases. Accepted.", "Not the sweetest nectar, but it sustains. Agreed.", "The canopy filters this offer and finds it... tolerable.", "Adequate. The jungle has seen worse."],
+		["The serpent accepts. An equitable exchange.", "Balance in the jungle ecosystem. Agreed.", "The jade throne measures and approves.", "Predator and prey both benefit. A rare thing.", "The venom and the antidote. A fair trade."],
+		["The coils embrace this arrangement warmly.", "The rarest orchid blooms for you. Agreed!", "The Serpent Queen's scales shimmer with approval.", "Sweet as honey, and just as golden. Accepted!", "The jungle resonates with satisfaction!"],
+		["The Serpent Queen herself smiles upon this!", "The JUNGLE CELEBRATES with a thousand blooming flowers!", "In all the ages of poison and paradise, no finer deal!", "The Great Serpent coils in BLISS!", "Every venomous thing turns sweet for you today!"],
+	],
+	&"cinderguard": [
+		["The forge accepts. Do not waste our metal.", "Hmph. Like cold iron. Barely workable. But done.", "The bellows sigh and agree.", "The slag falls away. This deal barely survives. Accepted.", "The Forgemaster grumbles but signs."],
+		["Hmm. Tolerable. Agreed.", "Like pig iron. Not great, but useful. Done.", "The anvil accepts this strike.", "Workable material. The forge proceeds.", "Not our finest casting, but it holds."],
+		["Iron meets iron. A solid deal.", "Well-tempered terms. The forge agrees.", "A fair heat for fair metal. Done.", "The hammer strikes true on this one.", "Solid as mountain stone. Agreed."],
+		["Well forged! This strengthens us both.", "Fine craftsmanship in these terms!", "The forge GLOWS with approval!", "Like finding mithril in common ore. Excellent!", "The master smiths nod in admiration!"],
+		["A masterwork agreement! The forge roars in triumph!", "STEEL SINGS ON THE ANVIL! The finest deal ever forged!", "The Great Forge itself blazes in celebration!", "This accord is INDESTRUCTIBLE! Like the mountain itself!", "In all the history of the forge, no finer alliance!"],
+	],
+	&"forsaken": [
+		["Ugh. Even the dead find this distasteful, but... agreed.", "The void groans. But accepts.", "Like swallowing ash. But done.", "The Hollow King rolls his empty eyes. Fine.", "Even oblivion has its price. Paid."],
+		["The hollow winds carry our reluctant assent.", "The shadows agree. Without enthusiasm.", "A joyless accord. But functional.", "The emptiness permits this. Barely.", "Like dust settling. Inevitable. Accepted."],
+		["Even the dead have use for this arrangement.", "The void finds equilibrium. Agreed.", "Neither living nor dead, this deal simply... is.", "Acceptable to the hollow. Proceed.", "The darkness nods. A fair exchange."],
+		["A rare moment of light in the void. Accepted.", "The emptiness warms — slightly. Agreed!", "The Hollow King almost smiles. Almost.", "This brings... something close to satisfaction.", "The void hums with what might be approval."],
+		["In the name of the Hollow King — enthusiastically agreed!", "The VOID ITSELF brightens! Is this... joy?!", "For the first time in an age, the Forsaken feel something GOOD!", "Even death celebrates this glorious accord!", "The emptiness OVERFLOWS with gratitude!"],
+	],
+	&"ivoryscar": [
+		["The sand buries most offers. Yours barely survives.", "The Oracle squints. But agrees.", "Like old bone — brittle, but it holds. Accepted.", "The scarabs click with reluctance. Done.", "Ancient dust settles on this deal. Fine."],
+		["The Oracle permits it, against better judgment.", "The sands shift and settle. Tolerable.", "The tomb walls echo a grudging assent.", "The ancestors murmur. Not in praise. But they agree.", "The relics dim but do not darken. Accepted."],
+		["Ancient wisdom says: a fair trade benefits all.", "The hourglass turns evenly. A balanced deal.", "The ancestors find no fault. Agreed.", "The Oracle's eye reflects calm. Proceed.", "The sands of time approve. Done."],
+		["The ancestors smile upon this arrangement.", "The relics GLOW warmly! Well negotiated!", "The Oracle sees prosperity ahead!", "Ancient bells ring beneath the sand! Wonderful!", "The scarabs dance in formation. High praise!"],
+		["The relics glow with approval! Magnificent!", "The ANCESTORS RISE to celebrate this accord!", "Ten thousand years of wisdom culminate in this moment!", "The Oracle SHINES like a second sun! Glorious!", "The greatest deal since the First Dynasty!"],
+	],
+	&"shardhorde": [
+		["Exchange ratio suboptimal... but tolerated.", "Processing... reluctant acceptance at minimum threshold.", "Resource allocation: unfavorable. Yet necessary. Accepted.", "Crystalline consensus: 47% approval. Sufficient.", "The Hive buzzes with displeasure. But complies."],
+		["Processing... accepted at minimum threshold.", "Exchange parameters within tolerable bounds.", "The crystal lattice vibrates at low satisfaction. Agreed.", "Suboptimal but functional. The Hive proceeds.", "Cost-benefit analysis: marginal. Accepted."],
+		["Resource exchange optimized. Agreement formed.", "Parameters aligned. Transaction approved.", "The Hive calculates mutual benefit. Agreed.", "Balanced exchange detected. Crystal consensus formed.", "Processing complete. Deal accepted."],
+		["Positive resonance detected. Symbiosis enhanced.", "The crystal matrix SINGS with harmonic approval!", "Beneficial parameters confirmed! The Hive vibrates warmly!", "Exchange ratio exceeds expectations! Favorable!", "Strong signal! The lattice glows in agreement!"],
+		["Maximum synergy achieved! Hive approves at all nodes!", "FULL CRYSTALLINE CONVERGENCE! Optimal exchange!", "Every node RESONATES with satisfaction!", "The Crystalmind designates this: PERFECT SYMBIOSIS!", "In all recorded exchanges, none approach this efficiency!"],
+	],
+	&"sunblessed": [
+		["The sun barely tolerates this shadow-deal.", "The flame flickers. But accepts.", "A dim dawn. But dawn nonetheless. Agreed.", "The temple accepts under formal protest.", "Light does not celebrate this. But permits it."],
+		["The flame permits it. Narrowly.", "The sun squints but does not turn away. Done.", "A twilight agreement. Not bright, but acceptable.", "The priests murmur consent. Barely.", "The sacred fire dims but holds. Agreed."],
+		["A fair exchange under the golden sky.", "The sun shines evenly on these terms.", "The temple blesses this accord.", "Neither dusk nor dawn — a steady noon. Agreed.", "The flame burns true. A fair deal."],
+		["Blessed by the light! A fine accord!", "The sacred flame BLAZES with approval!", "Dawn breaks golden on this arrangement!", "The priests sing hymns of joy! Wonderful!", "The sun shines BRIGHTEST on deals like this!"],
+		["THE DAWN BREAKS UPON A GLORIOUS PACT!", "The ETERNAL SUN proclaims this accord HOLY!", "Every ray of light celebrates this blessed union!", "The most sacred pact since the founding of the temple!", "ALL THE HEAVENS IGNITE WITH RADIANT JOY!"],
+	],
 }
 const LEADER_DENY_LINES := {
-	&"empire": ["The Empire SPITS on your offer!", "Unacceptable. Leave before we arrest you.", "These terms insult the Crown.", "Regretfully, the Empire must decline.", "It pains us greatly, dear friend, but we cannot accept."],
-	&"skulloath": ["I should gut you for such an insult!", "The Khan would rather eat dirt.", "The horde has no interest.", "A shame. Perhaps next time, friend.", "It wounds the Khan deeply to refuse a blood brother."],
-	&"gladehost": ["The forest REJECTS your blight!", "The thorns withdraw. This offer is poison.", "The grove has no need of this.", "The leaves whisper 'not yet'. Perhaps another time.", "Oh, dear friend — the ancient trees weep that we cannot agree."],
-	&"moonspear": ["The moon CONDEMNS your audacity!", "The stars forbid this folly.", "The stars counsel against this arrangement.", "The moon gently suggests we revisit this later.", "It breaks our heart to refuse one so beloved by the moon."],
-	&"thunderswarm": ["I'll use your offer to wipe my—no. Just no.", "BAH! Insulting!", "The storm passes on this one.", "Not this time, friend. But the door remains open.", "Brother... if only I could. The winds do not favor it."],
-	&"tainted_jade": ["The jungle swallows your worthless offer whole!", "Your offer disguised as honey is still poison.", "The serpent declines.", "The serpent regrets this refusal.", "Most honored one — the jungle weeps. We cannot accept."],
-	&"cinderguard": ["Slag! Worthless! GET OUT!", "This insults the forge. Denied.", "The forge passes. Not worth the metal.", "A regrettable refusal. Perhaps we can reforge the terms.", "Dear ally — the forge cools with regret. We must decline."],
-	&"forsaken": ["The void DEVOURS your pathetic offer!", "We have no need of your pittance.", "The hollow winds carry your offer away.", "A reluctant refusal. The darkness regrets.", "Even in the void, refusing you brings us sorrow."],
-	&"ivoryscar": ["The sands will BURY you and your offer!", "An insult to the ancestors. Denied.", "The sands bury this offer.", "The Oracle sees potential — but not now.", "The ancestors grieve that we must refuse their favored one."],
-	&"shardhorde": ["Hostile signal! Offer classified as attack vector!", "Exchange ratio unacceptable. Connection terminated.", "Exchange ratio suboptimal. Rejected.", "Regret signal transmitted. Cannot comply.", "Prime ally status acknowledged. Yet parameters prevent acceptance."],
-	&"sunblessed": ["The sun SCORCHES your blasphemous offer!", "The flame rejects this shadow-deal.", "The sun does not shine on this arrangement.", "The light dims with regret. Another time.", "Beloved friend — the Dawn weeps that we must refuse."],
+	&"empire": [
+		["The Empire SPITS on your offer!", "Are you trying to insult us? Because you've succeeded.", "The Crown rejects this with extreme prejudice.", "Guards! Remove this... 'diplomat' and their insult.", "This offer is an act of war in parchment form."],
+		["Unacceptable. Leave before we arrest you.", "The Chancellor crumples your terms without reading them.", "These terms would embarrass a beggar. No.", "Denied. The Empire does not stoop so low.", "If this is your best offer, do not come back."],
+		["These terms insult the Crown.", "The balance is unfavorable. We must decline.", "The Empire sees no benefit here. Refused.", "A reasonable attempt, but the terms do not align.", "The court declines, but the door remains open."],
+		["Regretfully, the Empire must decline.", "A shame — the terms almost worked. Perhaps next time.", "We wish we could, friend, but the numbers forbid it.", "Close, but the Crown cannot commit to this.", "Our advisors counsel against it, though we value the attempt."],
+		["It pains us greatly, dear friend, but we cannot accept.", "If only the stars aligned differently. We are truly sorry.", "The Emperor weeps that duty prevents acceptance.", "Our hearts say yes, but the realm says no. Forgive us.", "Nothing would please us more, yet we must decline with heavy hearts."],
+	],
+	&"skulloath": [
+		["I should gut you for such an insult!", "Is this a JOKE? I will feed this offer to the wolves!", "The Khan's blade twitches at these terms!", "You mistake the horde for fools? LEAVE!", "I have killed men for lesser insults than this."],
+		["The Khan would rather eat dirt.", "Pathetic. The steppe dogs would reject this.", "Not even worth the breath to refuse. But no.", "Take your scraps elsewhere. The horde has standards.", "Bah! Even the wind blows harder bargains."],
+		["The horde has no interest.", "Not this time. The caravan passes by.", "The Khan weighs and finds it lacking.", "The ancestors do not stir for this. Declined.", "A miss. But the steppe is long. Try again."],
+		["A shame. Perhaps next time, friend.", "So close! But the spirits say not yet.", "The Khan grimaces with regret. Another time.", "I wish I could, warrior. But the horde needs more.", "A good attempt. The door to my tent remains open."],
+		["It wounds the Khan deeply to refuse a blood brother.", "My heart ACHES to say no to you of all people!", "If the ancestors permitted it, I would agree in a heartbeat.", "Blood brother... this is the hardest refusal of my life.", "The Khan sheds an actual tear. But cannot accept."],
+	],
+	&"gladehost": [
+		["The forest REJECTS your blight!", "Like rot upon healthy bark. REMOVED.", "The grove recoils from this poisonous offer!", "Every thorn turns against you for bringing this.", "The ancient trees would uproot themselves rather than accept."],
+		["The thorns withdraw. This offer is poison.", "The canopy closes. No light for this deal.", "Like dead leaves — blown away and forgotten.", "The grove finds this withered. Declined.", "The roots reject what the soil cannot nourish."],
+		["The grove has no need of this.", "The seasons do not favor this exchange.", "The wind scatters these terms like autumn leaves.", "The forest's needs lie elsewhere. Declined.", "A seed that will not germinate. We pass."],
+		["The leaves whisper 'not yet'. Perhaps another time.", "Almost. The grove was close to blooming for you.", "A gentle frost prevents this growth. Perhaps in spring.", "The forest wishes it could. Not today.", "So close to flourishing. But not quite."],
+		["Oh, dear friend — the ancient trees weep that we cannot agree.", "The Great Root trembles with sorrow at this refusal.", "Every leaf falls in sadness. We cannot, though we dearly wish to.", "The spirit of the forest cries. Forgive us, cherished one.", "If love alone could seal deals, this would be done. Alas."],
+	],
+	&"moonspear": [
+		["The moon CONDEMNS your audacity!", "The stars go dark at this offense!", "Even the void of space rejects your terms!", "The Oracle shatters a crystal in fury!", "This offer is an eclipse upon all diplomacy."],
+		["The stars forbid this folly.", "The constellation of commerce is in retrograde. No.", "The Oracle shakes her head firmly.", "Silver light dims at these terms. Declined.", "The celestial math does not add up. Refused."],
+		["The stars counsel against this arrangement.", "The lunar tide is not favorable for this.", "The Oracle sees a different path ahead.", "Neither blessed nor cursed — simply not aligned.", "The temple declines with measured calm."],
+		["The moon gently suggests we revisit this later.", "So close to alignment. But not today.", "The Oracle's eye dims with genuine regret.", "Almost, friend. The stars were nearly right.", "We wish the constellation permitted it. Soon, perhaps."],
+		["It breaks our heart to refuse one so beloved by the moon.", "The celestial choir falls SILENT in sorrow!", "Every star dims with grief at this refusal.", "The Oracle weeps silver tears for you.", "If we could rearrange the stars for you, we would."],
+	],
+	&"thunderswarm": [
+		["I'll use your offer to wipe my—no. Just no.", "Is this what passes for diplomacy in the lowlands?!", "I have HURLED better offers off the mountain!", "The storm REJECTS this with lightning!", "My axe is more diplomatic than this insult!"],
+		["BAH! Insulting!", "Not worth the paper it's scratched on.", "The mountain does not bend for this.", "Weak as a valley breeze. No.", "Even the goats on the peaks would refuse this."],
+		["The storm passes on this one.", "The highland wind blows this away. Declined.", "Not a deal the mountain can support.", "Thunder does not speak for this.", "A miss. But the winds shift."],
+		["Not this time, friend. But the door remains open.", "Ah, close! But the storm drums say no.", "The mountain wishes it could. Perhaps soon.", "A strong attempt! But not quite strong enough.", "Come back with thunder in your offer. Then we talk."],
+		["Brother... if only I could. The winds do not favor it.", "My HEART says yes but the mountain says no!", "I would move peaks for you, but this I cannot do.", "The storm weeps. WEEPS! But must refuse.", "You deserve better than a refusal. But that is what duty demands."],
+	],
+	&"tainted_jade": [
+		["The jungle swallows your worthless offer whole!", "Poison would taste sweeter than these terms!", "The Great Serpent STRIKES at this insult!", "Every vine tightens with fury!", "The jungle vomits your offer back."],
+		["Your offer disguised as honey is still poison.", "The scales see through this. Refused.", "The jungle spits this out like rotten fruit.", "Unworthy of the serpent's attention. No.", "The canopy drops thorns on your offer."],
+		["The serpent declines.", "The jungle has no appetite for this.", "The jade throne is unmoved. Declined.", "Neither sweet nor nourishing. We pass.", "The serpent slides past without interest."],
+		["The serpent regrets this refusal.", "Almost sweet enough. But not quite.", "The orchid wilts slightly. Not today, friend.", "The Serpent Queen sighs. Close, but no.", "A near miss. The jungle remembers your effort."],
+		["Most honored one — the jungle weeps. We cannot accept.", "Every flower closes in GRIEF at this refusal.", "The Serpent Queen herself sheds a tear.", "If venom could cure regret, we would drink it all.", "The jungle would wither before willingly refusing you. Yet we must."],
+	],
+	&"cinderguard": [
+		["Slag! Worthless! GET OUT!", "I should melt this offer down for scrap!", "The forge VOMITS at these terms!", "Even the ash heap rejects this!", "This insults every smith who ever lived!"],
+		["This insults the forge. Denied.", "Cold iron. Rejected.", "Untempered and worthless. No.", "The anvil would crack under such poor terms.", "Not worth the coal to heat it. Refused."],
+		["The forge passes. Not worth the metal.", "The heat isn't right for this deal.", "Neither hammer nor anvil favors this.", "The bellows rest. Not this time.", "A fair attempt, but the metal won't hold."],
+		["A regrettable refusal. Perhaps we can reforge the terms.", "Almost — like steel just shy of hardening.", "Good ore, but the proportions are off. Another time.", "The forge nearly blazed for this. Close.", "With slight adjustments, this could work next time."],
+		["Dear ally — the forge cools with regret. We must decline.", "The Great Anvil RINGS with sorrow!", "If only the metal were different. We are truly sorry.", "The Forgemaster hangs his head. Even friendship cannot bend iron.", "The deepest fires of the mountain dim with grief at this refusal."],
+	],
+	&"forsaken": [
+		["The void DEVOURS your pathetic offer!", "Even nothingness is insulted by this!", "The Hollow King would laugh if he still could.", "We have endured ETERNITY and this is the worst moment.", "The emptiness echoes with contempt for your terms."],
+		["We have no need of your pittance.", "The darkness yawns at this offer.", "Even the void has standards. Declined.", "What remains of our patience evaporates. No.", "The dead stir with annoyance. Refused."],
+		["The hollow winds carry your offer away.", "Into the void it goes. Forgotten.", "The emptiness neither accepts nor cares.", "A hollow refusal for a hollow offer.", "The darkness absorbs this and gives nothing back."],
+		["A reluctant refusal. The darkness regrets.", "Almost — a flicker of interest in the void.", "The Hollow King pauses. But shakes his head.", "Close. Closer than most. But still no.", "The void almost warmed. Almost."],
+		["Even in the void, refusing you brings us sorrow.", "The emptiness ACHES with the weight of this refusal.", "For you, the Forsaken feel something terrible: regret.", "If the dead could weep, they would weep for you now.", "The Hollow King's crown dims with sadness. Forgive us."],
+	],
+	&"ivoryscar": [
+		["The sands will BURY you and your offer!", "The Oracle SMASHES a relic in fury!", "The ancestors ROAR from their tombs in outrage!", "This offer defiles the sacred traditions!", "Every scarab turns its back on this insult!"],
+		["An insult to the ancestors. Denied.", "The sands grind this offer to dust.", "The Oracle looks away in displeasure. Refused.", "The tomb doors slam shut on these terms.", "Not worthy of inscription. Declined."],
+		["The sands bury this offer.", "The hourglass tilts unfavorably. Declined.", "The ancestors remain silent. No guidance, no deal.", "The relics do not stir. Not this time.", "The sand absorbs this offer without trace."],
+		["The Oracle sees potential — but not now.", "The stars above the desert almost align. Almost.", "A worthy attempt. The ancestors note your effort.", "Close to the ancient ideal. But not there yet.", "The sands shift favorably — but not enough."],
+		["The ancestors grieve that we must refuse their favored one.", "The Oracle WEEPS into the sacred sand!", "Every relic dims with sorrow! Forgive us!", "Ten thousand years of wisdom, and still we feel this loss.", "If we could rewrite destiny for you, we would."],
+	],
+	&"shardhorde": [
+		["Hostile signal! Offer classified as attack vector!", "THREAT DETECTED in exchange parameters! Rejected!", "Crystal lattice rejects with extreme prejudice!", "Error 0xFF: exchange would cause Hive destabilization!", "Purge this offer from all processing nodes!"],
+		["Exchange ratio unacceptable. Connection terminated.", "Suboptimal parameters detected. Hard reject.", "The Hive consensus: 12% approval. Insufficient.", "Crystal analysis complete. Unfavorable. Declined.", "Processing nodes vote: reject at all frequencies."],
+		["Exchange ratio suboptimal. Rejected.", "Parameters do not align with Hive requirements.", "The lattice vibrates negatively. Declined.", "Insufficient benefit detected. Connection paused.", "The Crystalmind computes: not at this time."],
+		["Regret signal transmitted. Cannot comply.", "Near-optimal parameters, but threshold not met.", "The Hive approaches consensus but falls short.", "Close to harmonic alignment. Recalibrate and retry.", "87% approval. 13% prevents acceptance. Regrettable."],
+		["Prime ally status acknowledged. Yet parameters prevent acceptance.", "CRITICAL ERROR: desire to accept conflicts with optimal outcome!", "The Hive experiences... dissonance. We wish we could comply.", "Every node PULSES with regret at this calculation.", "If the crystal could bend its own laws for you, it would."],
+	],
+	&"sunblessed": [
+		["The sun SCORCHES your blasphemous offer!", "The sacred flame RISES in fury!", "This offer is an affront to the Eternal Dawn!", "The priests recoil as if struck!", "Darkness itself would reject terms this foul!"],
+		["The flame rejects this shadow-deal.", "The sun does not bless these terms. Denied.", "The temple doors close on this offer.", "A deal suited for twilight, not dawn. No.", "The light reveals the flaws. Refused."],
+		["The sun does not shine on this arrangement.", "The flame burns evenly but does not favor this.", "The temple declines with grace.", "Not in the sun's plan today. Another time.", "The light passes over this without blessing."],
+		["The light dims with regret. Another time.", "Almost — the dawn nearly broke for this.", "The priests pray for a better alignment. Soon.", "So close to the light. But not today, friend.", "The sacred flame flickers with genuine sadness."],
+		["Beloved friend — the Dawn weeps that we must refuse.", "The Eternal Sun DIMS with the weight of this refusal!", "Every ray of light bends toward you in apology!", "If faith alone could forge a deal, this would be done.", "The holiest among us shed tears. Forgive the light its limitations."],
+	],
 }
 
 func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
@@ -2462,11 +2938,23 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	info_col.add_child(strength_row)
 
 	# Standing-based greeting (fall back to parent faction for minor factions)
+	# Mix generic + culture-specific lines into one pool for random selection
 	var dialogue_fid := _get_dialogue_faction(faction_id)
+	var player_culture := _get_dialogue_faction(player_id)
 	var greetings: Array = LEADER_GREETINGS.get(dialogue_fid, [])
+	var culture_greets: Array = CULTURE_GREETINGS.get(dialogue_fid, {}).get(player_culture, [])
 	var greeting_text: String = ""
+	var pool: Array = []
 	if greetings.size() > stage:
-		greeting_text = greetings[stage]
+		var stage_lines: Array = greetings[stage]
+		if stage_lines is Array:
+			pool.append_array(stage_lines)
+	if culture_greets.size() > stage:
+		var culture_lines: Array = culture_greets[stage]
+		if culture_lines is Array:
+			pool.append_array(culture_lines)
+	if not pool.is_empty():
+		greeting_text = pool[randi() % pool.size()]
 	else:
 		var dialogue: Dictionary = GameManager.FACTION_DIALOGUE.get(dialogue_fid, {})
 		greeting_text = dialogue.get("greeting_neutral", "...")
@@ -3117,7 +3605,11 @@ func _show_diplomacy_result(target: StringName, message: String, show_threaten: 
 		response_lines = LEADER_DENY_LINES.get(dialogue_fid, [])
 	var response_text := ""
 	if response_lines.size() > stage:
-		response_text = response_lines[stage]
+		var stage_lines: Array = response_lines[stage]
+		if stage_lines is Array and not stage_lines.is_empty():
+			response_text = stage_lines[randi() % stage_lines.size()]
+		else:
+			response_text = str(stage_lines)
 
 	if fd:
 		var result_top := HBoxContainer.new()
@@ -5666,6 +6158,19 @@ func _on_building_hover(building_id: StringName) -> void:
 			var ud := DataManager.get_unit(uid)
 			unit_names.append(ud.display_name if ud else str(uid))
 		text += "\n\nUnlocks: " + ", ".join(unit_names)
+
+	# Skulloath dual-path indicator
+	if building.faction_id == &"skulloath":
+		var tradition_buildings := [&"herders_camp", &"steppe_pastures", &"ancestor_shrine", &"spirit_lodge", &"ancestor_sanctum", &"trade_post_skulloath", &"steppe_watchtower"]
+		var void_buildings := [&"pale_waif_altar", &"void_sanctum", &"blood_altar", &"demon_gate"]
+		if tradition_buildings.has(building_id):
+			text += "\n\n[Tradition Path] -1 Corruption/turn"
+			if building_id == &"ancestor_sanctum":
+				text += "\nRequires Corruption <= 40"
+		elif void_buildings.has(building_id):
+			text += "\n\n[Void Path] +2 Corruption/turn"
+			if building_id == &"demon_gate":
+				text += "\nRequires Corruption >= 60"
 
 	# Upgrade chain info
 	if building.upgrades_from != &"":
@@ -9226,8 +9731,8 @@ func _toggle_army_overview() -> void:
 		goto_btn.text = "Go To"
 		goto_btn.custom_minimum_size = Vector2(50, 24)
 		goto_btn.add_theme_font_size_override("font_size", 10)
-		var captured_aid := aid
-		var captured_pos := army.hex_pos
+		var captured_aid: StringName = aid
+		var captured_pos: Vector2i = army.hex_pos
 		goto_btn.pressed.connect(func():
 			AudioManager.play_sfx(&"ui_click")
 			var campaign := get_parent().get_parent()

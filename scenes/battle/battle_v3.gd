@@ -1901,9 +1901,28 @@ func _apply_battle_results() -> void:
 			if tfs:
 				tfs.storm_fury = mini(tfs.storm_fury + 15, 100)
 
+	# Thunderswarm dragon-kill grudge: killing their beast/dragon units angers them
+	var thunderswarm_fid := &"thunderswarm"
+	var all_formations: Array = []
+	all_formations.append_array(simulator.attacker_formations)
+	all_formations.append_array(simulator.defender_formations)
+	for f_form in all_formations:
+		var bf: BattleFormationV3 = f_form
+		var bf_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(bf.faction_id, bf.faction_id)
+		if bf.faction_id != thunderswarm_fid and bf_parent != thunderswarm_fid:
+			continue
+		if not bf.is_dead:
+			continue
+		if bf.tags.has("beast") or bf.tags.has("monster"):
+			# Determine who killed them (the opposing faction)
+			var killer_fid: StringName = attacker_faction_id if bf.side == 1 else defender_faction_id
+			if killer_fid != thunderswarm_fid and killer_fid != &"" and killer_fid != &"independent":
+				GameManager.diplomacy_system.modify_standing(thunderswarm_fid, killer_fid, -8)
+
 	# Faction mechanic: Sunblessed solar faith changes from battle results
 	for battle_pair in [[attacker_faction_id, attacker_alive], [defender_faction_id, defender_alive]]:
-		if battle_pair[0] == &"sunblessed":
+		var bp_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(battle_pair[0], battle_pair[0])
+		if battle_pair[0] == &"sunblessed" or bp_parent == &"sunblessed":
 			var sfs: FactionState = GameManager.state.faction_states.get(battle_pair[0])
 			if sfs:
 				if battle_pair[1]:

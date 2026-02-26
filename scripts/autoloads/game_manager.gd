@@ -1413,6 +1413,17 @@ func _init_diplomacy() -> void:
 			Enums.FactionRelation.ALLIED: initial_standing = 50
 		var standing_key_ab := str(a) + ":" + str(b)
 		var standing_key_ba := str(b) + ":" + str(a)
+		# Historical grudges: Empire vs Cinderguard (deserters) and Forsaken (exiled necromancers)
+		var is_empire_pair := (a == &"empire" or b == &"empire")
+		if is_empire_pair:
+			var other: StringName = b if a == &"empire" else a
+			if other == &"forsaken":
+				initial_standing -= 20  # Exiled necromancers — deep animosity
+			elif other == &"cinderguard":
+				initial_standing -= 10  # Deserters — resentment but shared values
+		# Cinderguard vs Forsaken: fellow ex-Imperials but opposed philosophies
+		if (a == &"cinderguard" and b == &"forsaken") or (a == &"forsaken" and b == &"cinderguard"):
+			initial_standing -= 15
 		state.diplomacy_state.standing[standing_key_ab] = initial_standing
 		state.diplomacy_state.standing[standing_key_ba] = initial_standing
 

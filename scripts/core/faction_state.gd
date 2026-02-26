@@ -66,3 +66,7 @@ extends Resource
 # Sunblessed unique: Solar Faith (0-100)
 # High: +morale/healing. Drops on losses, rises on wins
 @export var solar_faith: int = 50
+
+# Sunblessed unique: Wisdom (accumulated from aiding allies)
+# Boosts research speed, diplomacy standing gains, and educator aura radius
+@export var wisdom: int = 0

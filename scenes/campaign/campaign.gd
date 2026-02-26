@@ -898,23 +898,27 @@ class _BatchedTerrainDetailNode extends Node2D:
 class _DoubleBorderDrawNode extends Node2D:
 	var edges: Array = []  # [v1, v2, inner_fid, outer_fid]
 	var faction_colors: Dictionary = {}
-	var line_width := 2.0
-	var offset := 1.8
-	var separator_width := 1.0
+	var line_width := 3.5
+	var offset := 2.4
+	var separator_width := 1.5
 	func _draw() -> void:
 		for edge in edges:
 			var d: Vector2 = edge[1] - edge[0]
 			# n points inward (toward source hex center) for CCW polygon winding
 			var n := Vector2(-d.y, d.x).normalized()
 			var ic: Color = faction_colors.get(edge[2], Color(0.7, 0.7, 0.7, 0.7))
+			# Dark grey shadow on inner side of faction line (depth effect)
+			draw_line(edge[0] + n * (offset + line_width * 0.5 + 0.8), edge[1] + n * (offset + line_width * 0.5 + 0.8), Color(0.15, 0.13, 0.12, 0.7), line_width * 0.6, true)
 			# Inner faction line on inner side (+n = toward source hex)
 			draw_line(edge[0] + n * offset, edge[1] + n * offset, ic, line_width, true)
 			if edge[3] != &"":
 				# Outer faction line on outer side (-n = toward neighbor hex)
 				var oc: Color = faction_colors.get(edge[3], Color(0.7, 0.7, 0.7, 0.7))
+				# Dark grey shadow on inner side of outer faction line
+				draw_line(edge[0] - n * (offset + line_width * 0.5 + 0.8), edge[1] - n * (offset + line_width * 0.5 + 0.8), Color(0.15, 0.13, 0.12, 0.7), line_width * 0.6, true)
 				draw_line(edge[0] - n * offset, edge[1] - n * offset, oc, line_width, true)
 				# Black separator line between the two colored lines
-				draw_line(edge[0], edge[1], Color(0.0, 0.0, 0.0, 0.85), separator_width, true)
+				draw_line(edge[0], edge[1], Color(0.0, 0.0, 0.0, 0.9), separator_width, true)
 
 func _refresh_faction_borders() -> void:
 	_draw_faction_borders()
@@ -972,8 +976,6 @@ func _update_political_overlay() -> void:
 	if hex_map == null:
 		return
 
-	var political_blend := 0.55 if _minimap_political_mode else 0.12
-
 	for coord in _hex_visuals:
 		var container: Node2D = _hex_visuals[coord]
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
@@ -982,15 +984,26 @@ func _update_political_overlay() -> void:
 		if container.get_child_count() > 0:
 			var fill: Polygon2D = container.get_child(0)
 			var has_texture := fill.texture != null
-			var base_color: Color = Color.WHITE if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
-			if tile.owner_faction != &"" and tile.owner_faction != &"independent":
-				var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
-				if faction_data:
-					base_color = base_color.lerp(faction_data.color, political_blend)
-			elif _minimap_political_mode:
-				# In political mode, darken unowned tiles to make ownership stand out
-				base_color = base_color.darkened(0.2)
-			fill.color = base_color
+			if _minimap_political_mode:
+				if tile.owner_faction != &"" and tile.owner_faction != &"independent":
+					var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
+					if faction_data:
+						# Use faction color directly — texture contours/patterns still show through
+						# Lighten so dark textures remain readable
+						fill.color = faction_data.color.lightened(0.3)
+					else:
+						fill.color = Color(0.35, 0.33, 0.3) if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
+				else:
+					# Unowned: desaturated grey so owned territory pops
+					fill.color = Color(0.35, 0.33, 0.3) if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
+			else:
+				# Normal mode: subtle faction tint
+				var base_color: Color = Color.WHITE if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
+				if tile.owner_faction != &"" and tile.owner_faction != &"independent":
+					var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
+					if faction_data:
+						base_color = base_color.lerp(faction_data.color, 0.12)
+				fill.color = base_color
 
 # ── Army markers ──────────────────────────────────────────────
 

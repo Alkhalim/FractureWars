@@ -144,6 +144,7 @@ class BattleFormationV3:
 	var captive_chance: float = 0.3
 	var vs_attack_bonuses: Dictionary = {}   # tag -> int bonus (e.g. {"cavalry": 3})
 	var vs_defense_bonuses: Dictionary = {}  # tag -> int bonus (e.g. {"ranged": 2})
+	var ethereal_dodge_chance: float = 0.0   # Moonspear: chance to phase through attacks
 
 	var is_dead: bool = false
 	var is_fled: bool = false
@@ -190,6 +191,9 @@ class BattleFormationV3:
 	var faction_in_debt: bool = false
 
 	func take_damage(amount: int) -> int:
+		# Ethereal dodge: chance to phase through attacks entirely
+		if ethereal_dodge_chance > 0.0 and randf() < ethereal_dodge_chance:
+			return 0  # Attack phased through
 		var entities_before := entities_alive
 		if hp_per_entity > 0 and total_entities > 1:
 			var remaining_damage := amount
@@ -312,65 +316,189 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.attack = ud.attack + atk_bonus + r_eff.get("unit_attack_bonus", 0)
 	f.defense = ud.defense + def_bonus + r_eff.get("unit_defense_bonus", 0)
 
-	# Faction mechanic combat bonuses
+	# Faction mechanic combat bonuses — resolve parent faction for sub-factions
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(ud.faction_id, ud.faction_id)
 	var fs: FactionState = GameManager.state.faction_states.get(ud.faction_id)
+	# Sub-factions use parent's faction state for mechanic bonuses if they don't have their own
+	if fs == null and parent_fid != ud.faction_id:
+		fs = GameManager.state.faction_states.get(parent_fid)
 	if fs:
 		# Skulloath: high corruption = attack bonus
-		if ud.faction_id == &"skulloath":
+		if parent_fid == &"skulloath":
 			if fs.corruption >= 81:
 				f.attack += int(f.attack * 0.25)
 			elif fs.corruption >= 61:
 				f.attack += int(f.attack * 0.15)
 		# Tainted Jade: taint power = defense bonus
-		elif ud.faction_id == &"tainted_jade":
+		elif parent_fid == &"tainted_jade":
 			if fs.taint_power >= 50:
 				f.defense += int(f.defense * 0.15)
 			elif fs.taint_power >= 20:
 				f.defense += int(f.defense * 0.10)
+			# Jungle regen: Tainted Jade units regenerate HP when fighting in jungle
+			if _campaign_terrain == Enums.TerrainType.JUNGLE:
+				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.3)
+				f.defense += 2  # Home turf advantage in jungle
 		# Gladehost: high harmony = morale bonus (applied below in morale section)
-		elif ud.faction_id == &"gladehost":
+		elif parent_fid == &"gladehost":
 			pass
 		# Shardhorde: active resonance buffs boost attack per matching realm
-		elif ud.faction_id == &"shardhorde":
+		elif parent_fid == &"shardhorde":
 			for realm_key in fs.shard_resonance:
-				# Void resonance: +10% attack to all. Others: +5% attack
 				if realm_key == Enums.Realm.VOID:
 					f.attack += int(f.attack * 0.10)
 				else:
 					f.attack += int(f.attack * 0.05)
-		# Moonspear: lunar phase combat bonuses
-		elif ud.faction_id == &"moonspear":
+		# Moonspear: lunar phase combat bonuses + ethereal soldiers
+		elif parent_fid == &"moonspear":
 			match fs.lunar_phase:
-				0: # New Moon: +10% attack
-					f.attack += int(f.attack * 0.10)
-				2: # Full Moon: +10% defense
-					f.defense += int(f.defense * 0.10)
+				0: f.attack += int(f.attack * 0.10)
+				2: f.defense += int(f.defense * 0.10)
+			f.ethereal_dodge_chance = 0.15
+			f.base_morale += 15
+			f.max_hp = int(float(f.max_hp) * 0.85)
+			f.current_hp = mini(f.current_hp, f.max_hp)
 		# Thunderswarm: storm fury combat bonuses
-		elif ud.faction_id == &"thunderswarm":
+		elif parent_fid == &"thunderswarm":
 			if fs.storm_fury >= 80:
 				f.attack += int(f.attack * 0.20)
 				f.defense -= int(f.defense * 0.05)
 			elif fs.storm_fury >= 50:
 				f.attack += int(f.attack * 0.10)
 		# Cinderguard: forge heat defense bonus when cool
-		elif ud.faction_id == &"cinderguard":
+		elif parent_fid == &"cinderguard":
 			if fs.forge_heat <= 30:
 				f.defense += int(f.defense * 0.15)
 			elif fs.forge_heat >= 85:
 				f.attack += int(f.attack * 0.05)
 		# Ivoryscar: relic power boosts defense
-		elif ud.faction_id == &"ivoryscar":
+		elif parent_fid == &"ivoryscar":
 			if fs.relic_power >= 30:
 				f.defense += int(f.defense * 0.10)
 			elif fs.relic_power >= 15:
 				f.defense += int(f.defense * 0.05)
 		# Sunblessed: solar faith boosts morale (attack proxy)
-		elif ud.faction_id == &"sunblessed":
+		elif parent_fid == &"sunblessed":
 			if fs.solar_faith >= 85:
 				f.attack += int(f.attack * 0.10)
 				f.defense += int(f.defense * 0.05)
 			elif fs.solar_faith >= 70:
 				f.attack += int(f.attack * 0.05)
+
+	# Empire anti-mage war mages: Empire mage units deal extra damage to enemy mages
+	if parent_fid == &"empire" and ud.tags.has("mage"):
+		f.vs_attack_bonuses["mage"] = f.vs_attack_bonuses.get("mage", 0) + 5
+
+	# Cinderguard frontier guards: former dragon hunters — bonus damage vs large units
+	if parent_fid == &"cinderguard":
+		f.vs_attack_bonuses["monster"] = f.vs_attack_bonuses.get("monster", 0) + 3
+		f.vs_attack_bonuses["beast"] = f.vs_attack_bonuses.get("beast", 0) + 3
+		if _campaign_terrain == Enums.TerrainType.SHARD_WASTES or _campaign_terrain == Enums.TerrainType.DESERT:
+			f.defense += 2
+
+	# ── Sub-faction unique modifiers ──────────────────────────
+	match ud.faction_id:
+		# Empire sub-factions
+		&"crimson_legion":  # Elite infantry, no mages — raw melee power
+			if ud.tags.has("infantry") or ud.tags.has("heavy"):
+				f.attack += 3
+				f.base_morale += 5
+		&"aurentis_guard":  # Defensive specialists, construction focus
+			f.defense += 2
+		# Skulloath sub-factions
+		&"salt_reavers":  # Pirate raiders — fast and aggressive
+			f.speed += 1
+			f.move_speed = f.speed * BASE_MOVE_SPEED
+			if _campaign_terrain == Enums.TerrainType.WETLANDS or _campaign_terrain == Enums.TerrainType.SWAMP:
+				f.attack += 3
+		&"ashbound":  # Demon summoners and mages
+			if ud.tags.has("mage"):
+				f.attack += 3
+			else:
+				f.defense -= 1
+		# Gladehost sub-factions
+		&"thornwardens":  # Aggressive plant warriors
+			f.attack += 2
+			if _campaign_terrain == Enums.TerrainType.FOREST or _campaign_terrain == Enums.TerrainType.JUNGLE:
+				f.attack += 2
+		&"miststriders":  # Fog stealth + trade — faster, elusive
+			f.speed += 1
+			f.move_speed = f.speed * BASE_MOVE_SPEED
+			f.ethereal_dodge_chance = maxf(f.ethereal_dodge_chance, 0.08)
+		# Moonspear sub-factions
+		&"obsidian_order":  # Heavy infantry + siege — tanky but slow
+			f.defense += 3
+			f.speed = maxi(f.speed - 1, 1)
+			f.move_speed = f.speed * BASE_MOVE_SPEED
+		&"luminarch":  # Prophecy/magic focus — mage specialists
+			if ud.tags.has("mage"):
+				f.attack += 3
+			f.base_morale += 5
+		# Thunderswarm sub-factions
+		&"stormbound":  # Ranged + speed + Valkyries
+			if ud.tags.has("ranged") or ud.tags.has("mage"):
+				f.attack += 2
+			f.speed += 1
+			f.move_speed = f.speed * BASE_MOVE_SPEED
+		&"skalvar_watch":  # Protectors — defensive stalwarts
+			f.defense += 2
+			f.base_morale += 5
+		# Tainted Jade sub-factions
+		&"twilight_veil":  # Shadow assassins — glass cannon melee
+			if ud.tags.has("infantry") or ud.tags.has("light"):
+				f.attack += 4
+			f.defense -= 2
+		&"jade_conclave":  # Seal magic — anti-mage specialists
+			f.vs_defense_bonuses["mage"] = f.vs_defense_bonuses.get("mage", 0) + 4
+			f.defense += 1
+		# Ivoryscar sub-factions
+		&"gorgonic_cult":  # Monster tamers — beast bonus
+			f.vs_attack_bonuses["monster"] = f.vs_attack_bonuses.get("monster", 0) + 2
+			f.vs_attack_bonuses["beast"] = f.vs_attack_bonuses.get("beast", 0) + 2
+			if ud.tags.has("monster") or ud.tags.has("beast"):
+				f.attack += 2
+		&"servants_of_reliquary":  # Relic guardians — defensive
+			f.defense += 2
+			if _is_city_battle:
+				f.defense += 2
+		# Cinderguard sub-factions
+		&"crownfire":  # Fire specialists (dragon heritage)
+			f.attack += 2
+			if ud.tags.has("mage"):
+				f.attack += 2
+		&"valkarn_garrison":  # Heavy garrison defense
+			f.defense += 3
+			if _is_city_battle:
+				f.defense += 2
+				f.base_morale += 5
+		# Forsaken sub-factions
+		&"bloodthrone":  # Vampire nobles — strong but arrogant
+			f.attack += 2
+			f.base_morale += 5
+		&"blightcoven":  # Witchcraft sorcery — glass cannon mages
+			if ud.tags.has("mage"):
+				f.attack += 4
+			f.defense -= 1
+		# Shardhorde sub-factions
+		&"icebound":  # Ice and frost — tundra specialists
+			if _campaign_terrain == Enums.TerrainType.TUNDRA:
+				f.defense += 3
+				f.attack += 2
+			elif _campaign_terrain == Enums.TerrainType.DESERT:
+				f.speed = maxi(f.speed - 1, 1)
+				f.move_speed = f.speed * BASE_MOVE_SPEED
+		&"splinterbrood":  # Crystal swarm — regen and numbers
+			f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2)
+			f.attack += 1
+		# Sunblessed sub-factions
+		&"oaseans":  # Desert educators — knowledge seekers
+			if _campaign_terrain == Enums.TerrainType.DESERT:
+				f.defense += 2
+				f.base_morale += 5
+		&"venerated":  # Dogmatic holy order — zealous
+			f.base_morale += 8
+			f.attack += 1
+
 	# Veterancy bonuses
 	var vet_bonus := unit.get_veterancy_bonus()
 	if vet_bonus > 0.0:
@@ -401,7 +529,7 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 
 	f.base_morale = ud.base_morale + r_eff.get("unit_morale_bonus", 0)
 	# Gladehost harmony: +10 base morale when harmony >= 70
-	if fs and ud.faction_id == &"gladehost" and fs.harmony >= 70:
+	if fs and parent_fid == &"gladehost" and fs.harmony >= 70:
 		f.base_morale += 10
 	f.current_morale = float(f.base_morale)
 	f.morale_aura = ud.morale_aura

@@ -2226,7 +2226,10 @@ func _process_faction_mechanic(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null or fs.is_defeated:
 		return
-	match faction_id:
+	# Sub-factions also process parent faction mechanics
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var mechanic_fid := parent_fid  # Use parent faction to determine which mechanic to run
+	match mechanic_fid:
 		&"skulloath":
 			_process_skulloath_corruption(fs)
 		&"tainted_jade":
@@ -2238,7 +2241,7 @@ func _process_faction_mechanic(faction_id: StringName) -> void:
 		&"moonspear":
 			_process_moonspear_lunar(fs)
 		&"thunderswarm":
-			_process_thunderswarm_fury(fs)
+			_process_thunderswarm_fury(fs, faction_id)
 		&"cinderguard":
 			_process_cinderguard_forge(fs)
 		&"forsaken":
@@ -2246,7 +2249,8 @@ func _process_faction_mechanic(faction_id: StringName) -> void:
 		&"ivoryscar":
 			_process_ivoryscar_relics(fs)
 		&"sunblessed":
-			_process_sunblessed_faith(fs)
+			_process_sunblessed_faith(fs, faction_id)
+			_process_sunblessed_wisdom(fs, faction_id)
 
 # ── Skulloath: Corruption Duality ──────────────────────────
 # Traditional path (0-30): food/loyalty/diplomacy bonuses, population growth
@@ -2621,13 +2625,13 @@ func get_lunar_phase_name(phase: int) -> String:
 # 50+: +10% atk to all armies. 80+: +20% atk, -5% def (reckless fury)
 # Applied in battle_simulator; here we just handle decay
 
-func _process_thunderswarm_fury(fs: FactionState) -> void:
+func _process_thunderswarm_fury(fs: FactionState, fid: StringName = &"thunderswarm") -> void:
 	# Natural decay: fury cools down over time
 	if fs.storm_fury > 0:
 		fs.storm_fury = maxi(fs.storm_fury - 5, 0)
 
 	# Thunderswarm armies in mountains/highlands gain +2 fury per turn (storms gather)
-	for army: ArmyState in GameManager.get_faction_armies(&"thunderswarm"):
+	for army: ArmyState in GameManager.get_faction_armies(fid):
 		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
 			fs.storm_fury = mini(fs.storm_fury + 2, 100)
@@ -2635,7 +2639,7 @@ func _process_thunderswarm_fury(fs: FactionState) -> void:
 	# High fury: slight diplomacy penalty (seen as aggressive)
 	if fs.storm_fury >= 80:
 		for other_id in GameManager.state.faction_states:
-			if other_id == &"thunderswarm" or GameManager.is_npc_faction(other_id):
+			if other_id == fid or GameManager.is_npc_faction(other_id):
 				continue
 			var other_fs: FactionState = GameManager.state.faction_states[other_id]
 			if other_fs.is_defeated:
@@ -2757,7 +2761,7 @@ func _process_ivoryscar_relics(fs: FactionState) -> void:
 # Low faith (30-): recruitment penalties, loyalty loss
 # Naturally drifts toward 50
 
-func _process_sunblessed_faith(fs: FactionState) -> void:
+func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed") -> void:
 	# Natural drift toward 50
 	if fs.solar_faith > 50:
 		fs.solar_faith -= 1
@@ -2767,7 +2771,7 @@ func _process_sunblessed_faith(fs: FactionState) -> void:
 	# High faith: heal armies in owned territory
 	if fs.solar_faith >= 70:
 		var heal_amount := 3 if fs.solar_faith >= 85 else 2
-		for army: ArmyState in GameManager.get_faction_armies(&"sunblessed"):
+		for army: ArmyState in GameManager.get_faction_armies(fid):
 			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 			if tile and tile.region_id in fs.owned_regions:
 						for unit in army.units:
@@ -2792,3 +2796,69 @@ func _process_sunblessed_faith(fs: FactionState) -> void:
 				for cls in city.class_loyalty:
 					if cls != "captives":
 						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 1, -100, 100)
+
+# ── Sunblessed: Wisdom & Teaching ─────────────────────────
+# Wisdom grows when Sunblessed armies are near allied/friendly faction cities.
+# Effects: +tech income, +diplomacy standing improvement, educator aura for allies.
+
+func _process_sunblessed_wisdom(fs: FactionState, fid: StringName = &"sunblessed") -> void:
+	var sunblessed_fid := fid
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+
+	# Gain wisdom from being near allied cities (wandering educator)
+	var wisdom_gain := 0
+	var educated_cities: Dictionary = {}  # city_id -> true (prevent double-counting)
+	var sunblessed_armies := GameManager.get_faction_armies(sunblessed_fid)
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id == sunblessed_fid or city.faction_id == &"independent":
+			continue
+		if educated_cities.has(city_id):
+			continue
+		# Check if any Sunblessed army is within 2 hexes of this city
+		var near_army := false
+		for army: ArmyState in sunblessed_armies:
+			if HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= 2:
+				near_army = true
+				break
+		if not near_army:
+			continue
+		# Check if this faction is friendly or allied
+		var standing := GameManager.diplomacy_system.get_standing(sunblessed_fid, city.faction_id)
+		if standing >= 20:  # At least somewhat positive
+			educated_cities[city_id] = true
+			wisdom_gain += 2
+			# Educator aura: allied city gets +3 tech income and +1 loyalty
+			var ally_fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+			if ally_fs:
+				ally_fs.resources[Enums.ResourceType.TECHNOLOGY] = ally_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 3
+			for cls in city.class_loyalty:
+				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
+
+	# Also gain +1 wisdom per friendly faction (diplomacy participation)
+	for other_fid in GameManager.state.faction_states:
+		if other_fid == sunblessed_fid:
+			continue
+		var standing := GameManager.diplomacy_system.get_standing(sunblessed_fid, other_fid)
+		if standing >= 40:  # Friendly level
+			wisdom_gain += 1
+
+	fs.wisdom = mini(fs.wisdom + wisdom_gain, 200)
+
+	# Wisdom bonus: extra tech income for Sunblessed
+	if fs.wisdom >= 10:
+		var tech_bonus := mini(fs.wisdom / 10, 8)  # +1 per 10 wisdom, max +8
+		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_bonus
+
+	# Wisdom bonus: improve diplomacy standing with all non-hostile factions
+	if fs.wisdom >= 30:
+		var diplo_bonus := 1 if fs.wisdom < 80 else 2
+		for diplo_fid in GameManager.state.faction_states:
+			if diplo_fid == sunblessed_fid:
+				continue
+			var standing := GameManager.diplomacy_system.get_standing(sunblessed_fid, diplo_fid)
+			if standing > -30:  # Not deeply hostile
+				GameManager.diplomacy_system.modify_standing(sunblessed_fid, diplo_fid, diplo_bonus, "Sunblessed wisdom")
