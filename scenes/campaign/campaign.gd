@@ -988,9 +988,10 @@ func _update_political_overlay() -> void:
 				if tile.owner_faction != &"" and tile.owner_faction != &"independent":
 					var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
 					if faction_data:
-						# Use faction color directly — texture contours/patterns still show through
-						# Lighten so dark textures remain readable
-						fill.color = faction_data.color.lightened(0.3)
+						# Use vibrant faction color — texture contours/patterns still show through
+						var pol_color: Color = faction_data.color
+						pol_color.s = minf(pol_color.s * 1.4, 1.0)  # Boost saturation
+						fill.color = pol_color.lightened(0.15)
 					else:
 						fill.color = Color(0.35, 0.33, 0.3) if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
 				else:

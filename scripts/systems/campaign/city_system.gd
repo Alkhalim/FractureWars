@@ -1392,7 +1392,15 @@ func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, 
 			# Seasonal modifiers — Seasonal Shrine amplifies by 50%
 			var season: int = GameManager.state.current_month
 			var harmony_mult := fs.harmony / 100.0
-			var shrine_mult := 1.5 if (city and city.buildings.has(&"seasonal_shrine")) else 1.0
+			var has_shrine := city and (city.buildings.has(&"seasonal_shrine") or city.buildings.has(&"solstice_altar") or city.buildings.has(&"eternal_cycle"))
+			var shrine_mult := 1.0
+			if has_shrine:
+				if city.buildings.has(&"eternal_cycle"):
+					shrine_mult = 2.0
+				elif city.buildings.has(&"solstice_altar"):
+					shrine_mult = 1.75
+				else:
+					shrine_mult = 1.5
 			if season <= 2: # Spring: +food, +growth
 				if income.has(Enums.ResourceType.FOOD):
 					income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * 0.20 * harmony_mult * shrine_mult)

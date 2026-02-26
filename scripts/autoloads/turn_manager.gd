@@ -105,9 +105,9 @@ func _ai_wait() -> void:
 		return
 	if ai_speed_multiplier >= 4.0:
 		return
-	await _ai_wait()
+	await get_tree().process_frame
 	if ai_speed_multiplier <= 1.0:
-		await _ai_wait()
+		await get_tree().process_frame
 
 func start_game() -> void:
 	faction_order.clear()
@@ -2484,7 +2484,7 @@ func _process_gladehost_seasons(fs: FactionState) -> void:
 		if city:
 			if city.buildings.has(&"embassy_grove"):
 				has_embassy = true
-			if city.buildings.has(&"seasonal_shrine"):
+			if city.buildings.has(&"seasonal_shrine") or city.buildings.has(&"solstice_altar") or city.buildings.has(&"eternal_cycle"):
 				has_seasonal_shrine = true
 
 	if fs.harmony >= 75 or has_embassy:
@@ -2500,9 +2500,17 @@ func _process_gladehost_seasons(fs: FactionState) -> void:
 			if GameManager.get_relation(&"gladehost", other_id) != Enums.FactionRelation.WAR:
 				GameManager.diplomacy_system.modify_standing(&"gladehost", other_id, diplo_bonus, "High harmony")
 
-	# Seasonal shrine: +2 harmony per shrine, boosts seasonal income effects
+	# Seasonal shrine chain: +harmony per turn based on highest tier
 	if has_seasonal_shrine:
-		fs.harmony = mini(fs.harmony + 2, 100)
+		var shrine_bonus := 2
+		for city_id2 in fs.owned_cities:
+			var c2: CityState = GameManager.state.cities.get(city_id2)
+			if c2:
+				if c2.buildings.has(&"eternal_cycle"):
+					shrine_bonus = maxi(shrine_bonus, 4)
+				elif c2.buildings.has(&"solstice_altar"):
+					shrine_bonus = maxi(shrine_bonus, 3)
+		fs.harmony = mini(fs.harmony + shrine_bonus, 100)
 
 # ── Shardhorde: Shard Resonance ────────────────────────────
 # Consuming shards grants temporary buffs. Elderbeasts grow faster near shard wastes.

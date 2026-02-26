@@ -863,7 +863,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion:
 		if _battle_panning:
 			var cam := $Camera2D
-			var delta_pos := (_battle_pan_start - event.position) / cam.zoom
+			var delta_pos: Vector2 = (_battle_pan_start - event.position) / cam.zoom
 			cam.position += delta_pos
 			_battle_pan_start = event.position
 			# Clamp to field bounds with margin

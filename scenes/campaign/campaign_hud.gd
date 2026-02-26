@@ -1558,6 +1558,71 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			var wisdom_tier := "Sage" if fs.wisdom >= 80 else ("Learned" if fs.wisdom >= 30 else "Novice")
 			text = "Faith: %d (%s) | Wisdom: %d (%s)" % [fs.solar_faith, mood, fs.wisdom, wisdom_tier]
 			color = Color(0.95, 0.85, 0.3) if fs.solar_faith >= 70 else (Color(0.6, 0.4, 0.4) if fs.solar_faith <= 30 else Color(0.8, 0.75, 0.5))
+	# Tooltip descriptions for faction mechanics
+	var tooltip := ""
+	var mechanic_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(player_id, player_id)
+	match mechanic_fid:
+		&"skulloath":
+			tooltip = "Corruption (0-100) tracks your path between Tradition and Void.\n"
+			tooltip += "Tradition buildings: -1 corruption/turn. Void buildings: +2/turn.\n\n"
+			tooltip += "Low (0-30): +15% food, +loyalty, +diplomacy.\n"
+			tooltip += "High (61-80): +15% attack in battle, -loyalty.\n"
+			tooltip += "Deep (81+): +25% attack, -3 loyalty, -2 diplomacy.\n\n"
+			tooltip += "Ancestor Sanctum (T3): requires corruption <= 40.\n"
+			tooltip += "Demon Gate (T3): requires corruption >= 60."
+		&"tainted_jade":
+			tooltip = "Taint Power grows from territory control and jungle spread.\n\n"
+			tooltip += "20+: +10% defense in battle, +5% iron income.\n"
+			tooltip += "50+: +15% defense in battle.\n\n"
+			tooltip += "Jungle terrain spreads near your cities each turn.\n"
+			tooltip += "Units regenerate HP when fighting in jungle."
+		&"gladehost":
+			tooltip = "Harmony (0-100) reflects your bond with nature.\n"
+			tooltip += "Rises with fewer buildings and more forest tiles. Falls from overbuilding.\n\n"
+			tooltip += "70+: +10 morale in battle, +loyalty, +diplomacy.\n"
+			tooltip += "35-: -loyalty in capital.\n\n"
+			tooltip += "Seasonal income scales with harmony:\n"
+			tooltip += "  Spring: +food. Summer: +iron.\n"
+			tooltip += "  Autumn: +gold/wood. Winter: -food.\n"
+			tooltip += "Seasonal Shrine amplifies seasonal bonuses and restores harmony."
+		&"shardhorde":
+			tooltip = "Active Shard Resonances from captured realm shards.\n\n"
+			tooltip += "Each active realm provides combat and income bonuses:\n"
+			tooltip += "  Divine: +gold, Elemental: +iron, Nature: +food.\n"
+			tooltip += "  Mortal: +gold/food, Void: +tech and +10% attack."
+		&"moonspear":
+			tooltip = "The moon cycles through 4 phases, changing each turn.\n\n"
+			tooltip += "New Moon: +10% attack. Waxing: +1 movement.\n"
+			tooltip += "Full Moon: +10% defense. Waning: army healing.\n\n"
+			tooltip += "Ethereal units: 15% dodge chance, +15 morale, -15% HP."
+		&"thunderswarm":
+			tooltip = "Storm Fury (0-100) builds from victories and mountain positioning.\n\n"
+			tooltip += "50+: +10% attack in battle.\n"
+			tooltip += "80+: +20% attack, -5% defense (reckless fury).\n"
+			tooltip += "Decays -5/turn naturally.\n\n"
+			tooltip += "Killing Thunderswarm beasts/monsters angers them (-8 standing)."
+		&"cinderguard":
+			tooltip = "Forge Heat (0-100) from combat and industry.\n\n"
+			tooltip += "Cool (0-30): +15% defense in battle.\n"
+			tooltip += "Blazing (85+): +5% attack in battle.\n\n"
+			tooltip += "All units: +3 attack vs monsters and beasts.\n"
+			tooltip += "+2 defense in desert and shard wastes."
+		&"forsaken":
+			tooltip = "Espionage Network strength.\n\n"
+			tooltip += "Higher values improve spy effectiveness and intelligence gathering."
+		&"ivoryscar":
+			tooltip = "Relic Power grows from controlling Shard Wastes territory.\n\n"
+			tooltip += "15+: +5% defense in battle.\n"
+			tooltip += "30+: +10% defense in battle."
+		&"sunblessed":
+			tooltip = "Solar Faith (0-100): rises on victories (+10), falls on defeats (-15).\n"
+			tooltip += "70+: heal armies in owned territory, +loyalty.\n"
+			tooltip += "85+: +10% attack, +5% defense in battle.\n\n"
+			tooltip += "Wisdom: grows from teaching allied cities (within 2 hexes).\n"
+			tooltip += "Nearby allied cities gain +3 tech and +1 loyalty.\n"
+			tooltip += "10+ wisdom: bonus tech income. 30+: improved diplomacy."
+	_faction_mechanic_label.tooltip_text = tooltip
+	_faction_mechanic_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	_faction_mechanic_label.text = text
 	_faction_mechanic_label.add_theme_color_override("font_color", color)
 
