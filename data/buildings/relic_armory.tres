@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"relic_armory"
+display_name = "Relic Armory II"
+description = "A vast armory where ancient constructs are not merely repaired but redesigned. Tomb scholars have learned to build new scarab variants and arm skirmishers with salvaged bows of the old empire."
+faction_id = &"ivoryscar"
+category = &"military"
+build_cost = {0: 190, 1: 40, 5: 40}
+build_time = 4
+income_bonus = {}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([&"relic_skirmisher", &"bone_archer"])
+required_capital_level = 2
+upgrades_from = &"relic_workshop"
+class_loyalty_bonus = {"artisans": 2}

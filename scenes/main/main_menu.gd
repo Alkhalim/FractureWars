@@ -401,10 +401,10 @@ func _show_faction_select() -> void:
 	margin.anchor_top = 0
 	margin.anchor_right = 1
 	margin.anchor_bottom = 1
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
 	_faction_select_panel.add_child(margin)
 
 	var outer_vbox := VBoxContainer.new()
@@ -433,10 +433,10 @@ func _show_faction_select() -> void:
 	hbox.add_child(left_panel)
 
 	var left_margin := MarginContainer.new()
-	left_margin.add_theme_constant_override("margin_left", 12)
-	left_margin.add_theme_constant_override("margin_right", 12)
-	left_margin.add_theme_constant_override("margin_top", 12)
-	left_margin.add_theme_constant_override("margin_bottom", 12)
+	left_margin.add_theme_constant_override("margin_left", 16)
+	left_margin.add_theme_constant_override("margin_right", 16)
+	left_margin.add_theme_constant_override("margin_top", 24)
+	left_margin.add_theme_constant_override("margin_bottom", 20)
 	left_panel.add_child(left_margin)
 
 	var left_outer_vbox := VBoxContainer.new()
@@ -493,10 +493,10 @@ func _show_faction_select() -> void:
 	hbox.add_child(right_panel)
 
 	var right_margin := MarginContainer.new()
-	right_margin.add_theme_constant_override("margin_left", 20)
-	right_margin.add_theme_constant_override("margin_right", 20)
-	right_margin.add_theme_constant_override("margin_top", 16)
-	right_margin.add_theme_constant_override("margin_bottom", 16)
+	right_margin.add_theme_constant_override("margin_left", 24)
+	right_margin.add_theme_constant_override("margin_right", 24)
+	right_margin.add_theme_constant_override("margin_top", 28)
+	right_margin.add_theme_constant_override("margin_bottom", 24)
 	right_panel.add_child(right_margin)
 
 	var right_vbox := VBoxContainer.new()
@@ -752,11 +752,10 @@ func _clear_bonus_labels() -> void:
 	var bonus_vbox: VBoxContainer = _faction_select_panel.find_child("LeaderBonusVBox", true, false) if _faction_select_panel else null
 	if bonus_vbox == null:
 		return
-	var to_remove: Array[Node] = []
-	for child in bonus_vbox.get_children():
-		if String(child.name).begins_with("BonusLine"):
-			to_remove.append(child)
-	for child in to_remove:
+	# Remove all children except the first one (the "Leader Bonuses:" header)
+	var children := bonus_vbox.get_children()
+	for i in range(children.size() - 1, 0, -1):
+		var child := children[i]
 		bonus_vbox.remove_child(child)
 		child.free()
 

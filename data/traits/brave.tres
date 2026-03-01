@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"brave"
+display_name = "Brave"
+description = "Stands firm when lesser commanders would flee."
+is_positive = true
+effects = {"retreat_morale_threshold": -5}
+excludes = Array[StringName]([&"cowardly"])
+acquire_context = Array[StringName]([&"battle_won", &"was_attacker"])
+acquire_threshold = 5
+lose_context = Array[StringName]([&"battle_lost"])
+lose_threshold = 12

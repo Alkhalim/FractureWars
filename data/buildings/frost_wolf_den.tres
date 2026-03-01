@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"frost_wolf_den"
+display_name = "Frost Wolf Den II"
+description = "An expanded kennel complex for the great frost wolves. Their howls echo through the frozen peaks."
+faction_id = &"moonspear"
+category = &"military"
+build_cost = {0: 175, 1: 40, 5: 45}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 1
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([&"frost_wyvern"])
+required_capital_level = 2
+required_terrain = -1
+class_loyalty_bonus = {}
+upgrades_from = &"frost_kennels"
+requires_capital = false

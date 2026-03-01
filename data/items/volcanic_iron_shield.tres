@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"volcanic_iron_shield"
+display_name = "Volcanic Iron Shield"
+description = "A shield forged from Duststorm Valley's volcanic iron, nearly impervious to fire and blade."
+rarity = &"rare"
+effects = {"army_defense_bonus": 4}
+source_factions = Array[StringName]([&"cinderguard"])
+gift_tags = Array[StringName]([&"martial", &"practical"])

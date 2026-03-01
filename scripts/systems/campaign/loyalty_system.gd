@@ -216,6 +216,10 @@ const W_MAGE_PRESENCE := {peasants = -1, artisans = 0, scholars = 3, nobles = 0,
 const W_CONSTRUCT_PRESENCE := {peasants = -1, artisans = 3, scholars = 0, nobles = 0, captives = 0}
 const W_MONSTER_PRESENCE := {peasants = -4, artisans = -1, scholars = -1, nobles = -1, captives = 0}
 
+# Commander presence — friendly commander nearby or in city boosts loyalty
+const W_COMMANDER_NEARBY := {peasants = 2, artisans = 1, scholars = 1, nobles = 2, captives = 0}
+const W_COMMANDER_IN_CITY := {peasants = 3, artisans = 2, scholars = 2, nobles = 4, captives = 0}
+
 # Missing building type penalties
 const W_NO_ECONOMIC_BUILDINGS := {peasants = 0, artisans = -3, scholars = 0, nobles = 0, captives = 0}
 const W_NO_MILITARY_BUILDINGS := {peasants = 0, artisans = 0, scholars = 0, nobles = -3, captives = 0}
@@ -379,6 +383,29 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 		result.append({label = "Construct Garrison (x%d)" % mil_tags.construct, weights = W_CONSTRUCT_PRESENCE, multiplier = mil_tags.construct})
 	if mil_tags.monster > 0:
 		result.append({label = "Monster Presence (x%d)" % mil_tags.monster, weights = W_MONSTER_PRESENCE, multiplier = mil_tags.monster})
+
+	# Commander presence — friendly commanders boost loyalty
+	var commander_in_city := false
+	var commander_nearby := false
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.commander == null or army.faction_id != faction_id:
+			continue
+		if army.is_garrison:
+			continue
+		# Check if commander has negative loyalty aura (skip if so)
+		var cmd_bonuses := CommanderSystem.get_commander_army_bonuses(army.commander)
+		if cmd_bonuses.get("loyalty_aura", 0) < 0:
+			continue
+		if army.hex_pos == city.hex_pos:
+			commander_in_city = true
+			break
+		elif HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= 2:
+			commander_nearby = true
+	if commander_in_city:
+		result.append({label = "Commander in City", weights = W_COMMANDER_IN_CITY, multiplier = 1})
+	elif commander_nearby:
+		result.append({label = "Commander Nearby", weights = W_COMMANDER_NEARBY, multiplier = 1})
 
 	# ── Policy & Senate effects (Empire only) ──
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)

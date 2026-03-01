@@ -13,3 +13,5 @@ starting_regions = Array[StringName]([&"duststorm_valley"])
 realm_affinity = 2
 shard_preferences = {}
 ai_personality = {"aggression": 0.4, "expansion": 0.4}
+gift_likes = Array[StringName]([&"martial", &"practical", &"arcane"])
+gift_dislikes = Array[StringName]([&"nature", &"elegant"])

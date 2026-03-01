@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"temple_of_storms"
+display_name = "Temple of Storms II"
+description = "A towering temple built on the highest ridge, where lightning is channeled through iron spires into sacred chambers below. The thunder never ceases here, and the faithful consider it the voice of the sky itself."
+faction_id = &"thunderswarm"
+category = &"cultural"
+build_cost = {0: 185, 1: 25, 5: 50}
+build_time = 3
+income_bonus = {2: 14}
+population_growth_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"lightning_shrine"
+class_loyalty_bonus = {"peasants": 3, "artisans": 1, "scholars": 2, "nobles": 2}
+special_effects = {"research_speed_bonus": 0.15}

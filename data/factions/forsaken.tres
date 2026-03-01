@@ -12,4 +12,6 @@ is_playable = true
 starting_regions = Array[StringName]([&"orenthal"])
 realm_affinity = 1
 shard_preferences = {}
-ai_personality = {"aggression": 0.5, "expansion": 0.4}
+ai_personality = {"aggression": 0.3, "expansion": 0.2}
+gift_likes = Array[StringName]([&"dark", &"arcane", &"scholarly"])
+gift_dislikes = Array[StringName]([&"religious", &"nature"])

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"oasis_healing_waters"
+display_name = "Oasis Healing Waters"
+description = "A crystal vial of blessed water from an Oasean sanctuary, said to cure any ailment."
+rarity = &"rare"
+effects = {"heal_per_turn": 12}
+source_factions = Array[StringName]([&"oaseans"])
+gift_tags = Array[StringName]([&"nature", &"religious", &"elegant"])

@@ -13,3 +13,5 @@ starting_regions = Array[StringName]([&"dragonspire_mountains"])
 realm_affinity = 2
 shard_preferences = {}
 ai_personality = {"aggression": 0.6, "expansion": 0.5}
+gift_likes = Array[StringName]([&"martial", &"primitive", &"practical"])
+gift_dislikes = Array[StringName]([&"scholarly", &"luxury"])

@@ -48,7 +48,17 @@
       "Bash(git:*)",
       "Bash(cat:*)",
       "Bash(npx claude-code-templates@latest:*)",
-      "Bash(xargs basename:*)"
+      "Bash(xargs basename:*)",
+      "Bash(sort:*)",
+      "Bash(cd D:\\\\Dokumente\\\\Gamedesign\\\\Beyond\\\\FractureWars\\\\FractureWars:*)",
+      "Bash(xargs:*)",
+      "Bash(xxd:*)",
+      "Bash(rm:*)",
+      "Bash(sed:*)",
+      "Bash(do echo:*)",
+      "Bash(cp:*)",
+      "Bash(do:*)",
+      "Bash(wc:*)"
     ]
   }
 }

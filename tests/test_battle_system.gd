@@ -51,7 +51,9 @@ func _make_unit_data(id: StringName, tags: Array[String], hp: int = 100, atk: in
 	ud.tags = tags
 	ud.max_hp = hp
 	ud.attack = atk
-	ud.defense = def
+	ud.melee_defense = def
+	ud.projectile_defense = int(def * 0.7)
+	ud.magic_defense = int(def * 0.5)
 	ud.speed = spd
 	ud.attack_range = rng
 	return ud

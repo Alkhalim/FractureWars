@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"enchanted_silk_banner"
+display_name = "Enchanted Silk Banner"
+description = "A shimmering banner woven from enchanted silk, its colors shift to match its bearer's faction."
+rarity = &"rare"
+effects = {"city_growth_bonus": 2, "city_gold_bonus": 1}
+source_factions = Array[StringName]([&"moonspear", &"empire"])
+gift_tags = Array[StringName]([&"elegant", &"arcane", &"luxury"])

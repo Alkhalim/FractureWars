@@ -6,3 +6,4 @@ extends Resource
 @export var description: String
 @export var bonus_effect: Dictionary = {}  # effect_key -> value (positive)
 @export var malus_effect: Dictionary = {}  # effect_key -> value (negative)
+@export var terrain_tags: Array[StringName] = []  # empty = universal; e.g. [&"desert", &"tundra"]

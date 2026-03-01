@@ -23,6 +23,7 @@ var selected_formation: BattleSimulatorV3.BattleFormationV3 = null
 var player_side: int = 0
 var is_player_attacker: bool = false
 var _battle_loot: Dictionary = {}
+var _battle_plunder: Dictionary = {} # Extra city plunder for raider factions
 var _magic_projs: Array[Dictionary] = []
 var _impact_marks: Node2D
 const MAX_IMPACT_MARKS := 200
@@ -129,7 +130,7 @@ func _ready() -> void:
 	# Generate terrain
 	var campaign_terrain := Enums.TerrainType.PLAINS
 	if GameManager.state and GameManager.state.hex_map:
-		var tile := GameManager.state.hex_map.get_tile(battle_hex_pos)
+		var tile = GameManager.state.hex_map.get_tile(battle_hex_pos)
 		if tile:
 			campaign_terrain = tile.terrain
 	simulator.setup_terrain(campaign_terrain, battle_hex_pos)
@@ -539,12 +540,17 @@ func _update_roster_bars(formations: Array[BattleSimulatorV3.BattleFormationV3],
 		var hp_lbl: Label = refs.get("hp_lbl")
 		var bar_fill: ColorRect = refs.get("bar_fill")
 		var bar_bg: ColorRect = refs.get("bar_bg")
+		var routing_lbl: Label = refs.get("routing_lbl")
 		if hp_lbl:
 			hp_lbl.text = "%d/%d  %d/%d ent" % [maxi(0, f.current_hp), f.max_hp, f.entities_alive, f.total_entities]
+		if routing_lbl:
+			routing_lbl.visible = f.is_routing and not f.is_dead and not f.is_fled
 		if bar_fill and bar_bg and f.max_hp > 0:
 			var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
 			bar_fill.size = Vector2(bar_bg.size.x * hp_ratio, bar_bg.size.y)
-			if hp_ratio > 0.6:
+			if f.is_routing:
+				bar_fill.color = Color(0.85, 0.85, 0.85)  # White for routing/fleeing
+			elif hp_ratio > 0.6:
 				bar_fill.color = Color(0.25, 0.65, 0.35) if is_player else Color(0.7, 0.25, 0.2)
 			elif hp_ratio > 0.3:
 				bar_fill.color = Color(0.75, 0.65, 0.2)
@@ -639,6 +645,16 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 			var bar_row := HBoxContainer.new()
 			bar_row.add_theme_constant_override("separation", 4)
 
+			# Routing indicator
+			var routing_lbl := Label.new()
+			routing_lbl.text = "ROUTING"
+			routing_lbl.add_theme_font_size_override("font_size", 9)
+			routing_lbl.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95))
+			routing_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+			routing_lbl.add_theme_constant_override("outline_size", 2)
+			routing_lbl.visible = f.is_routing and not is_dead
+			bar_row.add_child(routing_lbl)
+
 			# HP text
 			var hp_lbl := Label.new()
 			hp_lbl.text = "%d/%d  %d/%d ent" % [maxi(0, f.current_hp), f.max_hp, f.entities_alive, f.total_entities]
@@ -662,7 +678,9 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 			if not is_dead and f.max_hp > 0:
 				var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
 				bar_fill.size = Vector2(170.0 * hp_ratio, 7)
-				if hp_ratio > 0.6:
+				if f.is_routing:
+					bar_fill.color = Color(0.85, 0.85, 0.85)  # White for routing/fleeing
+				elif hp_ratio > 0.6:
 					bar_fill.color = Color(0.25, 0.65, 0.35) if is_player else Color(0.7, 0.25, 0.2)
 				elif hp_ratio > 0.3:
 					bar_fill.color = Color(0.75, 0.65, 0.2)
@@ -673,7 +691,7 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 			bar_bg.add_child(bar_fill)
 
 			# Store refs for in-place updates
-			_roster_hp_refs[f.instance_id] = {"hp_lbl": hp_lbl, "bar_fill": bar_fill, "bar_bg": bar_bg}
+			_roster_hp_refs[f.instance_id] = {"hp_lbl": hp_lbl, "bar_fill": bar_fill, "bar_bg": bar_bg, "routing_lbl": routing_lbl}
 
 			if is_dead:
 				bar_row.modulate = Color(0.6, 0.55, 0.5, 0.6)
@@ -823,6 +841,27 @@ func _create_panel() -> PanelContainer:
 # --- Input ---
 
 func _input(event: InputEvent) -> void:
+	# Handle all setup phase mouse input in _input to prevent UI panels from consuming clicks
+	if current_phase == Phase.SETUP:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			# Let Button controls (Begin Battle, orders, etc.) handle their own clicks
+			var hovered := get_viewport().gui_get_hovered_control()
+			if hovered is Button:
+				return
+			if event.pressed and _dragging_formation == null:
+				var world_pos := _screen_to_world(event.position)
+				_on_left_press(world_pos)
+				if _dragging_formation != null:
+					get_viewport().set_input_as_handled()
+			elif not event.pressed:
+				var world_pos := _screen_to_world(event.position)
+				_on_left_release(world_pos)
+				get_viewport().set_input_as_handled()
+		elif event is InputEventMouseMotion and _dragging_formation != null:
+			var world_pos := _screen_to_world(event.position)
+			_on_drag(world_pos)
+			get_viewport().set_input_as_handled()
+		return
 	# Handle drag motion in _input so UI panels can't interrupt active drags
 	if _dragging_formation != null:
 		if event is InputEventMouseMotion:
@@ -923,9 +962,9 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 
 func _on_left_press(world_pos: Vector2) -> void:
 	if current_phase == Phase.SETUP:
-		# Try to pick up a formation for dragging
 		var f := _find_formation_at(world_pos)
 		if f and f.side == player_side:
+			# Clicked directly on a player formation — start dragging
 			selected_formation = f
 			_dragging_formation = f
 			_drag_offset = f.position - world_pos
@@ -933,6 +972,7 @@ func _on_left_press(world_pos: Vector2) -> void:
 			_populate_unit_list()
 			renderer.queue_redraw()
 		elif f:
+			# Clicked enemy formation — just select to view info
 			selected_formation = f
 			_update_unit_info(f)
 			_populate_unit_list()
@@ -998,7 +1038,7 @@ func _update_roster_highlight() -> void:
 
 func _find_formation_at(world_pos: Vector2) -> BattleSimulatorV3.BattleFormationV3:
 	var best: BattleSimulatorV3.BattleFormationV3 = null
-	var best_dist := 40.0  # Click radius
+	var best_dist := 999999.0
 
 	var all_formations: Array[BattleSimulatorV3.BattleFormationV3] = []
 	all_formations.append_array(simulator.attacker_formations)
@@ -1008,7 +1048,9 @@ func _find_formation_at(world_pos: Vector2) -> BattleSimulatorV3.BattleFormation
 		if f.is_dead or f.is_fled:
 			continue
 		var dist := f.position.distance_to(world_pos)
-		if dist < best_dist:
+		# Use entity radius + padding as click threshold (larger units = larger click area)
+		var search_radius := BattleSimulatorV3.get_entity_radius(f) + 20.0
+		if dist < search_radius and dist < best_dist:
 			best_dist = dist
 			best = f
 	return best
@@ -1070,12 +1112,20 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	header_hbox.add_child(name_label)
 	vbox.add_child(header_hbox)
 
-	# Calculate live DPS from formation data
+	# Calculate live DPS from formation data (accounts for mana/ammo)
 	var live_dps := 0.0
 	if f.tags.has("mage"):
-		live_dps = f.entities_alive * f.attack * 0.6 * 0.7 * (10.0 / f.ranged_cooldown_max)
+		var mana_ratio := f.current_mana / f.max_mana if f.max_mana > 0.0 else 1.0
+		var eff_cd := f.ranged_cooldown_max
+		if mana_ratio < 0.5:
+			eff_cd = int(float(eff_cd) * lerpf(2.5, 1.3, mana_ratio * 2.0))
+		live_dps = f.entities_alive * f.attack * 0.6 * 0.7 * (10.0 / eff_cd)
 	elif f.tags.has("ranged"):
-		live_dps = f.entities_alive * f.attack * 0.6 * 0.8 * (10.0 / f.ranged_cooldown_max)
+		# Show remaining-ammo-weighted DPS
+		if f.current_ammo > 0:
+			live_dps = f.entities_alive * f.attack * 0.6 * 0.8 * (10.0 / f.ranged_cooldown_max)
+		else:
+			live_dps = 0.0  # Out of ammo
 	elif f.total_entities <= 1:
 		live_dps = f.attack * 2.0
 	else:
@@ -1084,9 +1134,9 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	var dps_text := "DPS:%d" % int(live_dps)
 
 	var ud := DataManager.get_unit(f.unit_data_id)
-	var base_def: int = ud.defense if ud else f.defense
+	var base_def: int = ud.melee_defense if ud else f.defense
 	var bonus_def: int = f.defense - base_def
-	var def_text := "DEF:%d" % f.defense
+	var def_text := "DEF:%d/%d/%d" % [f.melee_defense, f.projectile_defense, f.magic_defense]
 	if bonus_def != 0:
 		def_text += " (%+d)" % bonus_def
 
@@ -1382,35 +1432,39 @@ func _spawn_damage_number(formation_id: StringName, damage: int) -> void:
 
 	var label := _pool_get_label()
 	label.text = str(damage)
-	label.position = pos + Vector2(randf_range(-12, 12), -10)
-	label.add_theme_font_size_override("font_size", 14)
-	label.add_theme_color_override("font_color", Color(1, 0.3, 0.2))
+	label.position = pos + Vector2(randf_range(-14, 14), -12)
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_color", Color(1, 0.35, 0.2))
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	label.add_theme_constant_override("outline_size", 3)
+	label.z_index = 10
+	label.modulate = Color(1, 1, 1, 1)
+	label.scale = Vector2(1.15, 1.15)
+	if not label.is_inside_tree():
+		effects_layer.add_child(label)
+
+	var tween := create_tween()
+	tween.tween_property(label, "position:y", label.position.y - 30, 0.9)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.9)
+	tween.parallel().tween_property(label, "scale", Vector2(0.8, 0.8), 0.9)
+	tween.tween_callback(func(): label.scale = Vector2.ONE; _pool_return_label(label))
+
+func _spawn_aura_damage_number(formation_id: StringName, damage: int) -> void:
+	var pos := _get_formation_pos(formation_id)
+	var label := _pool_get_label()
+	label.text = str(damage)
+	label.position = pos + Vector2(randf_range(-10, 10), -8)
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color(0.75, 0.35, 0.95))
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	label.add_theme_constant_override("outline_size", 2)
 	label.z_index = 10
 	label.modulate = Color(1, 1, 1, 1)
 	if not label.is_inside_tree():
 		effects_layer.add_child(label)
-
 	var tween := create_tween()
-	tween.tween_property(label, "position:y", label.position.y - 25, 0.8)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.8)
-	tween.tween_callback(_pool_return_label.bind(label))
-
-func _spawn_aura_damage_number(formation_id: StringName, damage: int) -> void:
-	var pos := _get_formation_pos(formation_id)
-	var label := _pool_get_label()
-	label.text = str(damage)
-	label.position = pos + Vector2(randf_range(-8, 8), -6)
-	label.add_theme_font_size_override("font_size", 10)
-	label.add_theme_color_override("font_color", Color(0.7, 0.3, 0.9))
-	label.z_index = 10
-	label.modulate = Color(1, 1, 1, 1)
-	if not label.is_inside_tree():
-		effects_layer.add_child(label)
-	var tween := create_tween()
-	tween.tween_property(label, "position:y", label.position.y - 18, 0.6)
-	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.6)
+	tween.tween_property(label, "position:y", label.position.y - 22, 0.7)
+	tween.parallel().tween_property(label, "modulate:a", 0.0, 0.7)
 	tween.tween_callback(_pool_return_label.bind(label))
 
 func _spawn_projectile_from_pos(from_pos: Vector2, to_pos: Vector2, is_hit: bool) -> void:
@@ -1756,13 +1810,14 @@ func _show_result() -> void:
 	if player_captives > 0:
 		text += "\nCaptives gained: %d" % player_captives
 
+	var res_names := {
+		Enums.ResourceType.GOLD: "Gold",
+		Enums.ResourceType.IRON: "Iron",
+		Enums.ResourceType.WOOD: "Wood",
+		Enums.ResourceType.FOOD: "Food",
+		Enums.ResourceType.TECHNOLOGY: "Tech",
+	}
 	if player_won and _battle_loot.size() > 0:
-		var res_names := {
-			Enums.ResourceType.GOLD: "Gold",
-			Enums.ResourceType.IRON: "Iron",
-			Enums.ResourceType.WOOD: "Wood",
-			Enums.ResourceType.FOOD: "Food",
-		}
 		var loot_parts: Array[String] = []
 		for res_type in _battle_loot:
 			var amount: int = _battle_loot[res_type]
@@ -1770,7 +1825,17 @@ func _show_result() -> void:
 				var rname: String = res_names.get(res_type, "???")
 				loot_parts.append("+%d %s" % [amount, rname])
 		if loot_parts.size() > 0:
-			text += "\nResources looted: %s" % ", ".join(loot_parts)
+			text += "\nSpoils of war: %s" % ", ".join(loot_parts)
+
+	if player_won and _battle_plunder.size() > 0:
+		var plunder_parts: Array[String] = []
+		for res_type in _battle_plunder:
+			var amount: int = _battle_plunder[res_type]
+			if amount > 0:
+				var rname: String = res_names.get(res_type, "???")
+				plunder_parts.append("+%d %s" % [amount, rname])
+		if plunder_parts.size() > 0:
+			text += "\nPlundered from city: %s" % ", ".join(plunder_parts)
 
 	casualty_label.text = text
 	vbox.add_child(casualty_label)
@@ -1825,6 +1890,8 @@ func _apply_battle_results() -> void:
 	# Calculate army values BEFORE removing survivors (for loot scaling)
 	var atk_value := _calculate_army_value(attacker_army)
 	var def_value := _calculate_army_value(defender_army)
+	var atk_strength: int = atk_value.gold + atk_value.iron
+	var def_strength: int = def_value.gold + def_value.iron
 
 	if is_player_attacker:
 		_update_army_survivors(attacker_army, simulator.get_surviving_formations(0))
@@ -1832,6 +1899,10 @@ func _apply_battle_results() -> void:
 	else:
 		_update_army_survivors(defender_army, simulator.get_surviving_formations(0))
 		_update_army_survivors(attacker_army, simulator.get_surviving_formations(1))
+
+	# Strip garrison reinforcements from armies (they were temp-merged before battle)
+	_strip_garrison_reinforcements(attacker_army)
+	_strip_garrison_reinforcements(defender_army)
 
 	# Grant veterancy XP to surviving units
 	_grant_unit_veterancy_xp(attacker_army, simulator, 0 if is_player_attacker else 1, def_strength)
@@ -1862,20 +1933,48 @@ func _apply_battle_results() -> void:
 
 	if not defender_alive:
 		GameManager.remove_army(defender_army.army_id)
+		# Mark garrison as defeated so a second army doesn't have to re-fight it this turn
+		if defender_army.is_garrison:
+			var garrison_city := GameManager.city_system.get_city_at_hex(battle_hex_pos)
+			if garrison_city:
+				garrison_city.garrison_defeated_turn = GameManager.state.current_turn
+				garrison_city.garrison_hp_ratio = 0.0
 
-	# Garrison assault failure: attacker didn't win — force retreat 1 tile
+	# Garrison battle resolution — garrison can't retreat from city defenses
 	var garrison_retreat := false
 	if defender_army.is_garrison and defender_alive:
-		GameManager.remove_army(defender_army.army_id) # garrison regenerates next attack
+		GameManager.remove_army(defender_army.army_id)
 		defender_alive = false
-		if attacker_alive:
-			# Retreat attacker 1 tile away from the city
+		var attacker_side := 0 if is_player_attacker else 1
+		var attacker_won := simulator.winner_side == attacker_side
+		if attacker_won and attacker_alive:
+			# Attacker won — garrison eradicated, attacker stays on city hex
+			var garrison_city := GameManager.city_system.get_city_at_hex(battle_hex_pos)
+			if garrison_city:
+				garrison_city.garrison_defeated_turn = GameManager.state.current_turn
+				garrison_city.garrison_hp_ratio = 0.0
+			attacker_army.movement_remaining = 0.0
+			attacker_army.battle_exhausted = true
+		elif attacker_alive:
+			# Garrison won — retreat attacker away from city
 			var retreat_hex := _find_garrison_retreat_hex(attacker_army, battle_hex_pos)
 			if retreat_hex != Vector2i(-1, -1):
 				attacker_army.hex_pos = retreat_hex
 			attacker_army.movement_remaining = 0.0
 			attacker_army.battle_exhausted = true
 			garrison_retreat = true
+			# Persist garrison damage — surviving garrison spawns with reduced HP
+			var garrison_city := GameManager.city_system.get_city_at_hex(battle_hex_pos)
+			if garrison_city:
+				var total_max := 0
+				var total_current := 0
+				for unit in defender_army.units:
+					var data := DataManager.get_unit(unit.unit_data_id)
+					if data:
+						total_max += data.max_hp
+					total_current += unit.current_hp
+				if total_max > 0:
+					garrison_city.garrison_hp_ratio = clampf(float(total_current) / float(total_max), 0.01, 1.0)
 		else:
 			GameManager.remove_army(attacker_army.army_id)
 	elif not attacker_alive:
@@ -1890,8 +1989,8 @@ func _apply_battle_results() -> void:
 	if attacker_alive and defender_alive:
 		attacker_army.battle_exhausted = true
 		attacker_army.movement_remaining = 0.0
-		defender_army.battle_exhausted = true
-		defender_army.movement_remaining = 0.0
+		# Defender was forced into battle — only penalize the aggressor
+		# Defender keeps movement so they can act on their own turn
 		_separate_armies_after_stalemate()
 
 	# Faction mechanic: Thunderswarm storm fury rises from battles
@@ -1907,7 +2006,7 @@ func _apply_battle_results() -> void:
 	all_formations.append_array(simulator.attacker_formations)
 	all_formations.append_array(simulator.defender_formations)
 	for f_form in all_formations:
-		var bf: BattleFormationV3 = f_form
+		var bf: BattleSimulatorV3.BattleFormationV3 = f_form
 		var bf_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(bf.faction_id, bf.faction_id)
 		if bf.faction_id != thunderswarm_fid and bf_parent != thunderswarm_fid:
 			continue
@@ -1932,6 +2031,7 @@ func _apply_battle_results() -> void:
 
 	if attacker_alive and not defender_alive and not garrison_retreat:
 		EventBus.battle_resolved.emit(attacker_faction_id, battle_hex_pos)
+		GameManager.diplomacy_system._apply_hostile_action_ripple(attacker_faction_id, defender_faction_id, 5)
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 		if city_at and city_at.faction_id != attacker_faction_id:
 			GameManager.city_system.start_siege(city_at.city_id, attacker_faction_id)
@@ -1941,43 +2041,66 @@ func _apply_battle_results() -> void:
 		GameManager._try_claim_shard(battle_hex_pos, attacker_faction_id)
 	elif garrison_retreat:
 		EventBus.battle_resolved.emit(defender_faction_id, battle_hex_pos)
+		GameManager.diplomacy_system._apply_hostile_action_ripple(defender_faction_id, attacker_faction_id, 5)
 	elif defender_alive and not attacker_alive:
+		# Winning defender keeps full movement — they were attacked, not the aggressor
+		defender_army.battle_exhausted = false
+		defender_army.movement_remaining = defender_army.get_max_movement()
 		EventBus.battle_resolved.emit(defender_faction_id, battle_hex_pos)
+		GameManager.diplomacy_system._apply_hostile_action_ripple(defender_faction_id, attacker_faction_id, 5)
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 		if city_at and city_at.faction_id == defender_faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
 		# Auto-claim shard after defeating guardians
 		GameManager._try_claim_shard(battle_hex_pos, defender_faction_id)
 
-	# Battle loot — scales with enemy army recruit cost (15% of gold/iron, 5% as wood/food)
+	# Battle loot — based on types of enemy units killed/routed
 	_battle_loot.clear()
+	_battle_plunder.clear()
+	var winner_fid: StringName = &""
+	var enemy_formations_ref: Array = []
 	if attacker_alive and not defender_alive:
-		var enemy_val := def_value
-		var loot_gold := int(enemy_val.gold * 0.15)
-		var loot_iron := int(enemy_val.iron * 0.15)
-		var loot_wood := int((enemy_val.gold + enemy_val.iron) * 0.05)
-		var loot_food := int((enemy_val.gold + enemy_val.iron) * 0.05)
-		var fs: FactionState = GameManager.state.faction_states.get(attacker_faction_id)
-		if fs:
-			if loot_gold > 0:
-				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
-				_battle_loot[Enums.ResourceType.GOLD] = loot_gold
-			if loot_iron > 0:
-				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
-				_battle_loot[Enums.ResourceType.IRON] = loot_iron
-			if loot_wood > 0:
-				fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + loot_wood
-				_battle_loot[Enums.ResourceType.WOOD] = loot_wood
-			if loot_food > 0:
-				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + loot_food
-				_battle_loot[Enums.ResourceType.FOOD] = loot_food
+		winner_fid = attacker_faction_id
+		enemy_formations_ref = simulator.defender_formations if is_player_attacker else simulator.attacker_formations
 	elif defender_alive and not attacker_alive:
-		var enemy_val := atk_value
-		var loot_gold := int(enemy_val.gold * 0.15)
-		var loot_iron := int(enemy_val.iron * 0.15)
-		var loot_wood := int((enemy_val.gold + enemy_val.iron) * 0.05)
-		var loot_food := int((enemy_val.gold + enemy_val.iron) * 0.05)
-		var fs: FactionState = GameManager.state.faction_states.get(defender_faction_id)
+		winner_fid = defender_faction_id
+		enemy_formations_ref = simulator.attacker_formations if is_player_attacker else simulator.defender_formations
+
+	if winner_fid != &"":
+		var loot_gold := 0
+		var loot_iron := 0
+		var loot_wood := 0
+		var loot_food := 0
+		var loot_tech := 0
+		for ef in enemy_formations_ref:
+			var form: BattleSimulatorV3.BattleFormationV3 = ef
+			if not form.is_dead and not form.is_fled:
+				continue # Only loot from killed/routed units
+			var ud := DataManager.get_unit(form.unit_data_id)
+			if not ud:
+				continue
+			var unit_value: int = ud.recruit_cost.get(Enums.ResourceType.GOLD, 0) + ud.recruit_cost.get(Enums.ResourceType.IRON, 0)
+			# Base gold from every kill (spoils of war)
+			loot_gold += int(unit_value * 0.08)
+			# Tag-specific bonus loot
+			for tag in form.tags:
+				match tag:
+					"infantry":
+						loot_iron += int(unit_value * 0.06) # Armor and weapons salvage
+					"cavalry":
+						loot_food += int(unit_value * 0.08) # Mounts and provisions
+						loot_gold += int(unit_value * 0.04) # Valuable tack
+					"ranged":
+						loot_wood += int(unit_value * 0.07) # Bows, bolts, shafts
+					"construct":
+						loot_iron += int(unit_value * 0.10) # Scrap metal
+					"mage":
+						loot_tech += int(unit_value * 0.08) # Arcane scrolls and knowledge
+					"beast", "monster":
+						loot_food += int(unit_value * 0.10) # Meat, hide, bone
+						loot_wood += int(unit_value * 0.03) # Bone as building material
+
+		var fs: FactionState = GameManager.state.faction_states.get(winner_fid)
 		if fs:
 			if loot_gold > 0:
 				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
@@ -1991,10 +2114,34 @@ func _apply_battle_results() -> void:
 			if loot_food > 0:
 				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + loot_food
 				_battle_loot[Enums.ResourceType.FOOD] = loot_food
+			if loot_tech > 0:
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + loot_tech
+				_battle_loot[Enums.ResourceType.TECHNOLOGY] = loot_tech
+
+		# Skulloath / Shardhorde city plunder: extra loot when defeating a garrison
+		var winner_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(winner_fid, winner_fid)
+		var is_raider := winner_fid in [&"skulloath", &"shardhorde"] or winner_parent in [&"skulloath", &"shardhorde"]
+		var enemy_was_garrison: bool = (attacker_alive and not defender_alive and defender_army.is_garrison) or (defender_alive and not attacker_alive and attacker_army.is_garrison)
+		if is_raider and enemy_was_garrison and fs:
+			var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
+			var city_level: int = city_at.level if city_at else 1
+			var plunder_mult := 3
+			var plunder_iron := (15 + city_level * 10) * plunder_mult
+			var plunder_wood := (10 + city_level * 8) * plunder_mult
+			var plunder_tech := (5 + city_level * 5) * plunder_mult
+			var plunder_gold := (20 + city_level * 12) * plunder_mult
+			fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + plunder_iron
+			fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + plunder_wood
+			fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + plunder_tech
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + plunder_gold
+			_battle_plunder[Enums.ResourceType.IRON] = plunder_iron
+			_battle_plunder[Enums.ResourceType.WOOD] = plunder_wood
+			_battle_plunder[Enums.ResourceType.TECHNOLOGY] = plunder_tech
+			_battle_plunder[Enums.ResourceType.GOLD] = plunder_gold
 
 	# Build battle context for context-aware skill selection
 	var base_context: Array[StringName] = []
-	var tile := GameManager.state.hex_map.get_tile(battle_hex_pos)
+	var tile = GameManager.state.hex_map.get_tile(battle_hex_pos)
 	if tile:
 		base_context.append(StringName("terrain_" + Enums.TerrainType.keys()[tile.terrain].to_lower()))
 	if GameManager.city_system.get_city_at_hex(battle_hex_pos):
@@ -2044,10 +2191,16 @@ func _apply_battle_results() -> void:
 	# Commander XP and item drops (use cached refs since remove_army nulls them)
 	if atk_commander:
 		CommanderSystem.grant_battle_xp(atk_commander, def_strength, attacker_alive, atk_context)
+		var atk_trait_changes := CommanderSystem.evaluate_traits(atk_commander, atk_context)
+		for change in atk_trait_changes:
+			EventBus.commander_trait_changed.emit(atk_commander, change.action, change.trait_id)
 		if attacker_alive and not defender_alive:
 			CommanderSystem.apply_item_drop(atk_commander, defender_faction_id)
 	if def_commander:
 		CommanderSystem.grant_battle_xp(def_commander, atk_strength, defender_alive, def_context)
+		var def_trait_changes := CommanderSystem.evaluate_traits(def_commander, def_context)
+		for change in def_trait_changes:
+			EventBus.commander_trait_changed.emit(def_commander, change.action, change.trait_id)
 		if defender_alive and not attacker_alive:
 			CommanderSystem.apply_item_drop(def_commander, attacker_faction_id)
 
@@ -2075,15 +2228,17 @@ func _grant_unit_veterancy_xp(army: ArmyState, sim: BattleSimulatorV3, side: int
 		unit.grant_xp(base_xp + damage_bonus)
 
 func _find_garrison_retreat_hex(army: ArmyState, city_hex: Vector2i) -> Vector2i:
-	# Find adjacent hex farthest from the city and passable
+	# Find adjacent hex farthest from the city and passable (no water or mountains)
 	var neighbors := HexHelper.get_neighbors(army.hex_pos)
 	var best_hex := Vector2i(-1, -1)
 	var best_dist := -1
 	for n in neighbors:
 		if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 			continue
-		var tile := GameManager.state.hex_map.get_tile(n) if GameManager.state and GameManager.state.hex_map else null
+		var tile = GameManager.state.hex_map.get_tile(n) if GameManager.state and GameManager.state.hex_map else null
 		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
 			continue
 		var dist := HexHelper.hex_distance(n, city_hex)
 		if dist > best_dist:
@@ -2092,7 +2247,7 @@ func _find_garrison_retreat_hex(army: ArmyState, city_hex: Vector2i) -> Vector2i
 	return best_hex
 
 func _separate_armies_after_stalemate() -> void:
-	# Move each army 1 tile away from the other
+	# Move each army 1 tile away from the other (no water or mountains)
 	var atk_pos := attacker_army.hex_pos
 	var def_pos := defender_army.hex_pos
 	var hex_map := GameManager.state.hex_map
@@ -2103,8 +2258,10 @@ func _separate_armies_after_stalemate() -> void:
 	for neighbor in HexHelper.get_neighbors(atk_pos):
 		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 			continue
-		var tile := hex_map.get_tile(neighbor) if hex_map else null
+		var tile = hex_map.get_tile(neighbor) if hex_map else null
 		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
 			continue
 		var dist := HexHelper.hex_distance(neighbor, def_pos)
 		if dist > best_atk_dist:
@@ -2117,8 +2274,10 @@ func _separate_armies_after_stalemate() -> void:
 	for neighbor in HexHelper.get_neighbors(def_pos):
 		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 			continue
-		var tile := hex_map.get_tile(neighbor) if hex_map else null
+		var tile = hex_map.get_tile(neighbor) if hex_map else null
 		if tile and tile.terrain == Enums.TerrainType.WATER:
+			continue
+		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
 			continue
 		var dist := HexHelper.hex_distance(neighbor, atk_pos)
 		if dist > best_def_dist:
@@ -2199,6 +2358,9 @@ func _apply_elderbeast_building_bonuses() -> void:
 			# T1: Chitin Walls — +8 defense
 			if beast.buildings.has(&"chitin_walls"):
 				f.defense += 8
+				f.melee_defense += 8
+				f.projectile_defense += 8
+				f.magic_defense += 8
 
 			# T1: Feeding Tendrils — HP regen during melee combat (0.33 HP/tick)
 			if beast.buildings.has(&"shard_conduit"):
@@ -2264,6 +2426,19 @@ func _get_formation_pos(formation_id: StringName) -> Vector2:
 	if f:
 		return f.position
 	return Vector2.ZERO
+
+func _strip_garrison_reinforcements(army: ArmyState) -> void:
+	if army == null:
+		return
+	var count: int = army.get_meta("garrison_reinforcement_count", 0)
+	if count <= 0:
+		return
+	# Remove the last N units (garrison units were appended at the end)
+	# But some may have died — only remove surviving garrison units from the tail
+	var to_remove := mini(count, army.units.size())
+	if to_remove > 0:
+		army.units = army.units.slice(0, army.units.size() - to_remove)
+	army.remove_meta("garrison_reinforcement_count")
 
 func _return_to_campaign() -> void:
 	GameManager.current_phase = Enums.GamePhase.CAMPAIGN

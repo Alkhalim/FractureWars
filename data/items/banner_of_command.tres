@@ -10,3 +10,4 @@ description = "An imperial banner inspiring prosperity."
 rarity = &"rare"
 effects = {"city_growth_bonus": 3, "city_gold_bonus": 2}
 source_factions = Array[StringName]([&"empire"])
+gift_tags = Array[StringName]([&"martial", &"elegant", &"luxury"])

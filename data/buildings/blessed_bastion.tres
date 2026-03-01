@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"blessed_bastion"
+display_name = "Blessed Bastion II"
+description = "A sanctified fortress wreathed in radiant light. The sun's blessing empowers its wards, searing the unholy and shielding the faithful behind walls of divine fire."
+faction_id = &"sunblessed"
+category = &"defensive"
+build_cost = {0: 145, 5: 65}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 0
+defense_bonus = 8
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 2, "scholars": 1}
+upgrades_from = &"sacred_ward"

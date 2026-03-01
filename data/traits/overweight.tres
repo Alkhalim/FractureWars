@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"overweight"
+display_name = "Overweight"
+description = "Too many feasts and too little exercise have taken their toll."
+is_positive = false
+effects = {"army_speed_bonus": -1, "army_movement_bonus": -0.5}
+excludes = Array[StringName]([&"athletic"])
+acquire_context = Array[StringName]([&"in_city"])
+acquire_threshold = 7
+lose_context = Array[StringName]([&"battle_won", &"was_attacker"])
+lose_threshold = 10

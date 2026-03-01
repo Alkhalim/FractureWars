@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"grand_aviary"
+display_name = "Grand Aviary II"
+description = "A towering spire where the blessed raptors nest. The keepers commune with sunlit messengers."
+faction_id = &"sunblessed"
+category = &"military"
+build_cost = {0: 160, 1: 35, 5: 45}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 2
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([&"light_crossbow"])
+required_capital_level = 2
+required_terrain = -1
+class_loyalty_bonus = {}
+upgrades_from = &"sacred_aviary"
+requires_capital = false

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bone_beast_pits"
+display_name = "Bone Beast Pits II"
+description = "Deep excavation pits where ancient bone constructs are awakened to serve as war beasts."
+faction_id = &"ivoryscar"
+category = &"military"
+build_cost = {0: 160, 1: 35, 5: 40}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 1
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([&"great_scarab", &"tomb_guard"])
+required_capital_level = 2
+required_terrain = -1
+class_loyalty_bonus = {}
+upgrades_from = &"tomb_kennels"
+requires_capital = false

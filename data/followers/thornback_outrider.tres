@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="FollowerData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/follower_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"thornback_outrider"
+display_name = "Thornback Outrider"
+description = "A swift jungle runner who knows every hidden trail. (+1 campaign movement, -2 battle defense)"
+bonus_effect = { "army_movement_bonus": 1.0 }
+malus_effect = { "army_defense_bonus": -2 }
+terrain_tags = Array[StringName]([&"jungle"])

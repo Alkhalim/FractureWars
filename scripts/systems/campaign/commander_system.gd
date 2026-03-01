@@ -4,10 +4,12 @@ const COMMANDER_UPKEEP := {Enums.ResourceType.GOLD: 5, Enums.ResourceType.FOOD: 
 
 var skills: Dictionary = {} # id -> CommanderSkill
 var items: Dictionary = {} # id -> CommanderItem
+var traits_db: Dictionary = {} # id -> CommanderTrait
 
 func _ready() -> void:
 	_load_resources_from_dir("res://data/skills/", skills)
 	_load_resources_from_dir("res://data/items/", items)
+	_load_resources_from_dir("res://data/traits/", traits_db)
 
 func _load_resources_from_dir(path: String, target: Dictionary) -> void:
 	var dir := DirAccess.open(path)
@@ -29,7 +31,12 @@ func grant_battle_xp(commander: CommanderState, enemy_strength: int, won: bool, 
 	commander.level_up_context = context
 	# Base XP: 15 for a win, 5 for a loss. Scaling capped so large battles
 	# don't rocket through multiple levels at once.
-	var xp_gain := (15 if won else 5) + mini(enemy_strength / 25, 40)
+	# 25% XP boost (minor skills removed — compensate with faster leveling)
+	var xp_gain := int(((15 if won else 5) + mini(enemy_strength / 25, 40)) * 1.25)
+	# Apply xp_gain_mult from traits
+	var xp_mult := _get_trait_effect(commander, "xp_gain_mult")
+	if xp_mult != 0.0:
+		xp_gain = int(float(xp_gain) * (1.0 + xp_mult))
 	commander.xp += xp_gain
 	# Cap to at most 2 level-ups per battle
 	var levels_gained := 0
@@ -40,7 +47,11 @@ func grant_battle_xp(commander: CommanderState, enemy_strength: int, won: bool, 
 
 func grant_passive_xp(commander: CommanderState, context: Array[StringName] = [], amount: int = 2) -> void:
 	commander.level_up_context = context
-	commander.xp += amount
+	var boosted := int(float(amount) * 1.25)
+	var xp_mult := _get_trait_effect(commander, "xp_gain_mult")
+	if xp_mult != 0.0:
+		boosted = int(float(boosted) * (1.0 + xp_mult))
+	commander.xp += boosted
 	_check_level_up(commander)
 
 func _try_level_up(commander: CommanderState) -> bool:
@@ -57,47 +68,21 @@ func _check_level_up(commander: CommanderState) -> void:
 	_try_level_up(commander)
 
 func _apply_level_up(commander: CommanderState) -> void:
-	# Minor skill: either level up an existing one or gain a new one
-	var context := commander.level_up_context
-	var existing_minor: Array[StringName] = []
-	for sid in commander.skill_levels:
-		var skill: CommanderSkill = skills.get(sid)
-		if skill and skill.is_minor and commander.skill_levels[sid] < 10:
-			existing_minor.append(sid)
-	var new_minor := _get_available_minor_skills(commander)
-
-	# Bias toward gaining new skill if a contextual match exists
-	var new_chance := 0.5
-	if new_minor.size() > 0:
-		for s in new_minor:
-			if _matches_context(s, context):
-				new_chance = 0.6
-				break
-
-	if existing_minor.size() > 0 and (new_minor.is_empty() or randf() >= new_chance):
-		# Level up a random existing minor skill
-		var sid: StringName = existing_minor.pick_random()
-		commander.skill_levels[sid] = mini(commander.skill_levels[sid] + 1, 10)
-	elif new_minor.size() > 0:
-		# Gain a new minor skill at level 1 (weighted by context)
-		var picked := _weighted_pick_minor(new_minor, context)
-		commander.skill_levels[picked.id] = 1
-
 	EventBus.commander_level_up.emit(commander)
 
 func get_major_skill_choices(commander: CommanderState) -> Array[Dictionary]:
 	var all_choices: Array[Dictionary] = []
-	# Existing major skills that can be leveled up
+	# Existing skills that can be leveled up
 	for skill_id in commander.skill_levels:
 		var level: int = commander.skill_levels[skill_id]
 		if level < 10:
 			var skill: CommanderSkill = skills.get(skill_id)
-			if skill and not skill.is_minor:
+			if skill:
 				all_choices.append({"skill_id": skill_id, "is_levelup": true, "current_level": level})
-	# New major skills not yet learned
+	# New skills not yet learned
 	for skill_id in skills:
 		var skill: CommanderSkill = skills[skill_id]
-		if not skill.is_minor and not commander.skill_levels.has(skill_id):
+		if not commander.skill_levels.has(skill_id):
 			all_choices.append({"skill_id": skill_id, "is_levelup": false, "current_level": 0})
 
 	var context := commander.level_up_context
@@ -145,13 +130,18 @@ static func get_max_item_slots(commander: CommanderState) -> int:
 func apply_item_drop(commander: CommanderState, defeated_faction: StringName) -> String:
 	if commander.is_elderbeast:
 		return ""
+	const PITY_THRESHOLD := 4
 	var base_chance := 0.3
 	if commander.items.size() == 0:
 		base_chance = 0.6
 	elif commander.items.size() == 1:
 		base_chance = 0.4
 	if randf() > base_chance:
-		return ""
+		commander.battles_won_no_drop += 1
+		if commander.battles_won_no_drop < PITY_THRESHOLD:
+			return ""
+		# Pity triggered — fall through to guaranteed drop
+	commander.battles_won_no_drop = 0
 	var possible_items := _get_items_for_faction(defeated_faction)
 	if possible_items.is_empty():
 		return ""
@@ -215,6 +205,10 @@ func get_commander_army_bonuses(commander: CommanderState) -> Dictionary:
 		var level: int = commander.skill_levels[skill_id]
 		var effects := _get_effects_for_id(skill_id)
 		_accumulate_army_bonuses(bonuses, effects, level)
+	for trait_id in commander.traits:
+		var trait_def: CommanderTrait = traits_db.get(trait_id)
+		if trait_def:
+			_accumulate_army_bonuses(bonuses, trait_def.effects, 1)
 	for item_id in commander.items:
 		var effects := _get_item_effects(item_id)
 		_accumulate_army_bonuses(bonuses, effects, 1)
@@ -236,6 +230,12 @@ func _accumulate_army_bonuses(bonuses: Dictionary, effects: Dictionary, level: i
 		bonuses.movement_bonus += effects.army_movement_bonus * level
 	if effects.has("heal_per_turn"):
 		bonuses.heal_per_turn += effects.heal_per_turn * level
+	# Behavioral modifiers (passed through to battle simulator)
+	for bkey in ["charge_damage_mult", "retreat_morale_threshold", "captive_chance_mod",
+				  "morale_recovery_mult", "ambush_attack_bonus", "unit_morale_bonus",
+				  "upkeep_mult", "enemy_army_morale_penalty"]:
+		if effects.has(bkey):
+			bonuses[bkey] = bonuses.get(bkey, 0) + effects[bkey] * level
 	# Tag-specific bonuses (e.g. cavalry_attack_bonus, vs_ranged_defense_bonus, terrain_forest_attack_bonus)
 	for key in effects:
 		if key.ends_with("_attack_bonus") or key.ends_with("_defense_bonus") or key.ends_with("_speed_bonus"):
@@ -250,6 +250,10 @@ func get_commander_city_effects(commander: CommanderState, is_friendly: bool) ->
 		var level: int = commander.skill_levels[skill_id]
 		var effects := _get_effects_for_id(skill_id)
 		_accumulate_city_effects(effects_total, effects, is_friendly, level)
+	for trait_id in commander.traits:
+		var trait_def: CommanderTrait = traits_db.get(trait_id)
+		if trait_def:
+			_accumulate_city_effects(effects_total, trait_def.effects, is_friendly, 1)
 	for item_id in commander.items:
 		var effects := _get_item_effects(item_id)
 		_accumulate_city_effects(effects_total, effects, is_friendly, 1)
@@ -287,6 +291,10 @@ func get_scouting_bonus(commander: CommanderState) -> int:
 		var effects := _get_effects_for_id(skill_id)
 		if effects.has("scouting_bonus"):
 			bonus += effects.scouting_bonus * level
+	for trait_id in commander.traits:
+		var trait_def: CommanderTrait = traits_db.get(trait_id)
+		if trait_def and trait_def.effects.has("scouting_bonus"):
+			bonus += trait_def.effects.scouting_bonus
 	for item_id in commander.items:
 		var effects := _get_item_effects(item_id)
 		if effects.has("scouting_bonus"):
@@ -300,6 +308,138 @@ func get_scouting_bonus(commander: CommanderState) -> int:
 				bonus += follower.malus_effect.scouting_bonus
 	return bonus
 
+# ── Trait System ─────────────────────────────────────────────
+
+func evaluate_traits(commander: CommanderState, context: Array[StringName]) -> Array[Dictionary]:
+	var changes: Array[Dictionary] = []
+
+	# --- Acquisition: check all traits not yet owned ---
+	for trait_id in traits_db:
+		var trait_def: CommanderTrait = traits_db[trait_id]
+		if commander.traits.has(trait_id):
+			continue
+		if trait_def.acquire_context.is_empty():
+			continue
+		# Check exclusion
+		var excluded := false
+		for ex in trait_def.excludes:
+			if commander.traits.has(ex):
+				excluded = true
+				break
+		if excluded:
+			continue
+		# Count matching context tags
+		var matches := 0
+		for tag in trait_def.acquire_context:
+			if context.has(tag):
+				matches += 1
+		if matches > 0:
+			var key := "gain_" + str(trait_id)
+			commander.trait_progress[key] = commander.trait_progress.get(key, 0) + matches
+			if commander.trait_progress[key] >= trait_def.acquire_threshold:
+				commander.traits.append(trait_id)
+				commander.trait_progress.erase(key)
+				# Remove excluded traits
+				for ex in trait_def.excludes:
+					if commander.traits.has(ex):
+						commander.traits.erase(ex)
+						changes.append({"action": "lost", "trait_id": ex})
+				changes.append({"action": "gained", "trait_id": trait_id})
+
+	# --- Loss: check all owned traits for countering context ---
+	for trait_id in commander.traits.duplicate():
+		var trait_def: CommanderTrait = traits_db.get(trait_id)
+		if trait_def == null or trait_def.lose_context.is_empty():
+			continue
+		var matches := 0
+		for tag in trait_def.lose_context:
+			if context.has(tag):
+				matches += 1
+		if matches > 0:
+			var key := "lose_" + str(trait_id)
+			commander.trait_progress[key] = commander.trait_progress.get(key, 0) + matches
+			if commander.trait_progress[key] >= trait_def.lose_threshold:
+				commander.traits.erase(trait_id)
+				commander.trait_progress.erase(key)
+				changes.append({"action": "lost", "trait_id": trait_id})
+
+	return changes
+
+func assign_starting_traits(commander: CommanderState) -> void:
+	var positive_pool: Array[CommanderTrait] = []
+	var negative_pool: Array[CommanderTrait] = []
+	for trait_id in traits_db:
+		var t: CommanderTrait = traits_db[trait_id]
+		if t.is_positive:
+			positive_pool.append(t)
+		else:
+			negative_pool.append(t)
+	positive_pool.shuffle()
+	negative_pool.shuffle()
+
+	# Pick 3 traits: guarantee at least 1 positive
+	# ~65:35 ratio -> 2 positive + 1 negative is the default
+	var picked: Array[StringName] = []
+	# First: 1 guaranteed positive
+	var first := _pick_non_excluded(positive_pool, picked)
+	if not first.is_empty():
+		picked.append(first)
+	# Second: ~65% positive, 35% negative
+	if randf() < 0.65 and positive_pool.size() > 0:
+		var second := _pick_non_excluded(positive_pool, picked)
+		if not second.is_empty():
+			picked.append(second)
+	elif negative_pool.size() > 0:
+		var second := _pick_non_excluded(negative_pool, picked)
+		if not second.is_empty():
+			picked.append(second)
+	else:
+		var second := _pick_non_excluded(positive_pool, picked)
+		if not second.is_empty():
+			picked.append(second)
+	# Third: fill remaining ratio
+	if picked.size() < 3:
+		if randf() < 0.35 and negative_pool.size() > 0:
+			var third := _pick_non_excluded(negative_pool, picked)
+			if not third.is_empty():
+				picked.append(third)
+		else:
+			var third := _pick_non_excluded(positive_pool, picked)
+			if not third.is_empty():
+				picked.append(third)
+	# Fallback: if still under 3, fill from whichever pool has remaining
+	while picked.size() < 3:
+		var any := _pick_non_excluded(positive_pool, picked)
+		if any.is_empty():
+			any = _pick_non_excluded(negative_pool, picked)
+		if any.is_empty():
+			break
+		picked.append(any)
+
+	commander.traits = picked
+
+func _pick_non_excluded(pool: Array[CommanderTrait], already_picked: Array[StringName]) -> StringName:
+	for t in pool:
+		if already_picked.has(t.id):
+			continue
+		var excluded := false
+		for ex in t.excludes:
+			if already_picked.has(ex):
+				excluded = true
+				break
+		if not excluded:
+			pool.erase(t)
+			return t.id
+	return &""
+
+func _get_trait_effect(commander: CommanderState, effect_key: String) -> float:
+	var total := 0.0
+	for trait_id in commander.traits:
+		var trait_def: CommanderTrait = traits_db.get(trait_id)
+		if trait_def and trait_def.effects.has(effect_key):
+			total += float(trait_def.effects[effect_key])
+	return total
+
 # ── Context Helpers ───────────────────────────────────────────
 
 func _matches_context(skill: CommanderSkill, context: Array[StringName]) -> bool:
@@ -307,44 +447,6 @@ func _matches_context(skill: CommanderSkill, context: Array[StringName]) -> bool
 		if context.has(tag):
 			return true
 	return false
-
-func _weighted_pick_minor(available: Array[CommanderSkill], context: Array[StringName]) -> CommanderSkill:
-	var weights: Array[float] = []
-	for skill in available:
-		var w := 1.0
-		for tag in skill.context_tags:
-			if context.has(tag):
-				w = 3.0
-				break
-		weights.append(w)
-	var total := 0.0
-	for w in weights:
-		total += w
-	var roll := randf() * total
-	var cumulative := 0.0
-	for i in available.size():
-		cumulative += weights[i]
-		if roll <= cumulative:
-			return available[i]
-	return available[available.size() - 1]
-
-# ── Skill Helpers ─────────────────────────────────────────────
-
-func _get_available_minor_skills(commander: CommanderState) -> Array[CommanderSkill]:
-	var result: Array[CommanderSkill] = []
-	for skill_id in skills:
-		var skill: CommanderSkill = skills[skill_id]
-		if skill.is_minor and not commander.skill_levels.has(skill_id):
-			result.append(skill)
-	return result
-
-func _get_available_major_skills(commander: CommanderState) -> Array[CommanderSkill]:
-	var result: Array[CommanderSkill] = []
-	for skill_id in skills:
-		var skill: CommanderSkill = skills[skill_id]
-		if not skill.is_minor and not commander.skill_levels.has(skill_id):
-			result.append(skill)
-	return result
 
 # ── AI Skill Selection ────────────────────────────────────────
 

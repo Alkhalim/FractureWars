@@ -12,4 +12,6 @@ is_playable = true
 starting_regions = Array[StringName]([&"sainkhu_groves"])
 realm_affinity = 3
 shard_preferences = {}
-ai_personality = {}
+ai_personality = {"aggression": 0.2, "expansion": 0.3}
+gift_likes = Array[StringName]([&"nature", &"scholarly", &"practical"])
+gift_dislikes = Array[StringName]([&"dark", &"martial"])

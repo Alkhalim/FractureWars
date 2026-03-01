@@ -32,6 +32,22 @@ var turn_log: Array[Dictionary] = [] # [{type, text, turn, ...}]
 # Event cooldown for random events
 var _event_cooldown: int = 0
 
+# Turn on which the first follower is guaranteed (randomized once at start, range 3-7)
+var _first_follower_turn: int = -1
+
+# Terrain type to string mapping for follower terrain_tags filtering
+const TERRAIN_TO_STRING: Dictionary = {
+	Enums.TerrainType.PLAINS: &"plains",
+	Enums.TerrainType.FOREST: &"forest",
+	Enums.TerrainType.MOUNTAINS: &"mountains",
+	Enums.TerrainType.DESERT: &"desert",
+	Enums.TerrainType.SWAMP: &"swamp",
+	Enums.TerrainType.WETLANDS: &"wetlands",
+	Enums.TerrainType.TUNDRA: &"tundra",
+	Enums.TerrainType.SHARD_WASTES: &"shard_wastes",
+	Enums.TerrainType.JUNGLE: &"jungle",
+}
+
 func serialize_state() -> Dictionary:
 	return {
 		"faction_order": faction_order.duplicate(),
@@ -44,6 +60,8 @@ func serialize_state() -> Dictionary:
 		"_jade_patrol_index": _jade_patrol_index.duplicate(),
 		"_temp_effects": _temp_effects.duplicate(true),
 		"_event_cooldown": _event_cooldown,
+		"_first_follower_turn": _first_follower_turn,
+		"_diplomacy_extra": GameManager.diplomacy_system.serialize_diplomacy_extra() if GameManager.diplomacy_system else {},
 	}
 
 func deserialize_state(data: Dictionary) -> void:
@@ -59,6 +77,9 @@ func deserialize_state(data: Dictionary) -> void:
 	_jade_patrol_index = data.get("_jade_patrol_index", {})
 	_temp_effects = data.get("_temp_effects", [])
 	_event_cooldown = data.get("_event_cooldown", 0)
+	_first_follower_turn = data.get("_first_follower_turn", -1)
+	if GameManager.diplomacy_system:
+		GameManager.diplomacy_system.deserialize_diplomacy_extra(data.get("_diplomacy_extra", {}))
 
 func _ready() -> void:
 	EventBus.end_turn_pressed.connect(_on_end_turn_pressed)
@@ -101,11 +122,12 @@ func _on_log_army_destroyed(army_id: StringName, faction_id: StringName) -> void
 
 func _ai_wait() -> void:
 	# Respects skip and speed multiplier during AI turns
+	# ALWAYS yield at least one frame even when skipping, to keep the game responsive
+	await get_tree().process_frame
 	if skip_ai_turn:
 		return
 	if ai_speed_multiplier >= 4.0:
 		return
-	await get_tree().process_frame
 	if ai_speed_multiplier <= 1.0:
 		await get_tree().process_frame
 
@@ -136,12 +158,18 @@ func _start_faction_turn() -> void:
 	GameManager.policy_system.process_policies(faction_id)
 	GameManager.research_system.process_research(faction_id)
 
+	# Yield between major processing phases to keep the game responsive
+	await get_tree().process_frame
+
 	# Process elderbeasts for Shardhorde
 	if faction_id == &"shardhorde":
 		_process_elderbeasts()
 
 	# Process unique faction mechanics
 	_process_faction_mechanic(faction_id)
+
+	# Yield after faction mechanics (can iterate many tiles)
+	await get_tree().process_frame
 
 	# Heal armies in settlements/friendly territory
 	_heal_armies_in_settlements(faction_id)
@@ -161,6 +189,13 @@ func _start_faction_turn() -> void:
 		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 		if tile and tile.road_level >= 1:
 			army.movement_remaining += 0.6 * tile.road_level
+		# Building special_effects: army_movement_bonus
+		var army_city := GameManager.city_system.get_city_at_hex(army.hex_pos)
+		if army_city and army_city.faction_id == faction_id:
+			for bid in army_city.buildings:
+				var bld := DataManager.get_building(bid)
+				if bld and bld.special_effects.has("army_movement_bonus"):
+					army.movement_remaining += float(bld.special_effects["army_movement_bonus"])
 		army.has_moved = false
 		army.battle_exhausted = false
 
@@ -172,6 +207,7 @@ func _start_faction_turn() -> void:
 	if is_player_turn:
 		skip_ai_turn = false
 		_check_random_events(faction_id)
+		GameManager.diplomacy_system.generate_ai_offer_to_player()
 	else:
 		_ai_assign_commanders(faction_id)
 		_consolidate_ai_armies(faction_id)
@@ -214,6 +250,7 @@ func _end_current_faction_turn() -> void:
 
 func _end_round() -> void:
 	_border_cache.clear()  # Reset for next round (territory may have changed mid-round)
+	_unit_stat_cache.clear()  # Reset unit stat cache for next round
 	EventBus.round_ended.emit(GameManager.state.current_turn)
 	shardfall_system.check_shardfall(GameManager.state.current_turn)
 
@@ -235,6 +272,9 @@ func _end_round() -> void:
 
 	if GameManager.state.game_over:
 		return # Don't start next turn if game is over
+
+	# Yield before starting the next round to keep the game responsive
+	await get_tree().process_frame
 
 	current_faction_index = 0
 	_start_faction_turn()
@@ -412,7 +452,17 @@ func _grant_passive_commander_xp(faction_id: StringName) -> void:
 			var base_xp := 2
 			if city and city.faction_id == army.faction_id:
 				base_xp += 3  # 5 total when garrisoned in own city
+			# Building special_effects: commander_xp_bonus
+			if city:
+				for bid in city.buildings:
+					var bld := DataManager.get_building(bid)
+					if bld and bld.special_effects.has("commander_xp_bonus"):
+						base_xp = int(float(base_xp) * (1.0 + float(bld.special_effects["commander_xp_bonus"])))
 			CommanderSystem.grant_passive_xp(army.commander, context, base_xp)
+			# Evaluate traits based on current context
+			var trait_changes := CommanderSystem.evaluate_traits(army.commander, context)
+			for change in trait_changes:
+				EventBus.commander_trait_changed.emit(army.commander, change.action, change.trait_id)
 
 # ── AI Commander Assignment ──────────────────────────────────
 
@@ -505,17 +555,22 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 			_ai_recruit_with_composition(city, faction_id)
 
 func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> void:
-	# Count existing army composition
+	# Count existing army composition (cache unit data lookups)
 	var tag_counts := {"infantry": 0, "ranged": 0, "cavalry": 0, "mage": 0}
 	var total_units := 0
+	var _unit_cache: Dictionary = {} # unit_data_id -> UnitData
 	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 		for unit in army.units:
-			var ud := DataManager.get_unit(unit.unit_data_id)
-			if ud:
-				total_units += 1
-				for tag in tag_counts:
-					if ud.tags.has(tag):
-						tag_counts[tag] += 1
+			var ud: UnitData = _unit_cache.get(unit.unit_data_id)
+			if ud == null:
+				ud = DataManager.get_unit(unit.unit_data_id)
+				if ud == null:
+					continue
+				_unit_cache[unit.unit_data_id] = ud
+			total_units += 1
+			for tag in tag_counts:
+				if ud.tags.has(tag):
+					tag_counts[tag] += 1
 
 	# Threat-relative recruitment: recruit if we have fewer units than any enemy at war
 	var max_enemy_units := 0
@@ -529,7 +584,8 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 			enemy_units += enemy_army.units.size()
 		max_enemy_units = maxi(max_enemy_units, enemy_units)
 
-	var recruit_threshold := maxi(8, max_enemy_units + 4)
+	var turn_bonus := mini(GameManager.state.current_turn / 10, 4)
+	var recruit_threshold := maxi(8 + turn_bonus, max_enemy_units + 4)
 	if total_units >= recruit_threshold:
 		return
 
@@ -557,7 +613,7 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 				var udata := DataManager.get_unit(uid)
 				if udata == null or udata.faction_id != faction_id:
 					continue
-				var score := udata.attack + udata.defense
+				var score := udata.attack + udata.get_avg_defense()
 				if udata.tags.has(needed_tag):
 					score += 20
 				if score > best_score:
@@ -667,6 +723,12 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 		if target_hex == Vector2i(-1, -1):
 			target_hex = _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
 		if target_hex == Vector2i(-1, -1):
+			# No enemies — expand toward independent cities
+			var fd: FactionData = DataManager.get_faction(faction_id)
+			var expansion: float = fd.ai_personality.get("expansion", 0.3) if fd else 0.3
+			if army.units.size() >= 4 and randf() < expansion:
+				target_hex = _find_nearest_independent_city_hex(army.hex_pos, faction_id)
+		if target_hex == Vector2i(-1, -1):
 			continue
 
 		_ai_move_army_safe(army, target_hex, faction_id)
@@ -710,6 +772,12 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 		var target_hex := _find_nearest_enemy_army_hex(army.hex_pos, faction_id)
 		if target_hex == Vector2i(-1, -1):
 			target_hex = _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
+		if target_hex == Vector2i(-1, -1):
+			# Skulloath: raid independent cities when no enemies
+			var fd: FactionData = DataManager.get_faction(faction_id)
+			var expansion: float = fd.ai_personality.get("expansion", 0.4) if fd else 0.4
+			if army.units.size() >= 4 and randf() < expansion:
+				target_hex = _find_nearest_independent_city_hex(army.hex_pos, faction_id)
 		if target_hex != Vector2i(-1, -1):
 			if _ai_move_army_safe(army, target_hex, faction_id):
 				attacked = true
@@ -766,7 +834,21 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 				continue
 			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
 				return
-		else:
+		elif army.units.size() >= 4:
+			# Gladehost: cautiously expand toward nearby independent cities
+			var fd: FactionData = DataManager.get_faction(faction_id)
+			var expansion: float = fd.ai_personality.get("expansion", 0.3) if fd else 0.3
+			if randf() < expansion:
+				var indie_hex := _find_nearest_independent_city_hex(army.hex_pos, faction_id)
+				if indie_hex != Vector2i(-1, -1):
+					_ai_move_army_safe(army, indie_hex, faction_id)
+					if not GameManager.state.armies.has(army.army_id):
+						_gladehost_waypoints.erase(army.army_id)
+						continue
+					if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+						return
+					continue
+		if intruder == Vector2i(-1, -1):
 			# Patrol between settlements
 			if not _gladehost_waypoints.has(army.army_id):
 				_gladehost_waypoints[army.army_id] = {
@@ -841,6 +923,12 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 		else:
 			# Expand toward enemy regions
 			var target_hex := _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
+			if target_hex == Vector2i(-1, -1):
+				# Tainted Jade: aggressively expand toward independent cities
+				var fd: FactionData = DataManager.get_faction(faction_id)
+				var expansion: float = fd.ai_personality.get("expansion", 0.5) if fd else 0.5
+				if randf() < expansion:
+					target_hex = _find_nearest_independent_city_hex(army.hex_pos, faction_id)
 			if target_hex == Vector2i(-1, -1):
 				# Patrol border
 				var borders := _get_faction_border_tiles(faction_id)
@@ -1077,7 +1165,7 @@ func _shardhorde_recruit() -> void:
 				continue
 			if not _can_afford_faction(fs, udata.recruit_cost):
 				continue
-			var score := udata.attack + udata.defense
+			var score := udata.attack + udata.get_avg_defense()
 			if score > best_score:
 				best_score = score
 				best_uid = uid
@@ -1274,6 +1362,8 @@ func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:
 # ── Healing & Replenishment ──────────────────────────────────
 
 func _heal_armies_in_settlements(faction_id: StringName) -> void:
+	# Cache unit data lookups to avoid repeated DataManager calls for the same unit type
+	var _unit_cache: Dictionary = {} # unit_data_id -> UnitData
 	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 
 		var city_at := GameManager.city_system.get_city_at_hex(army.hex_pos)
@@ -1291,9 +1381,12 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 			if city_at.buildings.has(&"moonwell"):
 				moonwell_mult = 1.5
 			for unit in army.units:
-				var unit_data := DataManager.get_unit(unit.unit_data_id)
+				var unit_data: UnitData = _unit_cache.get(unit.unit_data_id)
 				if unit_data == null:
-					continue
+					unit_data = DataManager.get_unit(unit.unit_data_id)
+					if unit_data == null:
+						continue
+					_unit_cache[unit.unit_data_id] = unit_data
 				var heal_amount := int(unit_data.max_hp * 0.15 * moonwell_mult) + cmd_heal
 				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
 				if unit_data.squad_size > 1 and unit_data.hp_per_soldier > 0:
@@ -1301,25 +1394,34 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 						unit.current_hp = mini(unit.current_hp + unit_data.hp_per_soldier, unit_data.max_hp)
 		elif tile and tile.owner_faction == faction_id:
 			for unit in army.units:
-				var unit_data := DataManager.get_unit(unit.unit_data_id)
+				var unit_data: UnitData = _unit_cache.get(unit.unit_data_id)
 				if unit_data == null:
-					continue
+					unit_data = DataManager.get_unit(unit.unit_data_id)
+					if unit_data == null:
+						continue
+					_unit_cache[unit.unit_data_id] = unit_data
 				var heal_amount := int(unit_data.max_hp * 0.05) + cmd_heal
 				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
 		elif faction_id == &"shardhorde" and _is_in_undepleted_beast_range(army.hex_pos):
 			# Shardhorde armies regenerate troops in undepleted elderbeast territory
 			for unit in army.units:
-				var unit_data := DataManager.get_unit(unit.unit_data_id)
+				var unit_data: UnitData = _unit_cache.get(unit.unit_data_id)
 				if unit_data == null:
-					continue
+					unit_data = DataManager.get_unit(unit.unit_data_id)
+					if unit_data == null:
+						continue
+					_unit_cache[unit.unit_data_id] = unit_data
 				var heal_amount := int(unit_data.max_hp * 0.10) + cmd_heal
 				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
 		elif cmd_heal > 0:
 			# Commander heals even in neutral territory
 			for unit in army.units:
-				var unit_data := DataManager.get_unit(unit.unit_data_id)
+				var unit_data: UnitData = _unit_cache.get(unit.unit_data_id)
 				if unit_data == null:
-					continue
+					unit_data = DataManager.get_unit(unit.unit_data_id)
+					if unit_data == null:
+						continue
+					_unit_cache[unit.unit_data_id] = unit_data
 				unit.current_hp = mini(unit.current_hp + cmd_heal, unit_data.max_hp)
 
 func _is_in_undepleted_beast_range(hex_pos: Vector2i) -> bool:
@@ -1338,6 +1440,8 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 	var fd: FactionData = DataManager.get_faction(faction_id)
 	var is_nature := fd and fd.realm_affinity == Enums.Realm.NATURE
 	var is_void := fd and fd.realm_affinity == Enums.Realm.VOID
+	# Cache unit data lookups to avoid repeated calls for the same unit type
+	var _unit_cache: Dictionary = {} # unit_data_id -> UnitData
 
 	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 		if army.is_garrison:
@@ -1356,10 +1460,14 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 				# Light damage to all — void-aligned take less
 				var dmg_pct := 0.02 if is_void else 0.05
 				for unit in army.units:
-					var ud := DataManager.get_unit(unit.unit_data_id)
-					if ud:
-						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
-						unit.current_hp = maxi(1, unit.current_hp - dmg)
+					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
+					if ud == null:
+						ud = DataManager.get_unit(unit.unit_data_id)
+						if ud == null:
+							continue
+						_unit_cache[unit.unit_data_id] = ud
+					var dmg := maxi(1, int(ud.max_hp * dmg_pct))
+					unit.current_hp = maxi(1, unit.current_hp - dmg)
 
 			Enums.TerrainType.DESERT:
 				# Moderate damage — void-aligned take less, nature takes more
@@ -1369,17 +1477,24 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 				elif is_nature:
 					dmg_pct = 0.05
 				for unit in army.units:
-					var ud := DataManager.get_unit(unit.unit_data_id)
-					if ud:
-						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
-						unit.current_hp = maxi(1, unit.current_hp - dmg)
+					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
+					if ud == null:
+						ud = DataManager.get_unit(unit.unit_data_id)
+						if ud == null:
+							continue
+						_unit_cache[unit.unit_data_id] = ud
+					var dmg := maxi(1, int(ud.max_hp * dmg_pct))
+					unit.current_hp = maxi(1, unit.current_hp - dmg)
 
 			Enums.TerrainType.JUNGLE:
 				# Nature-aligned units heal, others take upkeep penalty
 				for unit in army.units:
-					var ud := DataManager.get_unit(unit.unit_data_id)
+					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
 					if ud == null:
-						continue
+						ud = DataManager.get_unit(unit.unit_data_id)
+						if ud == null:
+							continue
+						_unit_cache[unit.unit_data_id] = ud
 					if is_nature:
 						# Heal 3% max HP
 						var heal := maxi(1, int(ud.max_hp * 0.03))
@@ -1397,16 +1512,25 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 				elif is_void:
 					dmg_pct = 0.01
 				for unit in army.units:
-					var ud := DataManager.get_unit(unit.unit_data_id)
-					if ud:
-						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
-						unit.current_hp = maxi(1, unit.current_hp - dmg)
+					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
+					if ud == null:
+						ud = DataManager.get_unit(unit.unit_data_id)
+						if ud == null:
+							continue
+						_unit_cache[unit.unit_data_id] = ud
+					var dmg := maxi(1, int(ud.max_hp * dmg_pct))
+					unit.current_hp = maxi(1, unit.current_hp - dmg)
 
 			Enums.TerrainType.SWAMP:
 				# Disease attrition — hurts everyone except constructs
 				for unit in army.units:
-					var ud := DataManager.get_unit(unit.unit_data_id)
-					if ud and not ud.tags.has("construct"):
+					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
+					if ud == null:
+						ud = DataManager.get_unit(unit.unit_data_id)
+						if ud == null:
+							continue
+						_unit_cache[unit.unit_data_id] = ud
+					if not ud.tags.has("construct"):
 						var dmg := maxi(1, int(ud.max_hp * 0.03))
 						unit.current_hp = maxi(1, unit.current_hp - dmg)
 
@@ -1449,9 +1573,9 @@ func get_terrain_upkeep_modifier(army: ArmyState) -> float:
 const RANDOM_EVENTS := [
 	{
 		"title": "Wandering Merchant",
-		"text": "A mysterious merchant offers rare goods at a fair price.",
-		"choice_a": "Buy (50 Gold)",
-		"choice_b": "Decline",
+		"text": "A mysterious merchant offers rare goods. The price depends on the quality of their wares.",
+		"choice_a": "Buy goods",
+		"choice_b": "Trade provisions instead",
 		"type": "merchant",
 		"stage": "early",
 	},
@@ -1572,7 +1696,7 @@ const RANDOM_EVENTS := [
 	{
 		"title": "Legendary Commander",
 		"text": "A renowned military leader seeks to join your cause.",
-		"choice_a": "Accept commander (+XP bonus)",
+		"choice_a": "Accept commander (new Lv3 commander)",
 		"choice_b": "Sell services (+80 Gold)",
 		"type": "legendary_commander",
 		"stage": "late",
@@ -1611,6 +1735,191 @@ const RANDOM_EVENTS := [
 	},
 ]
 
+const FACTION_DILEMMAS := {
+	&"skulloath": [
+		{
+			"title": "Dark Communion",
+			"text": "Shamans urge a blood ritual to commune with the Pale Waif. Power flows freely... at a cost.",
+			"choice_a": "Perform the ritual (+15 Corruption, +20 Gold)",
+			"choice_b": "Refuse the darkness (-5 Corruption, +10 Loyalty)",
+			"type": "skulloath_dark_communion",
+		},
+		{
+			"title": "Tainted Grazing",
+			"text": "Void-touched pastures yield unnatural bounty, but the herds grow sickly and wrong.",
+			"choice_a": "Graze the tainted fields (+8 Corruption, +30 Food)",
+			"choice_b": "Purify the water (-3 Corruption, -15 Food)",
+			"type": "skulloath_tainted_grazing",
+		},
+		{
+			"title": "Spirit Pact",
+			"text": "Ancestor spirits demand a blood tribute in exchange for warriors from beyond the veil.",
+			"choice_a": "Blood tribute (+10 Corruption, free unit)",
+			"choice_b": "Peace offering (-5 Corruption, +15 Tech)",
+			"type": "skulloath_spirit_pact",
+		},
+		{
+			"title": "Raiding Frenzy",
+			"text": "Your riders are drunk on bloodlust. Let them raid... or rein them in?",
+			"choice_a": "Raid (+12 Corruption, +40 Gold, -8 standing)",
+			"choice_b": "Discipline (-8 Corruption, +5 Loyalty)",
+			"type": "skulloath_raiding_frenzy",
+		},
+		{
+			"title": "Bone Oracle",
+			"text": "A bone-reader offers forbidden knowledge scrawled in void-script.",
+			"choice_a": "Study the dark texts (+20 Corruption, +30 Tech)",
+			"choice_b": "Reject the oracle (-10 Corruption, +15 Loyalty)",
+			"type": "skulloath_bone_oracle",
+		},
+		{
+			"title": "Runic Corruption",
+			"text": "Void runes pulse beneath a captured shard site. Feed them... or cleanse?",
+			"choice_a": "Feed the runes (+15 Corruption, +atk buff 8 turns)",
+			"choice_b": "Purify the runes (-10 Corruption)",
+			"type": "skulloath_runic_corruption",
+		},
+	],
+	&"sunblessed": [
+		{
+			"title": "Solar Pilgrimage",
+			"text": "Faithful citizens wish to embark on a pilgrimage to the Solar Citadel. It will cost resources but inspire the nation.",
+			"choice_a": "Fund the pilgrimage (+15 Faith, -20 Gold)",
+			"choice_b": "Put them to work (-5 Faith, +15 Iron)",
+			"type": "sunblessed_pilgrimage",
+		},
+		{
+			"title": "Heretic Purge",
+			"text": "Heretical sects have been found spreading doubt. The faithful demand purification.",
+			"choice_a": "Purge the heretics (+20 Faith, -10 Loyalty)",
+			"choice_b": "Show mercy (+10 Loyalty, -5 Faith)",
+			"type": "sunblessed_heretic_purge",
+		},
+		{
+			"title": "Dawn Revelation",
+			"text": "A priest receives a divine vision. Share it with allies, or study it privately?",
+			"choice_a": "Share revelation (+10 Faith, +10 standing)",
+			"choice_b": "Hoard knowledge (+15 Tech, -5 Faith)",
+			"type": "sunblessed_dawn_revelation",
+		},
+	],
+	&"gladehost": [
+		{
+			"title": "Forest Expansion",
+			"text": "Druids wish to plant sacred groves, but it requires precious lumber.",
+			"choice_a": "Plant sacred trees (+10 Harmony, -20 Wood)",
+			"choice_b": "Harvest timber (-8 Harmony, +30 Wood)",
+			"type": "gladehost_forest_expansion",
+		},
+		{
+			"title": "Grove Preservation",
+			"text": "Settlers wish to clear an ancient grove for farmland. The grove-wardens protest.",
+			"choice_a": "Protect the grove (+15 Harmony, -15 Gold)",
+			"choice_b": "Clear for farmland (-12 Harmony, +25 Food)",
+			"type": "gladehost_grove_preservation",
+		},
+		{
+			"title": "Ancient Seed",
+			"text": "An ancient seed from the World Tree has been found. It hums with primal power.",
+			"choice_a": "Nurture the seed (+12 Harmony, +10 Tech)",
+			"choice_b": "Sell to scholars (-5 Harmony, +30 Gold)",
+			"type": "gladehost_ancient_seed",
+		},
+	],
+	&"thunderswarm": [
+		{
+			"title": "Storm Fury Surge",
+			"text": "Lightning strikes the Great Forge. The storm-callers can channel this energy... or let it dissipate safely.",
+			"choice_a": "Channel the fury (+15 Storm Fury, +20 Iron)",
+			"choice_b": "Let it pass (-10 Storm Fury, +15 Food)",
+			"type": "thunderswarm_fury_surge",
+		},
+		{
+			"title": "Thunder Beast Taming",
+			"text": "A wild storm beast rampages near your camp. Break it... or befriend it?",
+			"choice_a": "Wild taming (+10 Storm Fury, free unit)",
+			"choice_b": "Gentle approach (-8 Storm Fury, +10 Loyalty)",
+			"type": "thunderswarm_beast_taming",
+		},
+		{
+			"title": "Lightning Strike",
+			"text": "A massive storm gathers. Ride into it for glory, or shelter your people?",
+			"choice_a": "Ride the storm (+20 Storm Fury, +XP)",
+			"choice_b": "Shelter (-10 Storm Fury, +20 Gold)",
+			"type": "thunderswarm_lightning_strike",
+		},
+	],
+	&"cinderguard": [
+		{
+			"title": "Stoke the Forge",
+			"text": "The master smiths debate: push the forges hotter for stronger steel, or cool for stability?",
+			"choice_a": "Stoke higher (+15 Forge Heat, +20 Iron)",
+			"choice_b": "Cool the forges (-10 Forge Heat, +15 Gold)",
+			"type": "cinderguard_stoke_forge",
+		},
+		{
+			"title": "Experimental Alloy",
+			"text": "Engineers propose a new alloy blend that requires extreme heat to forge.",
+			"choice_a": "Forge the alloy (+10 Forge Heat, +20 Tech)",
+			"choice_b": "Standard production (-5 Forge Heat, +15 Iron)",
+			"type": "cinderguard_experimental_alloy",
+		},
+		{
+			"title": "Forge Accident",
+			"text": "An explosion in the forge quarter has injured workers. Push through, or stop for repairs?",
+			"choice_a": "Push through (+12 Forge Heat, -10 Loyalty)",
+			"choice_b": "Careful repair (-8 Forge Heat, -20 Gold)",
+			"type": "cinderguard_forge_accident",
+		},
+	],
+	&"moonspear": [
+		{
+			"title": "Lunar Ritual",
+			"text": "The moon-priests can force an eclipse to gain power, disrupting the natural phase cycle.",
+			"choice_a": "Force the eclipse (advance phase +2, +20 Tech)",
+			"choice_b": "Honor the cycle (+15 Gold)",
+			"type": "moonspear_lunar_ritual",
+		},
+		{
+			"title": "Moonstone Discovery",
+			"text": "A cache of moonstones pulses with lunar energy. Empower your warriors, or trade them?",
+			"choice_a": "Empower army (+atk buff 8 turns)",
+			"choice_b": "Sell moonstones (+40 Gold)",
+			"type": "moonspear_moonstone",
+		},
+		{
+			"title": "Celestial Alignment",
+			"text": "The stars align in a once-in-a-generation pattern. The moon-priests can harness it.",
+			"choice_a": "Harness the alignment (+20 Tech, +10 Loyalty)",
+			"choice_b": "Observe only (+25 Gold)",
+			"type": "moonspear_celestial",
+		},
+	],
+	&"tainted_jade": [
+		{
+			"title": "Jungle Communion",
+			"text": "The jungle itself whispers of power hidden in corrupted roots. Drink deep... or resist.",
+			"choice_a": "Absorb the power (+15 Taint, +20 Food)",
+			"choice_b": "Resist the call (-10 Taint, +10 Loyalty)",
+			"type": "tainted_jade_communion",
+		},
+		{
+			"title": "Corruption Spread",
+			"text": "Tainted vines creep toward allied territory. Embrace the spread, or contain it?",
+			"choice_a": "Embrace the spread (+12 Taint, -10 standing)",
+			"choice_b": "Contain it (-8 Taint, +15 Tech)",
+			"type": "tainted_jade_corruption_spread",
+		},
+		{
+			"title": "Serpent Vision",
+			"text": "The great serpent sends visions of hidden paths. Following them requires... sacrifice.",
+			"choice_a": "Follow the vision (+10 Taint, +XP)",
+			"choice_b": "Ignore the serpent (-5 Taint, +20 Gold)",
+			"type": "tainted_jade_serpent_vision",
+		},
+	],
+}
+
 func _check_random_events(faction_id: StringName) -> void:
 	if GameManager.state.current_turn <= 1:
 		return
@@ -1646,10 +1955,14 @@ func _check_random_events(faction_id: StringName) -> void:
 					has_no_followers = false
 					break
 
-	# Guaranteed first follower on turn 3-5 if player has none
+	# Guaranteed first follower on a random turn in 3-7 if player has none
 	var force_follower := false
-	if has_no_followers and turn >= 3 and turn <= 5 and faction_id == GameManager.state.player_faction_id:
-		force_follower = true
+	if has_no_followers and faction_id == GameManager.state.player_faction_id:
+		# Pick the guaranteed turn once (persisted across saves)
+		if _first_follower_turn < 0:
+			_first_follower_turn = 3 + randi() % 5  # 3, 4, 5, 6, or 7
+		if turn == _first_follower_turn:
+			force_follower = true
 
 	if not force_follower and randf() > 0.20:
 		return # 20% chance per turn (up from 12%)
@@ -1700,7 +2013,12 @@ func _check_random_events(faction_id: StringName) -> void:
 		if event.is_empty():
 			return
 	else:
-		event = weighted_pool[randi() % weighted_pool.size()].duplicate()
+		# 30% chance to pick a faction-specific dilemma instead of generic event
+		var faction_pool: Array = FACTION_DILEMMAS.get(faction_id, [])
+		if faction_pool.size() > 0 and randf() < 0.30:
+			event = faction_pool[randi() % faction_pool.size()].duplicate()
+		else:
+			event = weighted_pool[randi() % weighted_pool.size()].duplicate()
 
 	event["faction_id"] = faction_id
 	event["selected_army_id"] = GameManager.state.selected_army_id
@@ -1745,20 +2063,33 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 	match event_type:
 		"merchant":
 			if choice == "a":
-				if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 50:
-					fs.resources[Enums.ResourceType.GOLD] -= 50
+				# Variable gold cost based on game stage
+				var turn: int = GameManager.state.current_turn if GameManager.state else 1
+				var gold_cost := 40
+				if turn >= 30:
+					gold_cost = 80
+				elif turn >= 15:
+					gold_cost = 60
+				if fs.resources.get(Enums.ResourceType.GOLD, 0) >= gold_cost:
+					fs.resources[Enums.ResourceType.GOLD] -= gold_cost
 					var armies := GameManager.get_faction_armies(faction_id)
 					for army in armies:
 						var max_slots := CommanderSystem.get_max_item_slots(army.commander) if army.commander else 0
 						if army.commander and army.commander.items.size() < max_slots:
 							var item_name := CommanderSystem.apply_item_drop(army.commander, faction_id)
 							if item_name != "":
-								return "Spent 50 Gold. Acquired: %s" % item_name
-							return "Spent 50 Gold but the merchant had nothing worthwhile."
-					return "Spent 50 Gold but no commander could carry the goods."
+								return "Spent %d Gold. Acquired: %s" % [gold_cost, item_name]
+							return "Spent %d Gold but the merchant had nothing worthwhile." % gold_cost
+					return "Spent %d Gold but no commander could carry the goods." % gold_cost
 				else:
-					return "Not enough gold! (need 50)"
-			return "The merchant moves on."
+					return "Not enough gold! (need %d)" % gold_cost
+			else:
+				# Declining gives food and some wood from trading provisions
+				var food_gain := 20 + randi() % 15
+				var wood_gain := 10 + randi() % 10
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + food_gain
+				fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + wood_gain
+				return "The merchant trades provisions instead. +%d Food, +%d Wood." % [food_gain, wood_gain]
 		"ruins":
 			if choice == "a":
 				var armies := GameManager.get_faction_armies(faction_id)
@@ -1846,10 +2177,41 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 
 		"follower":
 			if choice == "a":
+				# Determine army terrain for follower filtering
+				var army_terrain_str: StringName = &""
+				var sel_aid: StringName = event.get("selected_army_id", &"")
+				var ref_army: ArmyState = null
+				if sel_aid != &"" and GameManager.state.armies.has(sel_aid):
+					ref_army = GameManager.state.armies[sel_aid]
+				else:
+					# Fallback: pick any army belonging to this faction
+					for a_id in GameManager.state.armies:
+						var a: ArmyState = GameManager.state.armies[a_id]
+						if a.faction_id == faction_id:
+							ref_army = a
+							break
+				if ref_army:
+					var tile := GameManager.state.hex_map.get_tile(ref_army.hex_pos)
+					if tile:
+						army_terrain_str = TERRAIN_TO_STRING.get(tile.terrain, &"")
+
+				# Filter followers by terrain tags
 				var all_followers := DataManager.followers.keys()
-				if all_followers.is_empty():
+				var terrain_filtered: Array[StringName] = []
+				for fid in all_followers:
+					var fd: FollowerData = DataManager.get_follower(fid)
+					if fd == null:
+						continue
+					if fd.terrain_tags.is_empty():
+						terrain_filtered.append(fid)  # universal follower
+					elif army_terrain_str != &"" and fd.terrain_tags.has(army_terrain_str):
+						terrain_filtered.append(fid)
+				if terrain_filtered.is_empty():
+					# Fallback to full pool if nothing matched
+					terrain_filtered.assign(all_followers)
+				if terrain_filtered.is_empty():
 					return "No followers available."
-				var follower_id: StringName = all_followers[randi() % all_followers.size()]
+				var follower_id: StringName = terrain_filtered[randi() % terrain_filtered.size()]
 				var follower: FollowerData = DataManager.get_follower(follower_id)
 				if follower == null:
 					return "No followers available."
@@ -1970,13 +2332,11 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 
 		"legendary_commander":
 			if choice == "a":
-				var armies := GameManager.get_faction_armies(faction_id)
-				for army in armies:
-					if army.commander:
-						army.commander.xp += 50
-						CommanderSystem._check_level_up(army.commander)
-						return "%s gained +50 XP." % army.commander.name
-				return "No commander to receive the training."
+				var new_cmd := GameManager._create_commander(faction_id)
+				new_cmd.level = 3
+				new_cmd.xp = CommanderState.XP_THRESHOLDS[2] if CommanderState.XP_THRESHOLDS.size() > 2 else 120
+				fs.commander_pool.append(new_cmd)
+				return "%s (Lv3) joined your commander pool." % new_cmd.name
 			else:
 				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 80
 				return "Sold their services. +80 Gold."
@@ -2028,6 +2388,327 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 					capital.class_loyalty["nobles"] = clampi(capital.class_loyalty.get("nobles", 0) + 5, -100, 100)
 				return "Marriage declined respectfully. +5 Noble loyalty."
 
+		# ── Skulloath Corruption Dilemmas ──
+		"skulloath_dark_communion":
+			if choice == "a":
+				fs.corruption = clampi(fs.corruption + 15, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 20
+				return "The ritual is done. Corruption surges. +15 Corruption, +20 Gold."
+			else:
+				fs.corruption = clampi(fs.corruption - 5, 0, 100)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 3, -100, 100)
+				return "The shamans are turned away. -5 Corruption, +loyalty."
+
+		"skulloath_tainted_grazing":
+			if choice == "a":
+				fs.corruption = clampi(fs.corruption + 8, 0, 100)
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 30
+				return "The herds feed on cursed pastures. +8 Corruption, +30 Food."
+			else:
+				fs.corruption = clampi(fs.corruption - 3, 0, 100)
+				fs.resources[Enums.ResourceType.FOOD] = maxi(0, fs.resources.get(Enums.ResourceType.FOOD, 0) - 15)
+				return "Clean water purifies the land. -3 Corruption, -15 Food."
+
+		"skulloath_spirit_pact":
+			if choice == "a":
+				fs.corruption = clampi(fs.corruption + 10, 0, 100)
+				var armies := GameManager.get_faction_armies(faction_id)
+				if armies.size() > 0:
+					_spawn_unit_at_hex(&"pale_touched", faction_id, armies[0].hex_pos)
+					return "Blood spilled. A spirit warrior manifests. +10 Corruption, +Pale Touched."
+				return "Blood spilled, but no army to receive the spirit. +10 Corruption."
+			else:
+				fs.corruption = clampi(fs.corruption - 5, 0, 100)
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 15
+				return "Ancestors share wisdom peacefully. -5 Corruption, +15 Tech."
+
+		"skulloath_raiding_frenzy":
+			if choice == "a":
+				fs.corruption = clampi(fs.corruption + 12, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 40
+				for other_id in GameManager.state.faction_states:
+					if other_id == faction_id or GameManager.is_npc_faction(other_id):
+						continue
+					if not GameManager.state.faction_states[other_id].is_defeated:
+						GameManager.diplomacy_system.modify_standing(faction_id, other_id, -8, "Raiding frenzy")
+						break
+				return "Riders unleashed! +12 Corruption, +40 Gold, -8 standing."
+			else:
+				fs.corruption = clampi(fs.corruption - 8, 0, 100)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 2, -100, 100)
+				return "Discipline restored. -8 Corruption, +loyalty."
+
+		"skulloath_bone_oracle":
+			if choice == "a":
+				fs.corruption = clampi(fs.corruption + 20, 0, 100)
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 30
+				return "Forbidden texts consumed. +20 Corruption, +30 Tech."
+			else:
+				fs.corruption = clampi(fs.corruption - 10, 0, 100)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 4, -100, 100)
+				return "The oracle is banished. -10 Corruption, +loyalty."
+
+		"skulloath_runic_corruption":
+			if choice == "a":
+				fs.corruption = clampi(fs.corruption + 15, 0, 100)
+				_temp_effects.append({
+					"faction_id": faction_id,
+					"effect": "attack_bonus",
+					"value": 3,
+					"turns_remaining": 8,
+				})
+				return "Void runes empowered! +15 Corruption, +3 attack for 8 turns."
+			else:
+				fs.corruption = clampi(fs.corruption - 10, 0, 100)
+				return "Runes cleansed. -10 Corruption."
+
+		# ── Sunblessed Solar Faith Dilemmas ──
+		"sunblessed_pilgrimage":
+			if choice == "a":
+				fs.solar_faith = clampi(fs.solar_faith + 15, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 20)
+				return "The pilgrimage inspires the faithful. +15 Faith, -20 Gold."
+			else:
+				fs.solar_faith = clampi(fs.solar_faith - 5, 0, 100)
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 15
+				return "Workers sent to the mines instead. -5 Faith, +15 Iron."
+
+		"sunblessed_heretic_purge":
+			if choice == "a":
+				fs.solar_faith = clampi(fs.solar_faith + 20, 0, 100)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] - 3, -100, 100)
+				return "Heretics purged. The temple burns bright. +20 Faith, -loyalty."
+			else:
+				fs.solar_faith = clampi(fs.solar_faith - 5, 0, 100)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 3, -100, 100)
+				return "Mercy shown to the doubters. +loyalty, -5 Faith."
+
+		"sunblessed_dawn_revelation":
+			if choice == "a":
+				fs.solar_faith = clampi(fs.solar_faith + 10, 0, 100)
+				for other_id in GameManager.state.faction_states:
+					if other_id == faction_id or GameManager.is_npc_faction(other_id):
+						continue
+					if not GameManager.state.faction_states[other_id].is_defeated:
+						GameManager.diplomacy_system.modify_standing(faction_id, other_id, 10, "Shared revelation")
+						break
+				return "Revelation shared with allies. +10 Faith, +10 standing."
+			else:
+				fs.solar_faith = clampi(fs.solar_faith - 5, 0, 100)
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 15
+				return "Knowledge hoarded. +15 Tech, -5 Faith."
+
+		# ── Gladehost Harmony Dilemmas ──
+		"gladehost_forest_expansion":
+			if choice == "a":
+				fs.harmony = clampi(fs.harmony + 10, 0, 100)
+				fs.resources[Enums.ResourceType.WOOD] = maxi(0, fs.resources.get(Enums.ResourceType.WOOD, 0) - 20)
+				return "Sacred groves planted. +10 Harmony, -20 Wood."
+			else:
+				fs.harmony = clampi(fs.harmony - 8, 0, 100)
+				fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + 30
+				return "Timber harvested. -8 Harmony, +30 Wood."
+
+		"gladehost_grove_preservation":
+			if choice == "a":
+				fs.harmony = clampi(fs.harmony + 15, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 15)
+				return "The grove stands protected. +15 Harmony, -15 Gold."
+			else:
+				fs.harmony = clampi(fs.harmony - 12, 0, 100)
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 25
+				return "Farmland cleared. -12 Harmony, +25 Food."
+
+		"gladehost_ancient_seed":
+			if choice == "a":
+				fs.harmony = clampi(fs.harmony + 12, 0, 100)
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 10
+				return "The seed grows, sharing ancient wisdom. +12 Harmony, +10 Tech."
+			else:
+				fs.harmony = clampi(fs.harmony - 5, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 30
+				return "Scholars pay handsomely. -5 Harmony, +30 Gold."
+
+		# ── Thunderswarm Storm Fury Dilemmas ──
+		"thunderswarm_fury_surge":
+			if choice == "a":
+				fs.storm_fury = clampi(fs.storm_fury + 15, 0, 100)
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 20
+				return "Lightning channeled into the forges! +15 Storm Fury, +20 Iron."
+			else:
+				fs.storm_fury = clampi(fs.storm_fury - 10, 0, 100)
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 15
+				return "The storm passes peacefully. -10 Storm Fury, +15 Food."
+
+		"thunderswarm_beast_taming":
+			if choice == "a":
+				fs.storm_fury = clampi(fs.storm_fury + 10, 0, 100)
+				var armies := GameManager.get_faction_armies(faction_id)
+				if armies.size() > 0:
+					_spawn_unit_at_hex(&"windrunner", faction_id, armies[0].hex_pos)
+					return "Beast broken to the saddle! +10 Storm Fury, +Windrunner."
+				return "No army nearby to receive the beast. +10 Storm Fury."
+			else:
+				fs.storm_fury = clampi(fs.storm_fury - 8, 0, 100)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 3, -100, 100)
+				return "The beast is calmed and released. -8 Storm Fury, +loyalty."
+
+		"thunderswarm_lightning_strike":
+			if choice == "a":
+				fs.storm_fury = clampi(fs.storm_fury + 20, 0, 100)
+				var armies := GameManager.get_faction_armies(faction_id)
+				for army in armies:
+					if army.commander:
+						army.commander.xp += 30
+						CommanderSystem._check_level_up(army.commander)
+						return "Rode the storm's heart! +20 Storm Fury, %s +30 XP." % army.commander.name
+				return "Rode the storm! +20 Storm Fury."
+			else:
+				fs.storm_fury = clampi(fs.storm_fury - 10, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 20
+				return "Sheltered from the tempest. -10 Storm Fury, +20 Gold."
+
+		# ── Cinderguard Forge Heat Dilemmas ──
+		"cinderguard_stoke_forge":
+			if choice == "a":
+				fs.forge_heat = clampi(fs.forge_heat + 15, 0, 100)
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 20
+				return "Forges burn white-hot! +15 Forge Heat, +20 Iron."
+			else:
+				fs.forge_heat = clampi(fs.forge_heat - 10, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 15
+				return "Forges cooled for maintenance. -10 Forge Heat, +15 Gold."
+
+		"cinderguard_experimental_alloy":
+			if choice == "a":
+				fs.forge_heat = clampi(fs.forge_heat + 10, 0, 100)
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 20
+				return "New alloy forged! +10 Forge Heat, +20 Tech."
+			else:
+				fs.forge_heat = clampi(fs.forge_heat - 5, 0, 100)
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 15
+				return "Standard steel produced. -5 Forge Heat, +15 Iron."
+
+		"cinderguard_forge_accident":
+			if choice == "a":
+				fs.forge_heat = clampi(fs.forge_heat + 12, 0, 100)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] - 3, -100, 100)
+				return "Production continues despite the cost. +12 Forge Heat, -loyalty."
+			else:
+				fs.forge_heat = clampi(fs.forge_heat - 8, 0, 100)
+				fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 20)
+				return "Forge repaired carefully. -8 Forge Heat, -20 Gold."
+
+		# ── Moonspear Lunar Phase Dilemmas ──
+		"moonspear_lunar_ritual":
+			if choice == "a":
+				fs.lunar_phase = (fs.lunar_phase + 2) % 4
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 20
+				var phase_names := ["New Moon", "Waxing Moon", "Full Moon", "Waning Moon"]
+				return "Eclipse forced! Phase shifted to %s. +20 Tech." % phase_names[fs.lunar_phase]
+			else:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 15
+				return "The natural cycle continues. +15 Gold."
+
+		"moonspear_moonstone":
+			if choice == "a":
+				_temp_effects.append({
+					"faction_id": faction_id,
+					"effect": "attack_bonus",
+					"value": 2,
+					"turns_remaining": 8,
+				})
+				return "Warriors empowered by moonstone! +2 attack for 8 turns."
+			else:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 40
+				return "Moonstones sold to merchants. +40 Gold."
+
+		"moonspear_celestial":
+			if choice == "a":
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 20
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 3, -100, 100)
+				return "Celestial power harnessed! +20 Tech, +loyalty."
+			else:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 25
+				return "A rare sight, nothing more. +25 Gold."
+
+		# ── Tainted Jade Taint Power Dilemmas ──
+		"tainted_jade_communion":
+			if choice == "a":
+				fs.taint_power = clampi(fs.taint_power + 15, 0, 100)
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 20
+				return "The jungle's corruption feeds your people. +15 Taint, +20 Food."
+			else:
+				fs.taint_power = maxi(0, fs.taint_power - 10)
+				var capital := GameManager.policy_system._get_faction_capital(faction_id)
+				if capital:
+					for cls in capital.class_loyalty:
+						if cls != "captives":
+							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] + 3, -100, 100)
+				return "The call resisted. -10 Taint, +loyalty."
+
+		"tainted_jade_corruption_spread":
+			if choice == "a":
+				fs.taint_power = clampi(fs.taint_power + 12, 0, 100)
+				for other_id in GameManager.state.faction_states:
+					if other_id == faction_id or GameManager.is_npc_faction(other_id):
+						continue
+					if not GameManager.state.faction_states[other_id].is_defeated:
+						GameManager.diplomacy_system.modify_standing(faction_id, other_id, -10, "Corruption spread")
+						break
+				return "Tainted vines spread unchecked. +12 Taint, -10 standing."
+			else:
+				fs.taint_power = maxi(0, fs.taint_power - 8)
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 15
+				return "Corruption contained and studied. -8 Taint, +15 Tech."
+
+		"tainted_jade_serpent_vision":
+			if choice == "a":
+				fs.taint_power = clampi(fs.taint_power + 10, 0, 100)
+				var armies := GameManager.get_faction_armies(faction_id)
+				for army in armies:
+					if army.commander:
+						army.commander.xp += 25
+						CommanderSystem._check_level_up(army.commander)
+						return "The serpent reveals hidden paths. +10 Taint, %s +25 XP." % army.commander.name
+				return "Vision followed but no commander to guide. +10 Taint."
+			else:
+				fs.taint_power = maxi(0, fs.taint_power - 5)
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 20
+				return "The serpent's whispers ignored. -5 Taint, +20 Gold."
+
 	return "Event resolved."
 
 func _decay_temp_effects(faction_id: StringName) -> void:
@@ -2041,12 +2722,21 @@ func _decay_temp_effects(faction_id: StringName) -> void:
 
 # ── Shared AI Helpers ────────────────────────────────────────
 
+# Per-turn unit stat cache for army strength calculations (cleared each faction turn via _border_cache clear)
+var _unit_stat_cache: Dictionary = {} # unit_data_id -> {attack: int, defense: int}
+
 func _get_army_strength(army: ArmyState) -> int:
 	var strength := 0
 	for unit in army.units:
-		var ud := DataManager.get_unit(unit.unit_data_id)
-		if ud:
-			strength += ud.attack + ud.defense
+		var cached = _unit_stat_cache.get(unit.unit_data_id)
+		if cached == null:
+			var ud := DataManager.get_unit(unit.unit_data_id)
+			if ud:
+				cached = {attack = ud.attack, defense = ud.get_avg_defense()}
+				_unit_stat_cache[unit.unit_data_id] = cached
+			else:
+				continue
+		strength += cached.attack + cached.defense
 	return strength
 
 func _find_nearest_enemy_army_hex(from: Vector2i, faction_id: StringName, min_strength: int = 0) -> Vector2i:
@@ -2091,6 +2781,19 @@ func _find_nearest_enemy_city_hex(from: Vector2i, faction_id: StringName) -> Vec
 		if city.faction_id == faction_id:
 			continue
 		if GameManager.get_relation(faction_id, city.faction_id) != Enums.FactionRelation.WAR:
+			continue
+		var dist := HexHelper.hex_distance(from, city.hex_pos)
+		if dist < best_dist:
+			best_dist = dist
+			best_hex = city.hex_pos
+	return best_hex
+
+func _find_nearest_independent_city_hex(from: Vector2i, faction_id: StringName) -> Vector2i:
+	var best_hex := Vector2i(-1, -1)
+	var best_dist := 9999
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != &"independent":
 			continue
 		var dist := HexHelper.hex_distance(from, city.hex_pos)
 		if dist < best_dist:

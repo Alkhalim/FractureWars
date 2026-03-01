@@ -26,6 +26,9 @@ extends Resource
 @export var original_faction_id: StringName = &""  # cultural origin, never changes
 @export var turns_since_capture: int = -1  # -1 = never captured; 0+ = turns since capture
 @export var upgrade_turns_remaining: int = 0 # 0 = no upgrade in progress; >0 = turns left
+@export var garrison_defeated_turn: int = -1 # Turn when garrison was last defeated (-1 = never)
+@export var garrison_hp_ratio: float = 1.0 # 0.0 = destroyed, 1.0 = full; heals over time when not sieged
+@export var building_recruit_queues: Dictionary = {} # building_id -> Array[Dict] (per-building training queues)
 
 const GROWTH_THRESHOLDS := [200, 400, 700, 1100] # pop needed for levels 2-5
 
@@ -83,9 +86,9 @@ func get_growth_threshold() -> int:
 func get_population_cap() -> int:
 	var threshold := get_growth_threshold()
 	if threshold > 0:
-		return int(threshold * 1.5)
-	# Max level — cap at 150% of the last threshold
-	return int(GROWTH_THRESHOLDS[GROWTH_THRESHOLDS.size() - 1] * 1.5)
+		return int(threshold * 1.2)
+	# Max level — cap at 120% of the last threshold
+	return int(GROWTH_THRESHOLDS[GROWTH_THRESHOLDS.size() - 1] * 1.2)
 
 func is_upgrade_available() -> bool:
 	if upgrade_turns_remaining > 0:

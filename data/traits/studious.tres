@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"studious"
+display_name = "Studious"
+description = "Devotes every quiet moment to study and self-improvement."
+is_positive = true
+effects = {"xp_gain_mult": 0.15}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"in_city"])
+acquire_threshold = 6
+lose_context = Array[StringName]([&"battle_won", &"was_attacker"])
+lose_threshold = 15

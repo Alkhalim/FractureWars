@@ -444,7 +444,7 @@ func _update_unit_info(f: BattleSimulatorV2.BattleFormation) -> void:
 	if bonus_atk != 0:
 		atk_text += " (%+d)" % bonus_atk
 
-	var base_def: int = ud.defense if ud else f.defense
+	var base_def: int = ud.melee_defense if ud else f.defense
 	var bonus_def: int = f.defense - base_def
 	var def_text := "DEF:%d" % f.defense
 	if bonus_def != 0:

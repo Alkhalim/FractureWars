@@ -400,18 +400,18 @@ static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.T
 		if h10 == 0: return Enums.TerrainType.TUNDRA
 		return Enums.TerrainType.DESERT
 
-	# ── Eastern Ruin — Forsaken ──
+	# ── Eastern Ruin — Forsaken (swamp-heavy homeland) ──
 	if region_id in ZONE_EAST_FORSAKEN:
 		if region_id == &"orenthal":
-			if h10 <= 1: return Enums.TerrainType.DESERT
-			if h10 <= 3: return Enums.TerrainType.SWAMP
+			if h10 == 0: return Enums.TerrainType.DESERT
+			if h10 <= 4: return Enums.TerrainType.SWAMP
 			return Enums.TerrainType.SHARD_WASTES
 		if region_id == &"morvane":
-			if h10 <= 1: return Enums.TerrainType.SHARD_WASTES
-			if h10 == 2: return Enums.TerrainType.FOREST
+			if h10 == 0: return Enums.TerrainType.SHARD_WASTES
+			if h10 == 1: return Enums.TerrainType.FOREST
 			return Enums.TerrainType.SWAMP
 		# Weeping Barrows — toxic swamps
-		if h10 <= 1: return Enums.TerrainType.SHARD_WASTES
+		if h10 == 0: return Enums.TerrainType.SHARD_WASTES
 		return Enums.TerrainType.SWAMP
 
 	# ── Shard Frontier — Ivoryscar ──

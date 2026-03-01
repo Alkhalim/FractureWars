@@ -12,4 +12,6 @@ is_playable = true
 starting_regions = Array[StringName]([&"eternal_plains"])
 realm_affinity = 4
 shard_preferences = {}
-ai_personality = {}
+ai_personality = {"aggression": 0.4, "expansion": 0.6}
+gift_likes = Array[StringName]([&"martial", &"luxury", &"elegant"])
+gift_dislikes = Array[StringName]([&"primitive", &"dark"])

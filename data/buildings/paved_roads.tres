@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = &"paved_roads"
 display_name = "Paved Roads I"
-description = "Properly surfaced roads that improve movement throughout the province."
+description = "Properly surfaced roads that improve movement throughout the province. Armies starting their turn here gain +0.5 movement."
 faction_id = &"empire"
 category = &"economic"
-build_cost = {0: 280, 1: 40, 5: 100}
+build_cost = {0: 225, 1: 40, 5: 95}
 build_time = 2
 income_bonus = {0: 5}
 population_growth_bonus = 2
@@ -17,3 +17,4 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
+special_effects = {"army_movement_bonus": 0.5}

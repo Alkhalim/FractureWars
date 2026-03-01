@@ -78,6 +78,13 @@ func process_research(faction_id: StringName) -> void:
 		fs.current_research_id = &""
 		return
 	fs.research_progress += 1
+	# Culture building research speed bonus: accumulate fractional progress
+	var bonus := _get_faction_research_speed_bonus(faction_id)
+	if bonus > 0.0:
+		fs.research_speed_accumulator += bonus
+		while fs.research_speed_accumulator >= 1.0:
+			fs.research_progress += 1
+			fs.research_speed_accumulator -= 1.0
 	if fs.research_progress >= data.research_time:
 		_complete_research(faction_id, fs)
 
@@ -121,6 +128,18 @@ func get_research_effects(faction_id: StringName) -> Dictionary:
 					combined[key] = combined.get(key, 0) + bonus[key]
 	_effects_cache[faction_id] = combined
 	return combined
+
+func _get_faction_research_speed_bonus(faction_id: StringName) -> float:
+	var total := 0.0
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != faction_id:
+			continue
+		for building_id in city.buildings:
+			var bld: BuildingData = DataManager.get_building(building_id)
+			if bld and bld.special_effects.has("research_speed_bonus"):
+				total += float(bld.special_effects["research_speed_bonus"])
+	return total
 
 func _invalidate_cache(faction_id: StringName) -> void:
 	_effects_cache.erase(faction_id)

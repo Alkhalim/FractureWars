@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"council_of_groves"
+display_name = "Council of Groves III"
+description = "A grand arboreal parliament where emissaries from every allied nation gather beneath the World-Canopy. Treaties forged here carry the weight of living wood."
+faction_id = &"gladehost"
+category = &"cultural"
+build_cost = {0: 360, 1: 40, 5: 95}
+build_time = 4
+income_bonus = {0: 20, 2: 8}
+population_growth_bonus = 4
+required_capital_level = 3
+upgrades_from = &"embassy_grove"
+class_loyalty_bonus = {"peasants": 2, "artisans": 2, "scholars": 4, "nobles": 5}

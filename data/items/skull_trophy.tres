@@ -10,3 +10,4 @@ description = "A grisly trophy that terrifies the enemy."
 rarity = &"rare"
 effects = {"enemy_army_morale_penalty": -3}
 source_factions = Array[StringName]([&"skulloath"])
+gift_tags = Array[StringName]([&"martial", &"dark", &"primitive"])

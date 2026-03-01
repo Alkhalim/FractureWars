@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pale_waif_idol"
+display_name = "Pale Waif Idol"
+description = "A crude bone idol depicting the Pale Waif, carried by Skulloath warriors as a dark talisman."
+rarity = &"common"
+effects = {"enemy_army_morale_penalty": -2}
+source_factions = Array[StringName]([&"skulloath"])
+gift_tags = Array[StringName]([&"dark", &"primitive", &"religious"])

@@ -91,6 +91,21 @@ static func _hash_pos(x: int, y: int, seed_val: int) -> int:
 	h = ((h ^ (h >> 13)) * 1103515245 + 12345) & 0x7FFFFFFF
 	return h
 
+static func _noise_hash(x: float, y: float, seed_val: int) -> float:
+	# Simple value-noise-like hash returning 0.0 to 1.0
+	var ix: int = int(floorf(x))
+	var iy: int = int(floorf(y))
+	var fx: float = x - floorf(x)
+	var fy: float = y - floorf(y)
+	# Smooth interpolation
+	fx = fx * fx * (3.0 - 2.0 * fx)
+	fy = fy * fy * (3.0 - 2.0 * fy)
+	var a := float(_hash_pos(ix, iy, seed_val) & 0xFFFF) / 65535.0
+	var b := float(_hash_pos(ix + 1, iy, seed_val) & 0xFFFF) / 65535.0
+	var c := float(_hash_pos(ix, iy + 1, seed_val) & 0xFFFF) / 65535.0
+	var d := float(_hash_pos(ix + 1, iy + 1, seed_val) & 0xFFFF) / 65535.0
+	return lerpf(lerpf(a, b, fx), lerpf(c, d, fx), fy)
+
 static func _scatter_clusters(terrain: Dictionary, type: Enums.BattleTerrain,
 		cluster_count: int, min_size: int, max_size: int, seed_val: int,
 		grid_w: int = GRID_WIDTH, grid_h: int = GRID_HEIGHT) -> void:
@@ -101,23 +116,34 @@ static func _scatter_clusters(terrain: Dictionary, type: Enums.BattleTerrain,
 		var cy: int = 3 + ((h >> 8) % maxi(1, grid_h - 6))
 		var size: int = min_size + ((h >> 16) % (max_size - min_size + 1))
 
-		# Grow cluster from center
-		var placed: Array[Vector2i] = [Vector2i(cx, cy)]
-		terrain[Vector2i(cx, cy)] = type
+		# Blob radius derived from desired cell count: area = pi*r^2, so r = sqrt(size/pi)
+		var blob_radius: float = sqrt(float(size) / PI) + 0.5
+		# Noise seed unique per cluster
+		var noise_seed := seed_val * 31 + i * 137
 
-		for j in range(size - 1):
-			if placed.is_empty():
+		# Scan a bounding box around the center and use distance + noise falloff
+		var scan_r := ceili(blob_radius) + 2
+		var placed_count := 0
+		for dy in range(-scan_r, scan_r + 1):
+			for dx in range(-scan_r, scan_r + 1):
+				var px := cx + dx
+				var py := cy + dy
+				if px < 0 or px >= grid_w or py < 0 or py >= grid_h:
+					continue
+				if terrain[Vector2i(px, py)] != Enums.BattleTerrain.OPEN:
+					continue
+				# Distance from cluster center
+				var dist := sqrt(float(dx * dx + dy * dy))
+				# Noise-based distortion for organic shape
+				var noise_val := _noise_hash(float(px) * 0.7, float(py) * 0.7, noise_seed)
+				var threshold := blob_radius * (0.6 + noise_val * 0.8)
+				if dist <= threshold:
+					terrain[Vector2i(px, py)] = type
+					placed_count += 1
+					if placed_count >= size * 2:
+						break
+			if placed_count >= size * 2:
 				break
-			var base_idx := _hash_pos(i, j, seed_val + 50) % placed.size()
-			var base: Vector2i = placed[base_idx]
-			var dir := _hash_pos(i, j, seed_val + 77) % 4
-			var offsets: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
-			var new_pos: Vector2i = base + offsets[dir]
-
-			if new_pos.x >= 0 and new_pos.x < grid_w and new_pos.y >= 0 and new_pos.y < grid_h:
-				if terrain[new_pos] == Enums.BattleTerrain.OPEN:
-					terrain[new_pos] = type
-					placed.append(new_pos)
 
 static func _place_water_edge(terrain: Dictionary, seed_val: int,
 		grid_w: int = GRID_WIDTH, grid_h: int = GRID_HEIGHT) -> void:

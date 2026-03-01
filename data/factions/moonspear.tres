@@ -12,4 +12,6 @@ is_playable = true
 starting_regions = Array[StringName]([&"iskar"])
 realm_affinity = 0
 shard_preferences = {}
-ai_personality = {"aggression": 0.3, "expansion": 0.4}
+ai_personality = {"aggression": 0.45, "expansion": 0.4}
+gift_likes = Array[StringName]([&"scholarly", &"religious", &"arcane"])
+gift_dislikes = Array[StringName]([&"dark", &"primitive"])

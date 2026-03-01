@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="FollowerData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/follower_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"stoneroot_watcher"
+display_name = "Stoneroot Watcher"
+description = "A mountain sentinel who fortifies camps but slows the march. (+4 city defense, -1 campaign movement)"
+bonus_effect = { "city_defense_bonus": 4 }
+malus_effect = { "army_movement_bonus": -1.0 }
+terrain_tags = Array[StringName]([&"mountains"])

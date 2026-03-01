@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"devout"
+display_name = "Devout"
+description = "Finds strength in faith, inspiring reverence in the ranks."
+is_positive = true
+effects = {"unit_morale_bonus": 3, "heal_per_turn": 2}
+excludes = Array[StringName]([&"faithless"])
+acquire_context = Array[StringName]([&"in_city"])
+acquire_threshold = 6
+lose_context = Array[StringName]([])
+lose_threshold = 15

@@ -22,6 +22,7 @@ extends Resource
 @export var quickmatch_won: bool = false
 @export var tutorial_enabled: bool = true
 @export var tutorial_step: int = 0
+@export var encountered_factions: Dictionary = {} # faction_id -> true (factions the player has seen)
 
 var hex_map: HexMapData # Runtime hex map state (not serialized)
 

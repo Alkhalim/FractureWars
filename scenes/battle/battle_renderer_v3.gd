@@ -3,15 +3,15 @@ extends Node2D
 var battle_scene = null  # Untyped — set by BattleV3
 
 const TERRAIN_COLORS := {
-	Enums.BattleTerrain.OPEN:    Color(0.12, 0.11, 0.16, 1),
-	Enums.BattleTerrain.FOREST:  Color(0.1, 0.2, 0.1, 1),
-	Enums.BattleTerrain.ROCK:    Color(0.22, 0.2, 0.2, 1),
-	Enums.BattleTerrain.WATER:   Color(0.08, 0.12, 0.25, 1),
-	Enums.BattleTerrain.SAND:    Color(0.22, 0.2, 0.13, 1),
-	Enums.BattleTerrain.MUD:     Color(0.14, 0.12, 0.08, 1),
-	Enums.BattleTerrain.ICE:     Color(0.18, 0.22, 0.28, 1),
-	Enums.BattleTerrain.CRYSTAL: Color(0.2, 0.1, 0.25, 1),
-	Enums.BattleTerrain.BRUSH:   Color(0.13, 0.15, 0.11, 1),
+	Enums.BattleTerrain.OPEN:    Color(0.15, 0.14, 0.12, 1),
+	Enums.BattleTerrain.FOREST:  Color(0.12, 0.28, 0.10, 1),
+	Enums.BattleTerrain.ROCK:    Color(0.30, 0.26, 0.22, 1),
+	Enums.BattleTerrain.WATER:   Color(0.08, 0.15, 0.32, 1),
+	Enums.BattleTerrain.SAND:    Color(0.32, 0.28, 0.16, 1),
+	Enums.BattleTerrain.MUD:     Color(0.18, 0.14, 0.08, 1),
+	Enums.BattleTerrain.ICE:     Color(0.24, 0.30, 0.38, 1),
+	Enums.BattleTerrain.CRYSTAL: Color(0.26, 0.12, 0.32, 1),
+	Enums.BattleTerrain.BRUSH:   Color(0.16, 0.22, 0.12, 1),
 }
 
 const COLOR_DEPLOY_TINT := Color(0.12, 0.15, 0.25, 1)
@@ -113,9 +113,21 @@ func _draw() -> void:
 	# 4. Draw entities for each formation
 	_draw_formations(sim)
 
-	# 5. Draw field border
-	draw_rect(Rect2(0, 0, BattleSimulatorV3.FIELD_WIDTH, BattleSimulatorV3.FIELD_HEIGHT),
-		Color(0.55, 0.42, 0.2, 0.8), false, 2.0)
+	# 5. Draw battlefield vignette (darkened edges)
+	_draw_vignette()
+
+	# 6. Draw field border with corner markers
+	var fw := BattleSimulatorV3.FIELD_WIDTH
+	var fh := BattleSimulatorV3.FIELD_HEIGHT
+	draw_rect(Rect2(0, 0, fw, fh), Color(0.55, 0.42, 0.2, 0.7), false, 2.5)
+	# Corner ornaments
+	var corner_len := 30.0
+	var cc := Color(0.7, 0.55, 0.3, 0.6)
+	for corner in [Vector2(0, 0), Vector2(fw, 0), Vector2(0, fh), Vector2(fw, fh)]:
+		var dx := 1.0 if corner.x < fw * 0.5 else -1.0
+		var dy := 1.0 if corner.y < fh * 0.5 else -1.0
+		draw_line(corner, corner + Vector2(dx * corner_len, 0), cc, 2.0)
+		draw_line(corner, corner + Vector2(0, dy * corner_len), cc, 2.0)
 
 func _draw_terrain(sim: BattleSimulatorV3) -> void:
 	if _terrain_rect != null:
@@ -133,13 +145,18 @@ func _draw_terrain(sim: BattleSimulatorV3) -> void:
 			draw_rect(Rect2(x * cs, y * cs, cs, cs), color)
 
 func _draw_deploy_zones(sim: BattleSimulatorV3) -> void:
+	# Derive deploy zone tints from faction colors
+	var atk_fd := DataManager.get_faction(battle_scene.attacker_faction_id)
+	var def_fd := DataManager.get_faction(battle_scene.defender_faction_id)
+	var atk_tint: Color = (atk_fd.color.darkened(0.7) if atk_fd else COLOR_DEPLOY_TINT)
+	var def_tint: Color = (def_fd.color.darkened(0.7) if def_fd else COLOR_ENEMY_TINT)
 	# Attacker deploy zone (bottom)
 	draw_rect(Rect2(0, BattleSimulatorV3.DEPLOY_BOTTOM_Y, BattleSimulatorV3.FIELD_WIDTH,
 		BattleSimulatorV3.FIELD_HEIGHT - BattleSimulatorV3.DEPLOY_BOTTOM_Y),
-		COLOR_DEPLOY_TINT * Color(1, 1, 1, 0.15))
+		atk_tint * Color(1, 1, 1, 0.15))
 	# Defender deploy zone (top)
 	draw_rect(Rect2(0, 0, BattleSimulatorV3.FIELD_WIDTH, BattleSimulatorV3.DEPLOY_TOP_Y),
-		COLOR_ENEMY_TINT * Color(1, 1, 1, 0.15))
+		def_tint * Color(1, 1, 1, 0.15))
 
 	# Zone separator line
 	var mid_y := (BattleSimulatorV3.DEPLOY_TOP_Y + BattleSimulatorV3.DEPLOY_BOTTOM_Y) / 2.0
@@ -159,7 +176,11 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 			continue
 
 		var is_player: bool = f.side == battle_scene.player_side
-		var base_color: Color = COLOR_PLAYER if is_player else COLOR_ENEMY
+		var faction_data := DataManager.get_faction(f.faction_id)
+		var base_color: Color = faction_data.color if faction_data else (COLOR_PLAYER if is_player else COLOR_ENEMY)
+		# Ensure contrast: darken very light faction colors
+		if base_color.get_luminance() > 0.7:
+			base_color = base_color.darkened(0.2)
 		if f.is_routing:
 			base_color = base_color.lerp(Color(0.55, 0.25, 0.2), 0.55)
 			base_color.a = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008)
@@ -175,6 +196,14 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 		var facing_angle: float = f.rotation
 		var limit := mini(f.entities_alive, f.entity_positions.size())
 		var time_ms := Time.get_ticks_msec()
+
+		# Ground shadow beneath each entity
+		for i in limit:
+			var epos: Vector2 = f.entity_positions[i]
+			if f.is_routing:
+				epos += Vector2(sin(i * 2.3 + time_ms * 0.004) * 2.5, cos(i * 3.1 + time_ms * 0.003) * 2.0)
+			draw_circle(epos + Vector2(1.5, 2.0), radius * hit_scale * 0.85, Color(0.0, 0.0, 0.0, 0.18))
+
 		for i in limit:
 			var epos: Vector2 = f.entity_positions[i]
 			# Routing scatter jitter — "breaking ranks" look
@@ -189,6 +218,8 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 				c = c.lerp(COLOR_SELECTED, 0.25)
 			elif is_hovered:
 				c = c.lightened(0.15)
+			# Dark outline behind entity for readability
+			_draw_entity(epos, radius * hit_scale + 1.5, Color(0.0, 0.0, 0.0, 0.55), f.tags, facing_angle)
 			_draw_entity(epos, radius * hit_scale, c, f.tags, facing_angle)
 			# Attack flash overlay
 			if _flash_formations.has(f.instance_id):
@@ -268,10 +299,15 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 				var end := panic_center + Vector2(cos(a), sin(a)) * 9.0
 				draw_line(start, end, panic_color, 1.5)
 
-		# Name label
-		draw_string(ThemeDB.fallback_font, f.position + Vector2(-30, -28),
-			f.display_name.left(8), HORIZONTAL_ALIGNMENT_CENTER, 60, 9,
-			Color(0.9, 0.85, 0.7, 0.8) if is_player else Color(0.9, 0.7, 0.65, 0.8))
+		# Name label with shadow for readability
+		var name_text := f.display_name.left(10)
+		var name_pos := f.position + Vector2(-35, -30)
+		var name_color: Color = Color(0.95, 0.9, 0.75, 0.9) if is_player else Color(0.95, 0.72, 0.65, 0.9)
+		# Shadow
+		draw_string(ThemeDB.fallback_font, name_pos + Vector2(1, 1),
+			name_text, HORIZONTAL_ALIGNMENT_CENTER, 70, 10, Color(0, 0, 0, 0.6))
+		draw_string(ThemeDB.fallback_font, name_pos,
+			name_text, HORIZONTAL_ALIGNMENT_CENTER, 70, 10, name_color)
 
 func _draw_dead_marks(sim: BattleSimulatorV3) -> void:
 	var all_formations: Array[BattleSimulatorV3.BattleFormationV3] = []
@@ -324,16 +360,28 @@ func _draw_facing_arrow(f: BattleSimulatorV3.BattleFormationV3, base_color: Colo
 func _draw_entity(pos: Vector2, radius: float, color: Color, tags: Array, facing_angle: float) -> void:
 	if tags.has("flying"):
 		_draw_flying_entity(pos, radius, color, facing_angle)
-	elif tags.has("swarm") and not tags.has("cavalry"):
+	elif tags.has("swarm") and not tags.has("cavalry") and not tags.has("infantry"):
 		_draw_swarm_entity(pos, radius, color)
 	elif tags.has("monster"):
-		# Hexagon + inner ring
-		var pts := PackedVector2Array()
-		for k in 6:
-			var a := TAU * float(k) / 6.0
-			pts.append(pos + Vector2(cos(a), sin(a)) * radius)
-		draw_colored_polygon(pts, color)
-		draw_arc(pos, radius * 0.65, 0, TAU, 6, color.darkened(0.3), 1.5)
+		if radius >= 20.0:
+			# Single-entity large monster (radius 24): Spiky star-like polygon
+			var pts := PackedVector2Array()
+			var spike_count := 7
+			for k in spike_count * 2:
+				var a := TAU * float(k) / float(spike_count * 2) + facing_angle
+				var r := radius if k % 2 == 0 else radius * 0.55
+				pts.append(pos + Vector2(cos(a), sin(a)) * r)
+			draw_colored_polygon(pts, color)
+			# Inner menacing ring
+			draw_arc(pos, radius * 0.4, 0, TAU, 10, color.darkened(0.35), 2.0)
+		else:
+			# Multi-entity monster: Hexagon + inner ring (unchanged)
+			var pts := PackedVector2Array()
+			for k in 6:
+				var a := TAU * float(k) / 6.0
+				pts.append(pos + Vector2(cos(a), sin(a)) * radius)
+			draw_colored_polygon(pts, color)
+			draw_arc(pos, radius * 0.65, 0, TAU, 6, color.darkened(0.3), 1.5)
 	elif tags.has("construct") and not tags.has("infantry"):
 		_draw_construct_entity(pos, radius, color)
 	elif tags.has("beast") and not tags.has("cavalry"):
@@ -391,11 +439,36 @@ func _draw_swarm_entity(pos: Vector2, radius: float, color: Color) -> void:
 	draw_circle(pos + Vector2(spread * 0.87, spread * 0.5), r, color)
 
 func _draw_construct_entity(pos: Vector2, radius: float, color: Color) -> void:
-	# Outer square + inner darker square
-	var r := radius * 0.85
-	draw_rect(Rect2(pos.x - r, pos.y - r, r * 2, r * 2), color)
-	var ir := r * 0.55
-	draw_rect(Rect2(pos.x - ir, pos.y - ir, ir * 2, ir * 2), color.darkened(0.3))
+	if radius >= 25.0:
+		# Single-entity construct (radius 27): Octagon with inner detail
+		var pts := PackedVector2Array()
+		for k in 8:
+			var a := TAU * float(k) / 8.0 + PI / 8.0
+			pts.append(pos + Vector2(cos(a), sin(a)) * radius * 0.92)
+		draw_colored_polygon(pts, color)
+		# Inner octagon detail
+		var inner_pts := PackedVector2Array()
+		for k in 8:
+			var a := TAU * float(k) / 8.0 + PI / 8.0
+			inner_pts.append(pos + Vector2(cos(a), sin(a)) * radius * 0.55)
+		draw_colored_polygon(inner_pts, color.darkened(0.3))
+		# Cross-hatch lines for mechanical look
+		var cr := radius * 0.35
+		draw_line(pos + Vector2(-cr, 0), pos + Vector2(cr, 0), color.lightened(0.2), 1.5)
+		draw_line(pos + Vector2(0, -cr), pos + Vector2(0, cr), color.lightened(0.2), 1.5)
+	else:
+		# Multi-entity construct (radius 15): Hexagon instead of square
+		var pts := PackedVector2Array()
+		for k in 6:
+			var a := TAU * float(k) / 6.0 + PI / 6.0
+			pts.append(pos + Vector2(cos(a), sin(a)) * radius * 0.9)
+		draw_colored_polygon(pts, color)
+		# Inner hexagon detail
+		var inner_pts := PackedVector2Array()
+		for k in 6:
+			var a := TAU * float(k) / 6.0 + PI / 6.0
+			inner_pts.append(pos + Vector2(cos(a), sin(a)) * radius * 0.5)
+		draw_colored_polygon(inner_pts, color.darkened(0.3))
 
 func _draw_beast_entity(pos: Vector2, radius: float, color: Color, facing_angle: float) -> void:
 	# Irregular 5-point claw shape
@@ -534,3 +607,35 @@ func _draw_resource_bars(f: BattleSimulatorV3.BattleFormationV3) -> void:
 			color = Color(0.2, 0.3, 0.65, 0.6)
 		draw_rect(Rect2(bar_x, y, fill, bar_height), color)
 		draw_rect(Rect2(bar_x, y, bar_width, bar_height), COLOR_BAR_OUTLINE, false, 1.0)
+
+func _draw_vignette() -> void:
+	# Darken edges of the battlefield for atmospheric depth
+	var fw := BattleSimulatorV3.FIELD_WIDTH
+	var fh := BattleSimulatorV3.FIELD_HEIGHT
+	var edge := 80.0
+	var step := edge / 5.0
+	var vc := Color(0.0, 0.0, 0.0)
+	# Top edge gradient
+	for i in 6:
+		var t := float(i) / 5.0
+		var alpha := lerpf(0.25, 0.0, t)
+		var y := t * edge
+		draw_line(Vector2(0, y), Vector2(fw, y), Color(vc.r, vc.g, vc.b, alpha), step)
+	# Bottom edge gradient
+	for i in 6:
+		var t := float(i) / 5.0
+		var alpha := lerpf(0.25, 0.0, t)
+		var y := fh - t * edge
+		draw_line(Vector2(0, y), Vector2(fw, y), Color(vc.r, vc.g, vc.b, alpha), step)
+	# Left edge gradient
+	for i in 6:
+		var t := float(i) / 5.0
+		var alpha := lerpf(0.2, 0.0, t)
+		var x := t * edge
+		draw_line(Vector2(x, 0), Vector2(x, fh), Color(vc.r, vc.g, vc.b, alpha), step)
+	# Right edge gradient
+	for i in 6:
+		var t := float(i) / 5.0
+		var alpha := lerpf(0.2, 0.0, t)
+		var x := fw - t * edge
+		draw_line(Vector2(x, 0), Vector2(x, fh), Color(vc.r, vc.g, vc.b, alpha), step)

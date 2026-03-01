@@ -6,6 +6,6 @@
 script = ExtResource("1")
 id = &"supply_master"
 display_name = "Supply Master"
-description = "Ensures gold flows but the heavy wagons slow the march."
+description = "Ensures gold flows but the heavy wagons slow the army's march. (-1 campaign movement)"
 bonus_effect = { "city_gold_bonus": 5 }
 malus_effect = { "army_movement_bonus": -1 }

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"serpent_fang_dagger"
+display_name = "Serpent Fang Dagger"
+description = "A venomous dagger carved from the fang of a giant jungle serpent, favored by Coatlanli warriors."
+rarity = &"rare"
+effects = {"army_attack_bonus": 3, "enemy_army_morale_penalty": -1}
+source_factions = Array[StringName]([&"tainted_jade"])
+gift_tags = Array[StringName]([&"nature", &"dark", &"martial"])

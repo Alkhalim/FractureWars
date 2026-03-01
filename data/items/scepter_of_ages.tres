@@ -10,3 +10,4 @@ description = "An ancient scepter of immense administrative power."
 rarity = &"legendary"
 effects = {"city_gold_bonus": 5, "city_defense_bonus": 5, "recruit_speed_bonus": 2}
 source_factions = Array[StringName]([&"empire"])
+gift_tags = Array[StringName]([&"luxury", &"elegant"])

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cowardly"
+display_name = "Cowardly"
+description = "Flinches at the first sign of danger — troops rout easily."
+is_positive = false
+effects = {"retreat_morale_threshold": 5}
+excludes = Array[StringName]([&"brave"])
+acquire_context = Array[StringName]([&"battle_lost"])
+acquire_threshold = 4
+lose_context = Array[StringName]([&"battle_won", &"was_attacker"])
+lose_threshold = 10

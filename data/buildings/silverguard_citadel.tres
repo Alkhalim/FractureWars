@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"silverguard_citadel"
+display_name = "Silverguard Citadel III"
+description = "The hallowed fortress of the Silverguard elite. Moonsilver-clad towers rise above the clouds, and within, the Eclipse Champions take their eternal vows."
+faction_id = &"moonspear"
+category = &"military"
+build_cost = {0: 520, 1: 100, 5: 80}
+build_time = 4
+population_growth_bonus = 2
+defense_bonus = 3
+unlocks_units = Array[StringName]([&"eclipse_champion", &"moonstone_golem"])
+required_capital_level = 3
+upgrades_from = &"silverguard_chapter"
+class_loyalty_bonus = {"nobles": 5}

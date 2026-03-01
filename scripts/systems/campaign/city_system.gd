@@ -1,6 +1,26 @@
 class_name CitySystem
 extends RefCounted
 
+const BUILDING_INCOME_MULTIPLIER := 0.85
+
+const DEFAULT_BUILDING_UPKEEP := {
+	1: {0: 3},              # T1: 3 gold
+	2: {0: 6, 1: 2},        # T2: 6 gold, 2 iron
+	3: {0: 10, 1: 4},       # T3: 10 gold, 4 iron
+}
+
+# Region/faction-wide building effects
+const REGION_WIDE_BUILDING_EFFECTS := {
+	&"caravan_depot": {"scope": "region", "effect": "gold_income_pct", "value": 5},
+	&"lunar_observatory": {"scope": "region", "effect": "tech_flat", "value": 2},
+	&"warriors_longhouse": {"scope": "region", "effect": "defense_flat", "value": 1},
+}
+const FACTION_WIDE_BUILDING_EFFECTS := {
+	&"cathedral_of_dawn": {"effect": "loyalty_flat", "value": 3, "faction_filter": &"sunblessed"},
+	&"astral_bazaar": {"effect": "trade_income_pct", "value": 3},
+	&"relic_traders_guild": {"effect": "gold_per_relic_building", "value": 2},
+}
+
 func process_turn(faction_id: StringName) -> void:
 	# Calculate projected food income for growth modifier
 	var food_income := _calculate_food_income(faction_id)
@@ -25,6 +45,13 @@ func process_turn(faction_id: StringName) -> void:
 		_process_build_queue(city)
 		_process_recruit_queue(city, faction_id)
 		_process_upgrade(city)
+
+		# Garrison HP regeneration: heals +15% per turn when not under siege
+		if not city.is_under_siege and city.garrison_hp_ratio < 1.0:
+			if city.garrison_hp_ratio <= 0.0:
+				city.garrison_hp_ratio = 0.1 # Respawn at 10% when no longer sieged
+			else:
+				city.garrison_hp_ratio = minf(city.garrison_hp_ratio + 0.15, 1.0)
 
 		# Loyalty update (capitals compute; settlements inherit)
 		_update_loyalty(city, faction_id)
@@ -171,7 +198,7 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	# Captive-dependent buildings produce less without captives
 	var fs_for_captives: FactionState = GameManager.state.faction_states.get(city.faction_id)
 	var faction_captives: int = fs_for_captives.resources.get(Enums.ResourceType.CAPTIVES, 0) if fs_for_captives else 0
-	var captive_buildings: Array[StringName] = [&"labor_camp", &"thrall_quarters", &"captive_processing_camp"]
+	var captive_buildings: Array[StringName] = [&"labor_camp", &"thrall_quarters", &"captive_processing_camp", &"imperial_work_yard"]
 	for building_id in city.buildings:
 		var building: BuildingData = DataManager.get_building(building_id)
 		if building == null:
@@ -187,6 +214,8 @@ func calculate_city_income(city: CityState) -> Dictionary:
 			if res_type != Enums.ResourceType.FOOD:
 				bonus = int(float(bonus) * building_pop_mult)
 			bonus = int(float(bonus) * captive_mult)
+			# Lower normal building income by 15%
+			bonus = int(float(bonus) * BUILDING_INCOME_MULTIPLIER)
 			if income.has(res_type):
 				income[res_type] += bonus
 			else:
@@ -201,7 +230,59 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	if cmd_gold_bonus > 0:
 		income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + cmd_gold_bonus
 
+	# Apply region/faction-wide building effects
+	apply_region_effects(income, city)
+
 	return income
+
+func apply_region_effects(income: Dictionary, city: CityState) -> void:
+	var faction_id := city.faction_id
+	var region_id := city.region_id
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+
+	# Scan all cities for region-wide and faction-wide building effects
+	for scan_city_id in GameManager.state.cities:
+		var scan_city: CityState = GameManager.state.cities[scan_city_id]
+		if scan_city.faction_id != faction_id:
+			# Check if same parent faction
+			var scan_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(scan_city.faction_id, scan_city.faction_id)
+			if scan_parent != parent_fid:
+				continue
+
+		for building_id in scan_city.buildings:
+			# Region-wide effects: only apply if same region
+			if REGION_WIDE_BUILDING_EFFECTS.has(building_id) and scan_city.region_id == region_id:
+				var eff: Dictionary = REGION_WIDE_BUILDING_EFFECTS[building_id]
+				match eff.effect:
+					"gold_income_pct":
+						var gold_bonus := int(income.get(Enums.ResourceType.GOLD, 0) * eff.value / 100.0)
+						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + gold_bonus
+					"tech_flat":
+						income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + eff.value
+					"defense_flat":
+						pass  # Defense is not in income; handled in garrison/battle calculations
+
+			# Faction-wide effects: apply to all faction cities
+			if FACTION_WIDE_BUILDING_EFFECTS.has(building_id):
+				var eff: Dictionary = FACTION_WIDE_BUILDING_EFFECTS[building_id]
+				# Check faction filter if present
+				if eff.has("faction_filter"):
+					if parent_fid != eff.faction_filter:
+						continue
+				match eff.effect:
+					"loyalty_flat":
+						pass  # Loyalty bonuses are applied in _update_loyalty, not income
+					"trade_income_pct":
+						var gold_bonus := int(income.get(Enums.ResourceType.GOLD, 0) * eff.value / 100.0)
+						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + gold_bonus
+					"gold_per_relic_building":
+						# Count relic/cultural buildings in this city
+						var relic_count := 0
+						for bid in city.buildings:
+							var bld := DataManager.get_building(bid)
+							if bld and bld.category == &"cultural":
+								relic_count += 1
+						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + relic_count * eff.value
 
 func _add_province_growth(region_id: StringName, faction_id: StringName, food_income: int = 0) -> void:
 	var growth := calculate_province_growth(region_id, faction_id)
@@ -221,15 +302,19 @@ func _add_province_growth(region_id: StringName, faction_id: StringName, food_in
 		var penalty := clampf(1.0 + float(food_income) / 40.0, 0.0, 1.0)
 		growth = int(float(growth) * penalty)
 
+	# Don't add growth when population is already at or above cap
+	var pop_cap := target_city.get_population_cap()
+	if target_city.population >= pop_cap:
+		growth = 0
+
 	# Apply growth
 	target_city.growth_points += growth
 	target_city.population = maxi(0, target_city.population + growth)
 
-	# Population cap: 150% of next level-up threshold — decay excess
-	var pop_cap := target_city.get_population_cap()
+	# Population cap: 120% of next level-up threshold — decay excess faster (33% per turn)
 	if target_city.population > pop_cap:
 		var excess := target_city.population - pop_cap
-		var decay := maxi(1, excess / 5)  # Lose 20% of excess per turn
+		var decay := maxi(1, excess / 3)  # Lose 33% of excess per turn
 		target_city.population = maxi(pop_cap, target_city.population - decay)
 
 func calculate_province_growth(region_id: StringName, faction_id: StringName) -> int:
@@ -249,6 +334,17 @@ func calculate_province_growth(region_id: StringName, faction_id: StringName) ->
 		base_growth += _get_commander_growth_bonus(city)
 		if city.loyalty > best_loyalty:
 			best_loyalty = city.loyalty
+	# special_effects: region_population_growth_bonus (applied once for the whole province)
+	for scan_city_id in GameManager.state.cities:
+		var scan_city: CityState = GameManager.state.cities[scan_city_id]
+		if scan_city.region_id != region_id:
+			continue
+		if scan_city.faction_id != faction_id:
+			continue
+		for bid in scan_city.buildings:
+			var bld := DataManager.get_building(bid)
+			if bld and bld.special_effects.has("region_population_growth_bonus"):
+				base_growth += bld.special_effects["region_population_growth_bonus"]
 	# Loyalty penalty based on best city's loyalty
 	var loyalty_growth_mult := _get_loyalty_growth_multiplier(best_loyalty)
 	if loyalty_growth_mult < 1.0:
@@ -386,15 +482,31 @@ func _process_build_queue(city: CityState) -> void:
 		EventBus.building_completed.emit(city.city_id, building_id)
 
 func _process_recruit_queue(city: CityState, faction_id: StringName) -> void:
-	if city.recruit_queue.is_empty():
-		return
+	# Process basic/levy queue (one unit per turn)
+	if not city.recruit_queue.is_empty():
+		var item: Dictionary = city.recruit_queue[0]
+		item.turns_remaining -= 1
+		if item.turns_remaining <= 0:
+			var unit_data_id: StringName = item.unit_data_id
+			city.recruit_queue.remove_at(0)
+			_spawn_recruited_unit(city, unit_data_id, faction_id)
 
-	var item: Dictionary = city.recruit_queue[0]
-	item.turns_remaining -= 1
-	if item.turns_remaining <= 0:
-		var unit_data_id: StringName = item.unit_data_id
-		city.recruit_queue.remove_at(0)
-		_spawn_recruited_unit(city, unit_data_id, faction_id)
+	# Process per-building queues (one unit per building per turn — parallel training)
+	var finished_keys: Array[StringName] = []
+	for building_id in city.building_recruit_queues:
+		var queue: Array = city.building_recruit_queues[building_id]
+		if queue.is_empty():
+			finished_keys.append(building_id)
+			continue
+		var item: Dictionary = queue[0]
+		item.turns_remaining -= 1
+		if item.turns_remaining <= 0:
+			var unit_data_id: StringName = item.unit_data_id
+			queue.remove_at(0)
+			_spawn_recruited_unit(city, unit_data_id, faction_id)
+	# Clean up empty queues
+	for key in finished_keys:
+		city.building_recruit_queues.erase(key)
 
 func _spawn_recruited_unit(city: CityState, unit_data_id: StringName, faction_id: StringName) -> void:
 	var unit_data := DataManager.get_unit(unit_data_id)
@@ -642,6 +754,28 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= cost
 
+	# Building upkeep: deduct per-building costs from faction resources
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != faction_id:
+			continue
+		for building_id in city.buildings:
+			var bld: BuildingData = DataManager.get_building(building_id)
+			if bld == null:
+				continue
+			var upkeep := get_building_upkeep(bld)
+			for res_type in upkeep:
+				var cost: int = upkeep[res_type]
+				if upkeep_red_pct > 0:
+					cost = int(cost * (1.0 - upkeep_red_pct))
+				if fs.resources.has(res_type):
+					fs.resources[res_type] -= cost
+
+func get_building_upkeep(building: BuildingData) -> Dictionary:
+	if not building.upkeep_cost.is_empty():
+		return building.upkeep_cost
+	return DEFAULT_BUILDING_UPKEEP.get(clampi(building.required_capital_level, 1, 3), {0: 3})
+
 func _process_captive_decay(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null:
@@ -667,11 +801,13 @@ func _process_captive_decay(faction_id: StringName) -> void:
 
 	# Each camp-type building consumes captives per turn (they die, escape, get worked to death)
 	var decay := 0
-	decay += labor_camp_count * 2        # Labor Camp: -2 captives/turn each
-	decay += thrall_count * 1             # Thrall Quarters: -1 captive/turn each
-	decay += processing_camp_count * 3    # Captive Processing Camp: -3 captives/turn each
+	decay += labor_camp_count * 3        # Labor Camp: -3 captives/turn each
+	decay += thrall_count * 2             # Thrall Quarters: -2 captives/turn each
+	decay += processing_camp_count * 4    # Captive Processing Camp: -4 captives/turn each
+	# Note: Blood Altar, Void Pit, Wretched Pit, Tomb Scholar's Hall, Pilgrim's Rest,
+	# Warriors' Longhouse, Ember Foundry, Lunar Observatory, Imperial Work Yard
+	# all consume captives in _apply_faction_income_modifier() directly
 
-	# Blood Altar already consumes 3 captives in _apply_faction_income_modifier
 	# Natural captive attrition: even without camps, 1 captive escapes/dies per 5 turns
 	if decay == 0:
 		# No camp buildings — slow natural decay
@@ -866,6 +1002,9 @@ func get_valid_tiles_for_building_terrain(city: CityState, terrain: int) -> Arra
 		var tile := hex_map.get_tile(neighbor)
 		if tile == null:
 			continue
+		# Never allow building on water
+		if tile.terrain == Enums.TerrainType.WATER:
+			continue
 		if terrain < 0 or tile.terrain == terrain:
 			result.append(neighbor)
 	return result
@@ -882,7 +1021,60 @@ func get_free_adjacent_tiles(city: CityState) -> Array[Vector2i]:
 
 # ── Public API ────────────────────────────────────────────────
 
-func get_available_buildings(city: CityState) -> Array[BuildingData]:
+func demolish_building(city_id: StringName, building_id: StringName) -> bool:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return false
+	if not city.buildings.has(building_id):
+		return false
+	# Check no dependent upgrade is built on top
+	for other_id in city.buildings:
+		var other_bld: BuildingData = DataManager.get_building(other_id)
+		if other_bld and other_bld.upgrades_from == building_id:
+			return false  # Cannot demolish: an upgrade depends on this building
+	# Also check build queue for pending upgrades from this building
+	for item in city.build_queue:
+		var queued_bld: BuildingData = DataManager.get_building(item.building_id)
+		if queued_bld and queued_bld.upgrades_from == building_id:
+			return false
+	# Remove from city
+	city.buildings.erase(building_id)
+	city.building_tiles.erase(building_id)
+	# Refund 1/3 of build cost
+	var building: BuildingData = DataManager.get_building(building_id)
+	if building:
+		var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+		if fs:
+			for res_type in building.build_cost:
+				var refund := int(building.build_cost[res_type] / 3.0)
+				if refund > 0:
+					fs.resources[res_type] = fs.resources.get(res_type, 0) + refund
+	EventBus.building_demolished.emit(city_id, building_id)
+	return true
+
+func get_demolish_refund(building_id: StringName) -> Dictionary:
+	var building: BuildingData = DataManager.get_building(building_id)
+	if building == null:
+		return {}
+	var refund: Dictionary = {}
+	for res_type in building.build_cost:
+		var amount := int(building.build_cost[res_type] / 3.0)
+		if amount > 0:
+			refund[res_type] = amount
+	return refund
+
+func has_dependent_upgrade(city: CityState, building_id: StringName) -> bool:
+	for other_id in city.buildings:
+		var other_bld: BuildingData = DataManager.get_building(other_id)
+		if other_bld and other_bld.upgrades_from == building_id:
+			return true
+	for item in city.build_queue:
+		var queued_bld: BuildingData = DataManager.get_building(item.building_id)
+		if queued_bld and queued_bld.upgrades_from == building_id:
+			return true
+	return false
+
+func get_available_buildings(city: CityState, include_slot_blocked: bool = false) -> Array[BuildingData]:
 	# Build a set of all ancestor building IDs in chains already used by this city
 	# e.g. if city has "imperial_granary" (upgrades_from "grain_fields"), "grain_fields" is used
 	var used_chain_ancestors: Dictionary = {} # StringName -> true
@@ -960,7 +1152,7 @@ func get_available_buildings(city: CityState) -> Array[BuildingData]:
 			continue
 		if building.upgrades_from == &"":
 			# Base building: needs a free slot
-			if city.get_available_building_slots() <= 0:
+			if city.get_available_building_slots() <= 0 and not include_slot_blocked:
 				continue
 			result.append(building)
 		else:
@@ -1051,6 +1243,15 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 	var adjusted_recruit := unit_data.recruit_cost.duplicate()
 	if adjusted_recruit.has(Enums.ResourceType.GOLD):
 		adjusted_recruit[Enums.ResourceType.GOLD] = int(adjusted_recruit[Enums.ResourceType.GOLD] * 0.90)
+	# Building special_effects: recruit_cost_discount_pct
+	var total_discount_pct := 0
+	for bid in city.buildings:
+		var bld := DataManager.get_building(bid)
+		if bld and bld.special_effects.has("recruit_cost_discount_pct"):
+			total_discount_pct += int(bld.special_effects["recruit_cost_discount_pct"])
+	if total_discount_pct > 0:
+		for res_type in adjusted_recruit:
+			adjusted_recruit[res_type] = int(adjusted_recruit[res_type] * (100 - total_discount_pct) / 100.0)
 	if not _can_afford(fs, adjusted_recruit):
 		return false
 
@@ -1072,7 +1273,63 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 			recruit_time -= b.recruit_speed_bonus
 	recruit_time = maxi(1, recruit_time)
 
-	city.recruit_queue.append({unit_data_id = unit_data_id, turns_remaining = recruit_time})
+	# Determine which building unlocks this unit (for per-building queue)
+	var unlocking_building: StringName = &""
+	for building_id in city.buildings:
+		var current_id: StringName = building_id
+		while current_id != &"":
+			var building: BuildingData = DataManager.get_building(current_id)
+			if building == null:
+				break
+			if building.unlocks_units.has(unit_data_id):
+				unlocking_building = building_id # Use the actual built building, not predecessor
+				break
+			current_id = building.upgrades_from
+		if unlocking_building != &"":
+			break
+
+	if unlocking_building == &"":
+		# Basic/faction unit with no building — use shared queue
+		city.recruit_queue.append({unit_data_id = unit_data_id, turns_remaining = recruit_time})
+	else:
+		# Per-building queue — parallel training
+		if not city.building_recruit_queues.has(unlocking_building):
+			city.building_recruit_queues[unlocking_building] = []
+		city.building_recruit_queues[unlocking_building].append({unit_data_id = unit_data_id, turns_remaining = recruit_time})
+	return true
+
+func cancel_recruitment(city_id: StringName, queue_type: String, queue_index: int, building_id: StringName = &"") -> bool:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return false
+	var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+	if fs == null:
+		return false
+	var item: Dictionary
+	if queue_type == "basic":
+		if queue_index < 0 or queue_index >= city.recruit_queue.size():
+			return false
+		item = city.recruit_queue[queue_index]
+		city.recruit_queue.remove_at(queue_index)
+	elif queue_type == "building":
+		if not city.building_recruit_queues.has(building_id):
+			return false
+		var bq: Array = city.building_recruit_queues[building_id]
+		if queue_index < 0 or queue_index >= bq.size():
+			return false
+		item = bq[queue_index]
+		bq.remove_at(queue_index)
+	else:
+		return false
+	# Refund 80% of recruitment cost
+	var unit_data := DataManager.get_unit(item.unit_data_id)
+	if unit_data:
+		for res_type in unit_data.recruit_cost:
+			var refund := int(unit_data.recruit_cost[res_type] * 0.8)
+			fs.resources[res_type] = fs.resources.get(res_type, 0) + refund
+		# Refund population
+		var pop_cost := unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
+		city.population += pop_cost
 	return true
 
 func _can_afford(fs: FactionState, cost: Dictionary) -> bool:
@@ -1120,7 +1377,18 @@ const GARRISON_UNITS := {
 	&"forsaken": [&"forsaken_wretch", &"forsaken_wretch"],
 	&"ivoryscar": [&"ivoryscar_seeker", &"ivoryscar_seeker"],
 	&"sunblessed": [&"sunblessed_pilgrim", &"sunblessed_pilgrim"],
+	&"independent": [&"citizen_phalanx", &"citizen_phalanx"],
 }
+
+func _get_garrison_bonus_units(city: CityState) -> Array[StringName]:
+	var bonus_units: Array[StringName] = []
+	for building_id in city.buildings:
+		var bld := DataManager.get_building(building_id)
+		if bld and bld.category == &"military" and not bld.unlocks_units.is_empty():
+			bonus_units.append(bld.unlocks_units[0])
+			if bonus_units.size() >= 4:
+				break
+	return bonus_units
 
 func _get_garrison_composition(city: CityState) -> Array:
 	var units: Array = GARRISON_UNITS.get(city.faction_id, GARRISON_UNITS[&"empire"])
@@ -1131,13 +1399,27 @@ func _get_garrison_composition(city: CityState) -> Array:
 	for bid in city.buildings:
 		if bid in [&"barracks", &"training_ground", &"war_forge", &"fortification", &"watchtower"]:
 			building_bonus += 1
+	var result: Array = []
 	match city.level:
-		1: return [{unit_id = militia, count = 5 + building_bonus}]
-		2: return [{unit_id = militia, count = 5 + building_bonus}, {unit_id = regular, count = 3}]
-		3: return [{unit_id = militia, count = 6 + building_bonus}, {unit_id = regular, count = 5}]
-		4: return [{unit_id = militia, count = 7 + building_bonus}, {unit_id = regular, count = 6}]
-		5: return [{unit_id = militia, count = 8 + building_bonus}, {unit_id = regular, count = 8}]
-		_: return [{unit_id = militia, count = 5 + building_bonus}]
+		1: result = [{unit_id = militia, count = 5 + building_bonus}]
+		2: result = [{unit_id = militia, count = 5 + building_bonus}, {unit_id = regular, count = 3}]
+		3: result = [{unit_id = militia, count = 6 + building_bonus}, {unit_id = regular, count = 5}]
+		4: result = [{unit_id = militia, count = 7 + building_bonus}, {unit_id = regular, count = 6}]
+		5: result = [{unit_id = militia, count = 8 + building_bonus}, {unit_id = regular, count = 8}]
+		_: result = [{unit_id = militia, count = 5 + building_bonus}]
+	# Building special_effects: garrison_strength_bonus (adds extra militia)
+	var garrison_bonus_count := 0
+	for bid in city.buildings:
+		var bld := DataManager.get_building(bid)
+		if bld and bld.special_effects.has("garrison_strength_bonus"):
+			garrison_bonus_count += int(float(bld.special_effects["garrison_strength_bonus"]) * 10)
+	if garrison_bonus_count > 0 and result.size() > 0:
+		result[0].count += garrison_bonus_count
+	# Add bonus garrison units from military buildings
+	var bonus := _get_garrison_bonus_units(city)
+	for bonus_uid in bonus:
+		result.append({unit_id = bonus_uid, count = 1})
+	return result
 
 func create_garrison_army(city: CityState) -> ArmyState:
 	var garrison_def: Array = _get_garrison_composition(city)
@@ -1158,6 +1440,14 @@ func create_garrison_army(city: CityState) -> ArmyState:
 			var instance := UnitInstance.new()
 			instance.init_from_data(unit_data, GameManager.state.generate_id())
 			army.units.append(instance)
+
+	# Apply garrison HP ratio (damaged garrison from previous battles)
+	if city.garrison_hp_ratio <= 0.0:
+		for unit in army.units:
+			unit.current_hp = 1
+	elif city.garrison_hp_ratio < 1.0:
+		for unit in army.units:
+			unit.current_hp = maxi(1, int(unit.current_hp * city.garrison_hp_ratio))
 
 	return army
 
@@ -1381,11 +1671,11 @@ func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, 
 			elif fs.corruption >= 70:
 				if income.has(Enums.ResourceType.FOOD):
 					income[Enums.ResourceType.FOOD] -= int(income[Enums.ResourceType.FOOD] * 0.10)
-			# Blood Altar: consume 3 captives per turn for +20 iron and +15 gold
+			# Blood Altar: consume 4 captives per turn for +20 iron and +15 gold
 			if city and city.buildings.has(&"blood_altar"):
 				var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if captives >= 3:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
+				if captives >= 4:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 4
 					income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + 20
 					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 15
 		&"gladehost":
@@ -1456,3 +1746,79 @@ func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, 
 						income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + 10
 					Enums.Realm.VOID:
 						income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 15
+		&"moonspear":
+			# Lunar Observatory: moonlit study of captives for arcane knowledge
+			if city and (city.buildings.has(&"lunar_observatory") or city.buildings.has(&"astral_observatory")):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				if cap >= 3:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
+					income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 10
+			# Lunar phase: tech bonus at full moon
+			if fs.lunar_phase >= 3:
+				income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 4
+		&"thunderswarm":
+			# Warriors' Longhouse: trial by combat games with captives
+			if city and (city.buildings.has(&"warriors_longhouse") or city.buildings.has(&"warchief_warcamp")):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				if cap >= 3:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
+					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 10
+					fs.storm_fury = mini(fs.storm_fury + 3, 100)
+			# Storm fury: +iron at high fury
+			if fs.storm_fury >= 50:
+				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + int(fs.storm_fury * 0.08)
+		&"cinderguard":
+			# Forge chain labor: captives work the forges
+			if city and (city.buildings.has(&"ember_foundry") or city.buildings.has(&"molten_core_forge")):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				if cap >= 4:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 4
+					income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + 18
+			# Forge heat: +iron production scaling
+			if fs.forge_heat >= 30:
+				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + int(fs.forge_heat * 0.06)
+		&"forsaken":
+			# Wretched Pit: consume captives as food (cannibalism/monsters)
+			if city and (city.buildings.has(&"wretched_pit") or city.buildings.has(&"plague_workshop")):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				if cap >= 3:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
+					income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + 15
+			# Void Pit: sacrifice captives to the void for gold
+			if city and city.buildings.has(&"void_pit"):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				if cap >= 3:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
+					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 12
+		&"ivoryscar":
+			# Tomb Scholar's Hall: captives excavate ancient tombs
+			if city and (city.buildings.has(&"tomb_scholars_hall") or city.buildings.has(&"vault_of_ages")):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				if cap >= 3:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
+					income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 8
+					fs.relic_power = mini(fs.relic_power + 4, 100)
+			# Relic power: +gold at high relic power
+			if fs.relic_power >= 30:
+				income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + int(fs.relic_power * 0.08)
+		&"sunblessed":
+			# Pilgrim's Rest: convert captives through religious redemption
+			if city and (city.buildings.has(&"pilgrims_rest") or city.buildings.has(&"cathedral_of_dawn")):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				if cap >= 2:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= 2
+					if city:
+						city.population += 5 # Converted captives join the population
+					fs.solar_faith = mini(fs.solar_faith + 3, 100)
+			# Solar faith: +food at high faith
+			if fs.solar_faith >= 40:
+				income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + int(fs.solar_faith * 0.06)
+		&"empire":
+			# Labor Camp / Imperial Work Yard: empire captive processing
+			if city and (city.buildings.has(&"imperial_work_yard") or city.buildings.has(&"labor_camp")):
+				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+				var consume := 4 if city.buildings.has(&"imperial_work_yard") else 3
+				if cap >= consume:
+					fs.resources[Enums.ResourceType.CAPTIVES] -= consume
+					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + consume * 5
+					income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + consume * 3

@@ -87,7 +87,7 @@ func setup_unit(unit_instance: UnitInstance, unit_data: UnitData, side: int, pos
 	bu.max_hp = unit_data.max_hp
 	bu.current_hp = unit_instance.current_hp
 	bu.attack = unit_data.attack
-	bu.defense = unit_data.defense
+	bu.defense = unit_data.melee_defense
 	bu.speed = unit_data.speed
 	bu.attack_range = unit_data.attack_range
 	bu.stance = stance

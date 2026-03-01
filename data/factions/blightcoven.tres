@@ -12,4 +12,4 @@ is_playable = false
 starting_regions = Array[StringName]([&"weeping_barrows"])
 realm_affinity = 1
 shard_preferences = {}
-ai_personality = {"aggression": 0.4, "expansion": 0.3}
+ai_personality = {"aggression": 0.3, "expansion": 0.2}

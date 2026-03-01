@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"qareth_hieroglyph_tablet"
+display_name = "Qareth Hieroglyph Tablet"
+description = "A stone tablet covered in ancient Ivoryscar hieroglyphs, holding fragments of forgotten knowledge."
+rarity = &"common"
+effects = {"city_gold_bonus": 1}
+source_factions = Array[StringName]([&"ivoryscar"])
+gift_tags = Array[StringName]([&"scholarly", &"arcane"])

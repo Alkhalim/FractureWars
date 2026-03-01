@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"plague_doctors_tome"
+display_name = "Plague Doctor's Tome"
+description = "A leather-bound treatise on disease and cure, compiled by Forsaken scholars in Orenthal."
+rarity = &"common"
+effects = {"heal_per_turn": 8}
+source_factions = Array[StringName]([&"forsaken"])
+gift_tags = Array[StringName]([&"scholarly", &"dark"])

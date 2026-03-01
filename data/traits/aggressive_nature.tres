@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"aggressive_nature"
+display_name = "Aggressive"
+description = "Always eager to press the attack."
+is_positive = true
+effects = {"army_attack_bonus": 1}
+excludes = Array[StringName]([&"cautious"])
+acquire_context = Array[StringName]([&"was_attacker", &"battle_won"])
+acquire_threshold = 5
+lose_context = Array[StringName]([&"was_defender", &"battle_won"])
+lose_threshold = 12

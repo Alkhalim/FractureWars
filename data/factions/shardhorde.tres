@@ -13,3 +13,5 @@ starting_regions = Array[StringName]([])
 realm_affinity = 1
 shard_preferences = {}
 ai_personality = {"aggression": 0.4, "expansion": 0.6, "style": "nomadic"}
+gift_likes = Array[StringName]([&"arcane", &"dark", &"primitive"])
+gift_dislikes = Array[StringName]([&"religious", &"elegant"])

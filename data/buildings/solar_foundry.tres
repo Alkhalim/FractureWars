@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"solar_foundry"
+display_name = "Solar Foundry II"
+description = "A grand foundry crowned with crystalline lenses that focus the sun's fury into white-hot crucibles. The divine flame burns hotter here than any mortal furnace, forging steel of unmatched purity."
+faction_id = &"sunblessed"
+category = &"economic"
+build_cost = {0: 160, 1: 30, 5: 45}
+build_time = 3
+income_bonus = {1: 32}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"sunfire_forge"
+class_loyalty_bonus = {"artisans": 2}

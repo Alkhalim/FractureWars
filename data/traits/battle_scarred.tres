@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"battle_scarred"
+display_name = "Battle-Scarred"
+description = "Carries the marks of past defeats, hardened by every wound."
+is_positive = true
+effects = {"army_defense_bonus": 1}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"battle_lost", &"was_defender"])
+acquire_threshold = 4
+lose_context = Array[StringName]([])
+lose_threshold = 99

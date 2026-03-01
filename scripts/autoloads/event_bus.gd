@@ -32,6 +32,7 @@ signal hex_tile_deselected()
 # City signals
 signal city_captured(city_id: StringName, old_owner: StringName, new_owner: StringName)
 signal building_completed(city_id: StringName, building_id: StringName)
+signal building_demolished(city_id: StringName, building_id: StringName)
 signal unit_recruited(city_id: StringName, unit_data_id: StringName, army_id: StringName)
 signal siege_started(city_id: StringName, faction_id: StringName)
 signal siege_broken(city_id: StringName)
@@ -41,6 +42,7 @@ signal siege_choice_needed(city_id: StringName, faction_id: StringName) # Skullo
 # Commander signals
 signal commander_level_up(commander: CommanderState)
 signal commander_item_full(commander: CommanderState, item: CommanderItem)
+signal commander_trait_changed(commander: CommanderState, action: String, trait_id: StringName)
 
 # Random event signals
 signal random_event_triggered(event_data: Dictionary)
@@ -75,6 +77,9 @@ signal senate_dilemma(faction_id: StringName, dilemma: Dictionary)
 
 # Victory / defeat signals
 signal game_over(faction_id: StringName, victory_type: int, is_player: bool)
+
+# AI diplomacy offer to player
+signal ai_diplomacy_offer(from_faction: StringName, offer_type: StringName, offer_data: Dictionary)
 
 # UI signals
 signal end_turn_pressed()

@@ -16,5 +16,7 @@ extends Resource
 @export var required_capital_level: int = 1
 @export var required_terrain: int = -1 # Enums.TerrainType value, -1 = no terrain requirement
 @export var class_loyalty_bonus: Dictionary = {} # class_name -> int bonus per turn
+@export var upkeep_cost: Dictionary = {} # ResourceType -> amount per turn
 @export var upgrades_from: StringName = &"" # Building ID this upgrades from (empty = base building)
 @export var requires_capital: bool = false # If true, can only be built in the faction's capital city
+@export var special_effects: Dictionary = {} # Special gameplay effects (e.g. region_population_growth_bonus, army_movement_bonus, recruit_cost_discount_pct, etc.)

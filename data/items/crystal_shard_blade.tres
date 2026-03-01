@@ -10,3 +10,4 @@ description = "A razor-sharp blade crystallized from pure shard energy."
 rarity = &"rare"
 effects = {"army_attack_bonus": 3, "army_speed_bonus": 1}
 source_factions = Array[StringName]([&"shardhorde"])
+gift_tags = Array[StringName]([&"arcane", &"martial"])

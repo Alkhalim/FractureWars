@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"citizen_phalanx"
+display_name = "Citizen Phalanx"
+description = "Armed townsfolk defending their homes. Poorly trained but numerous, they form a basic shield wall that crumbles under sustained pressure."
+faction_id = &"independent"
+max_hp = 1280
+attack = 5
+melee_defense = 9
+projectile_defense = 2
+magic_defense = 2
+speed = 4
+attack_range = 1.5
+squad_size = 180
+hp_per_soldier = 7
+movement_points = 2.0
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 36
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 35
+captive_chance = 0.4

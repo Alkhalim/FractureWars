@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"night_owl"
+display_name = "Night Owl"
+description = "Most alert when others sleep, with keen senses honed in darkness."
+is_positive = true
+effects = {"scouting_bonus": 1}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"terrain_forest", &"terrain_swamp"])
+acquire_threshold = 6
+lose_context = Array[StringName]([])
+lose_threshold = 15

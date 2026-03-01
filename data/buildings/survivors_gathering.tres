@@ -6,13 +6,14 @@
 script = ExtResource("1")
 id = &"survivors_gathering"
 display_name = "Survivor's Gathering I"
-description = "A gathering place for survivors. Safety in numbers — the Forsaken's oldest lesson."
+description = "A gathering place for survivors. Safety in numbers — the Forsaken's oldest lesson. The network of shelters encourages population growth across the entire region."
 faction_id = &"forsaken"
 category = &"cultural"
-build_cost = {0: 70, 5: 25}
+build_cost = {0: 55, 5: 25}
 build_time = 2
 income_bonus = {}
 population_growth_bonus = 10
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
 class_loyalty_bonus = {"peasants": 3, "artisans": 1, "scholars": 1, "nobles": 1}
+special_effects = {"region_population_growth_bonus": 3}

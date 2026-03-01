@@ -18,6 +18,7 @@ extends Resource
 @export var completed_research: Array[StringName] = []
 @export var research_invested_shards: Dictionary = {} # research_id -> Array of realm ints
 @export var paused_research_progress: Dictionary = {} # research_id -> int (saved progress for paused techs)
+@export var research_speed_accumulator: float = 0.0 # Fractional bonus progress from culture buildings
 
 # Policies (max 3 active, 1 per category)
 @export var active_policies: Array[StringName] = []

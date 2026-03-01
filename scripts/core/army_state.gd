@@ -69,7 +69,24 @@ func can_cross_mountains() -> bool:
 
 ## Returns a cost multiplier (<1.0 = cheaper) for the given terrain based on unit tags.
 ## If any unit in the army has a terrain-stride tag, the whole army benefits.
+## If ALL units are flying, non-forest difficult terrain gets a significant discount.
 func get_terrain_stride_modifier(terrain: Enums.TerrainType) -> float:
+	# All-flying army: significant discount on difficult terrain (except forest — dense canopy)
+	if terrain in [Enums.TerrainType.MOUNTAINS, Enums.TerrainType.SWAMP,
+			Enums.TerrainType.JUNGLE, Enums.TerrainType.DESERT,
+			Enums.TerrainType.SHARD_WASTES, Enums.TerrainType.TUNDRA]:
+		var all_flying := true
+		var unit_count := 0
+		for unit in units:
+			var ud := DataManager.get_unit(unit.unit_data_id)
+			if ud:
+				unit_count += 1
+				if "flying" not in ud.tags:
+					all_flying = false
+					break
+		if unit_count > 0 and all_flying:
+			return 0.6
+
 	for unit in units:
 		var ud := DataManager.get_unit(unit.unit_data_id)
 		if ud == null:
@@ -84,6 +101,17 @@ func get_terrain_stride_modifier(terrain: Enums.TerrainType) -> float:
 			Enums.TerrainType.DESERT:
 				if "desertstrider" in ud.tags:
 					return 0.85
+			Enums.TerrainType.WETLANDS:
+				if "coastalstrider" in ud.tags:
+					return 0.85
+			Enums.TerrainType.SHARD_WASTES:
+				if "shardwalker" in ud.tags:
+					return 0.85
+			Enums.TerrainType.SWAMP:
+				if "swampstrider" in ud.tags:
+					return 0.80
+				if "coastalstrider" in ud.tags:
+					return 0.9
 	return 1.0
 
 func is_alive() -> bool:

@@ -6,12 +6,14 @@
 script = ExtResource("1")
 id = &"tempest_roost"
 display_name = "Tempest Roost III"
-description = "A towering roost built atop the highest peaks where thunderwyrms nest amidst perpetual storm clouds."
+description = "A towering roost built atop the highest peaks where thunderwyrms nest amidst perpetual storm clouds. The constant exposure to storm energy grants flying units recruited here +2 attack."
 faction_id = &"thunderswarm"
 category = &"military"
-build_cost = {0: 600, 1: 80, 5: 70}
+build_cost = {0: 480, 1: 80, 5: 65}
 build_time = 4
-population_growth_bonus = 1
+population_growth_bonus = 4
 unlocks_units = Array[StringName]([&"thunderwyrm"])
 required_capital_level = 3
+upgrades_from = &"stormrider_eyrie"
 class_loyalty_bonus = {"nobles": 4, "peasants": -3}
+special_effects = {"flying_unit_attack_bonus": 2}

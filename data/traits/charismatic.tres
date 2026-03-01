@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"charismatic"
+display_name = "Charismatic"
+description = "A natural leader whose presence lifts the spirits of all who serve."
+is_positive = true
+effects = {"unit_morale_bonus": 5}
+excludes = Array[StringName]([&"dour"])
+acquire_context = Array[StringName]([&"battle_won"])
+acquire_threshold = 7
+lose_context = Array[StringName]([&"battle_lost"])
+lose_threshold = 12

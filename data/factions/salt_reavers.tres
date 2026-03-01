@@ -12,4 +12,6 @@ is_playable = false
 starting_regions = Array[StringName]([&"altaban"])
 realm_affinity = 1
 shard_preferences = {}
-ai_personality = {"aggression": 0.7, "expansion": 0.5}
+ai_personality = {"aggression": 0.75, "expansion": 0.45}
+gift_likes = Array[StringName]([&"martial", &"practical", &"luxury"])
+gift_dislikes = Array[StringName]([&"scholarly", &"religious"])

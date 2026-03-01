@@ -103,7 +103,7 @@ func _setup_global_theme() -> void:
 		var normal := _make_btn_style(Color.WHITE)
 		theme.set_stylebox("normal", "Button", normal)
 		theme.set_stylebox("hover", "Button", _make_btn_style(Color(1.25, 1.2, 1.1)))
-		theme.set_stylebox("pressed", "Button", _make_btn_style(Color(0.75, 0.7, 0.65)))
+		theme.set_stylebox("pressed", "Button", _make_btn_style_pressed(Color(0.6, 0.55, 0.5)))
 		theme.set_stylebox("disabled", "Button", _make_btn_style(Color(0.5, 0.48, 0.45, 0.7)))
 		theme.set_stylebox("focus", "Button", _make_btn_style(Color(1.15, 1.12, 1.05)))
 
@@ -144,6 +144,21 @@ func _make_btn_style(modulate: Color) -> StyleBoxTexture:
 	s.content_margin_right = 24
 	s.content_margin_top = 16
 	s.content_margin_bottom = 16
+	s.modulate_color = modulate
+	return s
+
+func _make_btn_style_pressed(modulate: Color) -> StyleBoxTexture:
+	var s := StyleBoxTexture.new()
+	s.texture = _btn_texture
+	s.region_rect = _BTN_REGION
+	s.texture_margin_left = _BTN_MARGIN
+	s.texture_margin_top = _BTN_MARGIN
+	s.texture_margin_right = _BTN_MARGIN
+	s.texture_margin_bottom = _BTN_MARGIN
+	s.content_margin_left = 24
+	s.content_margin_right = 24
+	s.content_margin_top = 18  # +2px push-down effect
+	s.content_margin_bottom = 14  # -2px push-down effect
 	s.modulate_color = modulate
 	return s
 
@@ -848,6 +863,10 @@ const MAJOR_STARTING_ARMIES := {
 
 func _init_armies() -> void:
 	var occupied_tiles: Dictionary = {} # Vector2i -> true — tracks tiles with armies
+	# Pre-populate with elderbeast positions (they were already initialized)
+	for beast_id in state.elderbeasts:
+		var beast: ElderbeastState = state.elderbeasts[beast_id]
+		occupied_tiles[beast.hex_pos] = true
 	for faction_id in DataManager.factions:
 		if _is_shardhorde_type(faction_id):
 			continue # Shardhorde-type armies handled in _init_shardhorde_armies
@@ -1082,7 +1101,7 @@ func _find_valid_city_pos(region_center: Vector2i, offset: Vector2i, required_re
 			required_region = center_tile.region_id
 	# Check if the target tile is valid land, in the correct region, and far enough from other cities
 	var tile := state.hex_map.get_tile(target)
-	if tile and tile.region_id == required_region and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(target):
+	if tile and tile.region_id == required_region and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(target) and not _is_adjacent_to_water(target):
 		return target
 	# BFS spiral search for a valid placement that respects minimum distance and stays in region
 	var visited: Dictionary = {target: true}
@@ -1103,10 +1122,10 @@ func _find_valid_city_pos(region_center: Vector2i, offset: Vector2i, required_re
 			# Only consider tiles within the same region
 			if required_region != &"" and ntile.region_id != required_region:
 				continue
-			if ntile.terrain != Enums.TerrainType.WATER and ntile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(neighbor):
+			if ntile.terrain != Enums.TerrainType.WATER and ntile.terrain != Enums.TerrainType.MOUNTAINS and _is_far_from_cities(neighbor) and not _is_adjacent_to_water(neighbor):
 				return neighbor
 			frontier.append(neighbor)
-	# Last resort: accept original target even if close, but still prefer same region
+	# Last resort: accept original target even if close, but still prefer same region (relax water adjacency)
 	if tile and tile.region_id == required_region and tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS:
 		return target
 	return region_center
@@ -1118,6 +1137,15 @@ func _is_far_from_cities(pos: Vector2i) -> bool:
 			return false
 	return true
 
+func _is_adjacent_to_water(pos: Vector2i) -> bool:
+	for neighbor in HexHelper.get_neighbors(pos):
+		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+			continue
+		var ntile := state.hex_map.get_tile(neighbor)
+		if ntile and ntile.terrain == Enums.TerrainType.WATER:
+			return true
+	return false
+
 func _init_cities() -> void:
 	# Faction-specific starting buildings
 	var faction_starting_buildings := {
@@ -1125,6 +1153,11 @@ func _init_cities() -> void:
 		&"skulloath": &"raiders_den",
 		&"gladehost": &"ranger_outpost",
 		&"tainted_jade": &"serpent_pit",
+		&"moonspear": &"moon_shrine",
+		&"thunderswarm": &"storm_altar",
+		&"cinderguard": &"forgeborn_barracks",
+		&"forsaken": &"bat_caves",
+		&"ivoryscar": &"relic_shrine",
 	}
 
 	for region_id in REGION_CITIES:
@@ -1188,33 +1221,71 @@ func _init_elderbeasts() -> void:
 	if shard_data == null:
 		return
 
-	# Shardhorde is nomadic — spawn elderbeasts near Skulloath territory (central steppe)
+	# Shardhorde is nomadic — spawn elderbeasts scattered, away from major faction cities
 	var region_id: StringName = &"bataarbad"
 	var center := MapGenerator.get_region_center(region_id)
 
-	# Collect already-occupied tiles from existing armies
+	# Collect already-occupied tiles and major faction city positions
 	var occupied: Dictionary = {}
 	for army_id in state.armies:
 		var army: ArmyState = state.armies[army_id]
 		occupied[army.hex_pos] = true
 
-	# Find suitable hex positions near center (doesn't need to be in the region)
+	var major_city_positions: Array[Vector2i] = []
+	for city_id in state.cities:
+		var city: CityState = state.cities[city_id]
+		if not MINOR_FACTION_PARENTS.has(city.faction_id) and not is_npc_faction(city.faction_id) and city.faction_id != &"independent":
+			major_city_positions.append(city.hex_pos)
+
+	# Find suitable hex positions — wider search radius, prefer distance from major cities
 	var hex_map := state.hex_map
 	var valid_hexes: Array[Vector2i] = []
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		if tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.WETLANDS:
-			if HexHelper.hex_distance(coord, center) <= 8 and not occupied.has(coord):
-				valid_hexes.append(coord)
+		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.WETLANDS:
+			continue
+		if occupied.has(coord):
+			continue
+		if HexHelper.hex_distance(coord, center) > 14:
+			continue
+		# Check distance from major faction cities — prefer at least 5 hexes away
+		var min_city_dist := 999
+		for city_pos in major_city_positions:
+			min_city_dist = mini(min_city_dist, HexHelper.hex_distance(coord, city_pos))
+		# Only consider tiles at least 4 hexes from major cities (closest should be independent)
+		if min_city_dist >= 4:
+			valid_hexes.append(coord)
 
-	var beast1_pos := _find_unoccupied_spawn(center, occupied)
+	# Sort by distance from major cities (prefer furthest away)
+	valid_hexes.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var dist_a := 999
+		var dist_b := 999
+		for cp in major_city_positions:
+			dist_a = mini(dist_a, HexHelper.hex_distance(a, cp))
+			dist_b = mini(dist_b, HexHelper.hex_distance(b, cp))
+		return dist_a > dist_b
+	)
+
+	var beast1_pos: Vector2i
+	if valid_hexes.size() > 0:
+		beast1_pos = valid_hexes[0]
+	else:
+		beast1_pos = _find_unoccupied_spawn(center, occupied)
 	occupied[beast1_pos] = true
+
+	# Second beast should be well-scattered from first (at least 6 hexes away)
 	var beast2_pos := beast1_pos
-	# Find a second position away from beast1
 	for coord in valid_hexes:
-		if HexHelper.hex_distance(coord, beast1_pos) >= 3 and HexHelper.hex_distance(coord, beast1_pos) <= 5 and not occupied.has(coord):
+		var dist_from_first := HexHelper.hex_distance(coord, beast1_pos)
+		if dist_from_first >= 6 and dist_from_first <= 12 and not occupied.has(coord):
 			beast2_pos = coord
 			break
+	# Fallback: accept closer distance
+	if beast2_pos == beast1_pos:
+		for coord in valid_hexes:
+			if HexHelper.hex_distance(coord, beast1_pos) >= 3 and not occupied.has(coord):
+				beast2_pos = coord
+				break
 	occupied[beast2_pos] = true
 
 	# Create first elderbeast with barracks
@@ -1247,14 +1318,8 @@ func _create_commander(faction_id: StringName) -> CommanderState:
 	cmd.faction_id = faction_id
 	cmd.level = 1
 	cmd.xp = 0
-	if CommanderSystem and CommanderSystem.skills.size() > 0:
-		var minor_skills: Array[StringName] = []
-		for skill_id in CommanderSystem.skills:
-			var skill: CommanderSkill = CommanderSystem.skills[skill_id]
-			if skill.is_minor:
-				minor_skills.append(skill_id)
-		if minor_skills.size() > 0:
-			cmd.skill_levels[minor_skills.pick_random()] = 1
+	if CommanderSystem:
+		CommanderSystem.assign_starting_traits(cmd)
 	return cmd
 
 func _init_commander_pools() -> void:
@@ -1670,6 +1735,10 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 
 	for tile_coord in path:
 		var cost := state.hex_map.get_movement_cost(tile_coord, army.faction_id)
+		# Apply army terrain stride modifier (junglestrider, desertstrider, etc.)
+		var tile := state.hex_map.get_tile(tile_coord)
+		if tile:
+			cost *= army.get_terrain_stride_modifier(tile.terrain)
 		if army.movement_remaining < cost:
 			break
 
@@ -1699,12 +1768,16 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 		var city_at := city_system.get_city_at_hex(tile_coord)
 		if city_at and city_at.faction_id != army.faction_id:
 			if not city_at.is_under_siege or city_at.siege_faction != army.faction_id:
-				# Spawn garrison army and fight before siege can begin
-				var garrison := city_system.create_garrison_army(city_at)
-				state.armies[garrison.army_id] = garrison
-				_faction_army_cache_valid = false
-				EventBus.battle_initiated.emit(army_id, garrison.army_id, tile_coord)
-				return
+				# Skip garrison if already defeated this turn or garrison completely destroyed
+				if city_at.garrison_defeated_turn >= state.current_turn or city_at.garrison_hp_ratio <= 0.0:
+					pass # Garrison destroyed — proceed to siege
+				else:
+					# Spawn garrison army and fight before siege can begin
+					var garrison := city_system.create_garrison_army(city_at)
+					state.armies[garrison.army_id] = garrison
+					_faction_army_cache_valid = false
+					EventBus.battle_initiated.emit(army_id, garrison.army_id, tile_coord)
+					return
 
 		# Break siege on own cities if army arrives
 		if city_at and city_at.faction_id == army.faction_id and city_at.is_under_siege:
@@ -1721,10 +1794,10 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 				return # This army was absorbed into another
 
 		# Take ownership of neutral tiles in the region (skip mountains/water)
-		var tile := state.hex_map.get_tile(tile_coord)
-		if tile and tile.owner_faction == &"":
-			if tile.terrain != Enums.TerrainType.MOUNTAINS and tile.terrain != Enums.TerrainType.WATER:
-				tile.owner_faction = army.faction_id
+		var region_tile := state.hex_map.get_tile(tile_coord)
+		if region_tile and region_tile.owner_faction == &"":
+			if region_tile.terrain != Enums.TerrainType.MOUNTAINS and region_tile.terrain != Enums.TerrainType.WATER:
+				region_tile.owner_faction = army.faction_id
 
 func _check_siege_departure(army: ArmyState) -> void:
 	# If this army was besieging a city and is now leaving, check if any other
