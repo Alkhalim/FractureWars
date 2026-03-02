@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"fire_vanguard"
 display_name = "Fire Vanguard"
-description = "Pyromancers who wield forge-flame in battle."
+description = "Elite dragon-handlers who wield dragonfire in battle. Once anti-dragon specialists, they now fight alongside their scaled charges."
 faction_id = &"crownfire"
 max_hp = 800
 attack = 14

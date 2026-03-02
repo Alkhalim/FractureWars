@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_rot_weapons"
-display_name = "Rot Weapons"
-description = "Weapons that spread disease."
+display_name = "Cursed Blades"
+description = "Weapons that drain the life from their victims."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"blighted_earth", &"withering_touch"])

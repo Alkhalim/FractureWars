@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"void_whisperers_den"
-display_name = "Void Whisperer's Den II"
-description = "A hidden den where void whisperers study the corruption. They walk the edge between knowledge and madness."
+display_name = "Necromancer's Sanctum II"
+description = "A hidden chamber in the underground where necromancers study the dark arts. They walk the edge between knowledge and madness."
 faction_id = &"forsaken"
 category = &"cultural"
 build_cost = {0: 145, 5: 40}
@@ -14,7 +14,7 @@ build_time = 3
 income_bonus = {2: 18}
 population_growth_bonus = 5
 upgrades_from = &"blighted_shrine"
-unlocks_units = Array[StringName]([&"plague_shaman"])
+unlocks_units = Array[StringName]([&"blood_shaman"])
 required_capital_level = 2
 class_loyalty_bonus = {"peasants": 1, "scholars": 3, "nobles": 1}
 special_effects = {"research_speed_bonus": 0.15}

@@ -378,43 +378,43 @@ const REGION_CITIES := {
 	],
 }
 
-# ── Region → Culture mapping ──────────────────────────────────
+# ── Region → Culture mapping (geographic cultures) ───────────
 const REGION_CULTURE := {
-	&"eternal_plains": &"empire", &"sunburst_valley": &"empire", &"aurentis": &"empire",
-	&"sainkhu_groves": &"gladehost", &"verdant_glade": &"gladehost", &"orisyl": &"gladehost",
-	&"iskar": &"moonspear", &"nightfall_sanctum": &"moonspear", &"asdrol": &"moonspear",
-	&"dragonspire_mountains": &"thunderswarm", &"thundercrest_peaks": &"thunderswarm", &"skalvar": &"thunderswarm",
-	&"coatlantli": &"tainted_jade", &"southern_reach": &"tainted_jade", &"xotchi": &"tainted_jade",
-	&"bataarbad": &"skulloath", &"altaban": &"skulloath", &"tsagan": &"skulloath",
-	&"duststorm_valley": &"cinderguard", &"ashenmark": &"cinderguard", &"valkarn": &"cinderguard",
-	&"orenthal": &"forsaken", &"morvane": &"forsaken", &"weeping_barrows": &"forsaken",
-	&"qareth": &"ivoryscar", &"torgalun_desert": &"ivoryscar", &"whispering_dunes": &"ivoryscar",
+	&"iskar": &"frostlands", &"asdrol": &"frostlands", &"nightfall_sanctum": &"frostlands",
+	&"dragonspire_mountains": &"storm_peaks", &"thundercrest_peaks": &"storm_peaks", &"skalvar": &"storm_peaks",
+	&"altaban": &"western_marches", &"aurentis": &"western_marches", &"sainkhu_groves": &"western_marches",
+	&"eternal_plains": &"imperial_heartland", &"sunburst_valley": &"imperial_heartland", &"valkarn": &"imperial_heartland",
+	&"duststorm_valley": &"ashlands", &"ashenmark": &"ashlands", &"morvane": &"ashlands",
+	&"bataarbad": &"central_steppe", &"verdant_glade": &"central_steppe", &"tsagan": &"central_steppe",
+	&"coatlantli": &"emerald_south", &"orisyl": &"emerald_south", &"xotchi": &"emerald_south",
+	&"southern_reach": &"southern_reaches", &"orenthal": &"southern_reaches", &"torgalun_desert": &"southern_reaches",
+	&"whispering_dunes": &"eastern_wastes", &"weeping_barrows": &"eastern_wastes", &"qareth": &"eastern_wastes",
 }
 
 # ── Culture → Regions mapping ─────────────────────────────────
 const CULTURE_REGIONS := {
-	&"empire": [&"eternal_plains", &"sunburst_valley", &"aurentis"],
-	&"gladehost": [&"sainkhu_groves", &"verdant_glade", &"orisyl"],
-	&"moonspear": [&"iskar", &"nightfall_sanctum", &"asdrol"],
-	&"thunderswarm": [&"dragonspire_mountains", &"thundercrest_peaks", &"skalvar"],
-	&"tainted_jade": [&"coatlantli", &"southern_reach", &"xotchi"],
-	&"skulloath": [&"bataarbad", &"altaban", &"tsagan"],
-	&"cinderguard": [&"duststorm_valley", &"ashenmark", &"valkarn"],
-	&"forsaken": [&"orenthal", &"morvane", &"weeping_barrows"],
-	&"ivoryscar": [&"qareth", &"torgalun_desert", &"whispering_dunes"],
+	&"frostlands": [&"iskar", &"asdrol", &"nightfall_sanctum"],
+	&"storm_peaks": [&"dragonspire_mountains", &"thundercrest_peaks", &"skalvar"],
+	&"western_marches": [&"altaban", &"aurentis", &"sainkhu_groves"],
+	&"imperial_heartland": [&"eternal_plains", &"sunburst_valley", &"valkarn"],
+	&"ashlands": [&"duststorm_valley", &"ashenmark", &"morvane"],
+	&"central_steppe": [&"bataarbad", &"verdant_glade", &"tsagan"],
+	&"emerald_south": [&"coatlantli", &"orisyl", &"xotchi"],
+	&"southern_reaches": [&"southern_reach", &"orenthal", &"torgalun_desert"],
+	&"eastern_wastes": [&"whispering_dunes", &"weeping_barrows", &"qareth"],
 }
 
 # ── Culture completion bonuses ────────────────────────────────
 const CULTURE_BONUSES := {
-	&"empire":       {type = "upkeep_reduction", value = 0.20, desc = "Imperial Dominion: -20% unit upkeep"},
-	&"gladehost":    {type = "food_bonus", value = 0.30, desc = "Verdant Bounty: +30% food production"},
-	&"moonspear":    {type = "tech_bonus", value = 0.25, desc = "Lunar Enlightenment: +25% technology"},
-	&"thunderswarm": {type = "movement_bonus", value = 1.0, desc = "Storm March: +1 army movement"},
-	&"tainted_jade": {type = "population_growth", value = 0.30, desc = "Jungle Vitality: +30% population growth"},
-	&"skulloath":    {type = "combat_damage", value = 0.15, desc = "Steppe Fury: +15% combat damage"},
-	&"cinderguard":  {type = "iron_bonus", value = 0.30, desc = "Forge Mastery: +30% iron production"},
-	&"forsaken":     {type = "building_cost_reduction", value = 0.25, desc = "Ruinlore: -25% building costs"},
-	&"ivoryscar":    {type = "shard_bonus", value = 0.25, desc = "Petrified Wisdom: +25% shard essence"},
+	&"frostlands":        {type = "tech_bonus", value = 0.25, desc = "Frozen Wisdom: +25% technology"},
+	&"storm_peaks":       {type = "movement_bonus", value = 1.0, desc = "Storm March: +1 army movement"},
+	&"western_marches":   {type = "food_bonus", value = 0.30, desc = "Verdant Bounty: +30% food production"},
+	&"imperial_heartland": {type = "upkeep_reduction", value = 0.20, desc = "Imperial Dominion: -20% unit upkeep"},
+	&"ashlands":          {type = "iron_bonus", value = 0.30, desc = "Ashen Veins: +30% iron production"},
+	&"central_steppe":    {type = "combat_damage", value = 0.15, desc = "Steppe Fury: +15% combat damage"},
+	&"emerald_south":     {type = "population_growth", value = 0.30, desc = "Jungle Vitality: +30% population growth"},
+	&"southern_reaches":  {type = "building_cost_reduction", value = 0.25, desc = "Ruinlore: -25% building costs"},
+	&"eastern_wastes":    {type = "shard_bonus", value = 0.25, desc = "Petrified Wisdom: +25% shard essence"},
 }
 
 # ── Faction leader names ──────────────────────────────────────
@@ -424,9 +424,9 @@ var FACTION_LEADER_NAMES := {
 	&"moonspear": "High Priestess Selara",
 	&"thunderswarm": "Warchief Groth",
 	&"tainted_jade": "Serpent Queen Ixchala",
-	&"skulloath": "Khan Borlag the Pale",
-	&"cinderguard": "Forgemaster Valdris",
-	&"forsaken": "The Hollow King",
+	&"skulloath": "Khan Borlag",
+	&"cinderguard": "Warden-Commander Valdris",
+	&"forsaken": "Countess Neshara",
 	&"ivoryscar": "Oracle Medusa",
 	&"shardhorde": "The Crystalmind",
 	&"sunblessed": "Solar Archon Kael",
@@ -535,7 +535,7 @@ const FACTION_DIALOGUE := {
 	&"forsaken": {
 		"greeting_friendly": "Even in darkness, some lights are... tolerable.",
 		"greeting_hostile": "Your presence offends what remains of our senses.",
-		"greeting_neutral": "The Hollow King deigns to listen. Briefly.",
+		"greeting_neutral": "The Countess deigns to listen. Briefly.",
 		"greeting_war": "All things end. Your time has come.",
 		"accept_trade": "Even the dead have use for the living's trinkets.",
 		"reject_trade": "We have no need of your pittance.",
@@ -634,7 +634,7 @@ const COMMANDER_NAMES := {
 		"Slag Knight Thorin", "Cinder Shield Pyra", "Furnace Lord Steren", "Coal Warden Ashlyn",
 	],
 	&"forsaken": [
-		"Dusk Lord Morven", "Blight Warden Thessal", "Hollow Knight Cadeus", "Wraith Captain Vael",
+		"Dusk Lord Morven", "Blood Warden Thessal", "Crypt Knight Cadeus", "Wraith Captain Vael",
 		"Shadow Keeper Nyx", "Ruin Marshal Gharan", "Pale Sentinel Draven", "Void Walker Serath",
 	],
 	&"sunblessed": [
@@ -856,8 +856,8 @@ const MAJOR_STARTING_ARMIES := {
 	&"skulloath": [&"warband_raider", &"warband_raider", &"steppe_rider", &"steppe_archers", &"bonecaller"],
 	&"moonspear": [&"moonspear_sentinel", &"moonspear_sentinel", &"moonspear_sentinel", &"lunar_archer", &"lunar_archer"],
 	&"thunderswarm": [&"thunderswarm_warrior", &"thunderswarm_warrior", &"thunderswarm_warrior", &"stormbow_raider", &"stormbow_raider"],
-	&"cinderguard": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow", &"ember_crossbow"],
-	&"forsaken": [&"forsaken_wretch", &"forsaken_wretch", &"bat_swarm", &"bat_swarm", &"plague_thrower"],
+	&"cinderguard": [&"cinderguard_warden", &"cinderguard_warden", &"cinderguard_warden", &"ember_crossbow", &"ember_crossbow"],
+	&"forsaken": [&"shadow_thrall", &"shadow_thrall", &"bat_swarm", &"bat_swarm", &"death_mage"],
 	&"ivoryscar": [&"ivoryscar_seeker", &"ivoryscar_seeker", &"scarab_swarm", &"scarab_swarm", &"bone_cavalry"],
 }
 
@@ -1155,8 +1155,8 @@ func _init_cities() -> void:
 		&"tainted_jade": &"serpent_pit",
 		&"moonspear": &"moon_shrine",
 		&"thunderswarm": &"storm_altar",
-		&"cinderguard": &"forgeborn_barracks",
-		&"forsaken": &"bat_caves",
+		&"cinderguard": &"cinder_watchtower",
+		&"forsaken": &"crypt_court",
 		&"ivoryscar": &"relic_shrine",
 	}
 
@@ -1402,6 +1402,7 @@ func _init_diplomacy() -> void:
 	_set_relation(&"empire", &"skulloath", Enums.FactionRelation.WAR)
 	_set_relation(&"empire", &"tainted_jade", Enums.FactionRelation.WAR)
 	_set_relation(&"empire", &"forsaken", Enums.FactionRelation.HOSTILE)
+	_set_relation(&"empire", &"cinderguard", Enums.FactionRelation.HOSTILE) # Cinderguard are Empire deserters
 	_set_relation(&"empire", &"shardhorde", Enums.FactionRelation.HOSTILE)
 
 	# Northern belt: Moonspear + Thunderswarm (uneasy neighbors)

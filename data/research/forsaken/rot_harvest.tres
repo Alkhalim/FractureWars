@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"rot_harvest"
-display_name = "Rot Harvest"
-description = "Decay feeds unnatural growth."
+display_name = "Dark Harvest"
+description = "Blood magic feeds unnatural growth."
 tech_cost = 70
 research_time = 10
 prerequisites = Array[StringName]([&"plague_seeds"])

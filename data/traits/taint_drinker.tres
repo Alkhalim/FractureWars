@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"taint_drinker"
+display_name = "Taint Drinker"
+description = "Absorbs corrupted magic into their body, converting it to raw power. Stronger in jungle and tainted lands."
+is_positive = true
+effects = {"army_attack_bonus": 2, "terrain_jungle_attack_bonus": 3, "enemy_army_morale_penalty": -2}
+excludes = Array[StringName]([&"devout"])
+acquire_context = Array[StringName]([&"faction_tainted_jade", &"battle_won"])
+acquire_threshold = 4
+lose_context = Array[StringName]([])
+lose_threshold = 99

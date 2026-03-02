@@ -52,9 +52,9 @@ extends Resource
 # 50+: +10% atk. 80+: +20% atk, -5% def
 @export var storm_fury: int = 0
 
-# Cinderguard unique: Forge Heat (0-100, player-managed via buildings)
-# High: cheaper iron builds + recruit speed. Low: +defense
-@export var forge_heat: int = 50
+# Cinderguard unique: Border Vigilance (0-100, player-managed via events)
+# High: aggressive patrol (+iron, +attack). Low: defensive posture (+defense, +pop)
+@export var border_vigilance: int = 50
 
 # Forsaken unique: Espionage Network (grows from regions)
 # Reveals enemy armies, enables sabotage

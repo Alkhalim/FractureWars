@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_plague_wind"
-display_name = "Plague Wind"
-description = "Winds carry disease to enemy cities."
+display_name = "Deathly Wind"
+description = "Cursed winds carry dark magic to enemy cities."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"rot_harvest", &"blighted_earth"])

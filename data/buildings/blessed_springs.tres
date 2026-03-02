@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"blessed_springs"
+display_name = "Blessed Springs II"
+description = "An elaborate network of holy fountains and irrigated terraces. The sun god's blessing flows through every channel."
+faction_id = &"sunblessed"
+category = &"economic"
+build_cost = {0: 160}
+build_time = 3
+income_bonus = {3: 34, 0: 12}
+population_growth_bonus = 8
+unlocks_units = Array[StringName]([])
+upgrades_from = &"sacred_oasis"
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 3}

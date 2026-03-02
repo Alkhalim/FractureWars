@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_plague_lords"
-display_name = "Plague Lords"
-description = "Masters of disease and decay."
+display_name = "Blood Lords"
+description = "Masters of blood magic and necromancy."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"miasma_cloud"])

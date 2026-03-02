@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"deathshriek_bat"
 display_name = "Deathshriek Bat"
-description = "Enormous plague bats whose sonic screams shatter morale. They are the apex predators of the blighted skies."
+description = "Enormous cavern bats whose sonic screams shatter morale. They are the apex predators of the Forsaken underworld."
 faction_id = &"forsaken"
 max_hp = 700
 attack = 16

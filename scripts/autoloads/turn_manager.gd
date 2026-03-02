@@ -2592,40 +2592,40 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 20
 				return "Sheltered from the tempest. -10 Storm Fury, +20 Gold."
 
-		# ── Cinderguard Forge Heat Dilemmas ──
+		# ── Cinderguard Border Vigilance Dilemmas ──
 		"cinderguard_stoke_forge":
 			if choice == "a":
-				fs.forge_heat = clampi(fs.forge_heat + 15, 0, 100)
+				fs.border_vigilance = clampi(fs.border_vigilance + 15, 0, 100)
 				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 20
-				return "Forges burn white-hot! +15 Forge Heat, +20 Iron."
+				return "Patrols doubled across all sectors! +15 Vigilance, +20 Iron."
 			else:
-				fs.forge_heat = clampi(fs.forge_heat - 10, 0, 100)
+				fs.border_vigilance = clampi(fs.border_vigilance - 10, 0, 100)
 				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 15
-				return "Forges cooled for maintenance. -10 Forge Heat, +15 Gold."
+				return "Garrison stands down to rest. -10 Vigilance, +15 Gold."
 
 		"cinderguard_experimental_alloy":
 			if choice == "a":
-				fs.forge_heat = clampi(fs.forge_heat + 10, 0, 100)
+				fs.border_vigilance = clampi(fs.border_vigilance + 10, 0, 100)
 				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 20
-				return "New alloy forged! +10 Forge Heat, +20 Tech."
+				return "New scout routes mapped! +10 Vigilance, +20 Tech."
 			else:
-				fs.forge_heat = clampi(fs.forge_heat - 5, 0, 100)
+				fs.border_vigilance = clampi(fs.border_vigilance - 5, 0, 100)
 				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 15
-				return "Standard steel produced. -5 Forge Heat, +15 Iron."
+				return "Salvage run yields good iron. -5 Vigilance, +15 Iron."
 
 		"cinderguard_forge_accident":
 			if choice == "a":
-				fs.forge_heat = clampi(fs.forge_heat + 12, 0, 100)
+				fs.border_vigilance = clampi(fs.border_vigilance + 12, 0, 100)
 				var capital := GameManager.policy_system._get_faction_capital(faction_id)
 				if capital:
 					for cls in capital.class_loyalty:
 						if cls != "captives":
 							capital.class_loyalty[cls] = clampi(capital.class_loyalty[cls] - 3, -100, 100)
-				return "Production continues despite the cost. +12 Forge Heat, -loyalty."
+				return "Forced march continues despite exhaustion. +12 Vigilance, -loyalty."
 			else:
-				fs.forge_heat = clampi(fs.forge_heat - 8, 0, 100)
+				fs.border_vigilance = clampi(fs.border_vigilance - 8, 0, 100)
 				fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 20)
-				return "Forge repaired carefully. -8 Forge Heat, -20 Gold."
+				return "Outpost repaired and restocked. -8 Vigilance, -20 Gold."
 
 		# ── Moonspear Lunar Phase Dilemmas ──
 		"moonspear_lunar_ritual":
@@ -3378,20 +3378,20 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 
 	# Natural drift toward 50 (equilibrium)
 	if drift == 0:
-		if fs.forge_heat > 50:
+		if fs.border_vigilance > 50:
 			drift = -1
-		elif fs.forge_heat < 50:
+		elif fs.border_vigilance < 50:
 			drift = 1
 
-	fs.forge_heat = clampi(fs.forge_heat + drift, 0, 100)
+	fs.border_vigilance = clampi(fs.border_vigilance + drift, 0, 100)
 
-	# High heat: bonus iron income from forge efficiency
-	if fs.forge_heat >= 70:
-		var iron_bonus := 2 if fs.forge_heat >= 85 else 1
+	# High vigilance: bonus iron income from active patrols and salvage
+	if fs.border_vigilance >= 70:
+		var iron_bonus := 2 if fs.border_vigilance >= 85 else 1
 		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
 
-	# Low heat: population stability bonus (cooler forges = safer cities)
-	if fs.forge_heat <= 30:
+	# Low vigilance: population stability bonus (garrison at ease = safer cities)
+	if fs.border_vigilance <= 30:
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
 			if city and city.is_capital:

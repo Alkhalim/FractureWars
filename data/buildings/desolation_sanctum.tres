@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"desolation_sanctum"
-display_name = "Desolation Sanctum III"
-description = "The deepest sanctum of void knowledge. Those who enter are changed — but the power they gain is undeniable."
+display_name = "Blood Court Sanctum III"
+description = "The deepest sanctum of the vampire aristocracy. Those who enter are changed — but the power they gain is undeniable."
 faction_id = &"forsaken"
 category = &"cultural"
 build_cost = {0: 320, 5: 55, 1: 20}

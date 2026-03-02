@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"bat_swarm"
 display_name = "Bat Swarm"
-description = "Clouds of plague-touched bats that blot out the sky. Individually fragile, their sheer numbers overwhelm defenders and spread disease wherever they roost."
+description = "Clouds of cave-dwelling bats that blot out the sky. Individually fragile, their sheer numbers overwhelm defenders and drain warmth wherever they roost."
 faction_id = &"forsaken"
 max_hp = 600
 attack = 8

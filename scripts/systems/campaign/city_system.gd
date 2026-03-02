@@ -1373,8 +1373,8 @@ const GARRISON_UNITS := {
 	&"shardhorde": [&"crystal_swarmling", &"shard_crawler"],
 	&"moonspear": [&"moonspear_sentinel", &"moonspear_sentinel"],
 	&"thunderswarm": [&"thunderswarm_warrior", &"thunderswarm_warrior"],
-	&"cinderguard": [&"cinderguard_forgeborn", &"cinderguard_forgeborn"],
-	&"forsaken": [&"forsaken_wretch", &"forsaken_wretch"],
+	&"cinderguard": [&"cinderguard_warden", &"cinderguard_warden"],
+	&"forsaken": [&"shadow_thrall", &"shadow_thrall"],
 	&"ivoryscar": [&"ivoryscar_seeker", &"ivoryscar_seeker"],
 	&"sunblessed": [&"sunblessed_pilgrim", &"sunblessed_pilgrim"],
 	&"independent": [&"citizen_phalanx", &"citizen_phalanx"],
@@ -1774,12 +1774,12 @@ func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, 
 				if cap >= 4:
 					fs.resources[Enums.ResourceType.CAPTIVES] -= 4
 					income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + 18
-			# Forge heat: +iron production scaling
-			if fs.forge_heat >= 30:
-				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + int(fs.forge_heat * 0.06)
+			# Border vigilance: +iron production scaling
+			if fs.border_vigilance >= 30:
+				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + int(fs.border_vigilance * 0.06)
 		&"forsaken":
-			# Wretched Pit: consume captives as food (cannibalism/monsters)
-			if city and (city.buildings.has(&"wretched_pit") or city.buildings.has(&"plague_workshop")):
+			# Shadow Barracks: consume captives as thrall fuel (necromantic binding)
+			if city and (city.buildings.has(&"wretched_pit") or city.buildings.has(&"necromancer_sanctum")):
 				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
 				if cap >= 3:
 					fs.resources[Enums.ResourceType.CAPTIVES] -= 3

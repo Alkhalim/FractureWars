@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tomb_warden"
+display_name = "Tomb Warden"
+description = "Guardian of ancient sepulchres. Relic power flows through this commander, strengthening constructs and relics alike."
+is_positive = true
+effects = {"army_defense_bonus": 3, "terrain_desert_attack_bonus": 2, "unit_morale_bonus": 2}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"faction_ivoryscar", &"battle_won"])
+acquire_threshold = 5
+lose_context = Array[StringName]([])
+lose_threshold = 99

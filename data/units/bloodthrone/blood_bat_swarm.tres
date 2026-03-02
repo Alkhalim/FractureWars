@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"blood_bat_swarm"
+display_name = "Blood Bat Swarm"
+description = "Massive clouds of blood-drinking bats that darken the sky. They descend upon the living in a frenzy, draining victims dry in seconds."
+faction_id = &"bloodthrone"
+max_hp = 500
+attack = 9
+melee_defense = 2
+projectile_defense = 1
+magic_defense = 2
+speed = 8
+attack_range = 1
+squad_size = 40
+hp_per_soldier = 13
+movement_points = 5.0
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 35, 3: 10}
+recruit_time = 1
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast", "flying", "swarm"])
+base_morale = 30

@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"cursed_archer"
 display_name = "Cursed Archer"
-description = "Plague-touched bowmen whose arrows carry the blight. Every wound they inflict festers and rots."
+description = "Undead bowmen whose cursed arrows drain life on impact. Every wound they inflict saps the victim's strength."
 faction_id = &"forsaken"
 max_hp = 600
 attack = 11

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"temple_initiate"
+display_name = "Temple Initiate"
+description = "Newly sworn acolytes armed with simple weapons and unwavering faith. What they lack in skill they make up for in zealous determination."
+faction_id = &"venerated"
+max_hp = 750
+attack = 8
+melee_defense = 5
+projectile_defense = 3
+magic_defense = 3
+speed = 5
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 9
+movement_points = 3.5
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 35, 1: 8}
+recruit_time = 1
+population_cost = 16
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 60

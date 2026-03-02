@@ -1471,7 +1471,7 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 					if city.buildings.has(&"ember_foundry") or city.buildings.has(&"molten_core_forge"):
 						captive_consumption += 4
 				&"forsaken":
-					if city.buildings.has(&"wretched_pit") or city.buildings.has(&"plague_workshop"):
+					if city.buildings.has(&"wretched_pit") or city.buildings.has(&"necromancer_sanctum"):
 						captive_consumption += 3
 					if city.buildings.has(&"void_pit"):
 						captive_consumption += 3
@@ -1608,9 +1608,9 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			text = "Storm Fury: %d" % fs.storm_fury
 			color = Color(0.95, 0.6, 0.2) if fs.storm_fury >= 80 else (Color(0.85, 0.75, 0.3) if fs.storm_fury >= 50 else Color(0.6, 0.6, 0.55))
 		&"cinderguard":
-			var mode := "Blazing" if fs.forge_heat >= 70 else ("Cool" if fs.forge_heat <= 30 else "Tempered")
-			text = "Forge: %d (%s)" % [fs.forge_heat, mode]
-			color = Color(0.95, 0.5, 0.2) if fs.forge_heat >= 70 else (Color(0.4, 0.65, 0.85) if fs.forge_heat <= 30 else Color(0.75, 0.65, 0.45))
+			var mode := "High Alert" if fs.border_vigilance >= 70 else ("At Ease" if fs.border_vigilance <= 30 else "On Patrol")
+			text = "Vigilance: %d (%s)" % [fs.border_vigilance, mode]
+			color = Color(0.95, 0.5, 0.2) if fs.border_vigilance >= 70 else (Color(0.4, 0.65, 0.85) if fs.border_vigilance <= 30 else Color(0.75, 0.65, 0.45))
 		&"forsaken":
 			text = "Espionage: %d" % fs.espionage_network
 			color = Color(0.5, 0.8, 0.5) if fs.espionage_network >= 20 else Color(0.6, 0.6, 0.55)
@@ -1666,9 +1666,9 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			tooltip += "Decays -5/turn naturally.\n\n"
 			tooltip += "Killing Thunderswarm beasts/monsters angers them (-8 standing)."
 		&"cinderguard":
-			tooltip = "Forge Heat (0-100) from combat and industry.\n\n"
-			tooltip += "Cool (0-30): +15% defense in battle.\n"
-			tooltip += "Blazing (85+): +5% attack in battle.\n\n"
+			tooltip = "Border Vigilance (0-100) from patrols and events.\n\n"
+			tooltip += "At Ease (0-30): +15% defense in battle.\n"
+			tooltip += "High Alert (85+): +5% attack in battle.\n\n"
 			tooltip += "All units: +3 attack vs monsters and beasts.\n"
 			tooltip += "+2 defense in desert and shard wastes."
 		&"forsaken":
@@ -2500,18 +2500,18 @@ const LEADER_GREETINGS := {
 		["The jungle parts before you, honored one. The Serpent Queen extends her trust.", "The heart of the jungle beats in time with yours. You are one of us.", "Every vine, every fang, every drop of venom — all yours to command, dear friend.", "In ten thousand years, the jungle has embraced only a handful. You are among them.", "The Serpent Crown itself could rest upon your brow. That is how deeply you are treasured."],
 	],
 	&"cinderguard": [
-		["Leave, before I feed you to the furnace.", "The slag pit is always hungry. Do you wish to meet it?", "Every moment you stand here, the forge grows hotter. Take the hint.", "I have melted better things than you today.", "Your presence cools the forge. That is the gravest insult I know."],
-		["You stand in the shadow of the Great Forge. Choose your words wisely.", "The bellows pause for no one. Make it quick.", "Hmph. Untempered and brittle. But I will hear you.", "The anvil rings impatiently. State your business.", "You have the resilience of tin. But tin has its uses. Speak."],
-		["The Forgemaster has a moment. Make it count.", "Iron cares not for flattery. Give me substance.", "The forge burns at a steady heat. A good time to talk.", "You stand in the foundry without flinching. That earns a moment.", "Neither ore nor slag. Let us determine which you become."],
-		["The forges burn bright for allies. Welcome.", "Good steel recognizes good steel. I see quality in you.", "The master smiths nod at your approach. High praise indeed.", "You have proven yourself in the fire. Welcome to the foundry.", "The warmth of the forge is yours tonight, friend. Sit and speak freely."],
-		["The heart of the mountain opens to you, truest friend of the forge!", "You are steel made perfect — tested, tempered, and TRUE!", "The Great Anvil rings with joy! No finer ally exists in all the world!", "Every weapon we forge carries a blessing for you. THAT is our bond!", "In fire and iron, in hammer and anvil — our friendship is eternal!"],
+		["Leave, before I throw you over the wall into the wastes.", "The desert is always hungry. Do you wish to meet it?", "Every moment you linger, our sentinels grow more restless. Take the hint.", "I have turned away better than you at this gate today.", "You weaken the watch. That is the gravest insult I know."],
+		["You stand in the shadow of the Outer Wall. Choose your words wisely.", "The warhorns pause for no one. Make it quick.", "Hmph. Soft and untested. But I will hear you.", "The watchtower bell rings impatiently. State your business.", "You have the resilience of sand. But sand has its uses. Speak."],
+		["The Warden-Commander has a moment. Make it count.", "The frontier cares not for flattery. Give me substance.", "The border holds at a steady calm. A good time to talk.", "You stand on the wall without flinching. That earns a moment.", "Neither ally nor threat. Let us determine which you become."],
+		["The watchfires burn bright for allies. Welcome.", "Good steel recognizes good steel. I see quality in you.", "The border wardens nod at your approach. High praise indeed.", "You have proven yourself in the wastes. Welcome to the garrison.", "The warmth of the watchfire is yours tonight, friend. Sit and speak freely."],
+		["The heart of the frontier opens to you, truest friend of the guard!", "You are steel made perfect — tested, tempered, and TRUE!", "The Great Wall rings with joy! No finer ally exists in all the wastes!", "Every blade we sharpen carries a blessing for you. THAT is our bond!", "In ember and iron, in dust and duty — our friendship is eternal!"],
 	],
 	&"forsaken": [
-		["Your flesh will rot sweetly in our domain. Come closer.", "How delightful — fresh meat walks willingly into the plague ward.", "The blight hungers. You look... ripe for infection.", "Even the diseased turn away from you. Consider what that means.", "Your screams will join the chorus of the afflicted."],
-		["Your presence offends what remains of our senses.", "We have endured the plague. We can endure you. Barely.", "The corruption whispers your name with distaste.", "How tedious. Another healthy thing demanding attention.", "You carry the stench of hope. How nauseating."],
-		["The Plague Council deigns to listen. Briefly.", "Disease is patient. We can spare a moment.", "You are neither afflicted nor immune. Simply... present.", "The blighted make room for your words. A rare allowance.", "Speak. We will decide if your words are worth the infection risk."],
-		["Even among the diseased, some visitors are tolerable. You are one.", "The plague makes exceptions for those who understand survival.", "You do not recoil from our affliction. That makes you... interesting.", "The outcasts speak your name without malice. Almost warmly.", "In all our suffering, your presence is... appreciated."],
-		["In all our plague-touched exile, you are a rare constant. The Forsaken salute you.", "The Council of the Afflicted itself stirs to greet you!", "You have given purpose to the outcast. The Forsaken THANK you.", "Disease and survival bow before this friendship. You transcend the blight.", "Across every plague, every exile — you stood with us. We are forever grateful."],
+		["Your blood smells... exquisite. Come closer.", "How delightful — fresh prey walks willingly into the court.", "The thirst rises. You look... inviting.", "Even the ghouls turn away from you. Consider what that means.", "Your screams will echo beautifully in these halls."],
+		["Your warmth offends what remains of our patience.", "We have endured eternity. We can endure you. Barely.", "The shadows whisper your name with distaste.", "How tedious. Another living thing demanding attention.", "You carry the stench of sunlight. How nauseating."],
+		["The Blood Court deigns to listen. Briefly.", "Immortality is patient. We can spare a moment.", "You are neither prey nor predator. Simply... present.", "The court makes room for your words. A rare allowance.", "Speak. We will decide if your words are worth the Countess's time."],
+		["Even among the living, some visitors are tolerable. You are one.", "The court makes exceptions for those who understand the darkness.", "You do not recoil from our nature. That makes you... interesting.", "The courtiers speak your name without malice. Almost warmly.", "In all our long exile, your presence is... appreciated."],
+		["In all our centuries of shadow, you are a rare constant. The Forsaken salute you.", "The Blood Court itself rises to greet you!", "You have given purpose to the exiled. The Forsaken THANK you.", "Death and life bow before this friendship. You transcend the darkness.", "Across every long night, every exile — you stood with us. We are forever grateful."],
 	],
 	&"ivoryscar": [
 		["The tombs have foreseen your ruin. Grovel while you still can.", "The dead will scour your name from history.", "The ancestors spit at the mention of you.", "Every relic we unearth carries a new curse with your name on it.", "The bone-readers cast your fortune. They wept."],
@@ -2593,23 +2593,23 @@ const CULTURE_GREETINGS := {
 			["The wild and the steppe — both untamed, both FREE! Kindred spirits!", "Nature-friend! The horde rides with the wind, and the wind is yours!"],
 		],
 		&"cinderguard": [
-			["Forge-rat. Your walls will melt when the horde brings fire of our own.", "You hide behind iron and stone. The Khan despises cowards."],
-			["Your blades are good. Your courage? Not impressed.", "The forgers cower behind their walls. Typical."],
-			["Forge-master. Your steel is worthy of the horde's respect.", "The Khan admires your weapons, if not your fortress-hiding."],
-			["Your blades arm my riders well! The forge earns the horde's respect!", "Iron-friend! The Khan values good steel and the hands that forge it!"],
-			["FORGE-BROTHER! Your steel and our riders — an unstoppable force!", "The Khan treasures your friendship as he treasures his finest blade!"],
+			["Wall-hider. Your ramparts will crumble when the horde rides through.", "You hide behind stone and sand. The Khan despises cowards."],
+			["Your blades are good. Your courage? Not impressed.", "The border-folk cower behind their walls. Typical."],
+			["Warden. Your sentinels are worthy of the horde's respect.", "The Khan admires your vigilance, if not your fortress-hiding."],
+			["Your blades arm my riders well! The frontier earns the horde's respect!", "Iron-friend! The Khan values good steel and the hands that guard with it!"],
+			["BORDER-BROTHER! Your walls and our riders — an unstoppable force!", "The Khan treasures your friendship as he treasures his finest blade!"],
 		],
 	},
 	&"gladehost": {
 		&"cinderguard": [
-			["The smoke of your forges poisons every living thing. The grove DESPISES you.", "Every tree you burn for your furnaces screams. Can you hear them?"],
-			["The forge-fires dim the sky above the canopy. The grove is displeased.", "Your soot-stained hands bring nothing green with them."],
-			["Forge-keeper. The grove wishes you would contain your flames.", "Fire and forest have always been wary neighbors. What do you seek?"],
-			["You have shown the forest that not all flames destroy. Welcome, forge-friend.", "The grove has learned that some fires nurture as well as burn."],
-			["Fire-keeper! The grove sees now that flame and forest need each other!", "From enmity to harmony — forge and forest, an alliance of miracles!"],
+			["The smoke of your watchfires poisons every living thing. The grove DESPISES you.", "Every tree you burn for your camps screams. Can you hear them?"],
+			["The frontier fires dim the sky above the canopy. The grove is displeased.", "Your dust-stained hands bring nothing green with them."],
+			["Border-keeper. The grove wishes you would contain your ember camps.", "Fire and forest have always been wary neighbors. What do you seek?"],
+			["You have shown the forest that not all flames destroy. Welcome, warden-friend.", "The grove has learned that some fires nurture as well as burn."],
+			["Warden-friend! The grove sees now that frontier and forest need each other!", "From enmity to harmony — border and grove, an alliance of miracles!"],
 		],
 		&"forsaken": [
-			["Where you walk, nothing grows. The grove ABHORS your existence.", "Blight-carrier. Your very shadow kills the grass beneath it."],
+			["Where you walk, nothing grows. The grove ABHORS your existence.", "Death-bringer. Your very shadow kills the grass beneath it."],
 			["The roots recoil from your touch. The forest barely tolerates you.", "Every dead thing in the forest reminds us of your people."],
 			["Void-touched. The grove does not understand you, but will listen.", "Life and death are connected. Perhaps we can speak across that bridge."],
 			["The forest has learned that even decay returns nutrients to the soil. Welcome.", "You walk among dead things, yet you speak with unexpected gentleness."],
@@ -2676,11 +2676,11 @@ const CULTURE_GREETINGS := {
 			["IMPERIAL BROTHER! Your discipline and our fury — NOTHING can stop us!", "From palace to peak — our friendship SHAKES THE WORLD!"],
 		],
 		&"cinderguard": [
-			["These are OUR mountains, forge-hider! Stay in your tunnels!", "Your smoke ruins the mountain air. Take your furnace elsewhere!"],
-			["The Cinderguard digs while we climb. We know which is braver.", "Your fires warm you. Our storms harden us. Guess who wins?"],
-			["Forge-kin. We share the mountain, if not the same path through it.", "Your tunnels and our peaks — the mountain has room for both."],
-			["Mountain-neighbor! Your forge warms the storms between us! Welcome!", "The Cinderguard proves the mountain has MANY strengths!"],
-			["MOUNTAIN BROTHER! Peak and forge, storm and flame — UNBREAKABLE!", "Together we ARE the mountain — its fury AND its fire!"],
+			["These are OUR mountains, wall-builder! Stay behind your ramparts!", "Your watchfires ruin the mountain air. Take your patrols elsewhere!"],
+			["The Cinderguard hides while we ride. We know which is braver.", "Your walls shelter you. Our storms harden us. Guess who wins?"],
+			["Border-kin. We share the wasteland, if not the same path through it.", "Your walls and our peaks — the frontier has room for both."],
+			["Wasteland-neighbor! Your watchfires warm the storms between us! Welcome!", "The Cinderguard proves the frontier has MANY strengths!"],
+			["FRONTIER BROTHER! Peak and wall, storm and ember — UNBREAKABLE!", "Together we ARE the wasteland — its fury AND its flame!"],
 		],
 		&"moonspear": [
 			["Star-gazers. Try watching where your FEET go instead.", "Your prophecies are as useful as moonlight in a blizzard."],
@@ -2723,61 +2723,61 @@ const CULTURE_GREETINGS := {
 	&"cinderguard": {
 		&"gladehost": [
 			["The forest burns well. Remember that, wood-witch.", "Your trees are fuel. Your druids are kindling. Know your place."],
-			["Every piece of charcoal was once one of your precious trees. Perspective.", "The forge needs fuel. The forest provides. End of discussion."],
-			["Forest-keeper. The forge can be more careful with its fuel.", "Trees and timber, forests and forges — we must find balance."],
-			["The forge has learned to harvest without destroying. Your teachings helped.", "Wood-friend! Sustainable forests feed our forges better than clear-cutting."],
-			["Grove-friend! Forge and forest — creation and renewal in perfect cycle!", "Every tree we plant for every one we burn! Nature and industry, TOGETHER!"],
+			["Every piece of charcoal was once one of your precious trees. Perspective.", "The frontier needs fuel. The forest provides. End of discussion."],
+			["Forest-keeper. The border camps can be more careful with their fuel.", "Trees and timber, forests and frontiers — we must find balance."],
+			["The garrison has learned to harvest without destroying. Your teachings helped.", "Wood-friend! Sustainable forests supply our posts better than clear-cutting."],
+			["Grove-friend! Frontier and forest — vigilance and renewal in perfect cycle!", "Every tree we plant for every one we burn! Nature and duty, TOGETHER!"],
 		],
 		&"empire": [
-			["Imperial mass production. Quantity over quality. The forge DESPISES it.", "Your factory-forged trinkets insult every smith who ever lived."],
-			["The Empire's workshops are adequate. For amateurs.", "Imperial steel bends where ours holds. But you have volume."],
-			["Imperial metalwork improves. The forge acknowledges this.", "Your craftsmen learn from ours, whether they admit it. Welcome."],
-			["The Empire's engineers and our smiths — a formidable combination.", "Imperial precision and our heat treatment — together, perfection."],
-			["Imperial partner! Your engineers and our forge — we shape the WORLD!", "The greatest weapons ever made — forged by OUR alliance!"],
+			["Imperial bureaucrats. You conquer land you cannot hold. The frontier DESPISES it.", "Your soft legions would not last a week on our border."],
+			["The Empire's garrisons are adequate. For lowlanders.", "Imperial discipline bends where our vigilance holds. But you have numbers."],
+			["Imperial resolve improves. The frontier acknowledges this.", "Your soldiers learn from ours, whether they admit it. Welcome."],
+			["The Empire's engineers and our wardens — a formidable combination.", "Imperial discipline and our wasteland grit — together, perfection."],
+			["Imperial partner! Your legions and our frontier — we hold the WORLD!", "The strongest border ever built — defended by OUR alliance!"],
 		],
 		&"ivoryscar": [
-			["Your ancient metalwork is corroded junk. The forge moves FORWARD.", "Tomb-digger. Your relics belong in a museum, not a battlefield."],
-			["Old techniques. Interesting, but the forge has surpassed them.", "The ancients knew some tricks. We know more."],
-			["Relic-keeper. The ancient smithing techniques deserve study.", "Your old-world alloys — the forge finds them intriguing."],
-			["Ancient metallurgical secrets you shared improved our work immensely!", "Old wisdom meets new fire — the forge is grateful, relic-friend."],
-			["Ancient friend! Your techniques and our modern forge — UNMATCHED!", "Together we forge with the wisdom of ages and the fire of today!"],
+			["Your ancient walls crumbled. The frontier moves FORWARD.", "Tomb-digger. Your relics belong in a museum, not a battlefield."],
+			["Old fortifications. Interesting, but the frontier has surpassed them.", "The ancients knew some tricks. We know more."],
+			["Relic-keeper. The ancient defense techniques deserve study.", "Your old-world tactics — the frontier finds them intriguing."],
+			["Ancient siege-craft you shared improved our walls immensely!", "Old wisdom meets new vigilance — the frontier is grateful, relic-friend."],
+			["Ancient friend! Your techniques and our modern garrison — UNMATCHED!", "Together we stand with the wisdom of ages and the fire of today!"],
 		],
 		&"thunderswarm": [
-			["Storm-screamer. The INSIDE of the mountain belongs to us. Stay on your peaks.", "Your lightning shakes our tunnels. One more quake and we seal your passes."],
-			["The Swarm runs wild on the peaks while we build below. Typical.", "Mountain surface-dwellers. Noisy and uncivilized."],
-			["Storm-kin. We share the mountain. Let us share its wealth.", "Peak and tunnel — the mountain is big enough for both."],
-			["Your storms test our structures, making them STRONGER. The forge is grateful!", "Mountain-neighbor! Your lightning tempers our steel from afar!"],
-			["MOUNTAIN BROTHER! Peak and forge, lightning and fire — UNSTOPPABLE!", "The mountain is OURS — above and below, storm and flame, TOGETHER!"],
+			["Storm-screamer. The wasteland borderlands belong to US. Stay on your peaks.", "Your lightning shakes our walls. One more quake and we seal your passes."],
+			["The Swarm runs wild on the peaks while we guard below. Typical.", "Mountain surface-dwellers. Noisy and uncivilized."],
+			["Storm-kin. We share the frontier. Let us share its defense.", "Peak and wall — the wasteland is big enough for both."],
+			["Your storms test our fortifications, making them STRONGER. The frontier is grateful!", "Mountain-neighbor! Your lightning keeps threats at bay from afar!"],
+			["FRONTIER BROTHER! Peak and wall, lightning and ember — UNSTOPPABLE!", "The wasteland is OURS — above and below, storm and flame, TOGETHER!"],
 		],
 	},
 	&"forsaken": {
 		&"sunblessed": [
-			["Your light BURNS us and you call it righteous. The void will consume your sun.", "Sun-zealot. Your holy fire is just another way to destroy what you fear."],
-			["The sun's glare is unpleasant. Like your personality.", "Your light reveals nothing the void hasn't already seen."],
-			["Sun-keeper. Your light and our darkness must coexist. Somehow.", "The dawn comes even to the void. We have learned to endure it."],
-			["Your light warms even the hollow places within us. Not unwelcome.", "The sun and the void — perhaps they need each other after all."],
-			["Sun-friend! Your light gives MEANING to our darkness! We are GRATEFUL!", "Light and void, together at last! The cosmos is COMPLETE!"],
+			["Your light BURNS us and you call it righteous. The night will consume your sun.", "Sun-zealot. Your holy fire is just another way to destroy what you fear."],
+			["The sun's glare is unpleasant. Like your personality.", "Your light reveals nothing the shadows haven't already seen."],
+			["Sun-keeper. Your light and our darkness must coexist. Somehow.", "The dawn comes even to our court. We have learned to endure it."],
+			["Your light warms even the cold halls within us. Not unwelcome.", "The sun and the shadow — perhaps they need each other after all."],
+			["Sun-friend! Your light gives MEANING to our darkness! We are GRATEFUL!", "Light and shadow, together at last! The balance is COMPLETE!"],
 		],
 		&"moonspear": [
-			["Your silver light needles the void like tiny daggers. Stop it.", "Star-watcher. The void between your precious stars is OURS."],
+			["Your silver light needles the shadows like tiny daggers. Stop it.", "Star-watcher. The darkness between your precious stars is OURS."],
 			["The moon's glow is tolerable. Barely. Unlike your preaching.", "Celestial light is softer than the sun's, at least. Small mercy."],
-			["Moon-watcher. The void acknowledges the night sky. It is our ceiling.", "Stars and void are neighbors. Perhaps their people can be too."],
-			["The moonlight doesn't burn like the sun. The void appreciates this.", "Star-friend. You understand that darkness is not evil. That means everything."],
-			["Moon-keeper! The night sky is the PERFECT marriage of light and dark!", "The stars shine brightest against the void! We NEED each other!"],
+			["Moon-watcher. The court acknowledges the night sky. It is our ceiling.", "Stars and shadow are neighbors. Perhaps their people can be too."],
+			["The moonlight doesn't burn like the sun. The court appreciates this.", "Star-friend. You understand that darkness is not evil. That means everything."],
+			["Moon-keeper! The night sky is the PERFECT marriage of light and dark!", "The stars shine brightest against the shadow! We NEED each other!"],
 		],
 		&"gladehost": [
-			["Your living things mock us with every breath. The grove will ROT.", "So much life. So fragile. The void will claim it all eventually."],
+			["Your living things mock us with every breath. The grove will WITHER.", "So much life. So fragile. The night will claim it all eventually."],
 			["Your greenery is offensive to those who can no longer grow.", "The living forest. A painful reminder of what was lost."],
-			["Grove-keeper. The fallen leaves know the void well. Common ground.", "Life and death are two sides of the same leaf. The void accepts this."],
-			["Your living world reminds us of what we were. It no longer hurts.", "Green-friend. Your life gives the void something to aspire to."],
-			["Living one! Your vitality inspires even the dead! The void BLOOMS for you!", "Life and death, growth and decay — our cycle together is BEAUTIFUL!"],
+			["Grove-keeper. The fallen leaves know the darkness well. Common ground.", "Life and death are two sides of the same leaf. The court accepts this."],
+			["Your living world reminds us of what we were. It no longer hurts.", "Green-friend. Your life gives the court something to aspire to."],
+			["Living one! Your vitality inspires even the dead! The court BLOOMS for you!", "Life and death, growth and decay — our cycle together is BEAUTIFUL!"],
 		],
 		&"empire": [
-			["Your mortal empire will crumble to dust. The void is patient.", "Empires rise and fall. The void endures. You are temporary."],
-			["Another mortal government pretending it will last forever. Quaint.", "Your institutions decay faster than our corpses. We accept it."],
-			["Imperial. Your mortal ambitions are interesting, in their way.", "The Empire builds what the void eventually claims. But build you do."],
+			["Your mortal empire will crumble to dust. The court is patient.", "Empires rise and fall. The undying endure. You are temporary."],
+			["Another mortal government pretending it will last forever. Quaint.", "Your institutions decay faster than our servants. We accept it."],
+			["Imperial. Your mortal ambitions are interesting, in their way.", "The Empire builds what the night eventually claims. But build you do."],
 			["Your stubborn refusal to accept entropy is almost admirable.", "Imperial friend. Your persistence against the inevitable earns respect."],
-			["The Empire's defiance of decay INSPIRES the void! You prove meaning EXISTS!", "Mortal friend! Your fleeting flame burns brighter than eternal darkness!"],
+			["The Empire's defiance of decay INSPIRES the court! You prove meaning EXISTS!", "Mortal friend! Your fleeting flame burns brighter than eternal darkness!"],
 		],
 	},
 	&"ivoryscar": {
@@ -2789,18 +2789,18 @@ const CULTURE_GREETINGS := {
 			["Ancient neighbor! Desert and jungle — oldest civilizations, REUNITED!", "Your living history and our preserved one — NOTHING is forgotten!"],
 		],
 		&"cinderguard": [
-			["Your crude ironwork insults the ancient smiths whose techniques you mock.", "The forge-folk melt what should be preserved. Barbarians in aprons."],
-			["Your metalwork lacks the finesse of the ancients. But it has vigor.", "The forge creates while the tomb preserves. Natural opposites."],
-			["Forge-keeper. The ancient alloys await rediscovery. Perhaps together.", "Your fire and our knowledge — there are possibilities here."],
-			["The forge has recreated techniques lost for millennia! The ancestors applaud!", "Forge-friend! Your craft honors the ancient smiths."],
-			["Master forger! Together we unlock the secrets of the FIRST SMITHS!", "Ancient technique and modern fire — our alliance reshapes the world!"],
+			["Your crude frontier camps insult the ancient builders whose works you ignore.", "The border-folk trample what should be preserved. Barbarians in armor."],
+			["Your fortifications lack the finesse of the ancients. But they have vigor.", "The frontier builds while the tomb preserves. Natural opposites."],
+			["Border-keeper. The ancient defense works await rediscovery. Perhaps together.", "Your vigilance and our knowledge — there are possibilities here."],
+			["The frontier has revived techniques lost for millennia! The ancestors applaud!", "Warden-friend! Your vigilance honors the ancient guardians."],
+			["Master warden! Together we unlock the secrets of the FIRST BUILDERS!", "Ancient technique and modern grit — our alliance reshapes the world!"],
 		],
 		&"forsaken": [
-			["You are decay made manifest. The tombs REJECT your corruption.", "The ancients preserved themselves. You simply refuse to decompose properly."],
-			["The void preserves nothing. Our tombs preserve EVERYTHING. See the difference?", "Your hollow existence mocks our sacred preservation."],
-			["Void-walker. Both our peoples exist beyond normal time. Unusual kinship.", "The preserved and the hollowed. More in common than most realize."],
-			["The void and the tomb both defy time. The ancestors see a kindred spirit.", "You understand eternity. That understanding bridges our differences."],
-			["Beyond-death friend! Tomb and void — we have conquered TIME itself!", "Eternal companions! Our friendship will outlast the stars themselves!"],
+			["You are undeath made manifest. The tombs REJECT your corruption.", "The ancients preserved themselves. You simply refuse to stay buried."],
+			["The court preserves nothing. Our tombs preserve EVERYTHING. See the difference?", "Your parasitic existence mocks our sacred preservation."],
+			["Night-walker. Both our peoples exist beyond normal time. Unusual kinship.", "The preserved and the undying. More in common than most realize."],
+			["The court and the tomb both defy time. The ancestors see a kindred spirit.", "You understand eternity. That understanding bridges our differences."],
+			["Beyond-death friend! Tomb and court — we have conquered TIME itself!", "Eternal companions! Our friendship will outlast the stars themselves!"],
 		],
 		&"shardhorde": [
 			["Your crystal lattice corrupts ancient frequencies. The relics SHATTER.", "Alien abomination. Your crystalline growth consumes our sacred sites."],
@@ -2819,11 +2819,11 @@ const CULTURE_GREETINGS := {
 			["ORGANIC PRIME ALLY! Bio-crystal symbiosis achieves OPTIMAL growth!", "Carbon and silicon, root and crystal — PERFECT integration!"],
 		],
 		&"cinderguard": [
-			["Thermal output damages crystal matrices. Heat source: hostile.", "Forge emissions: destructive to lattice integrity. Classification: threat."],
-			["Mineral processing detected. Methods: crude but functional.", "Thermal manipulation of ores. Inefficient but intriguing."],
-			["Forge entity. Your mineral processing has useful applications.", "Heat-based refinement interests the Crystalmind. Processing."],
-			["Forge processes enhance crystal purity! Beneficial relationship confirmed!", "Your thermal techniques refine our growth medium. Synergy detected!"],
-			["FORGE PRIME ALLY! Heat and crystal — PERFECT lattice formation!", "Your fire purifies, our crystal grows — MAXIMUM mineral efficiency!"],
+			["Border fortifications obstruct crystal expansion vectors. Classification: hostile.", "Frontier activity: disruptive to lattice growth patterns. Classification: threat."],
+			["Perimeter defense detected. Methods: crude but functional.", "Territorial control of mineral zones. Inefficient but intriguing."],
+			["Frontier entity. Your territorial control has useful applications.", "Border patrol patterns interest the Crystalmind. Processing."],
+			["Frontier buffer zones enhance crystal growth stability! Beneficial relationship confirmed!", "Your patrols protect our growth medium. Synergy detected!"],
+			["FRONTIER PRIME ALLY! Wall and crystal — PERFECT territorial coverage!", "Your vigilance protects, our crystal grows — MAXIMUM efficiency!"],
 		],
 		&"moonspear": [
 			["Celestial radiation interferes with crystal frequencies. Source: hostile.", "Lunar electromagnetic patterns: disruptive to Hive communications."],
@@ -2917,18 +2917,18 @@ const LEADER_ACCEPT_LINES := {
 		["The Serpent Queen herself smiles upon this!", "The JUNGLE CELEBRATES with a thousand blooming flowers!", "In all the ages of poison and paradise, no finer deal!", "The Great Serpent coils in BLISS!", "Every venomous thing turns sweet for you today!"],
 	],
 	&"cinderguard": [
-		["The forge accepts. Do not waste our metal.", "Hmph. Like cold iron. Barely workable. But done.", "The bellows sigh and agree.", "The slag falls away. This deal barely survives. Accepted.", "The Forgemaster grumbles but signs."],
-		["Hmm. Tolerable. Agreed.", "Like pig iron. Not great, but useful. Done.", "The anvil accepts this strike.", "Workable material. The forge proceeds.", "Not our finest casting, but it holds."],
-		["Iron meets iron. A solid deal.", "Well-tempered terms. The forge agrees.", "A fair heat for fair metal. Done.", "The hammer strikes true on this one.", "Solid as mountain stone. Agreed."],
-		["Well forged! This strengthens us both.", "Fine craftsmanship in these terms!", "The forge GLOWS with approval!", "Like finding mithril in common ore. Excellent!", "The master smiths nod in admiration!"],
-		["A masterwork agreement! The forge roars in triumph!", "STEEL SINGS ON THE ANVIL! The finest deal ever forged!", "The Great Forge itself blazes in celebration!", "This accord is INDESTRUCTIBLE! Like the mountain itself!", "In all the history of the forge, no finer alliance!"],
+		["The frontier accepts. Do not waste our trust.", "Hmph. Thin as desert air. But done.", "The warhorns sound a grudging call.", "The dust settles. This deal barely survives. Accepted.", "The Warden-Commander grumbles but signs."],
+		["Hmm. Tolerable. Agreed.", "Like a border skirmish. Not great, but useful. Done.", "The watchtower accepts the signal.", "Workable terms. The frontier proceeds.", "Not our finest pact, but it holds."],
+		["Iron meets iron. A solid deal.", "Well-measured terms. The frontier agrees.", "A fair exchange for fair vigilance. Done.", "The blade strikes true on this one.", "Solid as the outer wall. Agreed."],
+		["Well struck! This strengthens us both.", "Fine terms worthy of the frontier!", "The watchfires BLAZE with approval!", "Like finding fresh water in the wastes. Excellent!", "The border wardens nod in admiration!"],
+		["A masterwork agreement! The frontier roars in triumph!", "STEEL RINGS ON THE RAMPARTS! The finest deal ever struck!", "The Great Wall itself blazes in celebration!", "This accord is INDESTRUCTIBLE! Like the frontier itself!", "In all the history of the guard, no finer alliance!"],
 	],
 	&"forsaken": [
-		["Ugh. Even the dead find this distasteful, but... agreed.", "The void groans. But accepts.", "Like swallowing ash. But done.", "The Hollow King rolls his empty eyes. Fine.", "Even oblivion has its price. Paid."],
-		["The hollow winds carry our reluctant assent.", "The shadows agree. Without enthusiasm.", "A joyless accord. But functional.", "The emptiness permits this. Barely.", "Like dust settling. Inevitable. Accepted."],
-		["Even the dead have use for this arrangement.", "The void finds equilibrium. Agreed.", "Neither living nor dead, this deal simply... is.", "Acceptable to the hollow. Proceed.", "The darkness nods. A fair exchange."],
-		["A rare moment of light in the void. Accepted.", "The emptiness warms — slightly. Agreed!", "The Hollow King almost smiles. Almost.", "This brings... something close to satisfaction.", "The void hums with what might be approval."],
-		["In the name of the Hollow King — enthusiastically agreed!", "The VOID ITSELF brightens! Is this... joy?!", "For the first time in an age, the Forsaken feel something GOOD!", "Even death celebrates this glorious accord!", "The emptiness OVERFLOWS with gratitude!"],
+		["Ugh. Even the dead find this distasteful, but... agreed.", "The court groans. But accepts.", "Like drinking stale blood. But done.", "The Countess rolls her crimson eyes. Fine.", "Even immortality has its price. Paid."],
+		["The night winds carry our reluctant assent.", "The shadows agree. Without enthusiasm.", "A joyless accord. But functional.", "The court permits this. Barely.", "Like dusk settling. Inevitable. Accepted."],
+		["Even the undying have use for this arrangement.", "The court finds equilibrium. Agreed.", "Neither living nor dead, this deal simply... is.", "Acceptable to the court. Proceed.", "The darkness nods. A fair exchange."],
+		["A rare moment of warmth in these cold halls. Accepted.", "The court stirs — slightly. Agreed!", "The Countess almost smiles. Almost.", "This brings... something close to satisfaction.", "The shadows hum with what might be approval."],
+		["In the name of the Blood Court — enthusiastically agreed!", "The DARKNESS ITSELF brightens! Is this... joy?!", "For the first time in an age, the Forsaken feel something GOOD!", "Even death celebrates this glorious accord!", "The court OVERFLOWS with gratitude!"],
 	],
 	&"ivoryscar": [
 		["The sand buries most offers. Yours barely survives.", "The Oracle squints. But agrees.", "Like old bone — brittle, but it holds. Accepted.", "The scarabs click with reluctance. Done.", "Ancient dust settles on this deal. Fine."],
@@ -2996,18 +2996,18 @@ const LEADER_DENY_LINES := {
 		["Most honored one — the jungle weeps. We cannot accept.", "Every flower closes in GRIEF at this refusal.", "The Serpent Queen herself sheds a tear.", "If venom could cure regret, we would drink it all.", "The jungle would wither before willingly refusing you. Yet we must."],
 	],
 	&"cinderguard": [
-		["Slag! Worthless! GET OUT!", "I should melt this offer down for scrap!", "The forge VOMITS at these terms!", "Even the ash heap rejects this!", "This insults every smith who ever lived!"],
-		["This insults the forge. Denied.", "Cold iron. Rejected.", "Untempered and worthless. No.", "The anvil would crack under such poor terms.", "Not worth the coal to heat it. Refused."],
-		["The forge passes. Not worth the metal.", "The heat isn't right for this deal.", "Neither hammer nor anvil favors this.", "The bellows rest. Not this time.", "A fair attempt, but the metal won't hold."],
-		["A regrettable refusal. Perhaps we can reforge the terms.", "Almost — like steel just shy of hardening.", "Good ore, but the proportions are off. Another time.", "The forge nearly blazed for this. Close.", "With slight adjustments, this could work next time."],
-		["Dear ally — the forge cools with regret. We must decline.", "The Great Anvil RINGS with sorrow!", "If only the metal were different. We are truly sorry.", "The Forgemaster hangs his head. Even friendship cannot bend iron.", "The deepest fires of the mountain dim with grief at this refusal."],
+		["Sand! Worthless! GET OUT!", "I should throw this offer off the wall!", "The frontier SPITS at these terms!", "Even the wasteland rejects this!", "This insults every warden who ever stood watch!"],
+		["This insults the frontier. Denied.", "Dead weight. Rejected.", "Untested and worthless. No.", "The wall would crack under such poor terms.", "Not worth the ember to light it. Refused."],
+		["The frontier passes. Not worth the patrol.", "The timing isn't right for this deal.", "Neither wall nor warden favors this.", "The warhorns rest. Not this time.", "A fair attempt, but the terms won't hold."],
+		["A regrettable refusal. Perhaps we can renegotiate the terms.", "Almost — like a border pact just shy of sealing.", "Good intent, but the conditions are off. Another time.", "The frontier nearly blazed for this. Close.", "With slight adjustments, this could work next time."],
+		["Dear ally — the watchfire dims with regret. We must decline.", "The Great Wall ECHOES with sorrow!", "If only the terms were different. We are truly sorry.", "The Warden-Commander hangs his head. Even friendship cannot move the border.", "The deepest embers of the garrison dim with grief at this refusal."],
 	],
 	&"forsaken": [
-		["The void DEVOURS your pathetic offer!", "Even nothingness is insulted by this!", "The Hollow King would laugh if he still could.", "We have endured ETERNITY and this is the worst moment.", "The emptiness echoes with contempt for your terms."],
-		["We have no need of your pittance.", "The darkness yawns at this offer.", "Even the void has standards. Declined.", "What remains of our patience evaporates. No.", "The dead stir with annoyance. Refused."],
-		["The hollow winds carry your offer away.", "Into the void it goes. Forgotten.", "The emptiness neither accepts nor cares.", "A hollow refusal for a hollow offer.", "The darkness absorbs this and gives nothing back."],
-		["A reluctant refusal. The darkness regrets.", "Almost — a flicker of interest in the void.", "The Hollow King pauses. But shakes his head.", "Close. Closer than most. But still no.", "The void almost warmed. Almost."],
-		["Even in the void, refusing you brings us sorrow.", "The emptiness ACHES with the weight of this refusal.", "For you, the Forsaken feel something terrible: regret.", "If the dead could weep, they would weep for you now.", "The Hollow King's crown dims with sadness. Forgive us."],
+		["The court DEVOURS your pathetic offer!", "Even the undead are insulted by this!", "The Countess would laugh if she still cared.", "We have endured ETERNITY and this is the worst moment.", "The shadows echo with contempt for your terms."],
+		["We have no need of your pittance.", "The darkness yawns at this offer.", "Even the court has standards. Declined.", "What remains of our patience evaporates. No.", "The dead stir with annoyance. Refused."],
+		["The night winds carry your offer away.", "Into the dark it goes. Forgotten.", "The court neither accepts nor cares.", "A cold refusal for a cold offer.", "The darkness absorbs this and gives nothing back."],
+		["A reluctant refusal. The darkness regrets.", "Almost — a flicker of interest in the shadows.", "The Countess pauses. But shakes her head.", "Close. Closer than most. But still no.", "The court almost warmed. Almost."],
+		["Even in the darkness, refusing you brings us sorrow.", "The court ACHES with the weight of this refusal.", "For you, the Forsaken feel something terrible: regret.", "If the dead could weep, they would weep for you now.", "The Countess's crimson eyes dim with sadness. Forgive us."],
 	],
 	&"ivoryscar": [
 		["The sands will BURY you and your offer!", "The Oracle SMASHES a relic in fury!", "The ancestors ROAR from their tombs in outrage!", "This offer defiles the sacred traditions!", "Every scarab turns its back on this insult!"],
@@ -3080,18 +3080,18 @@ const LEADER_WAR_LINES := {
 		["The jungle WITHERS with grief! You were our most treasured ally!", "Every flower closes! The Serpent Queen cannot believe this betrayal!", "We opened the deepest garden to you! And THIS is your answer?!", "The Great Serpent coils in AGONY! We loved you!", "This venom is the cruelest we have ever tasted. You were everything to us."],
 	],
 	&"cinderguard": [
-		["The forge has been heating for YOUR pyre!", "At last! We've been hammering weapons for this day!", "Good! The Forgemaster has WAITED to break you on the anvil!", "WAR! The mountain burns with fury meant for YOU!", "We've been stoking these flames since we first saw your weakness!"],
-		["The anvil expected this strike. We are prepared.", "Hmph. Like cold iron — predictable and brittle. So be it.", "The forge saw the cracks in your diplomacy long ago.", "Unsurprising. The bellows were already roaring.", "A foregone conclusion. The mountain's defenses are ready."],
-		["The forge accepts your declaration. Steel answers all.", "So be it. We shall see whose metal holds.", "War? The anvil does not flinch. Come and be broken.", "An interesting test of mettle. The forge is ready.", "Bold. The mountain will answer with iron."],
-		["We forged bonds together... and now you break them.", "The Great Anvil rings with sorrow. We valued our alliance.", "Like quenching hot steel in ice. This pains us.", "Why shatter what we built? We thought you an ally.", "The forge dims. We did not want this from you."],
-		["The forge GOES COLD with grief! You were our finest ally!", "Every smith drops their hammer in shock! How could you?!", "We tempered our greatest works for YOU! And this is your answer?!", "The mountain itself cracks with sorrow! We TRUSTED you!", "The Forgemaster weeps molten tears. This betrayal is unforgivable."],
+		["The frontier has been arming for YOUR destruction!", "At last! We've been sharpening blades for this day!", "Good! The Warden-Commander has WAITED to crush you against the wall!", "WAR! The wasteland burns with fury meant for YOU!", "We've been patrolling for this moment since we first saw your weakness!"],
+		["The watchtower expected this signal. We are prepared.", "Hmph. Like desert wind — predictable and hollow. So be it.", "The frontier saw the cracks in your diplomacy long ago.", "Unsurprising. The warhorns were already sounding.", "A foregone conclusion. The border's defenses are ready."],
+		["The frontier accepts your declaration. Steel answers all.", "So be it. We shall see whose resolve holds.", "War? The wall does not flinch. Come and be broken.", "An interesting test of mettle. The frontier is ready.", "Bold. The wasteland will answer with iron."],
+		["We built trust together... and now you break it.", "The Great Wall echoes with sorrow. We valued our alliance.", "Like breaching a wall you helped build. This pains us.", "Why shatter what we built? We thought you an ally.", "The watchfire dims. We did not want this from you."],
+		["The frontier GOES DARK with grief! You were our finest ally!", "Every warden drops their blade in shock! How could you?!", "We defended YOUR borders too! And this is your answer?!", "The wall itself cracks with sorrow! We TRUSTED you!", "The Warden-Commander weeps bitter tears. This betrayal is unforgivable."],
 	],
 	&"forsaken": [
-		["The void has been REACHING for you! At last!", "Death has been patient, but NOW it comes for you!", "We have whispered your doom in the darkness for so long!", "WAR! The emptiness HUNGERS for your soul!", "Finally the Hollow King can claim what was always his!"],
-		["The void saw this in you. An inevitability.", "Death comes for all. You simply hastened it.", "The darkness was already creeping toward you. So be it.", "Unsurprising. The hollow winds carried your intentions.", "The emptiness swallows your declaration without surprise."],
-		["The void neither fears nor celebrates this. It simply consumes.", "So be it. Many have declared war on the darkness. None won.", "War? The emptiness is patient. Are you?", "An interesting declaration. The void watches without emotion.", "Come then. The darkness has room for one more."],
-		["Even the void feels this loss. We valued what we had.", "The Hollow King pauses. For once, the emptiness feels... heavy.", "Why extinguish the one light we allowed in?", "A hollow ache where friendship once was. This saddens us.", "The void mourns. You were the closest thing to warmth we knew."],
-		["The void CRIES OUT in anguish! You were our only light!", "The Hollow King's crown SHATTERS! We called you friend above all!", "Even death could not prepare us for this betrayal!", "The emptiness OVERFLOWS with grief! You meant everything to us!", "In all of eternity, no wound has cut deeper. We loved you."],
+		["The court has been THIRSTING for your blood! At last!", "Death has been patient, but NOW it comes for you!", "We have whispered your doom in the darkness for so long!", "WAR! The night HUNGERS for your soul!", "Finally the Countess can claim what was always hers!"],
+		["The court foresaw this. An inevitability.", "Death comes for all. You simply hastened it.", "The darkness was already creeping toward you. So be it.", "Unsurprising. The night winds carried your intentions.", "The shadows swallow your declaration without surprise."],
+		["The court neither fears nor celebrates this. It simply endures.", "So be it. Many have declared war on the darkness. None won.", "War? The undying are patient. Are you?", "An interesting declaration. The court watches without emotion.", "Come then. The darkness has room for one more."],
+		["Even the court feels this loss. We valued what we had.", "The Countess pauses. For once, the darkness feels... heavy.", "Why extinguish the one light we allowed in?", "A cold ache where friendship once was. This saddens us.", "The court mourns. You were the closest thing to warmth we knew."],
+		["The court CRIES OUT in anguish! You were our only light!", "The Countess's crown SHATTERS! We called you friend above all!", "Even death could not prepare us for this betrayal!", "The darkness OVERFLOWS with grief! You meant everything to us!", "In all of eternity, no wound has cut deeper. We loved you."],
 	],
 	&"ivoryscar": [
 		["The ancestors have DEMANDED your destruction! It is time!", "At last! The Oracle foresaw your ruin and we WELCOME it!", "The sands have been burying your future for ages!", "WAR! Every relic points toward your annihilation!", "We have waited among the tombs for this reckoning!"],

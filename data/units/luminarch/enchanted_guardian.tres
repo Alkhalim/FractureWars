@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"enchanted_guardian"
+display_name = "Enchanted Guardian"
+description = "Stone sentinels animated by prophetic enchantments. They guard the Luminarch's sacred sites with tireless vigilance."
+faction_id = &"luminarch"
+max_hp = 600
+attack = 16
+melee_defense = 18
+projectile_defense = 12
+magic_defense = 10
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 600
+tiles_per_entity = 6
+movement_points = 2.5
+upkeep_cost = {0: 10, 2: 4}
+recruit_cost = {0: 300, 1: 100, 2: 50}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee"])
+base_morale = 105
+captive_chance = 0.0
+armor_aura = 2
+fear_radius = 3

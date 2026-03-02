@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"desert_outrider"
+display_name = "Desert Outrider"
+description = "Swift cavalry scouts who patrol the wasteland borders. They strike hard and vanish before retaliation."
+faction_id = &"valkarn_garrison"
+max_hp = 800
+attack = 14
+melee_defense = 5
+projectile_defense = 4
+magic_defense = 2
+speed = 8
+attack_range = 1
+squad_size = 20
+hp_per_soldier = 40
+tiles_per_entity = 2
+movement_points = 5.0
+upkeep_cost = {0: 5, 1: 1, 3: 2}
+recruit_cost = {0: 100, 1: 30}
+recruit_time = 2
+population_cost = 6
+terrain_bonuses = {3: 0.15}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast", "desertstrider"])
+base_morale = 50

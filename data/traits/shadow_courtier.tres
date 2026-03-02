@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shadow_courtier"
+display_name = "Shadow Courtier"
+description = "A cunning aristocrat of the Forsaken court. Excels at ambushes and capturing prisoners for the necromancers' use."
+is_positive = true
+effects = {"ambush_attack_bonus": 4, "captive_chance_mod": 0.15, "army_speed_bonus": 1}
+excludes = Array[StringName]([&"blunt"])
+acquire_context = Array[StringName]([&"faction_forsaken", &"battle_won"])
+acquire_threshold = 4
+lose_context = Array[StringName]([&"battle_lost"])
+lose_threshold = 15

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"volcanic_smelter"
+display_name = "Volcanic Smelter II"
+description = "A massive forge built over a lava tube. Ore is fed in at the top and molten metal flows from the bottom."
+faction_id = &"cinderguard"
+category = &"economic"
+build_cost = {0: 195, 1: 25}
+build_time = 3
+income_bonus = {1: 65, 5: 16}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([])
+upgrades_from = &"magma_vent"
+required_capital_level = 2
+class_loyalty_bonus = {"artisans": 2}

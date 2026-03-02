@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"solar_crocodilian"
+display_name = "Solar Crocodilian"
+description = "A colossal albino crocodile encased in blessed golden armor. Its jaws can crush fortress walls and its eyes channel concentrated solar energy into devastating beams."
+faction_id = &"sunblessed"
+max_hp = 3000
+attack = 22
+melee_defense = 10
+projectile_defense = 8
+magic_defense = 6
+speed = 3
+attack_range = 4
+squad_size = 1
+hp_per_soldier = 3000
+movement_points = 2.5
+upkeep_cost = {0: 12, 3: 4, 5: 2}
+recruit_cost = {0: 300, 1: 80, 5: 60}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "ranged", "monster", "legendary"])
+base_morale = 90
+tiles_per_entity = 6
+captive_chance = 0.0
+morale_aura = -3
+fear_radius = 5

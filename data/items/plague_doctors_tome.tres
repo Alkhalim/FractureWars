@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"plague_doctors_tome"
-display_name = "Plague Doctor's Tome"
-description = "A leather-bound treatise on disease and cure, compiled by Forsaken scholars in Orenthal."
+display_name = "Necromancer's Tome"
+description = "A leather-bound treatise on blood magic and dark healing, compiled by Forsaken scholars in the catacombs of Orenthal."
 rarity = &"common"
 effects = {"heal_per_turn": 8}
 source_factions = Array[StringName]([&"forsaken"])

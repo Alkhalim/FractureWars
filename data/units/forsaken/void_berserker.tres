@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"void_berserker"
 display_name = "Void Berserker"
-description = "Warriors consumed by void corruption. Their sanity is gone, but their strength and speed are terrifying."
+description = "Warriors consumed by blood frenzy. Their sanity is gone, but their strength and speed are terrifying. Found lurking in the deepest sewers."
 faction_id = &"forsaken"
 max_hp = 1400
 attack = 22

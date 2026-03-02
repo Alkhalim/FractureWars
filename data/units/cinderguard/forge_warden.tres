@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"forge_warden"
-display_name = "Forge Warden"
-description = "Heavy infantry in layered volcanic plate. They form impenetrable walls of iron and fire."
+display_name = "Border Warden"
+description = "Heavy infantry in layered wasteland plate. They form impenetrable defensive walls along the frontier."
 faction_id = &"cinderguard"
 max_hp = 1600
 attack = 12

@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"hollow_throne"
-display_name = "Hollow Throne"
-description = "From the Hollow Throne, all is ruled."
+display_name = "Crimson Throne"
+description = "From the Crimson Throne, all is ruled."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"dread_presence", &"plague_seeds"])

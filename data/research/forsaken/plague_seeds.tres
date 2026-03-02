@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"plague_seeds"
-display_name = "Plague Seeds"
-description = "Disease spreads where the Forsaken tread."
+display_name = "Blood Rituals"
+description = "Dark magic spreads where the Forsaken tread."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([&"fk_dark_harvest"])

@@ -58,7 +58,11 @@
       "Bash(do echo:*)",
       "Bash(cp:*)",
       "Bash(do:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(IFS='|' read faction:*)",
+      "Bash(/c/Python313/python.exe:*)",
+      "Bash(cygpath:*)"
     ]
   }
 }

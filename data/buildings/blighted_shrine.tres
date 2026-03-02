@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"blighted_shrine"
-display_name = "Blighted Shrine I"
-description = "A shrine corrupted by void energy. The desperate pray here — and sometimes, something answers."
+display_name = "Shadow Shrine I"
+description = "A candlelit shrine hidden deep in the catacombs. The desperate pray here — and sometimes, something answers."
 faction_id = &"forsaken"
 category = &"cultural"
 build_cost = {0: 50, 5: 20}

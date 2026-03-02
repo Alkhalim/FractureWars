@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"dread_presence"
 display_name = "Dread Presence"
-description = "Fear radiates from the Hollow King's servants."
+description = "Fear radiates from the Countess's servants."
 tech_cost = 90
 research_time = 14
 prerequisites = Array[StringName]([&"shadow_blades"])

@@ -223,7 +223,7 @@ const UNIT_PORTRAIT_MAP := {
 	&"guardian_mammoth": "elderbeast",
 	&"guardian_crawler": "elderbeast",
 	# Cinderguard
-	&"cinderguard_forgeborn": "construct",
+	&"cinderguard_warden": "basic_legionnaire",
 	&"ember_crossbow": "basic_legionnaire",
 	# Sub-factions and independents
 	&"ash_berserker": "evil_leader",
@@ -251,8 +251,8 @@ const UNIT_PORTRAIT_MAP := {
 	&"blight_walker": "evil_leader",
 	&"splinter_drone": "crystal_swarm",
 	&"venerated_guardian": "construct",
-	&"forsaken_wretch": "evil_leader",
-	&"plague_thrower": "evil_leader",
+	&"shadow_thrall": "evil_leader",
+	&"death_mage": "mage",
 	&"bat_swarm": "crystal_swarm",
 }
 

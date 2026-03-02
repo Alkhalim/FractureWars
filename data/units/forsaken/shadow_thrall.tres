@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shadow_thrall"
+display_name = "Shadow Thrall"
+description = "Souls bound to the Forsaken King's will through dark necromancy. They serve their aristocratic masters with mindless loyalty."
+faction_id = &"forsaken"
+max_hp = 900
+attack = 10
+melee_defense = 4
+projectile_defense = 2
+magic_defense = 2
+speed = 5
+attack_range = 1
+squad_size = 100
+hp_per_soldier = 9
+movement_points = 3.5
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 40, 1: 10}
+recruit_time = 2
+population_cost = 20
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "swarm", "undead"])
+base_morale = 40
+captive_chance = 0.45

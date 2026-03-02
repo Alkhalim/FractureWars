@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = &"blighted_earth"
-display_name = "Blighted Earth"
+display_name = "Cursed Ground"
 description = "The earth itself rejects the living."
 tech_cost = 90
 research_time = 14

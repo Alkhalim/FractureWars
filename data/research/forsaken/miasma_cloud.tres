@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"miasma_cloud"
-display_name = "Miasma Cloud"
-description = "A choking miasma precedes the army."
+display_name = "Shadow Veil"
+description = "A shroud of darkness precedes the army."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"blighted_earth"])

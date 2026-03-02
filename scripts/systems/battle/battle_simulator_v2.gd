@@ -210,9 +210,9 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			elif fs.storm_fury >= 50:
 				f.attack += int(f.attack * 0.10)
 		elif ud.faction_id == &"cinderguard":
-			if fs.forge_heat <= 30:
+			if fs.border_vigilance <= 30:
 				f.defense += int(f.defense * 0.15)
-			elif fs.forge_heat >= 85:
+			elif fs.border_vigilance >= 85:
 				f.attack += int(f.attack * 0.05)
 		elif ud.faction_id == &"ivoryscar":
 			if fs.relic_power >= 30:

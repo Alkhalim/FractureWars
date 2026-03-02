@@ -114,7 +114,7 @@ const FACTION_BASIC_UNITS := {
 	&"skulloath": &"steppe_rider",
 	&"moonspear": &"moonspear_sentinel",
 	&"thunderswarm": &"thunderswarm_warrior",
-	&"cinderguard": &"cinderguard_forgeborn",
+	&"cinderguard": &"cinderguard_warden",
 	&"forsaken": &"bat_swarm",
 	&"ivoryscar": &"scarab_swarm",
 	&"shardhorde": &"crystal_swarmling",

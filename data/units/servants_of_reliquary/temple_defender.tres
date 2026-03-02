@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"temple_defender"
+display_name = "Temple Defender"
+description = "Heavily armored guardians sworn to protect the Reliquary's sacred sites. Immovable as the temples they defend."
+faction_id = &"servants_of_reliquary"
+max_hp = 1400
+attack = 9
+melee_defense = 12
+projectile_defense = 9
+magic_defense = 6
+speed = 3
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 18
+movement_points = 2.5
+upkeep_cost = {0: 5, 1: 2, 3: 2}
+recruit_cost = {0: 85, 1: 30}
+recruit_time = 3
+population_cost = 16
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 75
+armor_aura = 1
+fear_radius = 2

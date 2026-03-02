@@ -389,11 +389,11 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				f.defense -= int(f.defense * 0.05)
 			elif fs.storm_fury >= 50:
 				f.attack += int(f.attack * 0.10)
-		# Cinderguard: forge heat defense bonus when cool
+		# Cinderguard: border vigilance defense bonus when defensive
 		elif parent_fid == &"cinderguard":
-			if fs.forge_heat <= 30:
+			if fs.border_vigilance <= 30:
 				f.defense += int(f.defense * 0.15)
-			elif fs.forge_heat >= 85:
+			elif fs.border_vigilance >= 85:
 				f.attack += int(f.attack * 0.05)
 		# Ivoryscar: relic power boosts defense
 		elif parent_fid == &"ivoryscar":

@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"coven_witch"
+display_name = "Coven Witch"
+description = "Practitioners of forbidden hexcraft who weave curses from the battlefield's edge. Their spells sap the strength and will of any who oppose them."
+faction_id = &"blightcoven"
+max_hp = 450
+attack = 13
+melee_defense = 3
+projectile_defense = 2
+magic_defense = 6
+speed = 4
+attack_range = 5
+squad_size = 25
+hp_per_soldier = 18
+movement_points = 3.0
+upkeep_cost = {0: 4, 3: 2}
+recruit_cost = {0: 90, 1: 15, 3: 20}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged", "support"])
+base_morale = 50
+morale_aura = -2
+fear_radius = 4

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sacred_oasis"
+display_name = "Sacred Oasis I"
+description = "A blessed spring where the sun's warmth meets the earth's bounty. Pilgrims gather here for water and solace."
+faction_id = &"sunblessed"
+category = &"economic"
+build_cost = {0: 55}
+build_time = 2
+income_bonus = {3: 14, 0: 5}
+population_growth_bonus = 5
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 2}

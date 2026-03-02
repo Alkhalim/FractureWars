@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dune_rider"
+display_name = "Dune Rider"
+description = "Swift cavalry mounted on desert-bred steeds that glide across sand as if it were solid stone. They strike with curved blades and vanish before the enemy can retaliate."
+faction_id = &"oaseans"
+max_hp = 750
+attack = 11
+melee_defense = 4
+projectile_defense = 3
+magic_defense = 3
+speed = 8
+attack_range = 1
+squad_size = 40
+hp_per_soldier = 19
+movement_points = 5.0
+upkeep_cost = {0: 4, 3: 2}
+recruit_cost = {0: 75, 1: 20}
+recruit_time = 2
+population_cost = 8
+terrain_bonuses = {4: 0.2}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast", "desertstrider"])
+base_morale = 60
+tiles_per_entity = 2

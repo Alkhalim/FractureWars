@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"relic_excavator"
+display_name = "Relic Excavator"
+description = "Hardy diggers and builders who fight with pickaxes and shovels. Most at home in the scorching desert ruins."
+faction_id = &"servants_of_reliquary"
+max_hp = 900
+attack = 11
+melee_defense = 6
+projectile_defense = 4
+magic_defense = 3
+speed = 5
+attack_range = 1
+squad_size = 70
+hp_per_soldier = 13
+movement_points = 3.5
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 50, 1: 15}
+recruit_time = 2
+population_cost = 14
+terrain_bonuses = {3: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "desertstrider"])
+base_morale = 55

@@ -210,44 +210,44 @@ const FACTION_LEADERS := {
 		], "army_override": [&"jade_fang", &"jade_fang", &"coatl_shaman", &"coatl_shaman", &"thrall_swarm"]},
 	],
 	&"cinderguard": [
-		{"name": "Forgemaster Valdris", "portrait": "merchant_leader", "bonuses": [
+		{"name": "Warden-Commander Valdris", "portrait": "merchant_leader", "bonuses": [
 			{&"label": "+20% Iron Income", &"key": "income_iron", &"value": 20},
-			{&"label": "Forgeborn cost -15% Gold", &"key": "unit_discount_cinderguard_forgeborn", &"value": 15},
+			{&"label": "Wardens cost -15% Gold", &"key": "unit_discount_cinderguard_warden", &"value": 15},
 			{&"label": "Starts with Ember Foundry", &"key": "starting_building", &"value": 0},
 			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
-		], "starting_building": "ember_foundry", "army_override": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow", &"ember_crossbow"]},
-		{"name": "Flame Templar Ignis", "portrait": "warrior_leader", "bonuses": [
+		], "starting_building": "ember_foundry", "army_override": [&"cinderguard_warden", &"cinderguard_warden", &"cinderguard_warden", &"ember_crossbow", &"ember_crossbow"]},
+		{"name": "Border Captain Ignis", "portrait": "warrior_leader", "bonuses": [
 			{&"label": "+10% Army Defense", &"key": "army_defense", &"value": 10},
 			{&"label": "+8% Army HP", &"key": "army_hp", &"value": 8},
-			{&"label": "+10 Forge Heat at start", &"key": "forge_heat_bonus", &"value": 10},
+			{&"label": "+10 Vigilance at start", &"key": "border_vigilance_bonus", &"value": 10},
 			{&"label": "-15% Gold Income", &"key": "income_gold", &"value": -15},
-		], "army_override": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow"]},
+		], "army_override": [&"cinderguard_warden", &"cinderguard_warden", &"cinderguard_warden", &"cinderguard_warden", &"ember_crossbow"]},
 		{"name": "Ember Priestess Pyra", "portrait": "scholar_leader", "bonuses": [
 			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
 			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
 			{&"label": "Starts with Flame Sanctum", &"key": "starting_building", &"value": 0},
 			{&"label": "-10% Iron Income", &"key": "income_iron", &"value": -10},
-		], "starting_building": "flame_sanctum", "army_override": [&"cinderguard_forgeborn", &"cinderguard_forgeborn", &"ember_crossbow", &"ember_mage", &"cinder_militia"]},
+		], "starting_building": "flame_sanctum", "army_override": [&"cinderguard_warden", &"cinderguard_warden", &"ember_crossbow", &"ember_mage", &"cinder_militia"]},
 	],
 	&"forsaken": [
-		{"name": "The Hollow King", "portrait": "warrior_leader", "bonuses": [
+		{"name": "Lord Noctis", "portrait": "warrior_leader", "bonuses": [
 			{&"label": "+12% Army HP", &"key": "army_hp", &"value": 12},
-			{&"label": "Wretches cost -30% Gold", &"key": "unit_discount_forsaken_wretch", &"value": 30},
-			{&"label": "Starts with Plague Workshop", &"key": "starting_building", &"value": 0},
+			{&"label": "Thralls cost -30% Gold", &"key": "unit_discount_shadow_thrall", &"value": 30},
+			{&"label": "Starts with Necromancer Sanctum", &"key": "starting_building", &"value": 0},
 			{&"label": "-10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": -10},
-		], "starting_building": "plague_workshop", "army_override": [&"forsaken_wretch", &"forsaken_wretch", &"forsaken_wretch", &"forsaken_wretch", &"plague_thrower"]},
-		{"name": "Plague Mother Neth", "portrait": "scholar_leader", "bonuses": [
+		], "starting_building": "necromancer_sanctum", "army_override": [&"shadow_thrall", &"shadow_thrall", &"shadow_thrall", &"shadow_thrall", &"death_mage"]},
+		{"name": "Countess Neshara", "portrait": "scholar_leader", "bonuses": [
 			{&"label": "+15% Food Income", &"key": "income_food", &"value": 15},
 			{&"label": "Bat Swarms cost -25% Gold", &"key": "unit_discount_bat_swarm", &"value": 25},
 			{&"label": "+8% Army HP", &"key": "army_hp", &"value": 8},
 			{&"label": "-10% Army Attack", &"key": "army_attack", &"value": -10},
-		], "army_override": [&"forsaken_wretch", &"forsaken_wretch", &"bat_swarm", &"bat_swarm", &"bat_swarm"]},
+		], "army_override": [&"shadow_thrall", &"shadow_thrall", &"bat_swarm", &"bat_swarm", &"bat_swarm"]},
 		{"name": "Void Prophet Malachar", "portrait": "scholar_leader", "bonuses": [
 			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
 			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
-			{&"label": "Starts with Blighted Shrine", &"key": "starting_building", &"value": 0},
+			{&"label": "Starts with Shadow Shrine", &"key": "starting_building", &"value": 0},
 			{&"label": "-15% Army Defense", &"key": "army_defense", &"value": -15},
-		], "starting_building": "blighted_shrine", "army_override": [&"forsaken_wretch", &"forsaken_wretch", &"plague_thrower", &"plague_thrower", &"bat_swarm"]},
+		], "starting_building": "blighted_shrine", "army_override": [&"shadow_thrall", &"shadow_thrall", &"death_mage", &"death_mage", &"bat_swarm"]},
 	],
 	&"ivoryscar": [
 		{"name": "Oracle Medusa", "portrait": "merchant_leader", "bonuses": [
@@ -347,8 +347,8 @@ const FACTION_DETAILS := {
 		"unique": "Forge Heat - buildings produce bonus resources when adjacent to other industrial structures",
 	},
 	&"forsaken": {
-		"traits": "Blighted wretches, numbers over quality, dark rituals, desperation",
-		"playstyle": "The Forsaken fight with the desperation of the doomed. Cheap, expendable hordes bolstered by dark rituals. What they lack in quality they make up in sheer, terrifying numbers.",
+		"traits": "Exiled vampire aristocrats, undead hordes, necromancy, underground caverns",
+		"playstyle": "The Forsaken fight with the ruthlessness of immortal exiles. Cheap, expendable undead hordes bolstered by blood magic and necromancy. What they lack in quality they make up in sheer, terrifying numbers.",
 		"unique": "Desperation mechanic - units fight harder when outnumbered or at low HP",
 	},
 	&"ivoryscar": {
@@ -835,8 +835,8 @@ func _on_faction_confirmed() -> void:
 					player_fs.harmony = clampi(player_fs.harmony + int(flat_bonuses["harmony_bonus"]), 0, 100)
 				if flat_bonuses.has("storm_fury_bonus"):
 					player_fs.storm_fury = clampi(player_fs.storm_fury + int(flat_bonuses["storm_fury_bonus"]), 0, 100)
-				if flat_bonuses.has("forge_heat_bonus"):
-					player_fs.forge_heat = clampi(player_fs.forge_heat + int(flat_bonuses["forge_heat_bonus"]), 0, 100)
+				if flat_bonuses.has("border_vigilance_bonus"):
+					player_fs.border_vigilance = clampi(player_fs.border_vigilance + int(flat_bonuses["border_vigilance_bonus"]), 0, 100)
 				if flat_bonuses.has("solar_faith_bonus"):
 					player_fs.solar_faith = clampi(player_fs.solar_faith + int(flat_bonuses["solar_faith_bonus"]), 0, 100)
 				if flat_bonuses.has("taint_power_bonus"):

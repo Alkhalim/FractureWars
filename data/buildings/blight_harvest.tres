@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"blight_harvest"
-display_name = "Blight Harvest II"
-description = "Fields tended in blighted soil. The crops grow twisted but edible — the Forsaken cannot afford to be choosy."
+display_name = "Catacomb Harvest II"
+description = "Fungal gardens tended in damp caverns beneath the ruins. The crops grow pale but edible — the Forsaken cannot afford to be choosy."
 faction_id = &"forsaken"
 category = &"economic"
 build_cost = {0: 150}

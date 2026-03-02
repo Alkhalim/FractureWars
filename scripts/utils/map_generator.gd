@@ -2,67 +2,64 @@ class_name MapGenerator
 
 # Generates a hex map (HexMapData) with terrain, regions, and realm influence.
 # Grid: 117 columns x 78 rows of hex tiles.
-# Continental layout — five geographic arcs:
-#   West:   Empire (Eternal Plains, Sunburst Valley, Aurentis)
-#           + Gladehost (Sainkhu Groves, Verdant Glade, Orisyl)
-#   North:  Moonspear (Iskar, Nightfall Sanctum, Asdrol)
-#           + Thunderswarm (Dragonspire Mountains, Thundercrest Peaks, Skalvar)
-#   South:  Tainted Jade (Coatlantli, Southern Reach, Xotchi)
-#   Center: Skulloath (Bataarbad, Altaban, Tsagan)
-#           + Cinderguard (Duststorm Valley, Ashenmark, Valkarn)
-#   East:   Forsaken (Orenthal, Morvane, Weeping Barrows)
-#           + Ivoryscar (Qareth, Torgalun Desert, Whispering Dunes)
+# Continental layout — six geographic zones with scattered factions:
+#   North:      Iskar, Asdrol, Nightfall Sanctum, Dragonspire Mtns, Thundercrest Peaks
+#   West:       Altaban, Aurentis, Sainkhu Groves, Orisyl
+#   Center:     Sunburst Valley, Eternal Plains, Valkarn, Duststorm Valley, Bataarbad
+#   East:       Skalvar, Ashenmark, Morvane, Whispering Dunes
+#   South-West: Coatlantli, Verdant Glade, Xotchi, Southern Reach, Orenthal
+#   South-East: Tsagan, Torgalun Desert, Weeping Barrows, Qareth
 
 # Region seed positions (in hex grid coordinates) — scaled for 117x78 grid
+# Factions are scattered across zones for diverse cross-faction interactions.
 const REGION_SEEDS := {
-	# ── Western Civilized Basin ──
-	&"eternal_plains":       Vector2i(31, 31),
-	&"sunburst_valley":      Vector2i(39, 22),
-	&"aurentis":             Vector2i(22, 25),
-	&"sainkhu_groves":       Vector2i(22, 42),
-	&"verdant_glade":        Vector2i(33, 48),
-	&"orisyl":               Vector2i(14, 33),
+	# ── North Zone ──
+	&"iskar":                Vector2i(30, 7),    # Moonspear
+	&"asdrol":               Vector2i(36, 15),   # Luminarch
+	&"nightfall_sanctum":    Vector2i(56, 8),    # Obsidian Order
+	&"dragonspire_mountains": Vector2i(78, 8),   # Thunderswarm
+	&"thundercrest_peaks":   Vector2i(92, 13),   # Stormbound
 
-	# ── Northern Divine & Storm Belt ──
-	&"iskar":                Vector2i(39, 9),
-	&"nightfall_sanctum":    Vector2i(52, 10),
-	&"asdrol":               Vector2i(29, 16),
-	&"dragonspire_mountains": Vector2i(72, 9),
-	&"thundercrest_peaks":   Vector2i(85, 14),
-	&"skalvar":              Vector2i(62, 17),
+	# ── West Zone ──
+	&"altaban":              Vector2i(10, 26),   # Salt Reavers
+	&"aurentis":             Vector2i(24, 21),   # Aurentis Guard
+	&"sainkhu_groves":       Vector2i(18, 34),   # Gladehost
+	&"orisyl":               Vector2i(14, 46),   # Miststriders
 
-	# ── Southern Emerald Reach ──
-	&"coatlantli":           Vector2i(42, 62),
-	&"southern_reach":       Vector2i(56, 68),
-	&"xotchi":               Vector2i(29, 57),
+	# ── Center Zone ──
+	&"sunburst_valley":      Vector2i(46, 24),   # Crimson Legion
+	&"eternal_plains":       Vector2i(34, 32),   # Empire
+	&"valkarn":              Vector2i(55, 34),   # Valkarn Garrison
+	&"duststorm_valley":     Vector2i(62, 23),   # Cinderguard
+	&"bataarbad":            Vector2i(62, 42),   # Skulloath
 
-	# ── Central Steppe & Ash March ──
-	&"bataarbad":            Vector2i(52, 36),
-	&"altaban":              Vector2i(61, 46),
-	&"tsagan":               Vector2i(47, 47),
-	&"duststorm_valley":     Vector2i(70, 31),
-	&"ashenmark":            Vector2i(79, 40),
-	&"valkarn":              Vector2i(75, 22),
+	# ── East Zone ──
+	&"skalvar":              Vector2i(80, 21),   # Skalvar Watch
+	&"ashenmark":            Vector2i(96, 20),   # Crownfire
+	&"morvane":              Vector2i(100, 36),  # Bloodthrone
+	&"whispering_dunes":     Vector2i(86, 48),   # Servants of Reliquary
 
-	# ── Eastern Ruin & Shard Frontier ──
-	&"orenthal":             Vector2i(92, 31),
-	&"morvane":              Vector2i(95, 46),
-	&"weeping_barrows":      Vector2i(86, 56),
-	&"qareth":               Vector2i(103, 25),
-	&"torgalun_desert":      Vector2i(107, 40),
-	&"whispering_dunes":     Vector2i(100, 56),
+	# ── South-West Zone ──
+	&"coatlantli":           Vector2i(28, 48),   # Tainted Jade
+	&"verdant_glade":        Vector2i(46, 50),   # Thornwardens
+	&"xotchi":               Vector2i(38, 56),   # Twilight Veil
+	&"southern_reach":       Vector2i(16, 64),   # Jade Conclave
+	&"orenthal":             Vector2i(36, 64),   # Forsaken
+
+	# ── South-East Zone ──
+	&"tsagan":               Vector2i(70, 54),   # Ashbound
+	&"torgalun_desert":      Vector2i(56, 66),   # Gorgonic Cult
+	&"weeping_barrows":      Vector2i(96, 56),   # Blightcoven
+	&"qareth":               Vector2i(104, 62),  # Ivoryscar
 }
 
-# Continental zone definitions
-const ZONE_WEST_EMPIRE := [&"eternal_plains", &"sunburst_valley", &"aurentis"]
-const ZONE_WEST_GLADEHOST := [&"sainkhu_groves", &"verdant_glade", &"orisyl"]
-const ZONE_NORTH_MOONSPEAR := [&"iskar", &"nightfall_sanctum", &"asdrol"]
-const ZONE_NORTH_THUNDERSWARM := [&"dragonspire_mountains", &"thundercrest_peaks", &"skalvar"]
-const ZONE_SOUTH_JADE := [&"coatlantli", &"southern_reach", &"xotchi"]
-const ZONE_CENTER_SKULLOATH := [&"bataarbad", &"altaban", &"tsagan"]
-const ZONE_CENTER_CINDERGUARD := [&"duststorm_valley", &"ashenmark", &"valkarn"]
-const ZONE_EAST_FORSAKEN := [&"orenthal", &"morvane", &"weeping_barrows"]
-const ZONE_EAST_IVORYSCAR := [&"qareth", &"torgalun_desert", &"whispering_dunes"]
+# Geographic zone definitions (factions scattered across zones)
+const ZONE_NORTH := [&"iskar", &"asdrol", &"nightfall_sanctum", &"dragonspire_mountains", &"thundercrest_peaks"]
+const ZONE_WEST := [&"altaban", &"aurentis", &"sainkhu_groves", &"orisyl"]
+const ZONE_CENTER := [&"sunburst_valley", &"eternal_plains", &"valkarn", &"duststorm_valley", &"bataarbad"]
+const ZONE_EAST := [&"skalvar", &"ashenmark", &"morvane", &"whispering_dunes"]
+const ZONE_SOUTH_WEST := [&"coatlantli", &"verdant_glade", &"xotchi", &"southern_reach", &"orenthal"]
+const ZONE_SOUTH_EAST := [&"tsagan", &"torgalun_desert", &"weeping_barrows", &"qareth"]
 
 static func generate_hex_map(regions: Dictionary) -> HexMapData:
 	var map := HexMapData.new()
@@ -120,8 +117,12 @@ static func _carve_landmass(map: HexMapData) -> void:
 		{cx = 57.2, cy = 14.3, rx = 36.4, ry = 11.7, w = 0.7},
 		# Eastern arm (Forsaken/Ivoryscar) — long peninsula reaching east
 		{cx = 93.6, cy = 37.7, rx = 22.1, ry = 24.7, w = 0.75},
-		# Southern jungle (Tainted Jade) — teardrop hanging south
-		{cx = 42.9, cy = 61.1, rx = 23.4, ry = 15.6, w = 0.7},
+		# Southern jungle — teardrop hanging south (widened for scattered factions)
+		{cx = 42.9, cy = 62.0, rx = 28.0, ry = 16.0, w = 0.7},
+		# SW extension (Jade Conclave area)
+		{cx = 16.0, cy = 64.0, rx = 12.0, ry = 10.0, w = 0.55},
+		# SE extension (Ivoryscar area)
+		{cx = 102.0, cy = 60.0, rx = 14.0, ry = 12.0, w = 0.55},
 		# Central steppe bridge connecting west to east
 		{cx = 68.9, cy = 31.2, rx = 24.7, ry = 14.3, w = 0.6},
 		# NE highlands (Thunderswarm/Cinderguard connection)
@@ -295,154 +296,166 @@ static func _assign_terrain(map: HexMapData) -> void:
 		tile.terrain = _terrain_for_region(tile.region_id, hash_val)
 
 static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.TerrainType:
-	# Mountains are placed separately by _place_border_mountains() along faction borders.
+	# Mountains are placed separately by _place_border_mountains() along zone borders.
 	# Base terrain here should NOT include mountains (or only very sparingly).
 	var h10 := hash_val % 10
 
-	# ── Western Civilized Basin — Empire ──
-	if region_id in ZONE_WEST_EMPIRE:
-		if region_id == &"eternal_plains":
-			if h10 <= 1: return Enums.TerrainType.FOREST
-			if h10 == 2: return Enums.TerrainType.WETLANDS
-			return Enums.TerrainType.PLAINS
-		if region_id == &"sunburst_valley":
-			if h10 <= 1: return Enums.TerrainType.FOREST
-			if h10 == 2: return Enums.TerrainType.DESERT
-			return Enums.TerrainType.PLAINS
-		# Aurentis — rolling hills and forests
-		if h10 <= 2: return Enums.TerrainType.FOREST
-		return Enums.TerrainType.PLAINS
+	# ── North Zone — tundra-heavy ──
+	if region_id in ZONE_NORTH:
+		if region_id == &"iskar":
+			# Moonspear — deep tundra
+			if h10 == 0: return Enums.TerrainType.FOREST
+			if h10 == 1: return Enums.TerrainType.PLAINS
+			return Enums.TerrainType.TUNDRA
+		if region_id == &"asdrol":
+			# Luminarch — frozen tundra
+			if h10 == 0: return Enums.TerrainType.FOREST
+			return Enums.TerrainType.TUNDRA
+		if region_id == &"nightfall_sanctum":
+			# Obsidian Order — tundra with dark forests
+			if h10 <= 2: return Enums.TerrainType.FOREST
+			if h10 == 3: return Enums.TerrainType.SWAMP
+			return Enums.TerrainType.TUNDRA
+		if region_id == &"dragonspire_mountains":
+			# Thunderswarm — tundra/plains mix
+			if h10 == 0: return Enums.TerrainType.SHARD_WASTES
+			if h10 <= 4: return Enums.TerrainType.PLAINS
+			return Enums.TerrainType.TUNDRA
+		# thundercrest_peaks — Stormbound — tundra/plains
+		if h10 == 0: return Enums.TerrainType.DESERT
+		if h10 <= 4: return Enums.TerrainType.PLAINS
+		return Enums.TerrainType.TUNDRA
 
-	# ── Western Civilized Basin — Gladehost ──
-	if region_id in ZONE_WEST_GLADEHOST:
+	# ── West Zone — forest/swamp coastal ──
+	if region_id in ZONE_WEST:
+		if region_id == &"altaban":
+			# Salt Reavers — coastal forest/swamp
+			if h10 <= 1: return Enums.TerrainType.SWAMP
+			if h10 == 2: return Enums.TerrainType.WETLANDS
+			return Enums.TerrainType.FOREST
+		if region_id == &"aurentis":
+			# Aurentis Guard — plains/forest
+			if h10 <= 2: return Enums.TerrainType.FOREST
+			return Enums.TerrainType.PLAINS
 		if region_id == &"sainkhu_groves":
+			# Gladehost — deep forest
 			if h10 <= 1: return Enums.TerrainType.PLAINS
 			if h10 == 2: return Enums.TerrainType.SWAMP
 			return Enums.TerrainType.FOREST
-		if region_id == &"verdant_glade":
-			if h10 <= 3: return Enums.TerrainType.FOREST
-			return Enums.TerrainType.PLAINS
-		# Orisyl — misty coastal forest
+		# orisyl — Miststriders — forest/swamp
 		if h10 <= 1: return Enums.TerrainType.SWAMP
 		if h10 == 2: return Enums.TerrainType.WETLANDS
 		return Enums.TerrainType.FOREST
 
-	# ── Northern Divine — Moonspear ──
-	if region_id in ZONE_NORTH_MOONSPEAR:
-		if region_id == &"iskar":
-			if h10 == 0: return Enums.TerrainType.FOREST
-			if h10 == 1: return Enums.TerrainType.PLAINS
-			return Enums.TerrainType.TUNDRA
-		if region_id == &"nightfall_sanctum":
-			if h10 <= 2: return Enums.TerrainType.FOREST
-			if h10 == 3: return Enums.TerrainType.SWAMP
-			return Enums.TerrainType.TUNDRA
-		# Asdrol — frozen tundra
-		if h10 == 0: return Enums.TerrainType.FOREST
-		return Enums.TerrainType.TUNDRA
+	# ── Center Zone — plains/desert ──
+	if region_id in ZONE_CENTER:
+		if region_id == &"eternal_plains":
+			# Empire — open plains
+			if h10 <= 1: return Enums.TerrainType.FOREST
+			if h10 == 2: return Enums.TerrainType.WETLANDS
+			return Enums.TerrainType.PLAINS
+		if region_id == &"sunburst_valley":
+			# Crimson Legion — plains
+			if h10 <= 1: return Enums.TerrainType.FOREST
+			if h10 == 2: return Enums.TerrainType.DESERT
+			return Enums.TerrainType.PLAINS
+		if region_id == &"valkarn":
+			# Valkarn Garrison — plains/desert transition
+			if h10 == 0: return Enums.TerrainType.TUNDRA
+			if h10 <= 3: return Enums.TerrainType.PLAINS
+			return Enums.TerrainType.DESERT
+		if region_id == &"duststorm_valley":
+			# Cinderguard — plains/desert
+			if h10 == 0: return Enums.TerrainType.PLAINS
+			if h10 == 1: return Enums.TerrainType.SHARD_WASTES
+			return Enums.TerrainType.DESERT
+		# bataarbad — Skulloath — desert/shard
+		if h10 <= 1: return Enums.TerrainType.PLAINS
+		if h10 == 2: return Enums.TerrainType.SHARD_WASTES
+		return Enums.TerrainType.DESERT
 
-	# ── Northern Storm Belt — Thunderswarm ──
-	if region_id in ZONE_NORTH_THUNDERSWARM:
-		if region_id == &"dragonspire_mountains":
+	# ── East Zone — desert/shard ──
+	if region_id in ZONE_EAST:
+		if region_id == &"skalvar":
+			# Skalvar Watch — desert/plains
+			if h10 <= 2: return Enums.TerrainType.TUNDRA
+			if h10 <= 4: return Enums.TerrainType.DESERT
+			return Enums.TerrainType.PLAINS
+		if region_id == &"ashenmark":
+			# Crownfire — desert
 			if h10 == 0: return Enums.TerrainType.SHARD_WASTES
-			if h10 <= 4: return Enums.TerrainType.PLAINS
-			return Enums.TerrainType.TUNDRA
-		if region_id == &"thundercrest_peaks":
-			if h10 == 0: return Enums.TerrainType.DESERT
-			if h10 <= 4: return Enums.TerrainType.PLAINS
-			return Enums.TerrainType.TUNDRA
-		# Skalvar — steppe transition
-		if h10 <= 2: return Enums.TerrainType.TUNDRA
-		if h10 <= 4: return Enums.TerrainType.DESERT
-		return Enums.TerrainType.PLAINS
+			return Enums.TerrainType.DESERT
+		if region_id == &"morvane":
+			# Bloodthrone — desert/shard
+			if h10 == 0: return Enums.TerrainType.SHARD_WASTES
+			if h10 == 1: return Enums.TerrainType.PLAINS
+			return Enums.TerrainType.DESERT
+		# whispering_dunes — Servants of Reliquary — deep desert
+		if h10 == 0: return Enums.TerrainType.SHARD_WASTES
+		return Enums.TerrainType.DESERT
 
-	# ── Southern Emerald Reach — Tainted Jade ──
-	if region_id in ZONE_SOUTH_JADE:
+	# ── South-West Zone — jungle/swamp ──
+	if region_id in ZONE_SOUTH_WEST:
 		if region_id == &"coatlantli":
+			# Tainted Jade — jungle
+			if h10 <= 1: return Enums.TerrainType.SWAMP
+			if h10 == 2: return Enums.TerrainType.FOREST
+			return Enums.TerrainType.JUNGLE
+		if region_id == &"verdant_glade":
+			# Thornwardens — forest/jungle
+			if h10 <= 3: return Enums.TerrainType.FOREST
+			if h10 <= 5: return Enums.TerrainType.JUNGLE
+			return Enums.TerrainType.PLAINS
+		if region_id == &"xotchi":
+			# Twilight Veil — jungle
 			if h10 <= 1: return Enums.TerrainType.SWAMP
 			if h10 == 2: return Enums.TerrainType.FOREST
 			return Enums.TerrainType.JUNGLE
 		if region_id == &"southern_reach":
+			# Jade Conclave — jungle/swamp
 			if h10 <= 1: return Enums.TerrainType.JUNGLE
 			if h10 == 2: return Enums.TerrainType.FOREST
 			if h10 == 3: return Enums.TerrainType.WETLANDS
 			return Enums.TerrainType.SWAMP
-		# Xotchi — ancient jungle sanctuary
-		if h10 <= 1: return Enums.TerrainType.SWAMP
-		if h10 == 2: return Enums.TerrainType.FOREST
-		return Enums.TerrainType.JUNGLE
-
-	# ── Central Steppe — Skulloath ──
-	if region_id in ZONE_CENTER_SKULLOATH:
-		if region_id == &"bataarbad":
-			if h10 <= 1: return Enums.TerrainType.PLAINS
-			if h10 == 2: return Enums.TerrainType.TUNDRA
-			return Enums.TerrainType.DESERT
-		if region_id == &"altaban":
-			if h10 <= 2: return Enums.TerrainType.DESERT
-			if h10 == 3: return Enums.TerrainType.PLAINS
-			return Enums.TerrainType.SHARD_WASTES
-		# Tsagan — deep corruption
-		if h10 == 0: return Enums.TerrainType.DESERT
-		if h10 == 1: return Enums.TerrainType.SWAMP
+		# orenthal — Forsaken — dark swamp/shard wastes (gothic, no jungle)
+		if h10 <= 1: return Enums.TerrainType.FOREST
+		if h10 <= 5: return Enums.TerrainType.SWAMP
 		return Enums.TerrainType.SHARD_WASTES
 
-	# ── Ash March — Cinderguard ──
-	if region_id in ZONE_CENTER_CINDERGUARD:
-		if region_id == &"duststorm_valley":
-			if h10 == 0: return Enums.TerrainType.PLAINS
-			if h10 == 1: return Enums.TerrainType.SHARD_WASTES
-			return Enums.TerrainType.DESERT
-		if region_id == &"ashenmark":
-			if h10 == 0: return Enums.TerrainType.SHARD_WASTES
-			return Enums.TerrainType.DESERT
-		# Valkarn — fortress region
-		if h10 == 0: return Enums.TerrainType.TUNDRA
-		return Enums.TerrainType.DESERT
-
-	# ── Eastern Ruin — Forsaken (swamp-heavy homeland) ──
-	if region_id in ZONE_EAST_FORSAKEN:
-		if region_id == &"orenthal":
+	# ── South-East Zone — shard wastes/desert ──
+	if region_id in ZONE_SOUTH_EAST:
+		if region_id == &"tsagan":
+			# Ashbound — shard wastes/desert
 			if h10 == 0: return Enums.TerrainType.DESERT
-			if h10 <= 4: return Enums.TerrainType.SWAMP
+			if h10 == 1: return Enums.TerrainType.SWAMP
 			return Enums.TerrainType.SHARD_WASTES
-		if region_id == &"morvane":
-			if h10 == 0: return Enums.TerrainType.SHARD_WASTES
-			if h10 == 1: return Enums.TerrainType.FOREST
-			return Enums.TerrainType.SWAMP
-		# Weeping Barrows — toxic swamps
-		if h10 == 0: return Enums.TerrainType.SHARD_WASTES
-		return Enums.TerrainType.SWAMP
-
-	# ── Shard Frontier — Ivoryscar ──
-	if region_id in ZONE_EAST_IVORYSCAR:
-		if region_id == &"qareth":
-			if h10 == 0: return Enums.TerrainType.PLAINS
-			if h10 == 1: return Enums.TerrainType.SHARD_WASTES
-			return Enums.TerrainType.DESERT
 		if region_id == &"torgalun_desert":
+			# Gorgonic Cult — shard wastes/desert
 			if h10 == 0: return Enums.TerrainType.WETLANDS
 			if h10 == 1: return Enums.TerrainType.PLAINS
 			return Enums.TerrainType.DESERT
-		# Whispering Dunes — deep sand with buried ruins
-		if h10 == 0: return Enums.TerrainType.SHARD_WASTES
+		if region_id == &"weeping_barrows":
+			# Blightcoven — shard wastes
+			if h10 == 0: return Enums.TerrainType.SHARD_WASTES
+			if h10 <= 3: return Enums.TerrainType.SWAMP
+			return Enums.TerrainType.DESERT
+		# qareth — Ivoryscar — desert
+		if h10 == 0: return Enums.TerrainType.PLAINS
+		if h10 == 1: return Enums.TerrainType.SHARD_WASTES
 		return Enums.TerrainType.DESERT
 
 	return Enums.TerrainType.PLAINS
 
-# ── Faction zone helpers ──────────────────────────────────────────────────────
-# Maps region_id to the major faction zone it belongs to.
+# ── Geographic zone helpers ───────────────────────────────────────────────────
+# Maps region_id to its geographic zone.
 
 static func _get_faction_zone(region_id: StringName) -> StringName:
-	if region_id in ZONE_WEST_EMPIRE: return &"empire"
-	if region_id in ZONE_WEST_GLADEHOST: return &"gladehost"
-	if region_id in ZONE_NORTH_MOONSPEAR: return &"moonspear"
-	if region_id in ZONE_NORTH_THUNDERSWARM: return &"thunderswarm"
-	if region_id in ZONE_SOUTH_JADE: return &"tainted_jade"
-	if region_id in ZONE_CENTER_SKULLOATH: return &"skulloath"
-	if region_id in ZONE_CENTER_CINDERGUARD: return &"cinderguard"
-	if region_id in ZONE_EAST_FORSAKEN: return &"forsaken"
-	if region_id in ZONE_EAST_IVORYSCAR: return &"ivoryscar"
+	if region_id in ZONE_NORTH: return &"north"
+	if region_id in ZONE_WEST: return &"west"
+	if region_id in ZONE_CENTER: return &"center"
+	if region_id in ZONE_EAST: return &"east"
+	if region_id in ZONE_SOUTH_WEST: return &"south_west"
+	if region_id in ZONE_SOUTH_EAST: return &"south_east"
 	return &""
 
 static func _zone_pair_key(a: StringName, b: StringName) -> String:
@@ -450,22 +463,19 @@ static func _zone_pair_key(a: StringName, b: StringName) -> String:
 		return str(a) + "|" + str(b)
 	return str(b) + "|" + str(a)
 
-# Mountain range density along borders between major faction zones.
+# Mountain range density along borders between geographic zones.
 # Higher = denser mountains along that border.
 const MOUNTAIN_BORDER_PROB := {
-	"cinderguard|thunderswarm": 0.50,
-	"moonspear|thunderswarm": 0.45,
-	"cinderguard|forsaken": 0.42,
-	"empire|moonspear": 0.40,
-	"cinderguard|ivoryscar": 0.38,
-	"empire|skulloath": 0.38,
-	"moonspear|skulloath": 0.38,
-	"cinderguard|skulloath": 0.35,
-	"gladehost|tainted_jade": 0.35,
-	"skulloath|tainted_jade": 0.32,
-	"forsaken|ivoryscar": 0.30,
-	"gladehost|skulloath": 0.25,
-	"empire|gladehost": 0.18,
+	"north|east": 0.48,
+	"center|north": 0.45,
+	"north|west": 0.40,
+	"center|east": 0.38,
+	"center|south_west": 0.35,
+	"center|south_east": 0.32,
+	"east|south_east": 0.30,
+	"south_east|south_west": 0.25,
+	"south_west|west": 0.22,
+	"center|west": 0.20,
 }
 
 # ── Border Mountain Placement ─────────────────────────────────────────────────
@@ -565,47 +575,29 @@ static func _hash_coord(col: int, row: int) -> int:
 
 static func _carve_rivers(map: HexMapData) -> void:
 	var rivers := [
-		# River 1: Western Divide (Empire ↔ Gladehost border, N-S) — with west branch
+		# River 1: Northern Barrier (W-E) — separates tundra from temperate belt
 		{
-			waypoints = [Vector2i(26, 18), Vector2i(23, 26), Vector2i(25, 34), Vector2i(29, 42)],
-			crossings = [Vector2i(24, 22), Vector2i(24, 30), Vector2i(27, 38)],
-			branches = [
-				{
-					from = Vector2i(23, 26),
-					waypoints = [Vector2i(18, 30), Vector2i(14, 36)],
-					crossings = [Vector2i(16, 33)],
-				},
-			],
-		},
-		# River 2: Northern Barrier (Moonspear/Thunderswarm border, W-E) — with north branch
-		{
-			waypoints = [Vector2i(30, 20), Vector2i(45, 18), Vector2i(60, 20), Vector2i(72, 22)],
-			crossings = [Vector2i(37, 19), Vector2i(52, 19), Vector2i(66, 21)],
-			branches = [
-				{
-					from = Vector2i(45, 18),
-					waypoints = [Vector2i(48, 12), Vector2i(52, 6)],
-					crossings = [Vector2i(50, 9)],
-				},
-			],
-		},
-		# River 3: Central-East Divide (Cinderguard/Skulloath ↔ Forsaken)
-		{
-			waypoints = [Vector2i(82, 16), Vector2i(84, 28), Vector2i(82, 40), Vector2i(80, 50)],
-			crossings = [Vector2i(83, 22), Vector2i(83, 34), Vector2i(81, 45)],
+			waypoints = [Vector2i(20, 18), Vector2i(38, 19), Vector2i(58, 17), Vector2i(75, 18), Vector2i(90, 18)],
+			crossings = [Vector2i(30, 19), Vector2i(48, 18), Vector2i(66, 17), Vector2i(82, 18)],
 			branches = [],
 		},
-		# River 4: Southern Divide (Tainted Jade ↔ central zones) — with south branch
+		# River 2: Western Divide (N-S) — between forest coast and central plains
 		{
-			waypoints = [Vector2i(26, 50), Vector2i(40, 52), Vector2i(55, 54), Vector2i(65, 52)],
-			crossings = [Vector2i(33, 51), Vector2i(48, 53)],
-			branches = [
-				{
-					from = Vector2i(40, 52),
-					waypoints = [Vector2i(38, 58), Vector2i(34, 64)],
-					crossings = [Vector2i(36, 61)],
-				},
-			],
+			waypoints = [Vector2i(22, 18), Vector2i(24, 28), Vector2i(26, 38), Vector2i(24, 48)],
+			crossings = [Vector2i(23, 23), Vector2i(25, 33), Vector2i(25, 43)],
+			branches = [],
+		},
+		# River 3: Central Divide (N-S) — between center and eastern desert
+		{
+			waypoints = [Vector2i(76, 18), Vector2i(74, 28), Vector2i(76, 38), Vector2i(78, 50)],
+			crossings = [Vector2i(75, 23), Vector2i(75, 33), Vector2i(77, 44)],
+			branches = [],
+		},
+		# River 4: Southern Divide (W-E) — between mid-regions and southern jungles/wastes
+		{
+			waypoints = [Vector2i(14, 52), Vector2i(32, 46), Vector2i(50, 46), Vector2i(66, 48), Vector2i(84, 52)],
+			crossings = [Vector2i(23, 49), Vector2i(42, 46), Vector2i(58, 47), Vector2i(76, 50)],
+			branches = [],
 		},
 	]
 
@@ -688,16 +680,18 @@ static func _hex_line(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 static func _create_wetland_bridges(map: HexMapData) -> void:
 	# Each bridge is a list of tile positions to set as WETLANDS
 	var bridges := [
-		# Western isle → Orisyl coast
-		[Vector2i(8, 29), Vector2i(9, 29), Vector2i(10, 30)],
-		# Southern isle → Tainted Jade peninsula
-		[Vector2i(31, 72), Vector2i(32, 71), Vector2i(33, 71), Vector2i(34, 70)],
-		# SE island → Ivoryscar hook
-		[Vector2i(108, 49), Vector2i(109, 49), Vector2i(110, 50)],
-		# NE island → Thunderswarm finger
-		[Vector2i(97, 7), Vector2i(96, 7), Vector2i(95, 7)],
+		# Western isle → Altaban/West coast
+		[Vector2i(8, 29), Vector2i(9, 29), Vector2i(10, 28)],
+		# Southern isle → SW jungle
+		[Vector2i(31, 72), Vector2i(32, 71), Vector2i(33, 70), Vector2i(34, 69)],
+		# SE island → Qareth/SE zone
+		[Vector2i(108, 58), Vector2i(109, 58), Vector2i(110, 59)],
+		# NE island → Thundercrest coast
+		[Vector2i(97, 7), Vector2i(96, 8), Vector2i(95, 9)],
 		# NW archipelago → mainland
 		[Vector2i(12, 12), Vector2i(13, 13), Vector2i(14, 14)],
+		# SW extension bridge → Southern Reach
+		[Vector2i(14, 60), Vector2i(15, 61), Vector2i(16, 62)],
 	]
 
 	for bridge in bridges:

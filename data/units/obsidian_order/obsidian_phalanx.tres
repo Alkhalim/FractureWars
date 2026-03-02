@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"obsidian_phalanx"
+display_name = "Obsidian Phalanx"
+description = "Heavy spearmen clad in obsidian-plated armor. Their locked formation is a black wall that few can breach."
+faction_id = &"obsidian_order"
+max_hp = 1600
+attack = 9
+melee_defense = 12
+projectile_defense = 8
+magic_defense = 4
+speed = 3
+attack_range = 1
+squad_size = 100
+hp_per_soldier = 16
+movement_points = 2.5
+upkeep_cost = {0: 4, 1: 2, 3: 2}
+recruit_cost = {0: 75, 1: 30}
+recruit_time = 3
+population_cost = 20
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 70
+vs_attack_bonuses = {"cavalry": 3}

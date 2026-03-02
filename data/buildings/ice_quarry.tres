@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ice_quarry"
+display_name = "Ice Quarry I"
+description = "Miners carve through permafrost to reach mineral veins preserved in the deep ice. Cold work, but rewarding."
+faction_id = &"moonspear"
+category = &"economic"
+build_cost = {0: 75}
+build_time = 2
+income_bonus = {1: 25, 5: 8}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"artisans": 1}

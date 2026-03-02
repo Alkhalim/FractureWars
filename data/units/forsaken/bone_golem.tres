@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"bone_golem"
 display_name = "Bone Golem"
-description = "A construct of fused bones animated by void energy. Mindless but devastatingly tough."
+description = "A construct of fused bones animated by necromantic energy, assembled in the catacombs beneath the court. Mindless but devastatingly tough."
 faction_id = &"forsaken"
 max_hp = 500
 attack = 18
