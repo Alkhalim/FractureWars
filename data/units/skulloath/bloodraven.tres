@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bloodraven"
+display_name = "Bloodravens"
+description = "Riders mounted on giant ravens bred in the shadow of skull mountains. They swoop down to loose poisoned javelins that sow terror among enemy ranks."
+faction_id = &"skulloath"
+max_hp = 2500
+attack = 45
+melee_defense = 15
+projectile_defense = 15
+magic_defense = 20
+speed = 7
+attack_range = 2
+squad_size = 20
+hp_per_soldier = 125
+tiles_per_entity = 2
+movement_points = 5
+upkeep_cost = {0: 4, 3: 1}
+recruit_cost = {0: 100, 1: 32}
+recruit_time = 3
+population_cost = 4
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "ranged", "fast"])
+base_morale = 45
+morale_aura = -3
+fear_radius = 4
+captive_chance = 0.2

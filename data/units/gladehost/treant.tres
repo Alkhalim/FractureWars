@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"treant"
+display_name = "Treant"
+description = "An ancient tree awakened by druidic ritual. Massive, slow, and virtually indestructible, it wades through enemy formations like a ship through reeds."
+faction_id = &"gladehost"
+max_hp = 11000
+attack = 95
+melee_defense = 65
+projectile_defense = 45
+magic_defense = 15
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 10
+movement_points = 2.5
+upkeep_cost = {0: 12, 5: 4}
+recruit_cost = {0: 350, 5: 168}
+recruit_time = 6
+population_cost = 0
+terrain_bonuses = {1: 0.3}
+realm_bonuses = {}
+tags = Array[String](["monster", "melee", "construct"])
+base_morale = 90
+morale_aura = 10
+fear_radius = 5
+captive_chance = 0

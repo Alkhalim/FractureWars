@@ -88,6 +88,7 @@ func _ready() -> void:
 	EventBus.shardfall_occurred.connect(_on_log_shardfall)
 	EventBus.treaty_created.connect(_on_log_treaty_created)
 	EventBus.army_destroyed.connect(_on_log_army_destroyed)
+	EventBus.dilemma_resolved.connect(_on_faction_dilemma_resolved)
 
 func _on_log_battle_resolved(winner_faction: StringName, hex_pos: Vector2i) -> void:
 	var fd: FactionData = DataManager.get_faction(winner_faction)
@@ -119,6 +120,79 @@ func _on_log_army_destroyed(army_id: StringName, faction_id: StringName) -> void
 	var fd: FactionData = DataManager.get_faction(faction_id)
 	var name: String = fd.display_name if fd else str(faction_id)
 	turn_log.append({type = "army", text = "A %s army was destroyed" % name})
+
+# ── Faction Mechanic Dilemma Resolution ──────────────────────
+func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringName, choice_effect: String) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return
+	match dilemma_type:
+		"imperial_edict":
+			match choice_effect:
+				"edict_military": _apply_empire_edict(fs, 1)
+				"edict_economic": _apply_empire_edict(fs, 2)
+				"edict_cultural": _apply_empire_edict(fs, 3)
+				"edict_diplomatic": _apply_empire_edict(fs, 4)
+		"taint_focus":
+			match choice_effect:
+				"taint_focus_1": fs.taint_focus = 1
+				"taint_focus_2": fs.taint_focus = 2
+				"taint_focus_3": fs.taint_focus = 3
+		"lunar_ritual":
+			match choice_effect:
+				"lunar_extend":
+					if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 40 and fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) >= 5:
+						fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) - 40
+						fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) - 5
+						fs.lunar_ritual_extended = 3
+				"lunar_skip":
+					if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 20 and fs.lunar_skip_cooldown <= 0:
+						fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) - 20
+						fs.lunar_phase = (fs.lunar_phase + 1) % 4
+						fs.lunar_skip_cooldown = 8
+				"lunar_accept":
+					pass
+		"storm_ability":
+			match choice_effect:
+				"storm_march": _apply_storm_ability(fs, faction_id, "storm_march")
+				"storm_wall": _apply_storm_ability(fs, faction_id, "storm_wall")
+				"storm_harvest": _apply_storm_ability(fs, faction_id, "storm_harvest")
+				"storm_hold": pass
+		"forge_allocation":
+			match choice_effect:
+				"forge_war": fs.forge_shift_queued = 10
+				"forge_balanced": fs.forge_shift_queued = 0
+				"forge_peace": fs.forge_shift_queued = -10
+				"forge_emergency":
+					if fs.resources.get(Enums.ResourceType.IRON, 0) >= 30:
+						fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) - 30
+						fs.forge_shift_queued = 20
+		"relic_expedition":
+			match choice_effect:
+				"relic_fund":
+					if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 30 and fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) >= 5:
+						fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) - 30
+						fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) - 5
+						fs.relic_expedition_cooldown = 5
+						var roll := randf()
+						if roll < 0.65: # Find relic
+							fs.relic_power = mini(fs.relic_power + 8, 50)
+							# Grant a random relic-themed commander item
+							var relic_items: Array[StringName] = [&"qareth_hieroglyph_tablet", &"tomb_kings_scarab", &"scepter_of_ages", &"void_shard_amulet", &"crystal_shard_blade", &"bone_dice_set"]
+							fs.item_storage.append(relic_items[randi() % relic_items.size()])
+						elif roll < 0.85: # Find knowledge
+							fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 15
+						else: # Danger
+							fs.relic_power = maxi(0, fs.relic_power - 5)
+				"relic_study":
+					fs.relic_power = mini(fs.relic_power + 2, 50)
+					fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 5
+					fs.relic_expedition_cooldown = 5
+				"relic_fortify":
+					fs.relic_expedition_cooldown = 5
+					# Add defense to all cities for 3 turns (tracked via leader_bonuses)
+					fs.leader_bonuses["relic_defense_turns"] = 3
+	AudioManager.play_sfx(&"scroll_open")
 
 func _ai_wait() -> void:
 	# Respects skip and speed multiplier during AI turns
@@ -2933,6 +3007,8 @@ func _process_faction_mechanic(faction_id: StringName) -> void:
 	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 	var mechanic_fid := parent_fid  # Use parent faction to determine which mechanic to run
 	match mechanic_fid:
+		&"empire":
+			_process_empire_authority(fs)
 		&"skulloath":
 			_process_skulloath_corruption(fs)
 		&"tainted_jade":
@@ -2955,11 +3031,144 @@ func _process_faction_mechanic(faction_id: StringName) -> void:
 			_process_sunblessed_faith(fs, faction_id)
 			_process_sunblessed_wisdom(fs, faction_id)
 
+# ── Empire: Imperial Authority ─────────────────────────────
+# 0-100. Rises from large territory, tech lead, cultural buildings.
+# Falls from lost battles/cities. High = tribute/diplomacy/cheaper recruits.
+# Low = rebellion risk. Every 5 turns: player picks an Imperial Edict.
+
+func _process_empire_authority(fs: FactionState) -> void:
+	# Authority drifts based on empire size and prestige
+	var auth_drift := 0
+	# Territory size: +1 per 3 regions over 3
+	var region_count := fs.owned_regions.size()
+	if region_count > 3:
+		auth_drift += (region_count - 3) / 3
+	elif region_count <= 1:
+		auth_drift -= 3
+	# Cultural buildings boost authority
+	var cultural_count := 0
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null:
+			continue
+		for building_id in city.buildings:
+			var bd: BuildingData = DataManager.get_building(building_id)
+			if bd and bd.category == &"cultural":
+				cultural_count += 1
+	auth_drift += mini(cultural_count / 2, 3)
+	# Tech lead: +2 if most completed research
+	var max_tech := 0
+	for other_id in GameManager.state.faction_states:
+		if other_id == &"empire":
+			continue
+		var other_fs: FactionState = GameManager.state.faction_states[other_id]
+		if not other_fs.is_defeated:
+			max_tech = maxi(max_tech, other_fs.completed_research.size())
+	if fs.completed_research.size() > max_tech:
+		auth_drift += 2
+	# Natural drift toward 50 equilibrium (slow)
+	if auth_drift == 0:
+		auth_drift = 1 if fs.imperial_authority < 50 else (-1 if fs.imperial_authority > 50 else 0)
+	fs.imperial_authority = clampi(fs.imperial_authority + auth_drift, 0, 100)
+
+	# ── Authority effects ──
+	# High authority (75+): Empire at peak — tribute, diplomacy, cheaper recruits
+	if fs.imperial_authority >= 75:
+		# Tribute: +10% gold income equivalent (flat +8 gold)
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 8
+		# Diplomacy bonus
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"empire" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if not other_fs.is_defeated:
+				GameManager.diplomacy_system.modify_standing(&"empire", other_id, 1, "Imperial authority")
+	# Moderate authority (50-74): stable governance
+	elif fs.imperial_authority >= 50:
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 3
+	# Declining authority (25-49): unrest grows
+	elif fs.imperial_authority >= 25:
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"empire" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if not other_fs.is_defeated:
+				GameManager.diplomacy_system.modify_standing(&"empire", other_id, -1, "Weakening authority")
+	# Crisis authority (<25): rebellion risk, loyalty decay across all cities
+	if fs.imperial_authority < 25:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city:
+				for cls in city.class_loyalty:
+					if cls != "captives":
+						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 3, -100, 100)
+		fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 5)
+
+	# Process active edict
+	if fs.imperial_edict_turns > 0:
+		fs.imperial_edict_turns -= 1
+		match fs.imperial_edict:
+			1: # Military Expansion: armies fight harder
+				pass # +12% attack applied in battle_simulator_v3
+			2: # Economic Reform: gold bonus
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 6
+			3: # Cultural Campaign: loyalty to all cities
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						for cls in city.class_loyalty:
+							if cls != "captives":
+								city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+			4: # Diplomatic Push: standing bonus
+				for other_id in GameManager.state.faction_states:
+					if other_id == &"empire" or GameManager.is_npc_faction(other_id):
+						continue
+					var other_fs: FactionState = GameManager.state.faction_states[other_id]
+					if not other_fs.is_defeated:
+						GameManager.diplomacy_system.modify_standing(&"empire", other_id, 2, "Imperial diplomatic push")
+		if fs.imperial_edict_turns <= 0:
+			fs.imperial_edict = 0
+
+	# Trigger edict dilemma every 5 turns
+	if GameManager.state.current_turn % 5 == 0 and fs.imperial_edict_turns <= 0:
+		if fs.faction_data_id == GameManager.state.player_faction_id:
+			EventBus.dilemma_triggered.emit(&"empire", "imperial_edict", {
+				"title": "Imperial Edict",
+				"description": "The Senate awaits your decree. Choose the Empire's focus for the next 5 turns.",
+				"choices": [
+					{"label": "Military Expansion", "description": "+12% attack to all armies, -3 Authority", "effect": "edict_military"},
+					{"label": "Economic Reform", "description": "+6 gold/turn, +3 Authority", "effect": "edict_economic"},
+					{"label": "Cultural Campaign", "description": "+2 loyalty/turn to all cities, +5 Authority", "effect": "edict_cultural"},
+					{"label": "Diplomatic Push", "description": "+2 standing/turn with all factions, +2 Authority", "effect": "edict_diplomatic"},
+				]
+			})
+		else:
+			# AI auto-picks based on personality
+			var fd: FactionData = DataManager.get_faction(&"empire")
+			if fd:
+				var aggro: float = fd.ai_personality.get("aggression", 0.4)
+				if aggro >= 0.6:
+					_apply_empire_edict(fs, 1) # military
+				elif fs.imperial_authority < 40:
+					_apply_empire_edict(fs, 3) # cultural to recover authority
+				else:
+					_apply_empire_edict(fs, 2) # economic default
+
+func _apply_empire_edict(fs: FactionState, edict_type: int) -> void:
+	fs.imperial_edict = edict_type
+	fs.imperial_edict_turns = 5
+	match edict_type:
+		1: fs.imperial_authority = maxi(0, fs.imperial_authority - 3) # Military costs authority
+		2: fs.imperial_authority = mini(100, fs.imperial_authority + 3)
+		3: fs.imperial_authority = mini(100, fs.imperial_authority + 5)
+		4: fs.imperial_authority = mini(100, fs.imperial_authority + 2)
+
 # ── Skulloath: Corruption Duality ──────────────────────────
-# Traditional path (0-30): food/loyalty/diplomacy bonuses, population growth
-# Balanced (31-60): No strong bonus/penalty
-# Demonic path (61-80): attack bonus, captive generation, shard synergy, loyalty penalty
-# Deep corruption (81-100): huge attack, void shard immunity, massive loyalty/diplo penalty
+# 0-20 Traditional Pure: +3 loyalty, +15% food, +1 diplo, -10% attack
+# 21-40 Traditional: +2 loyalty, +10% food, +1 diplo
+# 41-60 Balanced: minor effects
+# 61-80 Corrupted: captive→iron, +18% attack, -1 loyalty, -1 diplo
+# 81-100 Deep: captive→food, +30% attack, -3 loyalty, -2 diplo, fear aura
 
 func _process_skulloath_corruption(fs: FactionState) -> void:
 	# Corruption drifts based on buildings
@@ -2973,96 +3182,114 @@ func _process_skulloath_corruption(fs: FactionState) -> void:
 				drift -= 1
 			elif building_id in [&"pale_waif_altar", &"void_sanctum", &"blood_altar", &"demon_gate"]:
 				drift += 2
-			elif building_id in [&"bone_workshop", &"war_forge", &"beast_pens"]:
-				drift += 0 # neutral buildings don't affect corruption
 
-	# Winning battles in desert/wastes terrain slightly raises corruption (void exposure)
-	# (tracked via captive gains — proxy for battle activity)
+	# Battle activity raises corruption (captured souls feed the Waif)
 	var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
 	if captives >= 10:
-		drift += 1 # Captive sacrifices feed the Pale Waif
-
+		drift += 1
 	fs.corruption = clampi(fs.corruption + drift, 0, 100)
 
-	# Apply corruption effects
+	# ── Apply corruption effects to ALL cities (not just capital) ──
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
-		if city == null or not city.is_capital:
+		if city == null:
 			continue
-		if fs.corruption <= 30:
-			# Traditional: stable pastoralist society
+
+		if fs.corruption <= 20:
+			# Traditional Pure: stable pastoralist — strong loyalty, food, weak military
+			for cls in city.class_loyalty:
+				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 3, -100, 100)
+			city.population += 2
+		elif fs.corruption <= 40:
+			# Traditional: good loyalty, moderate food
 			for cls in city.class_loyalty:
 				if cls != "captives":
 					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
-			# Population growth bonus from herding lifestyle
-			city.population += 2
+			if city.is_capital:
+				city.population += 1
 		elif fs.corruption >= 81:
-			# Deep corruption: captives auto-convert to food (sacrifice rituals)
-			if captives > 0:
-				var converted := mini(captives, 5)
-				fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
-				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + converted * 8
+			# Deep corruption: massive attack bonus (in battle), auto-sacrifice captives
 			for cls in city.class_loyalty:
 				if cls != "captives":
 					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 3, -100, 100)
 		elif fs.corruption >= 61:
-			# High corruption: captive-to-iron conversion (demonic forging)
-			if captives > 0:
-				var converted := mini(captives, 3)
-				fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
-				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + converted * 5
+			# Corrupted: moderate attack bonus, captive-to-iron
 			for cls in city.class_loyalty:
 				if cls != "captives":
 					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 1, -100, 100)
 
-	# High corruption: diplomatic penalty
-	if fs.corruption >= 61:
-		var penalty := -1 if fs.corruption < 81 else -2
-		for other_id in GameManager.state.faction_states:
-			if other_id == &"skulloath" or GameManager.is_npc_faction(other_id):
-				continue
-			var other_fs: FactionState = GameManager.state.faction_states[other_id]
-			if other_fs.is_defeated:
-				continue
-			var fd: FactionData = DataManager.get_faction(other_id)
-			if fd and fd.realm_affinity != Enums.Realm.VOID:
-				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, penalty, "High corruption")
+	# Captive conversion (scales with corruption)
+	if fs.corruption >= 81 and captives > 0:
+		var converted := mini(captives, 6)
+		fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
+		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + converted * 10
+		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + converted / 2
+	elif fs.corruption >= 61 and captives > 0:
+		var converted := mini(captives, 4)
+		fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + converted * 6
 
-	# Traditional path: diplomacy bonus with non-war factions
-	if fs.corruption <= 30:
-		for other_id in GameManager.state.faction_states:
-			if other_id == &"skulloath" or GameManager.is_npc_faction(other_id):
-				continue
-			var other_fs: FactionState = GameManager.state.faction_states[other_id]
-			if other_fs.is_defeated:
-				continue
+	# Traditional food bonus (applied as faction-wide)
+	if fs.corruption <= 20:
+		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 8
+	elif fs.corruption <= 40:
+		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 4
+
+	# Diplomacy effects (scaled by corruption level)
+	for other_id in GameManager.state.faction_states:
+		if other_id == &"skulloath" or GameManager.is_npc_faction(other_id):
+			continue
+		var other_fs: FactionState = GameManager.state.faction_states[other_id]
+		if other_fs.is_defeated:
+			continue
+		var fd: FactionData = DataManager.get_faction(other_id)
+		if fs.corruption >= 81:
+			# Deep corruption: feared by all non-void factions
+			if fd and fd.realm_affinity != Enums.Realm.VOID:
+				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, -2, "Deep corruption")
+			else:
+				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, 1, "Void kinship")
+		elif fs.corruption >= 61:
+			if fd and fd.realm_affinity != Enums.Realm.VOID:
+				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, -1, "High corruption")
+		elif fs.corruption <= 30:
 			if GameManager.get_relation(&"skulloath", other_id) != Enums.FactionRelation.WAR:
 				GameManager.diplomacy_system.modify_standing(&"skulloath", other_id, 1, "Traditional path")
 
-# ── Tainted Jade: Anti-Magic / Taint Power ─────────────────
-# Taint power from shard destruction + captive sacrifice + jungle building chains
-# Grants defense, shard suppression, anti-magic aura, captive economy
-# Passively grows taint from captive labor (thrall quarters process captives)
+	# Research bonus at balanced corruption (diverse knowledge)
+	if fs.corruption >= 35 and fs.corruption <= 65:
+		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 3
+
+# ── Tainted Jade: Taint Power + Taint Focus ───────────────
+# Taint Focus (player choice): 0=balanced, 1=verdant growth, 2=venomous war, 3=creeping doom
+# Each focus changes how taint power manifests across multiple game systems.
+# Taint rises from captive labor, shard destruction, jungle buildings.
+# HIGH IMPACT: defense bonuses, shard suppression, anti-magic, captive economy,
+# jungle terrain bonuses, population trade-offs, diplomacy with anti-shard factions.
 
 func _process_tainted_jade_taint(fs: FactionState) -> void:
 	# Taint power sources: captive processing generates taint residue
 	var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
 	var has_thrall_quarters := false
+	var has_captive_camp := false
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
-		if city and city.buildings.has(&"thrall_quarters"):
-			has_thrall_quarters = true
-			break
+		if city:
+			if city.buildings.has(&"thrall_quarters"):
+				has_thrall_quarters = true
+			if city.buildings.has(&"captive_processing_camp"):
+				has_captive_camp = true
 
 	if has_thrall_quarters and captives >= 5:
-		# Thrall labor: consume captives for taint power + resources
-		var processed := mini(captives / 5, 3) # Up to 3 batches of 5
+		var processed := mini(captives / 5, 3)
+		var camp_mult := 2 if has_captive_camp else 1
 		fs.resources[Enums.ResourceType.CAPTIVES] = captives - processed * 5
 		fs.taint_power += processed * 3
-		fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + processed * 4
-		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + processed * 3
+		fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + processed * 5 * camp_mult
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + processed * 4 * camp_mult
 
-	# Natural decay (reduced if cities are in jungle terrain)
+	# Natural decay (reduced by jungle cities and taint buildings)
 	var jungle_cities := 0
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
@@ -3070,20 +3297,77 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 			var tile := GameManager.state.hex_map.get_tile(city.hex_pos)
 			if tile and tile.terrain == Enums.TerrainType.JUNGLE:
 				jungle_cities += 1
-	# Less decay if rooted in jungle (taint is sustained by the land)
 	var decay := maxi(1, 2 - jungle_cities)
 	if fs.taint_power > 0:
 		fs.taint_power = maxi(fs.taint_power - decay, 0)
 
-	# High taint: accelerate enemy shard decay
+	# ── Taint Focus effects (player-chosen direction) ──
+	match fs.taint_focus:
+		1: # Verdant Growth: food, population, healing
+			if fs.taint_power >= 20:
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 6
+			if fs.taint_power >= 40:
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						city.population += 2
+			# Heal armies in jungle
+			if fs.taint_power >= 30:
+				for army: ArmyState in GameManager.get_faction_armies(&"tainted_jade"):
+					var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+					if tile and tile.terrain == Enums.TerrainType.JUNGLE:
+						for unit in army.units:
+							var ud := DataManager.get_unit(unit.unit_data_id)
+							if ud:
+								unit.current_hp = mini(unit.current_hp + 4, ud.max_hp * ud.squad_size)
+		2: # Venomous War: attack bonuses, poison, anti-magic (applied in battle_simulator)
+			# Iron bonus for war production
+			if fs.taint_power >= 20:
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 4
+			if fs.taint_power >= 40:
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 3
+		3: # Creeping Doom: territory control, movement denial, shard suppression
+			# Extra shard decay acceleration
+			if fs.taint_power >= 30:
+				for shard_id in GameManager.state.active_shards:
+					var shard: ShardInstance = GameManager.state.active_shards[shard_id]
+					if shard.claimed_by != &"tainted_jade" and shard.claimed_by != &"" and shard.turns_remaining > 0:
+						shard.turns_remaining = maxi(shard.turns_remaining - 1, 1)
+			# Territorial intimidation: enemy border factions lose loyalty
+			if fs.taint_power >= 50:
+				for other_id in GameManager.state.faction_states:
+					if other_id == &"tainted_jade" or GameManager.is_npc_faction(other_id):
+						continue
+					var other_fs: FactionState = GameManager.state.faction_states[other_id]
+					if other_fs.is_defeated:
+						continue
+					# Find if they share a border
+					for r_id in fs.owned_regions:
+						for or_id in other_fs.owned_regions:
+							if GameManager.state.hex_map.regions_adjacent(r_id, or_id):
+								# Border city loyalty erosion
+								for c_id in other_fs.owned_cities:
+									var c: CityState = GameManager.state.cities.get(c_id)
+									if c and c.region_id == or_id:
+										for cls in c.class_loyalty:
+											if cls != "captives":
+												c.class_loyalty[cls] = clampi(c.class_loyalty[cls] - 1, -100, 100)
+								break
+
+	# ── Base taint effects (always active regardless of focus) ──
+	# 50+ taint: accelerate enemy shard decay (base effect)
 	if fs.taint_power >= 50:
 		for shard_id in GameManager.state.active_shards:
 			var shard: ShardInstance = GameManager.state.active_shards[shard_id]
 			if shard.claimed_by != &"tainted_jade" and shard.claimed_by != &"" and shard.turns_remaining > 0:
 				shard.turns_remaining = maxi(shard.turns_remaining - 1, 1)
 
-	# Taint power 30+: diplomatic bonus with other anti-shard factions
-	# (factions respect Tainted Jade's shard-suppression efforts)
+	# Tech bonus from studying taint (always active)
+	if fs.taint_power >= 25:
+		var tech_gain := mini(fs.taint_power / 15, 4)
+		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_gain
+
+	# Diplomacy: anti-shard factions respect high taint
 	if fs.taint_power >= 30:
 		for other_id in GameManager.state.faction_states:
 			if other_id == &"tainted_jade" or GameManager.is_npc_faction(other_id) or other_id == &"shardhorde":
@@ -3091,21 +3375,36 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 			var other_fs: FactionState = GameManager.state.faction_states[other_id]
 			if other_fs.is_defeated:
 				continue
-			# Small standing bonus with non-shard factions
 			if other_fs.owned_shards.size() <= 2:
 				GameManager.diplomacy_system.modify_standing(&"tainted_jade", other_id, 1, "Anti-shard stance")
+			# But shard-heavy factions dislike you
+			if other_fs.owned_shards.size() >= 3:
+				GameManager.diplomacy_system.modify_standing(&"tainted_jade", other_id, -2, "Shard enemies")
 
-	# Very high taint: population growth penalty (the land itself is scarred)
+	# Very high taint: population penalty (land is scarred)
 	if fs.taint_power >= 70:
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
 			if city:
 				city.population = maxi(20, city.population - 1)
 
+	# Trigger taint focus dilemma every 4 turns
+	if GameManager.state.current_turn % 4 == 0 and fs.taint_power >= 15:
+		if fs.faction_data_id == GameManager.state.player_faction_id:
+			EventBus.dilemma_triggered.emit(&"tainted_jade", "taint_focus", {
+				"title": "Taint Focus",
+				"description": "The jungle pulses with power (Taint: %d). Direct the serpent's will." % fs.taint_power,
+				"choices": [
+					{"label": "Verdant Growth", "description": "Food, population, army healing in jungle. Nurture the land.", "effect": "taint_focus_1"},
+					{"label": "Venomous War", "description": "+15% attack in jungle/swamp, anti-magic field, iron production.", "effect": "taint_focus_2"},
+					{"label": "Creeping Doom", "description": "Accelerate shard decay, erode enemy border loyalty, movement denial.", "effect": "taint_focus_3"},
+				]
+			})
+
 # ── Gladehost: Seasonal Cycle ──────────────────────────────
-# Season derived from month: 0-2 Spring, 3-5 Summer, 6-7 Autumn, 8-9 Winter
-# Harmony affects seasonal bonus strength, diplomacy, and building effectiveness
-# Forest/Jungle tiles in owned territory boost harmony recovery
+# Harmony (0-100) scales ALL seasonal bonuses multiplicatively.
+# Each season has strong, distinct effects on economy, military, diplomacy, population.
+# Seasonal Festival dilemma at each season change gives player a bonus choice.
 
 func get_current_season() -> int:
 	var month: int = GameManager.state.current_month
@@ -3127,15 +3426,12 @@ func get_season_name(season: int) -> String:
 		_: return "Unknown"
 
 func _process_gladehost_seasons(fs: FactionState) -> void:
-	# Harmony adjusts based on building count and territory nature
 	var total_buildings := 0
-	var nature_tiles := 0 # Forest/Jungle tiles in owned territory
+	var nature_tiles := 0
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
 		if city:
 			total_buildings += city.buildings.size()
-
-	# Count nature tiles in owned regions
 	for region_id in fs.owned_regions:
 		var region_tiles := GameManager.state.hex_map.get_region_tiles(region_id)
 		for coord in region_tiles:
@@ -3143,82 +3439,117 @@ func _process_gladehost_seasons(fs: FactionState) -> void:
 			if tile and (tile.terrain == Enums.TerrainType.FOREST or tile.terrain == Enums.TerrainType.JUNGLE):
 				nature_tiles += 1
 
-	# Target: ~3 buildings per city is balanced. More = lower harmony
+	# Harmony drift: over-building lowers, under-building raises, nature restores
 	var target := fs.owned_cities.size() * 3
 	if total_buildings > target:
-		fs.harmony = maxi(fs.harmony - (total_buildings - target), 20)
+		fs.harmony = maxi(fs.harmony - (total_buildings - target), 15)
 	elif total_buildings < target:
 		fs.harmony = mini(fs.harmony + 1, 100)
-
-	# Nature tiles in territory help recover harmony (+1 per 10 nature tiles, max +3)
-	var nature_bonus := mini(nature_tiles / 10, 3)
+	var nature_bonus := mini(nature_tiles / 8, 4) # Slightly more impactful
 	fs.harmony = mini(fs.harmony + nature_bonus, 100)
 
-	# Seasonal loyalty and population effects
-	var season := get_current_season()
+	# Seasonal shrine chain: +harmony per turn
+	var shrine_bonus := 0
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
-		if city == null or not city.is_capital:
-			continue
+		if city:
+			if city.buildings.has(&"eternal_cycle"):
+				shrine_bonus = maxi(shrine_bonus, 5)
+			elif city.buildings.has(&"solstice_altar"):
+				shrine_bonus = maxi(shrine_bonus, 3)
+			elif city.buildings.has(&"seasonal_shrine"):
+				shrine_bonus = maxi(shrine_bonus, 2)
+	fs.harmony = mini(fs.harmony + shrine_bonus, 100)
 
-		# Harmony loyalty
+	var season := get_current_season()
+	var harmony_mult := float(fs.harmony) / 100.0 # 0.0 to 1.0 multiplier
+
+	# ── Strong seasonal effects (scaled by harmony) ──
+	match season:
+		0: # Spring: birth, growth, renewal
+			var food_bonus := int(10.0 * harmony_mult)
+			fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + food_bonus
+			for city_id in fs.owned_cities:
+				var city: CityState = GameManager.state.cities.get(city_id)
+				if city:
+					city.population += (3 if fs.harmony >= 60 else 1)
+					# Spring healing: armies recover
+			for army: ArmyState in GameManager.get_faction_armies(&"gladehost"):
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						unit.current_hp = mini(unit.current_hp + int(3.0 * harmony_mult), ud.max_hp * ud.squad_size)
+		1: # Summer: strength, iron, military readiness
+			var iron_bonus := int(6.0 * harmony_mult)
+			fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
+			var gold_bonus := int(4.0 * harmony_mult)
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + gold_bonus
+		2: # Autumn: harvest, trade, diplomacy
+			var gold_bonus := int(10.0 * harmony_mult)
+			var wood_bonus := int(6.0 * harmony_mult)
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + gold_bonus
+			fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + wood_bonus
+			# Autumn diplomacy: harvest festivals impress neighbors
+			if fs.harmony >= 50:
+				for other_id in GameManager.state.faction_states:
+					if other_id == &"gladehost" or GameManager.is_npc_faction(other_id):
+						continue
+					var other_fs: FactionState = GameManager.state.faction_states[other_id]
+					if not other_fs.is_defeated and GameManager.get_relation(&"gladehost", other_id) != Enums.FactionRelation.WAR:
+						GameManager.diplomacy_system.modify_standing(&"gladehost", other_id, 2, "Autumn harvest festival")
+		3: # Winter: hardship, defense, endurance
+			var food_penalty := int(6.0 * (1.0 - harmony_mult * 0.5)) # Shrine reduces penalty
+			fs.resources[Enums.ResourceType.FOOD] = maxi(0, fs.resources.get(Enums.ResourceType.FOOD, 0) - food_penalty)
+			if fs.harmony < 40:
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						city.population = maxi(20, city.population - 2)
+			# Winter hardening: defense bonus to armies (applied in battle_simulator)
+
+	# ── Loyalty effects (all cities, not just capital) ──
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city == null:
+			continue
 		if fs.harmony >= 70:
 			for cls in city.class_loyalty:
 				if cls != "captives":
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+		elif fs.harmony >= 50:
+			for cls in city.class_loyalty:
+				if cls != "captives":
 					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
-		elif fs.harmony <= 35:
+		elif fs.harmony <= 30:
 			for cls in city.class_loyalty:
 				if cls != "captives":
 					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 2, -100, 100)
 
-		# Seasonal population effects
-		match season:
-			0: # Spring: birth season
-				city.population += 3 if fs.harmony >= 50 else 1
-			3: # Winter: population suffers if harmony is low
-				if fs.harmony < 40:
-					city.population = maxi(20, city.population - 2)
-
-	# High harmony: diplomacy bonus with all factions (Gladehost is seen as balanced)
+	# High harmony: diplomacy bonus
 	var has_embassy := false
-	var has_seasonal_shrine := false
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
-		if city:
-			if city.buildings.has(&"embassy_grove"):
-				has_embassy = true
-			if city.buildings.has(&"seasonal_shrine") or city.buildings.has(&"solstice_altar") or city.buildings.has(&"eternal_cycle"):
-				has_seasonal_shrine = true
-
-	if fs.harmony >= 75 or has_embassy:
+		if city and (city.buildings.has(&"embassy_grove") or city.buildings.has(&"council_of_groves")):
+			has_embassy = true
+			break
+	if fs.harmony >= 60 or has_embassy:
 		var diplo_bonus := 1
-		if has_embassy:
-			diplo_bonus += 1 # Embassy Grove doubles diplomacy gain
+		if has_embassy and fs.harmony >= 70:
+			diplo_bonus = 3
+		elif has_embassy or fs.harmony >= 80:
+			diplo_bonus = 2
 		for other_id in GameManager.state.faction_states:
 			if other_id == &"gladehost" or GameManager.is_npc_faction(other_id):
 				continue
 			var other_fs: FactionState = GameManager.state.faction_states[other_id]
-			if other_fs.is_defeated:
-				continue
-			if GameManager.get_relation(&"gladehost", other_id) != Enums.FactionRelation.WAR:
-				GameManager.diplomacy_system.modify_standing(&"gladehost", other_id, diplo_bonus, "High harmony")
-
-	# Seasonal shrine chain: +harmony per turn based on highest tier
-	if has_seasonal_shrine:
-		var shrine_bonus := 2
-		for city_id2 in fs.owned_cities:
-			var c2: CityState = GameManager.state.cities.get(city_id2)
-			if c2:
-				if c2.buildings.has(&"eternal_cycle"):
-					shrine_bonus = maxi(shrine_bonus, 4)
-				elif c2.buildings.has(&"solstice_altar"):
-					shrine_bonus = maxi(shrine_bonus, 3)
-		fs.harmony = mini(fs.harmony + shrine_bonus, 100)
+			if not other_fs.is_defeated and GameManager.get_relation(&"gladehost", other_id) != Enums.FactionRelation.WAR:
+				GameManager.diplomacy_system.modify_standing(&"gladehost", other_id, diplo_bonus, "Harmony of the groves")
 
 # ── Shardhorde: Shard Resonance ────────────────────────────
-# Consuming shards grants temporary buffs. Elderbeasts grow faster near shard wastes.
-# Active resonance heals elderbeasts and boosts recruitment speed.
-# Shard wastes territory generates passive shard essence.
+# Consuming shards grants powerful realm-specific buffs for multiple turns.
+# Each realm provides distinct bonuses to different game systems.
+# Elderbeasts grow faster near shard wastes and heal from active resonance.
+# Multiple active resonances stack for elderbeasts and provide escalating bonuses.
 
 func _process_shardhorde_resonance(fs: FactionState) -> void:
 	# Decay resonance buffs
@@ -3230,23 +3561,61 @@ func _process_shardhorde_resonance(fs: FactionState) -> void:
 	for key in to_remove:
 		fs.shard_resonance.erase(key)
 
-	# Active resonance heals elderbeasts
-	if fs.shard_resonance.size() > 0:
+	var resonance_count := fs.shard_resonance.size()
+
+	# Active resonance heals elderbeasts (scales with count)
+	if resonance_count > 0:
 		for beast_id in GameManager.state.elderbeasts:
 			var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 			if beast.faction_id == &"shardhorde" and beast.hp < beast.max_hp:
-				beast.hp = mini(beast.hp + 20 * fs.shard_resonance.size(), beast.max_hp)
+				beast.hp = mini(beast.hp + 25 * resonance_count, beast.max_hp)
 
-	# Elderbeasts on shard wastes gain survival turns faster (level up sooner)
+	# Elderbeasts on shard wastes gain survival turns faster
 	for beast_id in GameManager.state.elderbeasts:
 		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 		if beast.faction_id != &"shardhorde":
 			continue
 		var tile := GameManager.state.hex_map.get_tile(beast.hex_pos)
 		if tile and tile.terrain == Enums.TerrainType.SHARD_WASTES:
-			beast.survival_turns += 1 # Double growth rate on shard wastes
+			beast.survival_turns += 1
 
-	# Shard wastes in owned territory passively generate shard essence
+	# ── Per-realm resonance income (much stronger than before) ──
+	for realm_key in fs.shard_resonance:
+		match realm_key:
+			Enums.Realm.DIVINE:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 20
+				# Divine resonance: heal armies
+				for army: ArmyState in GameManager.get_faction_armies(&"shardhorde"):
+					for unit in army.units:
+						var ud := DataManager.get_unit(unit.unit_data_id)
+						if ud:
+							unit.current_hp = mini(unit.current_hp + 3, ud.max_hp * ud.squad_size)
+			Enums.Realm.ELEMENTAL:
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 25
+			Enums.Realm.NATURE:
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 25
+				# Population growth while nature resonance active
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						city.population += 2
+			Enums.Realm.MORTAL:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 12
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 12
+			Enums.Realm.VOID:
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 20
+				fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 3
+
+	# Multi-resonance bonus: 3+ active realms = diplomatic intimidation
+	if resonance_count >= 3:
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"shardhorde" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if not other_fs.is_defeated:
+				GameManager.diplomacy_system.modify_standing(&"shardhorde", other_id, -1, "Overwhelming shard power")
+
+	# Shard wastes passive essence
 	var wastes_count := 0
 	for region_id in fs.owned_regions:
 		var region_tiles := GameManager.state.hex_map.get_region_tiles(region_id)
@@ -3255,7 +3624,7 @@ func _process_shardhorde_resonance(fs: FactionState) -> void:
 			if tile and tile.terrain == Enums.TerrainType.SHARD_WASTES:
 				wastes_count += 1
 	if wastes_count > 0:
-		var essence_gain := mini(wastes_count / 5, 8)
+		var essence_gain := mini(wastes_count / 4, 10) # Slightly more generous
 		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + essence_gain
 
 # Called when Shardhorde consumes a shard (from campaign HUD or AI)
@@ -3268,20 +3637,20 @@ func consume_shard_for_resonance(faction_id: StringName, shard_id: StringName) -
 		return
 	fs.owned_shards.erase(shard_id)
 	GameManager.state.active_shards.erase(shard_id)
-	# Grant resonance buff: 5 turns of realm bonus (10 if Resonance Amplifier built)
-	var resonance_duration := 5
+	# Grant resonance buff: 6 turns of realm bonus (12 if Resonance Amplifier built)
+	var resonance_duration := 6
 	for beast_id in GameManager.state.elderbeasts:
 		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 		if beast.faction_id == faction_id:
 			if beast.buildings.has(&"resonance_amplifier"):
-				resonance_duration = 10
+				resonance_duration = 12
 				break
 	fs.shard_resonance[shard.realm] = resonance_duration
-	# Consuming shards also heals nearby elderbeasts immediately
+	# Immediate elderbeast healing on consume
 	for beast_id in GameManager.state.elderbeasts:
 		var beast: ElderbeastState = GameManager.state.elderbeasts[beast_id]
 		if beast.faction_id == faction_id:
-			beast.hp = mini(beast.hp + 50, beast.max_hp)
+			beast.hp = mini(beast.hp + 75, beast.max_hp)
 
 # Called when Tainted Jade destroys a shard
 func destroy_shard_for_taint(faction_id: StringName, shard_id: StringName) -> void:
@@ -3293,35 +3662,85 @@ func destroy_shard_for_taint(faction_id: StringName, shard_id: StringName) -> vo
 		return
 	fs.owned_shards.erase(shard_id)
 	GameManager.state.active_shards.erase(shard_id)
-	fs.taint_power += shard.power_level * 10
-	# Destroying shards also grants tech (studying what you destroy)
-	fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 5
+	fs.taint_power += shard.power_level * 12
+	fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 8
 
 # ── Moonspear: Lunar Phase ────────────────────────────────
-# Cycles every 4 turns: 0=New Moon (+atk), 1=Waxing (+move), 2=Full Moon (+def), 3=Waning (+heal)
-# Battle bonuses applied in battle_simulator_v3 based on current phase
+# 4-phase cycle with STRONG, distinct effects per phase.
+# Player can extend current phase via Lunar Ritual dilemma (costs resources).
+# Each phase affects: battles, economy, armies, loyalty, research differently.
+# 0=New Moon (+atk, stealth), 1=Waxing (+move, +gold, +research),
+# 2=Full Moon (+def, +loyalty, +pop), 3=Waning (+heal, +shard, +tech)
 
 func _process_moonspear_lunar(fs: FactionState) -> void:
-	# Advance lunar phase every 4 turns
-	if GameManager.state.current_turn % 4 == 0:
+	# Handle ritual extension
+	if fs.lunar_ritual_extended > 0:
+		fs.lunar_ritual_extended -= 1
+	elif GameManager.state.current_turn % 4 == 0:
+		var old_phase := fs.lunar_phase
 		fs.lunar_phase = (fs.lunar_phase + 1) % 4
+		# Trigger ritual dilemma on phase change (player can extend or skip)
+		if fs.faction_data_id == GameManager.state.player_faction_id:
+			EventBus.dilemma_triggered.emit(&"moonspear", "lunar_ritual", {
+				"title": "Lunar Ritual — %s" % get_lunar_phase_name(fs.lunar_phase),
+				"description": "The moon shifts to %s. Your mystics can channel its power." % get_lunar_phase_name(fs.lunar_phase),
+				"choices": [
+					{"label": "Extend Phase", "description": "Hold this phase 3 extra turns. Costs 40 Gold + 5 Shard Essence.", "effect": "lunar_extend"},
+					{"label": "Accept the Cycle", "description": "Let the moon follow its natural path.", "effect": "lunar_accept"},
+					{"label": "Rush Forward", "description": "Skip to next phase immediately (costs 20 Gold).", "effect": "lunar_skip"},
+				]
+			})
 
-	# Waning moon (phase 3): heal all armies slightly
-	if fs.lunar_phase == 3:
-		for army: ArmyState in GameManager.get_faction_armies(&"moonspear"):
-			for unit in army.units:
+	# Cooldown tracking for skip
+	if fs.lunar_skip_cooldown > 0:
+		fs.lunar_skip_cooldown -= 1
+
+	# ── Strong phase effects ──
+	match fs.lunar_phase:
+		0: # New Moon: aggression, stealth, hunting
+			# Battle bonus: +15% attack applied in battle_simulator_v3
+			# Economy: iron bonus from night raids
+			fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 4
+			# Research: night study
+			fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 2
+		1: # Waxing Moon: growth, trade, movement
+			# Movement bonus applied in movement_system
+			# Economy: trade flourishes under growing moon
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 8
+			# Research boost
+			fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 4
+		2: # Full Moon: defense, loyalty, population, diplomacy
+			# Battle bonus: +15% defense applied in battle_simulator_v3
+			# Loyalty boost to ALL cities
+			for city_id in fs.owned_cities:
+				var city: CityState = GameManager.state.cities.get(city_id)
+				if city:
+					for cls in city.class_loyalty:
+						if cls != "captives":
+							city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+					city.population += 2
+			# Diplomacy: divine factions respect the full moon
+			for other_id in GameManager.state.faction_states:
+				if other_id == &"moonspear" or GameManager.is_npc_faction(other_id):
+					continue
+				var other_fs: FactionState = GameManager.state.faction_states[other_id]
+				if not other_fs.is_defeated:
+					var fd: FactionData = DataManager.get_faction(other_id)
+					if fd and fd.realm_affinity == Enums.Realm.DIVINE:
+						GameManager.diplomacy_system.modify_standing(&"moonspear", other_id, 2, "Full moon radiance")
+					elif GameManager.get_relation(&"moonspear", other_id) != Enums.FactionRelation.WAR:
+						GameManager.diplomacy_system.modify_standing(&"moonspear", other_id, 1, "Full moon")
+		3: # Waning Moon: healing, shard power, reflection
+			# Heal ALL armies significantly
+			for army: ArmyState in GameManager.get_faction_armies(&"moonspear"):
+				for unit in army.units:
 					var ud := DataManager.get_unit(unit.unit_data_id)
 					if ud:
-						unit.current_hp = mini(unit.current_hp + 5, ud.max_hp * ud.squad_size)
-
-	# Full moon (phase 2): loyalty bonus to capital
-	if fs.lunar_phase == 2:
-		for city_id in fs.owned_cities:
-			var city: CityState = GameManager.state.cities.get(city_id)
-			if city and city.is_capital:
-				for cls in city.class_loyalty:
-					if cls != "captives":
-						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
+						unit.current_hp = mini(unit.current_hp + 10, ud.max_hp * ud.squad_size)
+			# Shard essence bonus
+			fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 3
+			# Tech bonus from contemplation
+			fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 6
 
 func get_lunar_phase_name(phase: int) -> String:
 	match phase:
@@ -3332,22 +3751,41 @@ func get_lunar_phase_name(phase: int) -> String:
 		_: return "Unknown"
 
 # ── Thunderswarm: Storm Fury ──────────────────────────────
-# Fury rises from battles (+10-20 per battle), decays naturally (-5/turn)
-# 50+: +10% atk to all armies. 80+: +20% atk, -5% def (reckless fury)
-# Applied in battle_simulator; here we just handle decay
+# Fury rises from battles, mountains, storm buildings. Decays naturally.
+# Now a SPENDABLE resource: player can activate storm abilities via dilemmas.
+# Passive bonuses at thresholds + active abilities when fury is high enough.
+# Affects: battles, armies, cities, economy, diplomacy.
 
 func _process_thunderswarm_fury(fs: FactionState, fid: StringName = &"thunderswarm") -> void:
-	# Natural decay: fury cools down over time
+	# Natural decay: -3/turn (reduced from -5 to make fury more persistent)
 	if fs.storm_fury > 0:
-		fs.storm_fury = maxi(fs.storm_fury - 5, 0)
+		fs.storm_fury = maxi(fs.storm_fury - 3, 0)
 
-	# Thunderswarm armies in mountains/highlands gain +2 fury per turn (storms gather)
+	# Mountain armies generate fury (+3 per army on mountains)
 	for army: ArmyState in GameManager.get_faction_armies(fid):
 		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
-			fs.storm_fury = mini(fs.storm_fury + 2, 100)
+			fs.storm_fury = mini(fs.storm_fury + 3, 100)
 
-	# High fury: slight diplomacy penalty (seen as aggressive)
+	# Storm buildings generate fury
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city:
+			if city.buildings.has(&"storm_altar") or city.buildings.has(&"lightning_spire"):
+				fs.storm_fury = mini(fs.storm_fury + 2, 100)
+
+	# ── Passive fury effects (scaled by level) ──
+	if fs.storm_fury >= 30:
+		# Low fury: minor iron bonus from storm-charged forges
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 2
+	if fs.storm_fury >= 50:
+		# Moderate fury: serious iron production + intimidation
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 4
+	if fs.storm_fury >= 70:
+		# High fury: gold from tribute (storms intimidate trade partners)
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 5
+
+	# Diplomacy: high fury intimidates (penalty) but also earns respect from warriors
 	if fs.storm_fury >= 80:
 		for other_id in GameManager.state.faction_states:
 			if other_id == fid or GameManager.is_npc_faction(other_id):
@@ -3355,28 +3793,96 @@ func _process_thunderswarm_fury(fs: FactionState, fid: StringName = &"thunderswa
 			var other_fs: FactionState = GameManager.state.faction_states[other_id]
 			if other_fs.is_defeated:
 				continue
-			GameManager.diplomacy_system.modify_standing(&"thunderswarm", other_id, -1, "Excessive storm fury")
+			var fd: FactionData = DataManager.get_faction(other_id)
+			if fd and fd.ai_personality.get("aggression", 0.0) >= 0.6:
+				GameManager.diplomacy_system.modify_standing(fid, other_id, 1, "Warrior respect")
+			else:
+				GameManager.diplomacy_system.modify_standing(fid, other_id, -1, "Storm terror")
 
-# ── Cinderguard: Forge Heat ──────────────────────────────
-# High heat (70+): cheaper iron costs for buildings/units, faster recruitment
-# Low heat (30-): +defense bonus to all units, iron preservation
-# Heat rises from military buildings, falls from defensive/civilian buildings
+	# Storm wall city defense (from previous ability activation)
+	if fs.storm_wall_turns > 0:
+		fs.storm_wall_turns -= 1
+		if fs.storm_wall_turns <= 0:
+			fs.storm_wall_city = &""
+
+	# Cooldown tracking
+	if fs.storm_ability_cooldown > 0:
+		fs.storm_ability_cooldown -= 1
+
+	# Trigger storm ability dilemma when fury is high enough
+	if fs.storm_fury >= 35 and fs.storm_ability_cooldown <= 0 and GameManager.state.current_turn % 3 == 0:
+		if fs.faction_data_id == GameManager.state.player_faction_id:
+			var choices := [
+				{"label": "Hold the Storm", "description": "Let fury build. Passive bonuses continue.", "effect": "storm_hold"},
+			]
+			if fs.storm_fury >= 40:
+				choices.append({"label": "Storm March", "description": "Spend 15 Fury: +2 movement to all armies this turn.", "effect": "storm_march"})
+			if fs.storm_fury >= 50:
+				choices.append({"label": "Thunder Wall", "description": "Spend 20 Fury: +8 defense to one city for 4 turns.", "effect": "storm_wall"})
+			if fs.storm_fury >= 60:
+				choices.append({"label": "Tempest Harvest", "description": "Spend 30 Fury: Gain +40 iron, +25 gold immediately.", "effect": "storm_harvest"})
+			EventBus.dilemma_triggered.emit(fid, "storm_ability", {
+				"title": "Storm Command (Fury: %d)" % fs.storm_fury,
+				"description": "The storms obey. How will you channel the fury?",
+				"choices": choices,
+			})
+		else:
+			# AI auto-uses abilities
+			if fs.storm_fury >= 60 and fs.resources.get(Enums.ResourceType.IRON, 0) < 30:
+				_apply_storm_ability(fs, fid, "storm_harvest")
+			elif fs.storm_fury >= 50:
+				_apply_storm_ability(fs, fid, "storm_wall")
+
+func _apply_storm_ability(fs: FactionState, fid: StringName, ability: String) -> void:
+	match ability:
+		"storm_march":
+			fs.storm_fury = maxi(0, fs.storm_fury - 15)
+			fs.storm_ability_cooldown = 3
+			for army: ArmyState in GameManager.get_faction_armies(fid):
+				army.movement_remaining += 2.0
+		"storm_wall":
+			fs.storm_fury = maxi(0, fs.storm_fury - 20)
+			fs.storm_ability_cooldown = 3
+			# Apply to capital (or first city)
+			if fs.owned_cities.size() > 0:
+				fs.storm_wall_city = fs.owned_cities[0]
+				fs.storm_wall_turns = 4
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city and city.is_capital:
+						fs.storm_wall_city = city_id
+						break
+		"storm_harvest":
+			fs.storm_fury = maxi(0, fs.storm_fury - 30)
+			fs.storm_ability_cooldown = 3
+			fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 40
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 25
+
+# ── Cinderguard: Border Vigilance / Forge Allocation ──────
+# Player-directed: dilemma every 3 turns to shift vigilance ±10.
+# Buildings still provide passive drift. Creates real tension between:
+# FORTRESS MODE (low): +20% def, +pop, +loyalty, -iron
+# WAR FORGE MODE (high): +15% atk, +iron, +recruit speed, -food, -diplomacy
+# BALANCED: moderate bonuses to both sides.
 
 func _process_cinderguard_forge(fs: FactionState) -> void:
+	# Building-based drift
 	var drift := 0
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
 		if city == null:
 			continue
 		for building_id in city.buildings:
-			# Military/forge buildings raise heat
 			if building_id in [&"ember_forge", &"war_forge", &"siege_works", &"fire_barracks", &"molten_foundry"]:
 				drift += 1
-			# Defensive/civilian buildings lower heat
 			elif building_id in [&"stone_bastion", &"iron_wall", &"market", &"granary", &"temple"]:
 				drift -= 1
 
-	# Natural drift toward 50 (equilibrium)
+	# Apply player-queued shift (from dilemma choice)
+	drift += fs.forge_shift_queued
+	fs.forge_shift_queued = 0
+
+	# Mild equilibrium drift when no input
 	if drift == 0:
 		if fs.border_vigilance > 50:
 			drift = -1
@@ -3385,38 +3891,126 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 
 	fs.border_vigilance = clampi(fs.border_vigilance + drift, 0, 100)
 
-	# High vigilance: bonus iron income from active patrols and salvage
-	if fs.border_vigilance >= 70:
-		var iron_bonus := 2 if fs.border_vigilance >= 85 else 1
-		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
-
-	# Low vigilance: population stability bonus (garrison at ease = safer cities)
+	# ── FORTRESS MODE (0-30): defense, population, loyalty ──
 	if fs.border_vigilance <= 30:
+		# Strong population bonus (garrison at ease, families grow)
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
-			if city and city.is_capital:
-				city.population += 1
+			if city:
+				city.population += 2
+				for cls in city.class_loyalty:
+					if cls != "captives":
+						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+		# Food bonus from peaceful agriculture
+		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + 6
+		# Gold from trade (peaceful borders attract merchants)
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 4
+		# Diplomacy: peaceful posture
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"cinderguard" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if not other_fs.is_defeated:
+				GameManager.diplomacy_system.modify_standing(&"cinderguard", other_id, 1, "Peaceful borders")
+
+	# ── WAR FORGE MODE (75+): attack, iron, recruitment ──
+	elif fs.border_vigilance >= 75:
+		# Massive iron production
+		var iron_bonus := 8 if fs.border_vigilance >= 90 else 5
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
+		# Food consumption increases (war production eats resources)
+		fs.resources[Enums.ResourceType.FOOD] = maxi(0, fs.resources.get(Enums.ResourceType.FOOD, 0) - 3)
+		# Diplomacy: neighbors worried by military buildup
+		if fs.border_vigilance >= 85:
+			for other_id in GameManager.state.faction_states:
+				if other_id == &"cinderguard" or GameManager.is_npc_faction(other_id):
+					continue
+				var other_fs: FactionState = GameManager.state.faction_states[other_id]
+				if not other_fs.is_defeated:
+					GameManager.diplomacy_system.modify_standing(&"cinderguard", other_id, -1, "War mobilization")
+
+	# ── BALANCED (31-74): moderate bonuses ──
+	else:
+		var iron_bonus := 2 if fs.border_vigilance >= 50 else 1
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
+		if fs.border_vigilance <= 45:
+			# Leaning defensive: small pop bonus
+			for city_id in fs.owned_cities:
+				var city: CityState = GameManager.state.cities.get(city_id)
+				if city and city.is_capital:
+					city.population += 1
+
+	# Tech from forge experimentation (always active, scales with iron buildings)
+	var forge_count := 0
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city:
+			for b_id in city.buildings:
+				if b_id in [&"ember_forge", &"war_forge", &"molten_foundry", &"siege_works"]:
+					forge_count += 1
+	if forge_count >= 2:
+		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + mini(forge_count, 4)
+
+	# Trigger forge allocation dilemma every 3 turns
+	if GameManager.state.current_turn % 3 == 0:
+		if fs.faction_data_id == GameManager.state.player_faction_id:
+			EventBus.dilemma_triggered.emit(&"cinderguard", "forge_allocation", {
+				"title": "Forge Allocation (Vigilance: %d)" % fs.border_vigilance,
+				"description": "The forges await your orders. Shift the balance of production.",
+				"choices": [
+					{"label": "Stoke the War Forge", "description": "+10 Vigilance. More iron and attack, less food.", "effect": "forge_war"},
+					{"label": "Maintain Balance", "description": "No shift. Let buildings determine drift.", "effect": "forge_balanced"},
+					{"label": "Cool the Forges", "description": "-10 Vigilance. More food and loyalty, less iron.", "effect": "forge_peace"},
+					{"label": "Emergency Reforge", "description": "+20 Vigilance instantly. Costs 30 Iron.", "effect": "forge_emergency"},
+				]
+			})
+		else:
+			# AI decides based on situation
+			var fd: FactionData = DataManager.get_faction(&"cinderguard")
+			if fd:
+				var at_war := false
+				for other_id in GameManager.state.faction_states:
+					if GameManager.get_relation(&"cinderguard", other_id) == Enums.FactionRelation.WAR:
+						at_war = true
+						break
+				if at_war and fs.border_vigilance < 70:
+					fs.forge_shift_queued = 10
+				elif not at_war and fs.border_vigilance > 60:
+					fs.forge_shift_queued = -10
 
 # ── Forsaken: Espionage Network ──────────────────────────
-# Grows from number of owned regions (+1 per 3 regions per turn)
-# 10+: reveals enemy army positions (fog of war bypass)
-# 20+: enables sabotage actions (random enemy gold loss)
-# 30+: intelligence reports (see enemy city details)
+# Grows from regions + espionage buildings. Now has MUCH stronger effects:
+# 10+: fog bypass. 15+: ambush bonus in battle.
+# 20+: sabotage (steal gold + damage buildings). 25+: steal research.
+# 30+: border city loyalty erosion. 40+: commander wounding chance.
+# Sabotage has cooldown and detection risk (caught = standing penalty).
 
 func _process_forsaken_espionage(fs: FactionState) -> void:
 	# Network grows from territorial control
 	var region_count := fs.owned_regions.size()
 	var growth := region_count / 3
+	# Espionage buildings accelerate growth
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city:
+			if city.buildings.has(&"shadow_network") or city.buildings.has(&"spy_guild"):
+				growth += 1
+			if city.buildings.has(&"void_pit"):
+				growth += 1
 	fs.espionage_network = mini(fs.espionage_network + growth, 50)
 
-	# Natural decay if losing territory
+	# Decay if losing territory
 	if region_count <= 1:
 		fs.espionage_network = maxi(fs.espionage_network - 2, 0)
 
-	# 20+ espionage: occasional sabotage (steal gold from richest enemy)
-	if fs.espionage_network >= 20 and GameManager.state.current_turn % 3 == 0:
-		var richest_enemy: StringName = &""
-		var richest_gold := 0
+	# Cooldown tracking
+	if fs.espionage_sabotage_cooldown > 0:
+		fs.espionage_sabotage_cooldown -= 1
+
+	# ── 20+ Espionage: Major sabotage operations ──
+	if fs.espionage_network >= 20 and fs.espionage_sabotage_cooldown <= 0:
+		var best_target: StringName = &""
+		var best_gold := 0
 		for other_id in GameManager.state.faction_states:
 			if other_id == &"forsaken" or GameManager.is_npc_faction(other_id):
 				continue
@@ -3425,21 +4019,63 @@ func _process_forsaken_espionage(fs: FactionState) -> void:
 				continue
 			if GameManager.get_relation(&"forsaken", other_id) == Enums.FactionRelation.WAR:
 				var their_gold: int = other_fs.resources.get(Enums.ResourceType.GOLD, 0)
-				if their_gold > richest_gold:
-					richest_gold = their_gold
-					richest_enemy = other_id
-		if richest_enemy != &"" and richest_gold > 20:
-			var stolen := mini(richest_gold / 10, 15)
-			var enemy_fs: FactionState = GameManager.state.faction_states[richest_enemy]
-			enemy_fs.resources[Enums.ResourceType.GOLD] = enemy_fs.resources.get(Enums.ResourceType.GOLD, 0) - stolen
+				if their_gold > best_gold:
+					best_gold = their_gold
+					best_target = other_id
+
+		if best_target != &"" and best_gold > 15:
+			var enemy_fs: FactionState = GameManager.state.faction_states[best_target]
+			# Gold theft (scales with espionage level)
+			var stolen := mini(best_gold / 5, 25 + fs.espionage_network / 2)
+			enemy_fs.resources[Enums.ResourceType.GOLD] = maxi(0, enemy_fs.resources.get(Enums.ResourceType.GOLD, 0) - stolen)
 			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + stolen
 
+			# 25+ espionage: also steal research progress
+			if fs.espionage_network >= 25:
+				var their_tech: int = enemy_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
+				var tech_stolen := mini(their_tech / 4, 10)
+				enemy_fs.resources[Enums.ResourceType.TECHNOLOGY] = maxi(0, enemy_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) - tech_stolen)
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_stolen
+
+			# 30+ espionage: erode border city loyalty
+			if fs.espionage_network >= 30:
+				for c_id in enemy_fs.owned_cities:
+					var c: CityState = GameManager.state.cities.get(c_id)
+					if c == null:
+						continue
+					# Check if city is in a border region
+					for fr_id in fs.owned_regions:
+						if GameManager.state.hex_map.regions_adjacent(c.region_id, fr_id):
+							for cls in c.class_loyalty:
+								if cls != "captives":
+									c.class_loyalty[cls] = clampi(c.class_loyalty[cls] - 3, -100, 100)
+							break
+
+			# Detection risk: 20% chance to be caught (penalizes standing with ALL factions)
+			if randf() < 0.20:
+				fs.espionage_caught_by.append(best_target)
+				for other_id in GameManager.state.faction_states:
+					if other_id == &"forsaken" or GameManager.is_npc_faction(other_id):
+						continue
+					var other_fs2: FactionState = GameManager.state.faction_states[other_id]
+					if not other_fs2.is_defeated:
+						GameManager.diplomacy_system.modify_standing(&"forsaken", other_id, -3, "Espionage detected")
+
+			fs.espionage_sabotage_cooldown = 2 # Every 2 turns
+
+	# Passive tech income from intelligence gathering
+	if fs.espionage_network >= 15:
+		var tech_gain := mini(fs.espionage_network / 10, 3)
+		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_gain
+
 # ── Ivoryscar: Relic Power ───────────────────────────────
-# Grows from controlling shard_wastes tiles and owned shards
-# Grants commander bonuses and tech acceleration
+# Grows from shard_wastes control + owned shards. MUCH stronger scaling:
+# 10+: +2 tech, +5% defense. 20+: +4 tech, +10% def, commander items stronger.
+# 30+: +7 tech, +1 essence, +15% def. 40+: +10 tech, +2 essence, relic expeditions.
+# Relic Expedition dilemma every 5 turns gives player active choices.
 
 func _process_ivoryscar_relics(fs: FactionState) -> void:
-	# Relic power from shard wastes control + owned shards
+	# Relic power from shard wastes + shards
 	var wastes_count := 0
 	for region_id in fs.owned_regions:
 		var region_tiles := GameManager.state.hex_map.get_region_tiles(region_id)
@@ -3447,30 +4083,73 @@ func _process_ivoryscar_relics(fs: FactionState) -> void:
 			var tile := GameManager.state.hex_map.get_tile(coord)
 			if tile and tile.terrain == Enums.TerrainType.SHARD_WASTES:
 				wastes_count += 1
-
 	var shard_count := fs.owned_shards.size()
 	var target_power := wastes_count / 3 + shard_count * 5
 
-	# Drift toward target
+	# Drift toward target (faster growth, slower decay)
 	if fs.relic_power < target_power:
-		fs.relic_power = mini(fs.relic_power + 2, 50)
+		fs.relic_power = mini(fs.relic_power + 3, 50)
 	elif fs.relic_power > target_power:
 		fs.relic_power = maxi(fs.relic_power - 1, 0)
 
-	# High relic power: tech bonus (ancient knowledge from relics)
-	if fs.relic_power >= 15:
-		var tech_bonus := 2 if fs.relic_power >= 30 else 1
+	# ── Scaled tech and resource bonuses ──
+	if fs.relic_power >= 10:
+		var tech_bonus := 2
+		if fs.relic_power >= 20:
+			tech_bonus = 4
+		if fs.relic_power >= 30:
+			tech_bonus = 7
+		if fs.relic_power >= 40:
+			tech_bonus = 10
 		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_bonus
 
-	# Very high relic power: shard essence passive generation
-	if fs.relic_power >= 30:
-		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 1
+	# Shard essence generation
+	if fs.relic_power >= 25:
+		var essence := 1 if fs.relic_power < 40 else 2
+		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + essence
+
+	# Gold income from relic trade
+	if fs.relic_power >= 20:
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + mini(fs.relic_power / 5, 6)
+
+	# Diplomacy: scholarly factions respect relic knowledge
+	if fs.relic_power >= 20:
+		for other_id in GameManager.state.faction_states:
+			if other_id == &"ivoryscar" or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			var fd: FactionData = DataManager.get_faction(other_id)
+			if fd and &"scholarly" in fd.gift_likes:
+				GameManager.diplomacy_system.modify_standing(&"ivoryscar", other_id, 1, "Relic knowledge")
+
+	# Expedition cooldown
+	if fs.relic_expedition_cooldown > 0:
+		fs.relic_expedition_cooldown -= 1
+
+	# Relic Expedition dilemma every 5 turns (if power is high enough)
+	if fs.relic_power >= 15 and fs.relic_expedition_cooldown <= 0 and GameManager.state.current_turn % 5 == 0:
+		if fs.faction_data_id == GameManager.state.player_faction_id:
+			EventBus.dilemma_triggered.emit(&"ivoryscar", "relic_expedition", {
+				"title": "Relic Expedition (Power: %d)" % fs.relic_power,
+				"description": "Your scholars have located a promising dig site. Fund an expedition?",
+				"choices": [
+					{"label": "Fund Expedition", "description": "Spend 30 Gold + 5 Tech. 65%: find relic (+8 power, +item). 20%: knowledge (+15 tech). 15%: danger (-5 power).", "effect": "relic_fund"},
+					{"label": "Study Existing Relics", "description": "No cost. +5 Tech, +2 Relic Power.", "effect": "relic_study"},
+					{"label": "Relic Defense", "description": "Fortify dig sites. +3 defense to all cities for 3 turns.", "effect": "relic_fortify"},
+				]
+			})
+		else:
+			# AI auto-studies
+			fs.relic_power = mini(fs.relic_power + 2, 50)
+			fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 5
+			fs.relic_expedition_cooldown = 5
 
 # ── Sunblessed: Solar Faith ──────────────────────────────
-# 0-100, rises on battle victories (+10), drops on defeats (-15)
-# High faith (70+): +morale, healing in friendly territory
-# Low faith (30-): recruitment penalties, loyalty loss
-# Naturally drifts toward 50
+# 0-100. High faith = STRONG army healing, attack, defense, loyalty.
+# Low faith = devastating penalties. Drifts toward 50 naturally.
+# Much more impactful breakpoints than before.
 
 func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed") -> void:
 	# Natural drift toward 50
@@ -3479,38 +4158,88 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 	elif fs.solar_faith < 50:
 		fs.solar_faith += 1
 
-	# High faith: heal armies in owned territory
-	if fs.solar_faith >= 70:
-		var heal_amount := 3 if fs.solar_faith >= 85 else 2
+	# Pilgrimage buildings slow faith decay
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city and city.buildings.has(&"pilgrims_rest"):
+			if fs.solar_faith > 50:
+				fs.solar_faith += 1 # Counteract decay
+			break
+
+	# ── High Faith (85+): Radiant Blessing ──
+	if fs.solar_faith >= 85:
+		# Strong army healing in owned territory
 		for army: ArmyState in GameManager.get_faction_armies(fid):
 			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 			if tile and tile.region_id in fs.owned_regions:
-						for unit in army.units:
-							var ud := DataManager.get_unit(unit.unit_data_id)
-							if ud:
-								unit.current_hp = mini(unit.current_hp + heal_amount, ud.max_hp * ud.squad_size)
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						unit.current_hp = mini(unit.current_hp + 5, ud.max_hp * ud.squad_size)
+		# Loyalty boost to ALL cities
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city:
+				for cls in city.class_loyalty:
+					if cls != "captives":
+						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+		# Gold income from faithful donations
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 6
 
-	# High faith: loyalty bonus
-	if fs.solar_faith >= 70:
+	# ── Moderate Faith (70-84): Warm Glow ──
+	elif fs.solar_faith >= 70:
+		for army: ArmyState in GameManager.get_faction_armies(fid):
+			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+			if tile and tile.region_id in fs.owned_regions:
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						unit.current_hp = mini(unit.current_hp + 3, ud.max_hp * ud.squad_size)
+		# Capital loyalty only
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
 			if city and city.is_capital:
 				for cls in city.class_loyalty:
 					if cls != "captives":
 						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 3
 
-	# Low faith: loyalty penalty
-	if fs.solar_faith <= 30:
+	# ── Low Faith (25-39): Doubt Spreads ──
+	elif fs.solar_faith <= 39 and fs.solar_faith > 24:
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
-			if city and city.is_capital:
+			if city:
 				for cls in city.class_loyalty:
 					if cls != "captives":
 						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 1, -100, 100)
 
+	# ── Crisis Faith (<25): Dark Night of the Soul ──
+	elif fs.solar_faith <= 24:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city:
+				for cls in city.class_loyalty:
+					if cls != "captives":
+						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 3, -100, 100)
+		# Gold loss from abandoned temples
+		fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - 5)
+		# Diplomacy penalty with divine factions
+		for other_id in GameManager.state.faction_states:
+			if other_id == fid or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if not other_fs.is_defeated:
+				var fd: FactionData = DataManager.get_faction(other_id)
+				if fd and fd.realm_affinity == Enums.Realm.DIVINE:
+					GameManager.diplomacy_system.modify_standing(fid, other_id, -2, "Faith crisis")
+
+	# Food bonus from faithful agriculture (always, scales with faith)
+	if fs.solar_faith >= 40:
+		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + mini(fs.solar_faith / 15, 5)
+
 # ── Sunblessed: Wisdom & Teaching ─────────────────────────
-# Wisdom grows when Sunblessed armies are near allied/friendly faction cities.
-# Effects: +tech income, +diplomacy standing improvement, educator aura for allies.
+# Wisdom grows near allied cities. Much stronger: tech, diplomacy, educator aura.
+# High wisdom unlocks: research cost reduction, ally tech sharing, cultural victory progress.
 
 func _process_sunblessed_wisdom(fs: FactionState, fid: StringName = &"sunblessed") -> void:
 	var sunblessed_fid := fid
@@ -3518,9 +4247,8 @@ func _process_sunblessed_wisdom(fs: FactionState, fid: StringName = &"sunblessed
 	if hex_map == null:
 		return
 
-	# Gain wisdom from being near allied cities (wandering educator)
 	var wisdom_gain := 0
-	var educated_cities: Dictionary = {}  # city_id -> true (prevent double-counting)
+	var educated_cities: Dictionary = {}
 	var sunblessed_armies := GameManager.get_faction_armies(sunblessed_fid)
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
@@ -3528,7 +4256,6 @@ func _process_sunblessed_wisdom(fs: FactionState, fid: StringName = &"sunblessed
 			continue
 		if educated_cities.has(city_id):
 			continue
-		# Check if any Sunblessed army is within 2 hexes of this city
 		var near_army := false
 		for army: ArmyState in sunblessed_armies:
 			if HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= 2:
@@ -3536,40 +4263,44 @@ func _process_sunblessed_wisdom(fs: FactionState, fid: StringName = &"sunblessed
 				break
 		if not near_army:
 			continue
-		# Check if this faction is friendly or allied
 		var standing := GameManager.diplomacy_system.get_standing(sunblessed_fid, city.faction_id)
-		if standing >= 20:  # At least somewhat positive
+		if standing >= 20:
 			educated_cities[city_id] = true
 			wisdom_gain += 2
-			# Educator aura: allied city gets +3 tech income and +1 loyalty
+			# Educator aura: allied city gets +4 tech and +2 loyalty (stronger)
 			var ally_fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 			if ally_fs:
-				ally_fs.resources[Enums.ResourceType.TECHNOLOGY] = ally_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 3
+				ally_fs.resources[Enums.ResourceType.TECHNOLOGY] = ally_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 4
 			for cls in city.class_loyalty:
 				if cls != "captives":
-					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 1, -100, 100)
+					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+			# Wisdom near allies also boosts diplomacy with that faction
+			GameManager.diplomacy_system.modify_standing(sunblessed_fid, city.faction_id, 1, "Educator presence")
 
-	# Also gain +1 wisdom per friendly faction (diplomacy participation)
 	for other_fid in GameManager.state.faction_states:
 		if other_fid == sunblessed_fid:
 			continue
 		var standing := GameManager.diplomacy_system.get_standing(sunblessed_fid, other_fid)
-		if standing >= 40:  # Friendly level
+		if standing >= 40:
 			wisdom_gain += 1
 
 	fs.wisdom = mini(fs.wisdom + wisdom_gain, 200)
 
-	# Wisdom bonus: extra tech income for Sunblessed
+	# Wisdom tech income (stronger scaling)
 	if fs.wisdom >= 10:
-		var tech_bonus := mini(fs.wisdom / 10, 8)  # +1 per 10 wisdom, max +8
+		var tech_bonus := mini(fs.wisdom / 8, 12) # +1 per 8 wisdom, max +12
 		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_bonus
 
-	# Wisdom bonus: improve diplomacy standing with all non-hostile factions
-	if fs.wisdom >= 30:
-		var diplo_bonus := 1 if fs.wisdom < 80 else 2
+	# Wisdom diplomacy (stronger scaling)
+	if fs.wisdom >= 25:
+		var diplo_bonus := 1
+		if fs.wisdom >= 60:
+			diplo_bonus = 3
+		elif fs.wisdom >= 40:
+			diplo_bonus = 2
 		for diplo_fid in GameManager.state.faction_states:
 			if diplo_fid == sunblessed_fid:
 				continue
 			var standing := GameManager.diplomacy_system.get_standing(sunblessed_fid, diplo_fid)
-			if standing > -30:  # Not deeply hostile
+			if standing > -30:
 				GameManager.diplomacy_system.modify_standing(sunblessed_fid, diplo_fid, diplo_bonus, "Sunblessed wisdom")

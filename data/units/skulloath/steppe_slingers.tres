@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"steppe_slingers"
+display_name = "Steppe Slingers"
+description = "Nomadic slingers who hurl lead bullets with bone-breaking force. Cheap to field and deadly accurate, they soften targets before the cavalry charge."
+faction_id = &"skulloath"
+max_hp = 3500
+attack = 45
+melee_defense = 12
+projectile_defense = 18
+magic_defense = 8
+speed = 6
+attack_range = 2
+squad_size = 60
+hp_per_soldier = 58
+movement_points = 3.5
+upkeep_cost = {0: 3, 3: 2}
+recruit_cost = {0: 75, 5: 21}
+recruit_time = 2
+population_cost = 12
+terrain_bonuses = {0: 0.1}
+realm_bonuses = {}
+tags = Array[String](["infantry", "ranged"])
+base_morale = 35
+captive_chance = 0.35

@@ -76,6 +76,7 @@ var _diplomacy_panel: PanelContainer
 var _policies_panel: PanelContainer
 var _forsaken_offer_dialog: PanelContainer
 var _senate_dilemma_dialog: PanelContainer
+var _faction_dilemma_dialog: PanelContainer
 var _senate_viz: Control
 var _pending_forsaken_offer: Dictionary = {}
 var _pending_building_city_id: StringName = &""
@@ -115,6 +116,10 @@ func _ready() -> void:
 	EventBus.game_over.connect(_on_game_over)
 	EventBus.siege_choice_needed.connect(_on_siege_choice_needed)
 	EventBus.ai_diplomacy_offer.connect(_show_ai_diplomacy_offer)
+	EventBus.diplomacy_action.connect(_on_diplomacy_action)
+	EventBus.treaty_created.connect(_on_treaty_created)
+	EventBus.policy_enacted.connect(_on_policy_enacted)
+	EventBus.dilemma_triggered.connect(_on_dilemma_triggered)
 
 	army_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 	region_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
@@ -1584,7 +1589,12 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			text = "Corruption: %d (%s)%s" % [fs.corruption, tier, path_note]
 			color = Color(0.6, 0.8, 0.5) if fs.corruption <= 30 else (Color(0.9, 0.3, 0.3) if fs.corruption >= 61 else Color(0.75, 0.7, 0.6))
 		&"tainted_jade":
-			text = "Taint: %d" % fs.taint_power
+			var focus_label := ""
+			match fs.taint_focus:
+				1: focus_label = " | Verdant Growth"
+				2: focus_label = " | Venomous War"
+				3: focus_label = " | Creeping Doom"
+			text = "Taint: %d%s" % [fs.taint_power, focus_label]
 			color = Color(0.4, 0.85, 0.5) if fs.taint_power >= 50 else Color(0.6, 0.75, 0.55)
 		&"gladehost":
 			var season_name := TurnManager.get_season_name(TurnManager.get_current_season())
@@ -1622,69 +1632,198 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			var wisdom_tier := "Sage" if fs.wisdom >= 80 else ("Learned" if fs.wisdom >= 30 else "Novice")
 			text = "Faith: %d (%s) | Wisdom: %d (%s)" % [fs.solar_faith, mood, fs.wisdom, wisdom_tier]
 			color = Color(0.95, 0.85, 0.3) if fs.solar_faith >= 70 else (Color(0.6, 0.4, 0.4) if fs.solar_faith <= 30 else Color(0.8, 0.75, 0.5))
-	# Tooltip descriptions for faction mechanics
+	# Tooltip: shows only CURRENT active bonuses based on faction state
 	var tooltip := ""
 	var mechanic_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(player_id, player_id)
 	match mechanic_fid:
 		&"skulloath":
-			tooltip = "Corruption (0-100) tracks your path between Tradition and Void.\n"
-			tooltip += "Tradition buildings: -1 corruption/turn. Void buildings: +2/turn.\n\n"
-			tooltip += "Low (0-30): +15% food, +loyalty, +diplomacy.\n"
-			tooltip += "High (61-80): +15% attack in battle, -loyalty.\n"
-			tooltip += "Deep (81+): +25% attack, -3 loyalty, -2 diplomacy.\n\n"
-			tooltip += "Ancestor Sanctum (T3): requires corruption <= 40.\n"
-			tooltip += "Demon Gate (T3): requires corruption >= 60."
+			var effects: PackedStringArray = []
+			if fs.corruption <= 20:
+				effects.append("+3 loyalty, +2 pop/city, +8 food/turn")
+			elif fs.corruption <= 40:
+				effects.append("+2 loyalty, +1 capital pop, +4 food/turn")
+			elif fs.corruption <= 60:
+				effects.append("No bonuses at current corruption level")
+			elif fs.corruption <= 80:
+				effects.append("-1 loyalty/city")
+				effects.append("Captive processing: 4 captives → 6 iron")
+			else:
+				effects.append("-3 loyalty/city")
+				effects.append("Captive processing: 6 captives → 10 food + essence")
+			if fs.corruption <= 40:
+				effects.append("Ancestor Sanctum (T3) unlocked")
+			elif fs.corruption >= 60:
+				effects.append("Demon Gate (T3) unlocked")
+			else:
+				effects.append("T3 buildings locked (need ≤40 or ≥60)")
+			tooltip = "\n".join(effects)
 		&"tainted_jade":
-			tooltip = "Taint Power grows from territory control and jungle spread.\n\n"
-			tooltip += "20+: +10% defense in battle, +5% iron income.\n"
-			tooltip += "50+: +15% defense in battle.\n\n"
-			tooltip += "Jungle terrain spreads near your cities each turn.\n"
-			tooltip += "Units regenerate HP when fighting in jungle."
+			var effects: PackedStringArray = []
+			if fs.taint_power >= 25:
+				effects.append("+%d tech/turn" % mini(fs.taint_power / 15, 4))
+			if fs.taint_power >= 50:
+				effects.append("Enemy shard decay accelerated")
+			match fs.taint_focus:
+				0:
+					effects.append("No taint focus chosen yet")
+				1:
+					if fs.taint_power >= 20:
+						effects.append("+6 food/turn (Verdant Growth)")
+					else:
+						effects.append("Verdant Growth: need Taint 20 for +6 food")
+					if fs.taint_power >= 30:
+						effects.append("Armies heal +4 HP in jungle")
+					if fs.taint_power >= 40:
+						effects.append("+2 pop/city per turn")
+				2:
+					var iron_total := 0
+					if fs.taint_power >= 20:
+						iron_total += 4
+					if fs.taint_power >= 40:
+						iron_total += 3
+					if iron_total > 0:
+						effects.append("+%d iron/turn (Venomous War)" % iron_total)
+					else:
+						effects.append("Venomous War: need Taint 20 for +4 iron")
+				3:
+					if fs.taint_power >= 30:
+						effects.append("Extra enemy shard decay (Creeping Doom)")
+					else:
+						effects.append("Creeping Doom: need Taint 30 for effects")
+					if fs.taint_power >= 50:
+						effects.append("Border enemy loyalty erosion")
+			if effects.is_empty():
+				effects.append("No active bonuses yet")
+			tooltip = "\n".join(effects)
 		&"gladehost":
-			tooltip = "Harmony (0-100) reflects your bond with nature.\n"
-			tooltip += "Rises with fewer buildings and more forest tiles. Falls from overbuilding.\n\n"
-			tooltip += "70+: +10 morale in battle, +loyalty, +diplomacy.\n"
-			tooltip += "35-: -loyalty in capital.\n\n"
-			tooltip += "Seasonal income scales with harmony:\n"
-			tooltip += "  Spring: +food. Summer: +iron.\n"
-			tooltip += "  Autumn: +gold/wood. Winter: -food.\n"
-			tooltip += "Seasonal Shrine amplifies seasonal bonuses and restores harmony."
+			var effects: PackedStringArray = []
+			if fs.harmony >= 70:
+				effects.append("+2 loyalty/city")
+			elif fs.harmony >= 50:
+				effects.append("+1 loyalty/city")
+			elif fs.harmony <= 30:
+				effects.append("-2 loyalty/city")
+			var season := TurnManager.get_current_season()
+			var mult := fs.harmony / 100.0
+			match season:
+				0:
+					effects.append("Spring: +%d food, +%d pop/city, heal +%d HP" % [int(10 * mult), 3 if fs.harmony >= 60 else 1, int(3 * mult)])
+				1:
+					effects.append("Summer: +%d iron, +%d gold" % [int(6 * mult), int(4 * mult)])
+				2:
+					var autumn := "Autumn: +%d gold, +%d wood" % [int(10 * mult), int(6 * mult)]
+					if fs.harmony >= 50:
+						autumn += ", +2 diplomacy"
+					effects.append(autumn)
+				3:
+					var food_loss := int(6.0 * (1.0 - 0.5 * mult))
+					var winter := "Winter: -%d food" % food_loss
+					if fs.harmony < 40:
+						winter += ", -2 pop/city"
+					effects.append(winter)
+			tooltip = "\n".join(effects)
 		&"shardhorde":
-			tooltip = "Active Shard Resonances from captured realm shards.\n\n"
-			tooltip += "Each active realm provides combat and income bonuses:\n"
-			tooltip += "  Divine: +gold, Elemental: +iron, Nature: +food.\n"
-			tooltip += "  Mortal: +gold/food, Void: +tech and +10% attack."
+			var effects: PackedStringArray = []
+			if fs.shard_resonance.is_empty():
+				effects.append("No active resonances")
+			else:
+				var realm_names := {Enums.Realm.DIVINE: "Divine", Enums.Realm.VOID: "Void", Enums.Realm.ELEMENTAL: "Elemental", Enums.Realm.NATURE: "Nature", Enums.Realm.MORTAL: "Mortal"}
+				var realm_bonuses := {Enums.Realm.DIVINE: "+20 gold, army healing", Enums.Realm.ELEMENTAL: "+25 iron", Enums.Realm.NATURE: "+25 food, +2 pop/city", Enums.Realm.MORTAL: "+12 gold, +12 food", Enums.Realm.VOID: "+20 tech, +3 essence"}
+				for realm_key in fs.shard_resonance:
+					var turns_left: int = fs.shard_resonance[realm_key]
+					var rname: String = realm_names.get(realm_key, "Unknown")
+					var rbonus: String = realm_bonuses.get(realm_key, "")
+					effects.append("%s: %s (%d turns)" % [rname, rbonus, turns_left])
+				if fs.shard_resonance.size() >= 3:
+					effects.append("-1 diplomacy (resonance intimidation)")
+			tooltip = "\n".join(effects)
 		&"moonspear":
-			tooltip = "The moon cycles through 4 phases, changing each turn.\n\n"
-			tooltip += "New Moon: +10% attack. Waxing: +1 movement.\n"
-			tooltip += "Full Moon: +10% defense. Waning: army healing.\n\n"
-			tooltip += "Ethereal units: 15% dodge chance, +15 morale, -15% HP."
+			match fs.lunar_phase:
+				0: tooltip = "New Moon: +15% attack in battle\n+4 iron, +2 tech/turn"
+				1: tooltip = "Waxing Moon: +1 movement in battle\n+8 gold, +4 tech/turn"
+				2: tooltip = "Full Moon: +15% defense in battle\n+2 loyalty/city, +2 pop/city"
+				3: tooltip = "Waning Moon: Armies heal +10 HP\n+3 essence, +6 tech/turn"
 		&"thunderswarm":
-			tooltip = "Storm Fury (0-100) builds from victories and mountain positioning.\n\n"
-			tooltip += "50+: +10% attack in battle.\n"
-			tooltip += "80+: +20% attack, -5% defense (reckless fury).\n"
-			tooltip += "Decays -5/turn naturally.\n\n"
-			tooltip += "Killing Thunderswarm beasts/monsters angers them (-8 standing)."
+			var effects: PackedStringArray = []
+			if fs.storm_fury >= 80:
+				effects.append("+20% attack, -5% defense in battle")
+			elif fs.storm_fury >= 50:
+				effects.append("+10% attack in battle")
+			if fs.storm_fury >= 70:
+				effects.append("+5 gold/turn")
+			if fs.storm_fury >= 50:
+				effects.append("+6 iron/turn")
+			elif fs.storm_fury >= 30:
+				effects.append("+2 iron/turn")
+			effects.append("Fury decays -3/turn")
+			if effects.size() <= 1:
+				effects.insert(0, "No active fury bonuses")
+			tooltip = "\n".join(effects)
 		&"cinderguard":
-			tooltip = "Border Vigilance (0-100) from patrols and events.\n\n"
-			tooltip += "At Ease (0-30): +15% defense in battle.\n"
-			tooltip += "High Alert (85+): +5% attack in battle.\n\n"
-			tooltip += "All units: +3 attack vs monsters and beasts.\n"
-			tooltip += "+2 defense in desert and shard wastes."
+			var effects: PackedStringArray = []
+			if fs.border_vigilance <= 30:
+				effects.append("Fortress Mode: +2 pop/city, +2 loyalty")
+				effects.append("+6 food, +4 gold, +1 diplomacy/turn")
+			elif fs.border_vigilance >= 75:
+				var iron := 8 if fs.border_vigilance >= 90 else 5
+				effects.append("War Forge: +%d iron/turn, -3 food" % iron)
+				if fs.border_vigilance >= 85:
+					effects.append("-1 diplomacy/turn")
+			else:
+				var iron := 2 if fs.border_vigilance >= 50 else 1
+				effects.append("Balanced: +%d iron/turn" % iron)
+				if fs.border_vigilance <= 45:
+					effects.append("+1 capital pop")
+			tooltip = "\n".join(effects)
 		&"forsaken":
-			tooltip = "Espionage Network strength.\n\n"
-			tooltip += "Higher values improve spy effectiveness and intelligence gathering."
+			var effects: PackedStringArray = []
+			if fs.espionage_network >= 15:
+				effects.append("+%d tech/turn" % mini(fs.espionage_network / 10, 3))
+			if fs.espionage_network >= 20:
+				effects.append("Gold theft from enemies at war")
+			if fs.espionage_network >= 25:
+				effects.append("Tech theft from enemies")
+			if fs.espionage_network >= 30:
+				effects.append("Loyalty erosion on border enemies")
+			if effects.is_empty():
+				effects.append("Network too weak for active operations")
+			tooltip = "\n".join(effects)
 		&"ivoryscar":
-			tooltip = "Relic Power grows from controlling Shard Wastes territory.\n\n"
-			tooltip += "15+: +5% defense in battle.\n"
-			tooltip += "30+: +10% defense in battle."
+			var effects: PackedStringArray = []
+			if fs.relic_power >= 40:
+				effects.append("+10 tech/turn, +2 essence")
+			elif fs.relic_power >= 30:
+				effects.append("+7 tech/turn, +1 essence")
+			elif fs.relic_power >= 20:
+				effects.append("+4 tech/turn, +%d gold" % mini(fs.relic_power / 5, 6))
+				if fs.relic_power >= 25:
+					effects.append("+1 essence")
+			elif fs.relic_power >= 10:
+				effects.append("+2 tech/turn")
+			else:
+				effects.append("No active relic bonuses")
+			if fs.relic_power >= 20:
+				effects.append("+1 diplomacy with scholars")
+			tooltip = "\n".join(effects)
 		&"sunblessed":
-			tooltip = "Solar Faith (0-100): rises on victories (+10), falls on defeats (-15).\n"
-			tooltip += "70+: heal armies in owned territory, +loyalty.\n"
-			tooltip += "85+: +10% attack, +5% defense in battle.\n\n"
-			tooltip += "Wisdom: grows from teaching allied cities (within 2 hexes).\n"
-			tooltip += "Nearby allied cities gain +3 tech and +1 loyalty.\n"
-			tooltip += "10+ wisdom: bonus tech income. 30+: improved diplomacy."
+			var effects: PackedStringArray = []
+			if fs.solar_faith >= 85:
+				effects.append("+2 loyalty/city, +6 gold, heal +5 HP in territory")
+			elif fs.solar_faith >= 70:
+				effects.append("+1 capital loyalty, +3 gold, heal +3 HP in territory")
+			elif fs.solar_faith <= 24:
+				effects.append("-3 loyalty/city, -5 gold, -2 diplomacy (faith crisis)")
+			elif fs.solar_faith <= 39:
+				effects.append("-1 loyalty/city")
+			if fs.solar_faith >= 40:
+				effects.append("+%d food/turn" % mini(fs.solar_faith / 15, 5))
+			if fs.wisdom >= 10:
+				effects.append("+%d tech/turn (wisdom)" % mini(fs.wisdom / 8, 12))
+			if fs.wisdom >= 25:
+				effects.append("Diplomacy bonus from wisdom")
+			if effects.is_empty():
+				effects.append("No active bonuses")
+			tooltip = "\n".join(effects)
 	_faction_mechanic_label.tooltip_text = tooltip
 	_faction_mechanic_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	_faction_mechanic_label.text = text
@@ -2186,7 +2325,7 @@ func _build_diplo_faction_list(vbox: VBoxContainer, player_id: StringName, major
 			none_lbl.text = "  No factions encountered yet. Explore the map!"
 		else:
 			none_lbl.text = "  No factions in this category."
-		none_lbl.add_theme_font_size_override("font_size", 12)
+		none_lbl.add_theme_font_size_override("font_size", 14)
 		none_lbl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.45))
 		vbox.add_child(none_lbl)
 
@@ -2206,6 +2345,8 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	row_style.content_margin_right = 8.0
 	row_style.content_margin_bottom = 6.0
 	row_panel.add_theme_stylebox_override("panel", row_style)
+	row_panel.custom_minimum_size = Vector2(520, 0)
+	row_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 
 	var info_row := HBoxContainer.new()
 	info_row.add_theme_constant_override("separation", 8)
@@ -2219,8 +2360,9 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	# Faction name
 	var name_label := Label.new()
 	name_label.text = fd.display_name
+	name_label.custom_minimum_size = Vector2(140, 0)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.add_theme_font_size_override("font_size", 13)
+	name_label.add_theme_font_size_override("font_size", 15)
 	info_row.add_child(name_label)
 
 	# Treaty icons — small colored symbols showing active agreements
@@ -2231,23 +2373,23 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	# Relation badge
 	var rel_label := Label.new()
 	rel_label.text = RELATION_NAMES[relation]
-	rel_label.add_theme_font_size_override("font_size", 12)
+	rel_label.add_theme_font_size_override("font_size", 14)
 	rel_label.add_theme_color_override("font_color", RELATION_COLORS.get(relation, Color.WHITE))
-	rel_label.custom_minimum_size = Vector2(55, 0)
+	rel_label.custom_minimum_size = Vector2(60, 0)
 	info_row.add_child(rel_label)
 
 	# Standing
 	var standing_label := Label.new()
 	var s_prefix: String = "+" if standing > 0 else ""
 	standing_label.text = "[%s%d]" % [s_prefix, standing]
-	standing_label.add_theme_font_size_override("font_size", 11)
+	standing_label.add_theme_font_size_override("font_size", 13)
 	if standing > 0:
 		standing_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
 	elif standing < 0:
 		standing_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
 	else:
 		standing_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
-	standing_label.custom_minimum_size = Vector2(40, 0)
+	standing_label.custom_minimum_size = Vector2(45, 0)
 	standing_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	# Build standing breakdown tooltip
 	var log: Array = GameManager.diplomacy_system.get_standing_log(player_id, faction_id)
@@ -2382,7 +2524,7 @@ func _build_diplo_independent_list(vbox: VBoxContainer, player_id: StringName) -
 	if culture_cities.is_empty():
 		var none_lbl := Label.new()
 		none_lbl.text = "  No independent cities remain."
-		none_lbl.add_theme_font_size_override("font_size", 12)
+		none_lbl.add_theme_font_size_override("font_size", 14)
 		none_lbl.add_theme_color_override("font_color", Color(0.5, 0.48, 0.45))
 		vbox.add_child(none_lbl)
 		return
@@ -3336,15 +3478,29 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	vbox.add_child(top_row)
 	_add_separator(vbox)
 
-	# Offer selection section
-	var offer_title := Label.new()
-	offer_title.text = "SELECT OFFERS:"
-	offer_title.add_theme_font_size_override("font_size", 13)
-	offer_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-	vbox.add_child(offer_title)
+	# Two-column layout: Offers (left) | Demands (right)
+	var columns_hbox := HBoxContainer.new()
+	columns_hbox.add_theme_constant_override("separation", 20)
 
-	var offer_vbox := VBoxContainer.new()
-	offer_vbox.add_theme_constant_override("separation", 4)
+	var offer_col := VBoxContainer.new()
+	offer_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	offer_col.add_theme_constant_override("separation", 4)
+	var offer_header := Label.new()
+	offer_header.text = "OFFERS"
+	offer_header.add_theme_font_size_override("font_size", 14)
+	offer_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	offer_col.add_child(offer_header)
+	columns_hbox.add_child(offer_col)
+
+	var demand_col := VBoxContainer.new()
+	demand_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	demand_col.add_theme_constant_override("separation", 4)
+	var demand_header_lbl := Label.new()
+	demand_header_lbl.text = "DEMANDS"
+	demand_header_lbl.add_theme_font_size_override("font_size", 14)
+	demand_header_lbl.add_theme_color_override("font_color", Color(0.85, 0.5, 0.3))
+	demand_col.add_child(demand_header_lbl)
+	columns_hbox.add_child(demand_col)
 
 	# Define available offers based on relation
 	var offers: Array[Dictionary] = []
@@ -3397,26 +3553,22 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 					break
 		if not has_fp:
 			offers.append({id = "free_passage", label = "Free Passage"})
-	# Tributary options based on strength ratio
+	# Tributary / gift / shard / city offers
 	var diplo_ratio := GameManager.diplomacy_system.get_strength_ratio(player_id, faction_id)
-	if diplo_ratio > 1.3:
-		var their_tribute := GameManager.diplomacy_system.get_tributary_gold_amount(faction_id)
-		offers.append({id = "demand_tributary", label = "Demand Tributary (they pay ~%d gold/turn)" % their_tribute})
 	if diplo_ratio < 0.7 or relation == Enums.FactionRelation.WAR:
 		var our_tribute := GameManager.diplomacy_system.get_tributary_gold_amount(player_id)
 		offers.append({id = "offer_tributary", label = "Offer Tributary (you pay ~%d gold/turn)" % our_tribute})
 	offers.append({id = "gift", label = "Gift Resources"})
-	if diplo_ratio > 1.0:
-		offers.append({id = "demand_resources", label = "Demand Resources"})
 	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
 	if player_fs and player_fs.owned_shards.size() > 0:
 		offers.append({id = "shard", label = "Offer Shard"})
-	# Offer City: only if player owns 2+ cities
 	if player_fs and player_fs.owned_cities.size() >= 2:
 		offers.append({id = "offer_city", label = "Offer City"})
-	# Demand City: only if militarily dominant
-	if diplo_ratio > 1.5:
-		offers.append({id = "demand_city", label = "Demand City"})
+	# Demands — always visible, disabled when strength ratio is insufficient
+	var their_tribute := GameManager.diplomacy_system.get_tributary_gold_amount(faction_id)
+	offers.append({id = "demand_tributary", label = "Demand Tributary (~%d gold/turn)" % their_tribute, needs_ratio = 1.3})
+	offers.append({id = "demand_resources", label = "Demand Resources", needs_ratio = 1.0})
+	offers.append({id = "demand_city", label = "Demand City", needs_ratio = 1.5})
 
 	var trade_res_entries := [
 		{name = "Gold", id = Enums.ResourceType.GOLD},
@@ -3428,9 +3580,11 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	]
 
 	for offer in offers:
+		var is_demand: bool = str(offer.id).begins_with("demand_")
+		var target_col: VBoxContainer = demand_col if is_demand else offer_col
 		var check := CheckBox.new()
 		check.text = offer.label
-		check.add_theme_font_size_override("font_size", 12)
+		check.add_theme_font_size_override("font_size", 13)
 		var offer_id: String = offer.id
 		check.button_pressed = _diplo_selected_offers.get(offer_id, false)
 		check.toggled.connect(func(pressed: bool):
@@ -3445,7 +3599,12 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 		if offer.get("disabled", false):
 			check.disabled = true
 			check.tooltip_text = "Already completed a trade this turn."
-		offer_vbox.add_child(check)
+		# Disable demands when strength ratio is too low
+		if offer.has("needs_ratio") and diplo_ratio < offer.needs_ratio:
+			check.disabled = true
+			check.button_pressed = false
+			check.tooltip_text = "Requires military strength ratio of %.1fx (yours: %.1fx)" % [offer.needs_ratio, diplo_ratio]
+		target_col.add_child(check)
 
 		# Inline trade parameters (shown when trade is checked)
 		if offer_id == "trade" and _diplo_selected_offers.get("trade", false):
@@ -3530,7 +3689,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			dur_row.add_child(dur_spin)
 			trade_box.add_child(dur_row)
 
-			offer_vbox.add_child(indent)
+			target_col.add_child(indent)
 
 		# Inline gift parameters (shown when gift is checked)
 		if offer_id == "gift" and _diplo_selected_offers.get("gift", false):
@@ -3667,7 +3826,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 						item_list.add_child(item_btn)
 				gift_box.add_child(item_scroll)
 
-			offer_vbox.add_child(g_indent)
+			target_col.add_child(g_indent)
 
 		if offer_id == "demand_resources" and _diplo_selected_offers.get("demand_resources", false):
 			var dem_box := VBoxContainer.new()
@@ -3719,7 +3878,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				d_amt_row.add_child(d_tier_btn)
 			dem_box.add_child(d_amt_row)
 
-			offer_vbox.add_child(d_indent)
+			target_col.add_child(d_indent)
 
 		# Inline "Offer City" dropdown
 		if offer_id == "offer_city" and _diplo_selected_offers.get("offer_city", false):
@@ -3745,7 +3904,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 						oc_cities.append(c)
 			for i in oc_cities.size():
 				var c: CityState = oc_cities[i]
-				oc_opt.add_item("%s (%d buildings)" % [c.city_name, c.buildings.size()])
+				oc_opt.add_item("%s (%d buildings)" % [c.get_display_name(), c.buildings.size()])
 				oc_opt.set_item_metadata(i, c.city_id)
 				if _diplo_city_offer_id == c.city_id:
 					oc_opt.selected = i
@@ -3755,7 +3914,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				_diplo_city_offer_id = oc_opt.get_item_metadata(idx))
 			oc_row.add_child(oc_opt)
 			oc_box.add_child(oc_row)
-			offer_vbox.add_child(oc_indent)
+			target_col.add_child(oc_indent)
 
 		# Inline "Demand City" dropdown
 		if offer_id == "demand_city" and _diplo_selected_offers.get("demand_city", false):
@@ -3782,7 +3941,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 						dc_cities.append(c)
 			for i in dc_cities.size():
 				var c: CityState = dc_cities[i]
-				dc_opt.add_item("%s (%d buildings)" % [c.city_name, c.buildings.size()])
+				dc_opt.add_item("%s (%d buildings)" % [c.get_display_name(), c.buildings.size()])
 				dc_opt.set_item_metadata(i, c.city_id)
 				if _diplo_city_demand_id == c.city_id:
 					dc_opt.selected = i
@@ -3792,9 +3951,9 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				_diplo_city_demand_id = dc_opt.get_item_metadata(idx))
 			dc_row.add_child(dc_opt)
 			dc_box.add_child(dc_row)
-			offer_vbox.add_child(dc_indent)
+			target_col.add_child(dc_indent)
 
-	vbox.add_child(offer_vbox)
+	vbox.add_child(columns_hbox)
 
 	# Likelihood preview
 	var likelihood := _calculate_combined_likelihood(player_id, faction_id)
@@ -3987,9 +4146,9 @@ func _calculate_combined_likelihood(player_id: StringName, target_id: StringName
 				base += clampf(standing * 0.4, -20, 25)
 				total_chance += clampf(base, 10, 95)
 			"free_passage":
-				var base := 40.0
-				base += clampf(standing * 0.3, -15, 20)
-				total_chance += clampf(base, 5, 90)
+				var base := 60.0
+				base += clampf(standing * 0.5, -20, 25)
+				total_chance += clampf(base, 10, 95)
 			"demand_tributary":
 				var base := 10.0
 				base += clampf((ratio - 1.5) * 40.0, -30, 50)
@@ -4890,6 +5049,7 @@ func _create_research_panel() -> void:
 func _on_research_completed(faction_id: StringName, _research_id: StringName) -> void:
 	if faction_id != GameManager.state.player_faction_id:
 		return
+	AudioManager.play_sfx(&"scroll_open")
 	_update_research_status_label()
 	# Refresh research panel if open
 	if _research_panel and _research_panel.visible:
@@ -6120,6 +6280,7 @@ class _SenateVisualization extends Control:
 func _on_forsaken_offer_received(faction_id: StringName, offer: Dictionary) -> void:
 	if faction_id != GameManager.state.player_faction_id:
 		return
+	AudioManager.play_sfx(&"scroll_open")
 	if offer.has("type") and offer.type == "crisis_dilemma":
 		_show_forsaken_crisis_dialog()
 		return
@@ -6265,6 +6426,7 @@ func _emit_senate_dilemma(faction_id: StringName, dilemma: Dictionary) -> void:
 func _on_senate_dilemma_received(faction_id: StringName, dilemma: Dictionary) -> void:
 	if faction_id != GameManager.state.player_faction_id:
 		return
+	AudioManager.play_sfx(&"scroll_open")
 	_show_senate_dilemma_dialog(faction_id, dilemma)
 
 func _show_senate_dilemma_dialog(faction_id: StringName, dilemma: Dictionary) -> void:
@@ -6349,6 +6511,74 @@ func _show_senate_dilemma_dialog(faction_id: StringName, dilemma: Dictionary) ->
 
 	add_child(_senate_dilemma_dialog)
 
+# ── Diplomacy / Treaty / Policy SFX handlers ────────────────
+
+func _on_diplomacy_action(_action_type: int, faction_a: StringName, _faction_b: StringName) -> void:
+	if faction_a == GameManager.state.player_faction_id:
+		AudioManager.play_sfx(&"scroll_open")
+
+func _on_treaty_created(_treaty_id: StringName, _treaty_type: int, faction_a: StringName, faction_b: StringName) -> void:
+	if faction_a == GameManager.state.player_faction_id or faction_b == GameManager.state.player_faction_id:
+		AudioManager.play_sfx(&"gold_gain")
+
+func _on_policy_enacted(faction_id: StringName, _policy_id: StringName) -> void:
+	if faction_id == GameManager.state.player_faction_id:
+		AudioManager.play_sfx(&"scroll_open")
+
+# ── Faction Mechanic Dilemma ─────────────────────────────────
+
+func _on_dilemma_triggered(faction_id: StringName, dilemma_type: StringName, dilemma_data: Dictionary) -> void:
+	if faction_id != GameManager.state.player_faction_id:
+		return
+	AudioManager.play_sfx(&"scroll_open")
+	_show_faction_dilemma_dialog(faction_id, dilemma_type, dilemma_data)
+
+func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringName, dilemma_data: Dictionary) -> void:
+	if _faction_dilemma_dialog != null:
+		_faction_dilemma_dialog.queue_free()
+
+	var choices: Array = dilemma_data.get("choices", [])
+	var dialog_height: int = 200 + choices.size() * 40
+	_faction_dilemma_dialog = _create_centered_dialog(420, dialog_height)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_faction_dilemma_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = dilemma_data.get("title", "Dilemma")
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+
+	_add_separator(vbox)
+
+	var desc := Label.new()
+	desc.text = dilemma_data.get("description", "")
+	desc.add_theme_font_size_override("font_size", 13)
+	desc.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc)
+
+	_add_separator(vbox)
+
+	for choice in choices:
+		var btn := Button.new()
+		btn.text = choice.get("label", "Choose")
+		btn.tooltip_text = choice.get("description", "")
+		btn.custom_minimum_size = Vector2(380, 36)
+		var effect: String = choice.get("effect", "")
+		btn.pressed.connect(func():
+			AudioManager.play_sfx(&"ui_click")
+			EventBus.dilemma_resolved.emit(faction_id, dilemma_type, effect)
+			_faction_dilemma_dialog.queue_free()
+			_faction_dilemma_dialog = null
+			_update_resource_display())
+		vbox.add_child(btn)
+
+	add_child(_faction_dilemma_dialog)
+
 # ── City management panel ────────────────────────────────────
 
 func _create_city_panel() -> void:
@@ -6407,7 +6637,7 @@ func _create_city_panel() -> void:
 	btt_label.name = "TooltipText"
 	btt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	btt_label.custom_minimum_size = Vector2(220, 0)
-	btt_label.add_theme_font_size_override("font_size", 11)
+	btt_label.add_theme_font_size_override("font_size", 13)
 	btt_label.add_theme_color_override("font_color", Color(0.8, 0.76, 0.68))
 	_building_tooltip.add_child(btt_label)
 	_building_tooltip.z_index = 10
@@ -6593,7 +6823,7 @@ func _show_city_panel(city_id: StringName) -> void:
 			if income_parts.size() > 0:
 				var income_label := Label.new()
 				income_label.text = "Income: " + ", ".join(income_parts)
-				income_label.add_theme_font_size_override("font_size", 12)
+				income_label.add_theme_font_size_override("font_size", 14)
 				income_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
 				vbox.add_child(income_label)
 
@@ -6607,7 +6837,7 @@ func _show_city_panel(city_id: StringName) -> void:
 	if garrison_parts.size() > 0:
 		var garrison_label := Label.new()
 		garrison_label.text = "Garrison: " + ", ".join(garrison_parts)
-		garrison_label.add_theme_font_size_override("font_size", 12)
+		garrison_label.add_theme_font_size_override("font_size", 13)
 		garrison_label.add_theme_color_override("font_color", Color(0.7, 0.6, 0.5))
 		vbox.add_child(garrison_label)
 
@@ -6654,7 +6884,7 @@ func _show_city_panel(city_id: StringName) -> void:
 		if building:
 			var blabel := Label.new()
 			blabel.text = "  " + building.display_name
-			blabel.add_theme_font_size_override("font_size", 12)
+			blabel.add_theme_font_size_override("font_size", 14)
 			blabel.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
 			blabel.mouse_filter = Control.MOUSE_FILTER_STOP
 			blabel.mouse_entered.connect(_on_building_hover.bind(building_id))
@@ -6668,7 +6898,7 @@ func _show_city_panel(city_id: StringName) -> void:
 		var bname := building.display_name if building else str(item.building_id)
 		var qlabel := Label.new()
 		qlabel.text = "  [Building] " + bname + " (%d turns)" % item.turns_remaining
-		qlabel.add_theme_font_size_override("font_size", 12)
+		qlabel.add_theme_font_size_override("font_size", 13)
 		qlabel.add_theme_color_override("font_color", Color(0.85, 0.75, 0.4))
 		vbox.add_child(qlabel)
 
@@ -6679,7 +6909,7 @@ func _show_city_panel(city_id: StringName) -> void:
 		_add_separator(vbox)
 		var build_header := Label.new()
 		build_header.text = "Available Buildings"
-		build_header.add_theme_font_size_override("font_size", 13)
+		build_header.add_theme_font_size_override("font_size", 15)
 		build_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 		vbox.add_child(build_header)
 
@@ -7292,7 +7522,7 @@ func _format_cost_bbcode(cost: Dictionary, fs: FactionState) -> String:
 
 func _create_building_card(building: BuildingData, city_id: StringName, fs: FactionState, slot_blocked: bool = false) -> PanelContainer:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(160, 100)
+	card.custom_minimum_size = Vector2(170, 110)
 
 	var cat_color := _get_building_category_color(building)
 	var can_afford := fs != null and _can_afford_display(fs, building.build_cost)
@@ -7327,14 +7557,14 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 		name_label.text = "\u25B2 " + building.display_name
 	else:
 		name_label.text = building.display_name
-	name_label.add_theme_font_size_override("font_size", 11)
+	name_label.add_theme_font_size_override("font_size", 13)
 	name_label.add_theme_color_override("font_color", Color(0.92, 0.85, 0.55) if is_buildable else Color(0.7, 0.65, 0.58))
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.clip_text = true
 	name_row.add_child(name_label)
 	var cat_tag := Label.new()
 	cat_tag.text = str(building.category).left(3).to_upper()
-	cat_tag.add_theme_font_size_override("font_size", 9)
+	cat_tag.add_theme_font_size_override("font_size", 10)
 	cat_tag.add_theme_color_override("font_color", Color(cat_color, 1.0).lightened(0.5))
 	name_row.add_child(cat_tag)
 	card_vbox.add_child(name_row)
@@ -7345,7 +7575,7 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	cost_rtl.fit_content = true
 	cost_rtl.scroll_active = false
 	cost_rtl.custom_minimum_size = Vector2(148, 0)
-	cost_rtl.add_theme_font_size_override("normal_font_size", 10)
+	cost_rtl.add_theme_font_size_override("normal_font_size", 12)
 	var cost_bbcode := _format_cost_bbcode(building.build_cost, fs)
 	cost_rtl.text = cost_bbcode + "  " + str(building.build_time) + "t"
 	card_vbox.add_child(cost_rtl)
@@ -7355,7 +7585,7 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	if not upkeep.is_empty():
 		var upkeep_label := Label.new()
 		upkeep_label.text = "Upkeep: " + _format_cost(upkeep) + "/turn"
-		upkeep_label.add_theme_font_size_override("font_size", 9)
+		upkeep_label.add_theme_font_size_override("font_size", 11)
 		upkeep_label.add_theme_color_override("font_color", Color(0.9, 0.6, 0.2))
 		card_vbox.add_child(upkeep_label)
 
@@ -7364,7 +7594,7 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 		var terrain_name: String = Enums.TerrainType.keys()[building.required_terrain].capitalize()
 		var req_label := Label.new()
 		req_label.text = "Requires: " + terrain_name
-		req_label.add_theme_font_size_override("font_size", 9)
+		req_label.add_theme_font_size_override("font_size", 11)
 		req_label.add_theme_color_override("font_color", Color(0.7, 0.6, 0.45))
 		card_vbox.add_child(req_label)
 
@@ -7373,7 +7603,7 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	if effects != "":
 		var eff_label := Label.new()
 		eff_label.text = effects
-		eff_label.add_theme_font_size_override("font_size", 9)
+		eff_label.add_theme_font_size_override("font_size", 11)
 		eff_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
 		eff_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		card_vbox.add_child(eff_label)
@@ -7575,15 +7805,30 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 		eff.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
 		vbox.add_child(eff)
 	if building.unlocks_units.size() > 0:
-		var unit_names: Array[String] = []
+		var unlocks_header := Label.new()
+		unlocks_header.text = "  Unlocks:"
+		unlocks_header.add_theme_font_size_override("font_size", 12)
+		unlocks_header.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
+		vbox.add_child(unlocks_header)
 		for uid in building.unlocks_units:
 			var ud := DataManager.get_unit(uid)
-			unit_names.append(ud.display_name if ud else str(uid))
-		var eff := Label.new()
-		eff.text = "  Unlocks: " + ", ".join(unit_names)
-		eff.add_theme_font_size_override("font_size", 12)
-		eff.add_theme_color_override("font_color", Color(0.7, 0.85, 0.7))
-		vbox.add_child(eff)
+			if ud == null:
+				continue
+			var unit_label := Label.new()
+			unit_label.text = "    %s" % ud.display_name
+			unit_label.add_theme_font_size_override("font_size", 11)
+			unit_label.add_theme_color_override("font_color", Color(0.65, 0.8, 0.65))
+			unit_label.mouse_filter = Control.MOUSE_FILTER_STOP
+			unit_label.tooltip_text = "Right-click for details"
+			var captured_ud := ud
+			unit_label.gui_input.connect(func(event: InputEvent):
+				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+					var dummy := UnitInstance.new()
+					dummy.unit_data_id = captured_ud.id
+					dummy.current_hp = captured_ud.max_hp
+					_show_unit_detail(dummy, captured_ud)
+			)
+			vbox.add_child(unit_label)
 
 	# Upkeep cost display (orange)
 	var detail_upkeep := GameManager.city_system.get_building_upkeep(building)
@@ -7603,20 +7848,58 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 	chain_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
 	vbox.add_child(chain_header)
 
-	var chain_text := ""
+	var chain_hbox := HBoxContainer.new()
+	chain_hbox.add_theme_constant_override("separation", 2)
+	var chain_indent := Label.new()
+	chain_indent.text = "  "
+	chain_indent.add_theme_font_size_override("font_size", 12)
+	chain_hbox.add_child(chain_indent)
 	if building.upgrades_from != &"":
 		var from_b := DataManager.get_building(building.upgrades_from)
-		chain_text += (from_b.display_name if from_b else str(building.upgrades_from)) + " -> "
-	chain_text += "[" + building.display_name + "]"
+		var from_label := Label.new()
+		from_label.text = from_b.display_name if from_b else str(building.upgrades_from)
+		from_label.add_theme_font_size_override("font_size", 12)
+		from_label.add_theme_color_override("font_color", Color(0.55, 0.75, 0.9))
+		from_label.mouse_filter = Control.MOUSE_FILTER_STOP
+		from_label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		from_label.tooltip_text = "Right-click to view details"
+		var from_bid := building.upgrades_from
+		from_label.gui_input.connect(func(event: InputEvent):
+			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+				_show_building_detail(from_bid, city_id)
+		)
+		chain_hbox.add_child(from_label)
+		var arrow1 := Label.new()
+		arrow1.text = " → "
+		arrow1.add_theme_font_size_override("font_size", 12)
+		arrow1.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45))
+		chain_hbox.add_child(arrow1)
+	var current_label := Label.new()
+	current_label.text = "[" + building.display_name + "]"
+	current_label.add_theme_font_size_override("font_size", 12)
+	current_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	chain_hbox.add_child(current_label)
 	var next := _find_upgrade_for(building_id)
 	if next:
-		chain_text += " -> " + next.display_name
-
-	var chain_label := Label.new()
-	chain_label.text = "  " + chain_text
-	chain_label.add_theme_font_size_override("font_size", 12)
-	chain_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
-	vbox.add_child(chain_label)
+		var arrow2 := Label.new()
+		arrow2.text = " → "
+		arrow2.add_theme_font_size_override("font_size", 12)
+		arrow2.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45))
+		chain_hbox.add_child(arrow2)
+		var next_label := Label.new()
+		next_label.text = next.display_name
+		next_label.add_theme_font_size_override("font_size", 12)
+		next_label.add_theme_color_override("font_color", Color(0.55, 0.75, 0.9))
+		next_label.mouse_filter = Control.MOUSE_FILTER_STOP
+		next_label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		next_label.tooltip_text = "Right-click to view details"
+		var next_bid := next.id
+		next_label.gui_input.connect(func(event: InputEvent):
+			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+				_show_building_detail(next_bid, city_id)
+		)
+		chain_hbox.add_child(next_label)
+	vbox.add_child(chain_hbox)
 
 	# Upgrade button if available
 	if next:
@@ -8241,27 +8524,30 @@ func _update_commander_panel(army: ArmyState) -> void:
 						unassign_btn.add_theme_font_size_override("font_size", 9)
 						unassign_btn.custom_minimum_size = Vector2(22, 20)
 						unassign_btn.tooltip_text = "Unassign follower"
-						var captured_fid := follower_id
+						var captured_fid: StringName = follower_id
 						var captured_cmd := cmd
-						var captured_army_id := army.army_id
+						var captured_army: ArmyState = army
 						unassign_btn.pressed.connect(func():
 							var idx := captured_cmd.followers.find(captured_fid)
 							if idx >= 0:
 								captured_cmd.followers.remove_at(idx)
-								var u_fs: FactionState = GameManager.state.faction_states.get(captured_cmd.faction_id)
-								if u_fs:
-									u_fs.follower_storage.append(captured_fid)
-								# Recalculate movement after follower removal
-								for a_id in GameManager.state.armies:
-									var a: ArmyState = GameManager.state.armies[a_id]
-									if a.commander == captured_cmd:
-										var new_max := a.get_max_movement()
-										a.movement_remaining = minf(a.movement_remaining, new_max)
-								GameManager.movement_system._cache_valid = false
-								_close_item_swap_panel()
-								_refresh_commander_panel()
-								if captured_army_id != &"":
-									EventBus.army_selected.emit(captured_army_id)
+							# Always return follower to storage (even if find failed due to type mismatch)
+							var u_fs: FactionState = GameManager.state.faction_states.get(captured_cmd.faction_id)
+							if u_fs and not u_fs.follower_storage.has(captured_fid):
+								u_fs.follower_storage.append(captured_fid)
+							# Recalculate movement after follower removal
+							for a_id in GameManager.state.armies:
+								var a: ArmyState = GameManager.state.armies[a_id]
+								if a.commander == captured_cmd:
+									var new_max := a.get_max_movement()
+									a.movement_remaining = minf(a.movement_remaining, new_max)
+							GameManager.movement_system._cache_valid = false
+							_close_item_swap_panel()
+							# Directly update panel with captured army reference (avoids selected_army_id staleness)
+							if captured_army and captured_army.commander:
+								_update_commander_panel(captured_army)
+							if captured_army:
+								EventBus.army_selected.emit(captured_army.army_id)
 						)
 						f_row.add_child(unassign_btn)
 					vbox.add_child(f_row)
@@ -8698,6 +8984,7 @@ func _on_commander_level_up(commander: CommanderState) -> void:
 	if commander.faction_id != GameManager.state.player_faction_id:
 		CommanderSystem.ai_auto_pick_major_skill(commander)
 		return
+	AudioManager.play_sfx(&"gold_gain")
 	_pending_level_up_commander = commander
 	_show_level_up_dialog(commander)
 
@@ -8848,6 +9135,7 @@ func _on_level_up_dismiss() -> void:
 func _on_commander_trait_changed(commander: CommanderState, action: String, trait_id: StringName) -> void:
 	if commander.faction_id != GameManager.state.player_faction_id:
 		return
+	AudioManager.play_sfx(&"ui_click_alt")
 	var trait_data: CommanderTrait = CommanderSystem.traits_db.get(trait_id)
 	var trait_name: String = trait_data.display_name if trait_data else str(trait_id)
 	var msg: String
@@ -8908,6 +9196,7 @@ func _refresh_commander_panel() -> void:
 func _on_commander_item_full(commander: CommanderState, new_item) -> void:
 	if commander.faction_id != GameManager.state.player_faction_id:
 		return
+	AudioManager.play_sfx(&"gold_gain")
 	_show_item_drop_dialog(commander, new_item)
 
 func _show_item_drop_dialog(commander: CommanderState, new_item) -> void:
@@ -8997,6 +9286,7 @@ func _on_item_to_storage(commander: CommanderState, item_id: StringName) -> void
 # ── Random Event Dialog ──────────────────────────────────────
 
 func _on_random_event_triggered(event_data: Dictionary) -> void:
+	AudioManager.play_sfx(&"scroll_open")
 	_pending_event_data = event_data
 	_show_event_dialog(event_data)
 
@@ -10949,27 +11239,64 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 				unit_label.text = "  - %s" % str(unit_id)
 			unit_label.add_theme_font_size_override("font_size", 12)
 			unit_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.85))
+			unit_label.mouse_filter = Control.MOUSE_FILTER_STOP
+			unit_label.tooltip_text = "Right-click for details"
+			if ud:
+				var captured_ud := ud
+				unit_label.gui_input.connect(func(event: InputEvent):
+					if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+						_show_unit_detail_overview(captured_ud)
+				)
 			vbox.add_child(unit_label)
 
 	# Upgrade chain
 	_add_detail_separator(vbox)
 	if bd.upgrades_from != &"":
 		var from_bd := DataManager.get_building(bd.upgrades_from)
-		var chain_label := Label.new()
-		chain_label.text = "Upgrades from: %s" % (from_bd.display_name if from_bd else str(bd.upgrades_from))
-		chain_label.add_theme_font_size_override("font_size", 12)
-		chain_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
-		vbox.add_child(chain_label)
+		var from_hbox := HBoxContainer.new()
+		var from_prefix := Label.new()
+		from_prefix.text = "Upgrades from: "
+		from_prefix.add_theme_font_size_override("font_size", 12)
+		from_prefix.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		from_hbox.add_child(from_prefix)
+		var from_link := Label.new()
+		from_link.text = from_bd.display_name if from_bd else str(bd.upgrades_from)
+		from_link.add_theme_font_size_override("font_size", 12)
+		from_link.add_theme_color_override("font_color", Color(0.55, 0.75, 0.9))
+		from_link.mouse_filter = Control.MOUSE_FILTER_STOP
+		from_link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		from_link.tooltip_text = "Right-click to view details"
+		if from_bd:
+			from_link.gui_input.connect(func(event: InputEvent):
+				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+					_show_building_detail_overview(from_bd)
+			)
+		from_hbox.add_child(from_link)
+		vbox.add_child(from_hbox)
 
 	# Check what this upgrades TO
 	for other_id in DataManager.buildings:
 		var other: BuildingData = DataManager.buildings[other_id]
 		if other.upgrades_from == bd.id:
-			var to_label := Label.new()
-			to_label.text = "Upgrades to: %s" % other.display_name
-			to_label.add_theme_font_size_override("font_size", 12)
-			to_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
-			vbox.add_child(to_label)
+			var to_hbox := HBoxContainer.new()
+			var to_prefix := Label.new()
+			to_prefix.text = "Upgrades to: "
+			to_prefix.add_theme_font_size_override("font_size", 12)
+			to_prefix.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+			to_hbox.add_child(to_prefix)
+			var to_link := Label.new()
+			to_link.text = other.display_name
+			to_link.add_theme_font_size_override("font_size", 12)
+			to_link.add_theme_color_override("font_color", Color(0.55, 0.75, 0.9))
+			to_link.mouse_filter = Control.MOUSE_FILTER_STOP
+			to_link.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			to_link.tooltip_text = "Right-click to view details"
+			to_link.gui_input.connect(func(event: InputEvent):
+				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+					_show_building_detail_overview(other)
+			)
+			to_hbox.add_child(to_link)
+			vbox.add_child(to_hbox)
 
 	_faction_detail_panel.visible = true
 	_faction_detail_panel.move_to_front()

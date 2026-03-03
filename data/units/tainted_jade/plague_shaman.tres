@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"plague_shaman"
+display_name = "Plague Shamans"
+description = "Withered mystics who channel the rot of the deep swamp. Their pestilent chants mend tainted flesh and sap the will of the untouched."
+faction_id = &"tainted_jade"
+max_hp = 1800
+attack = 35
+melee_defense = 15
+projectile_defense = 15
+magic_defense = 25
+speed = 5
+attack_range = 3
+squad_size = 12
+hp_per_soldier = 150
+movement_points = 3
+upkeep_cost = {0: 4, 3: 1}
+recruit_cost = {0: 110, 5: 42}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {4: 0.2}
+realm_bonuses = {}
+tags = Array[String](["support", "ranged", "mage"])
+base_morale = 50
+morale_aura = 8
+fear_radius = 4
+healing_aura = 0.5
+captive_chance = 0

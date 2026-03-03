@@ -543,13 +543,13 @@ static func get_loyalty_multiplier(loyalty_value: int) -> float:
 	elif loyalty_value >= 25:
 		return 0.9
 	elif loyalty_value >= 0:
-		return 0.75
+		return 0.8
 	elif loyalty_value >= -25:
-		return 0.5
+		return 0.65
 	elif loyalty_value >= -50:
-		return 0.25
+		return 0.4
 	else:
-		return 0.1
+		return 0.2
 
 static func get_loyalty_status(loyalty_value: int) -> String:
 	if loyalty_value >= 50:

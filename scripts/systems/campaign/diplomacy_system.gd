@@ -135,7 +135,6 @@ func get_strength_ratio(faction_a: StringName, faction_b: StringName) -> float:
 # ── Third-Party Standing Effects ────────────────────────────
 
 func _apply_friendly_action_ripple(actor: StringName, target: StringName, magnitude: int) -> void:
-	# Factions at war with target dislike the actor for being friendly
 	for other_id in GameManager.state.faction_states:
 		if other_id == actor or other_id == target or GameManager.is_npc_faction(other_id):
 			continue
@@ -143,8 +142,14 @@ func _apply_friendly_action_ripple(actor: StringName, target: StringName, magnit
 		if fs.is_defeated:
 			continue
 		var their_relation_to_target := GameManager.get_relation(other_id, target)
+		# Factions at war with target dislike the actor for being friendly
 		if their_relation_to_target == Enums.FactionRelation.WAR:
 			modify_standing(actor, other_id, -magnitude, "Befriended their enemy")
+		# Friends/allies of target appreciate the actor's positive gesture
+		elif their_relation_to_target == Enums.FactionRelation.ALLIED:
+			modify_standing(actor, other_id, maxi(1, magnitude / 2), "Befriended their ally")
+		elif their_relation_to_target == Enums.FactionRelation.FRIENDLY:
+			modify_standing(actor, other_id, maxi(1, magnitude / 3), "Befriended their friend")
 
 func _apply_hostile_action_ripple(actor: StringName, target: StringName, magnitude: int) -> void:
 	# Factions at war with target like the actor for being hostile to their enemy
@@ -577,10 +582,15 @@ func _execute_trade_relations(treaty: TreatyInstance) -> void:
 	# Faction A shares their top resource with B
 	var income_a := get_faction_resource_income(treaty.faction_a, res_a)
 	var transfer_to_b := maxi(1, int(float(income_a) * share_pct))
-	fs_b.resources[res_a] = fs_b.resources.get(res_a, 0) + transfer_to_b
 	# Faction B shares their top resource with A
 	var income_b := get_faction_resource_income(treaty.faction_b, res_b)
 	var transfer_to_a := maxi(1, int(float(income_b) * share_pct))
+	# Check for hostile army interception on trade route
+	var theft_pct := _check_trade_interception(treaty, transfer_to_b + transfer_to_a)
+	if theft_pct > 0.0:
+		transfer_to_b = maxi(1, int(float(transfer_to_b) * (1.0 - theft_pct)))
+		transfer_to_a = maxi(1, int(float(transfer_to_a) * (1.0 - theft_pct)))
+	fs_b.resources[res_a] = fs_b.resources.get(res_a, 0) + transfer_to_b
 	fs_a.resources[res_b] = fs_a.resources.get(res_b, 0) + transfer_to_a
 	# Increment turns active
 	treaty.terms["turns_active"] = turns_active + 1
@@ -667,7 +677,7 @@ func _apply_treaty_enemy_malus(faction_id: StringName, treaty: TreatyInstance) -
 			continue
 		var their_relation := GameManager.get_relation(other_id, partner)
 		if their_relation == Enums.FactionRelation.WAR:
-			modify_standing(faction_id, other_id, -3, "Treaty with their enemy")
+			modify_standing(faction_id, other_id, -2, "Treaty with their enemy")
 		elif their_relation == Enums.FactionRelation.HOSTILE:
 			modify_standing(faction_id, other_id, -1, "Treaty with hostile faction")
 
@@ -680,6 +690,11 @@ func _execute_trade(treaty: TreatyInstance) -> void:
 	var give_amt: int = treaty.terms.get("give_amount", 0)
 	var recv_res: int = treaty.terms.get("receive_resource", 0)
 	var recv_amt: int = treaty.terms.get("receive_amount", 0)
+	# Check for hostile army interception on trade route
+	var theft_pct := _check_trade_interception(treaty, give_amt + recv_amt)
+	if theft_pct > 0.0:
+		give_amt = maxi(1, int(float(give_amt) * (1.0 - theft_pct)))
+		recv_amt = maxi(1, int(float(recv_amt) * (1.0 - theft_pct)))
 	# Trade deals are guaranteed transfers — both sides always pay the agreed amount
 	# (resources can go negative, representing trade debt that is covered by future income)
 	fs_a.resources[give_res] = fs_a.resources.get(give_res, 0) - give_amt
@@ -835,7 +850,7 @@ func _evaluate_trade(proposer: StringName, target: StringName, give_res: int, gi
 	# Hostile factions demand much more — at standing -40: required ~1.8
 	var required_fairness := 1.3 - standing * 0.006
 	# Penalty if proposer has treaties with target's enemies
-	var enemy_treaty_penalty := _count_enemy_treaties(proposer, target) * 0.15
+	var enemy_treaty_penalty := _count_enemy_treaties(proposer, target) * 0.10
 	required_fairness += enemy_treaty_penalty
 	return (fairness - required_fairness) * 50.0
 
@@ -937,11 +952,12 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 			var score := (ratio - 1.0) * 30.0 - float(standing) * 0.3 - float(amount) * 0.15
 			return {accepted = score > 0}
 		"free_passage":
+			# Offering free passage is beneficial to both — easy to accept
 			var relation := GameManager.get_relation(proposer, target)
 			if relation == Enums.FactionRelation.WAR:
 				return {accepted = false}
 			var standing := get_standing(proposer, target)
-			if standing < -10:
+			if standing < -30:
 				return {accepted = false}
 			var trade_bonus := 0.0
 			for treaty_id in GameManager.state.diplomacy_state.treaties:
@@ -951,7 +967,7 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 					   (t.faction_a == target and t.faction_b == proposer):
 						trade_bonus = 15.0
 						break
-			return {accepted = (standing * 0.3 + trade_bonus - 10.0) > 0}
+			return {accepted = (standing * 0.5 + trade_bonus + 15.0) > 0}
 		"offer_city":
 			return {accepted = true}  # AI always accepts city gifts
 		"demand_city":
@@ -1281,3 +1297,115 @@ func demand_city(demander: StringName, target: StringName, city_id: StringName) 
 			EventBus.diplomacy_action.emit(Enums.DiplomacyAction.DEMAND_CITY, demander, target)
 			return {accepted = true, reason = "They cede %s" % city.city_name}
 	return {accepted = false, reason = "They refuse to surrender %s" % city.city_name}
+
+# ── Trade Route Interception ──────────────────────────────────
+
+func _check_trade_interception(treaty: TreatyInstance, total_value: int) -> float:
+	## Checks if hostile armies block a trade route. Returns theft fraction (0.0 or 0.25).
+	## Intercepting faction gains gold equal to 25% of total trade value.
+	var routes := get_active_trade_routes()
+	var route_info: Dictionary = {}
+	for r in routes:
+		if r.treaty_id == treaty.treaty_id:
+			route_info = r
+			break
+	if route_info.is_empty():
+		return 0.0
+	var hex_path := get_trade_route_hex_path(route_info.city_a_hex, route_info.city_b_hex)
+	var interceptors := get_intercepting_armies(hex_path, treaty.faction_a, treaty.faction_b)
+	if interceptors.is_empty():
+		return 0.0
+	# First interceptor steals 25% as gold
+	var stolen_gold := maxi(1, int(float(total_value) * 0.25))
+	var interceptor_faction: StringName = interceptors[0].faction_id
+	var fs_int: FactionState = GameManager.state.faction_states.get(interceptor_faction)
+	if fs_int:
+		fs_int.resources[0] = fs_int.resources.get(0, 0) + stolen_gold # 0 = GOLD
+	EventBus.trade_intercepted.emit(interceptor_faction, treaty.treaty_id, stolen_gold)
+	return 0.25
+
+# ── Trade Route Visualization ─────────────────────────────────
+
+func get_active_trade_routes() -> Array[Dictionary]:
+	## Returns active trade routes with closest city pairs for visualization.
+	var routes: Array[Dictionary] = []
+	for treaty_id in GameManager.state.diplomacy_state.treaties:
+		var treaty: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+		if treaty.treaty_type != Enums.TreatyType.TRADE_DEAL and treaty.treaty_type != Enums.TreatyType.TRADE_RELATIONS:
+			continue
+		# Find closest city pair between the two factions
+		var best_dist := 999999
+		var best_a := Vector2i(-1, -1)
+		var best_b := Vector2i(-1, -1)
+		for city_id_a in GameManager.state.cities:
+			var ca: CityState = GameManager.state.cities[city_id_a]
+			if ca.faction_id != treaty.faction_a:
+				continue
+			for city_id_b in GameManager.state.cities:
+				var cb: CityState = GameManager.state.cities[city_id_b]
+				if cb.faction_id != treaty.faction_b:
+					continue
+				var dist := HexHelper.hex_distance(ca.hex_pos, cb.hex_pos)
+				if dist < best_dist:
+					best_dist = dist
+					best_a = ca.hex_pos
+					best_b = cb.hex_pos
+		if best_a != Vector2i(-1, -1) and best_b != Vector2i(-1, -1):
+			routes.append({
+				faction_a = treaty.faction_a,
+				faction_b = treaty.faction_b,
+				city_a_hex = best_a,
+				city_b_hex = best_b,
+				treaty_id = treaty.treaty_id,
+			})
+	return routes
+
+static func get_trade_route_hex_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
+	## Hex line-drawing via cube coordinate lerp.
+	var path: Array[Vector2i] = []
+	var ac := HexHelper.offset_to_cube(from.x, from.y)
+	var bc := HexHelper.offset_to_cube(to.x, to.y)
+	var dist := HexHelper.hex_distance(from, to)
+	if dist == 0:
+		path.append(from)
+		return path
+	for i in dist + 1:
+		var t := float(i) / float(dist)
+		# Cube lerp with 1e-6 nudge to avoid ambiguous rounding at midpoints
+		var cx := float(ac.x) + (float(bc.x) - float(ac.x)) * t + 1e-6
+		var cy := float(ac.y) + (float(bc.y) - float(ac.y)) * t + 1e-6
+		var cz := float(ac.z) + (float(bc.z) - float(ac.z)) * t - 2e-6
+		# Cube round
+		var rx := roundi(cx)
+		var ry := roundi(cy)
+		var rz := roundi(cz)
+		var dx := absf(float(rx) - cx)
+		var dy := absf(float(ry) - cy)
+		var dz := absf(float(rz) - cz)
+		if dx > dy and dx > dz:
+			rx = -ry - rz
+		elif dy > dz:
+			ry = -rx - rz
+		else:
+			rz = -rx - ry
+		path.append(HexHelper.cube_to_offset(Vector3i(rx, ry, rz)))
+	return path
+
+func get_intercepting_armies(route_path: Array[Vector2i], faction_a: StringName, faction_b: StringName) -> Array[Dictionary]:
+	## Returns hostile armies standing on trade route tiles.
+	var interceptors: Array[Dictionary] = []
+	var route_set: Dictionary = {}
+	for coord in route_path:
+		route_set[coord] = true
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.is_garrison:
+			continue
+		if not route_set.has(army.hex_pos):
+			continue
+		# Must be at war with at least one trade partner
+		var rel_a := GameManager.get_relation(army.faction_id, faction_a)
+		var rel_b := GameManager.get_relation(army.faction_id, faction_b)
+		if rel_a == Enums.FactionRelation.WAR or rel_b == Enums.FactionRelation.WAR:
+			interceptors.append({army_id = army.army_id, faction_id = army.faction_id, hex_pos = army.hex_pos})
+	return interceptors

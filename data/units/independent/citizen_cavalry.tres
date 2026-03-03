@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"citizen_cavalry"
+display_name = "Citizen Cavalry"
+description = "Wealthy citizens who ride to war on their own horses. Though not professional soldiers, their mobility and courage make them formidable."
+faction_id = &"independent"
+max_hp = 2800
+attack = 55
+melee_defense = 25
+projectile_defense = 15
+magic_defense = 10
+speed = 8
+attack_range = 1
+squad_size = 25
+hp_per_soldier = 110
+tiles_per_entity = 2
+movement_points = 2
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 45
+captive_chance = 0.3

@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dread_knight"
+display_name = "Dread Knights"
+description = "Fallen warriors bound in cursed plate armor. They feel no pain and know no mercy, their hollow eyes glowing with malevolent purple light."
+faction_id = &"forsaken"
+max_hp = 8000
+attack = 75
+melee_defense = 50
+projectile_defense = 30
+magic_defense = 20
+speed = 5
+attack_range = 1
+squad_size = 50
+hp_per_soldier = 160
+movement_points = 3.5
+upkeep_cost = {0: 8, 1: 2, 3: 3}
+recruit_cost = {0: 200, 1: 63, 6: 5}
+recruit_time = 4
+population_cost = 10
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 70
+morale_aura = -3
+fear_radius = 3
+captive_chance = 0.15

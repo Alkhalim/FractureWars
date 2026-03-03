@@ -130,12 +130,14 @@ static func get_max_item_slots(commander: CommanderState) -> int:
 func apply_item_drop(commander: CommanderState, defeated_faction: StringName) -> String:
 	if commander.is_elderbeast:
 		return ""
-	const PITY_THRESHOLD := 4
-	var base_chance := 0.3
+	const PITY_THRESHOLD := 3
+	var base_chance := 0.4
 	if commander.items.size() == 0:
-		base_chance = 0.6
+		base_chance = 0.7
 	elif commander.items.size() == 1:
-		base_chance = 0.4
+		base_chance = 0.5
+	# Pity ramp: each consecutive miss adds 10% to drop chance
+	base_chance += commander.battles_won_no_drop * 0.1
 	if randf() > base_chance:
 		commander.battles_won_no_drop += 1
 		if commander.battles_won_no_drop < PITY_THRESHOLD:

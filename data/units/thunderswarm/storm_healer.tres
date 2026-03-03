@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"storm_healer"
+display_name = "Storm Chanters"
+description = "Shamans who harness the cleansing power of lightning to burn away wounds and purify corrupted flesh. Their storm chants invigorate allied warriors."
+faction_id = &"thunderswarm"
+max_hp = 1600
+attack = 25
+melee_defense = 15
+projectile_defense = 15
+magic_defense = 25
+speed = 5
+attack_range = 3
+squad_size = 10
+hp_per_soldier = 160
+movement_points = 3
+upkeep_cost = {0: 4, 3: 1}
+recruit_cost = {0: 100, 5: 32}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {2: 0.15}
+realm_bonuses = {}
+tags = Array[String](["support", "ranged", "mage"])
+base_morale = 55
+morale_aura = 10
+fear_radius = 5
+healing_aura = 0.8
+captive_chance = 0

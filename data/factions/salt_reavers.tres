@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = &"salt_reavers"
 display_name = "Salt Reavers"
-description = "Brutal raiders of Altaban who harvest salt and bone from the wastes. They owe fealty to the Skulloath but follow their own savage code."
+description = "Brutal raiders of the Verdant Glade's mangrove coast who harvest salt and plunder from the swamps. They owe fealty to the Skulloath but follow their own savage code."
 color = Color(0.5, 0.2, 0.15, 1)
 is_playable = false
-starting_regions = Array[StringName]([&"altaban"])
+starting_regions = Array[StringName]([&"verdant_glade"])
 realm_affinity = 1
 shard_preferences = {}
 ai_personality = {"aggression": 0.75, "expansion": 0.45}

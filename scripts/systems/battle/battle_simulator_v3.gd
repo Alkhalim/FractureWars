@@ -347,67 +347,191 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	if fs == null and parent_fid != ud.faction_id:
 		fs = GameManager.state.faction_states.get(parent_fid)
 	if fs:
-		# Skulloath: high corruption = attack bonus
-		if parent_fid == &"skulloath":
+		# ── Empire: Imperial Authority + Edicts ──
+		if parent_fid == &"empire":
+			# Authority affects morale
+			if fs.imperial_authority >= 75:
+				f.base_morale += 10
+			elif fs.imperial_authority < 25:
+				f.base_morale -= 10
+			# Military Edict: +12% attack
+			if fs.imperial_edict == 1 and fs.imperial_edict_turns > 0:
+				f.attack += int(f.attack * 0.12)
+
+		# ── Skulloath: Corruption — stronger scaling ──
+		elif parent_fid == &"skulloath":
 			if fs.corruption >= 81:
 				f.attack += int(f.attack * 0.30)
+				f.base_morale -= 5 # Demonic units are feared but unstable
+				# Fear aura: enemy morale debuff (via base_morale applied to enemies handled elsewhere)
 			elif fs.corruption >= 61:
 				f.attack += int(f.attack * 0.18)
-		# Tainted Jade: taint power = defense bonus
+			elif fs.corruption <= 20:
+				# Traditional Pure: less attack but more defense and morale
+				f.attack -= int(f.attack * 0.08)
+				f.defense += int(f.defense * 0.10)
+				f.base_morale += 10
+
+		# ── Tainted Jade: Taint Power + Focus ──
 		elif parent_fid == &"tainted_jade":
-			if fs.taint_power >= 50:
+			# Base taint defense (always active, scales more)
+			if fs.taint_power >= 60:
+				f.defense += int(f.defense * 0.20)
+			elif fs.taint_power >= 40:
 				f.defense += int(f.defense * 0.15)
 			elif fs.taint_power >= 20:
 				f.defense += int(f.defense * 0.10)
-			# Jungle regen: Tainted Jade units regenerate HP when fighting in jungle
+			# Jungle regen: stronger home terrain advantage
 			if _campaign_terrain == Enums.TerrainType.JUNGLE:
+				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.5)
+				f.defense += 3
+			elif _campaign_terrain == Enums.TerrainType.SWAMP:
 				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.3)
-				f.defense += 2  # Home turf advantage in jungle
-		# Gladehost: high harmony = morale bonus (applied below in morale section)
+				f.defense += 2
+			# Taint Focus: Venomous War = attack bonus in jungle/swamp
+			if fs.taint_focus == 2 and fs.taint_power >= 20:
+				if _campaign_terrain == Enums.TerrainType.JUNGLE or _campaign_terrain == Enums.TerrainType.SWAMP:
+					f.attack += int(f.attack * 0.15)
+				# Anti-magic: enemy mages deal less damage (applied as defense vs magic)
+				if fs.taint_power >= 40:
+					f.vs_defense_bonuses["mage"] = f.vs_defense_bonuses.get("mage", 0) + 5
+
+		# ── Gladehost: Harmony + Season ──
 		elif parent_fid == &"gladehost":
-			pass
-		# Shardhorde: active resonance buffs boost attack per matching realm
+			if fs.harmony >= 70:
+				f.base_morale += 12
+				f.defense += int(f.defense * 0.05)
+			elif fs.harmony >= 50:
+				f.base_morale += 6
+			elif fs.harmony <= 30:
+				f.base_morale -= 8
+			# Forest terrain: Gladehost always gets home advantage
+			if _campaign_terrain == Enums.TerrainType.FOREST:
+				f.defense += 3
+				f.attack += 2
+			# Summer season: attack bonus
+			var season := TurnManager.get_current_season() if TurnManager else -1
+			if season == 1: # Summer
+				f.attack += int(f.attack * 0.08)
+			elif season == 3: # Winter: defense bonus (hardened)
+				f.defense += int(f.defense * 0.10)
+
+		# ── Shardhorde: Resonance — much stronger per-realm ──
 		elif parent_fid == &"shardhorde":
 			for realm_key in fs.shard_resonance:
-				if realm_key == Enums.Realm.VOID:
-					f.attack += int(f.attack * 0.10)
-				else:
-					f.attack += int(f.attack * 0.05)
-		# Moonspear: lunar phase combat bonuses + ethereal soldiers
+				match realm_key:
+					Enums.Realm.VOID:
+						f.attack += int(f.attack * 0.15)
+					Enums.Realm.ELEMENTAL:
+						f.attack += int(f.attack * 0.10)
+					Enums.Realm.DIVINE:
+						f.defense += int(f.defense * 0.10)
+						f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2)
+					Enums.Realm.NATURE:
+						f.base_morale += 8
+					Enums.Realm.MORTAL:
+						f.attack += int(f.attack * 0.05)
+						f.defense += int(f.defense * 0.05)
+			# Multi-resonance bonus: 3+ realms = massive power spike
+			if fs.shard_resonance.size() >= 3:
+				f.attack += int(f.attack * 0.10)
+				f.base_morale += 10
+
+		# ── Moonspear: Lunar Phase — much stronger effects ──
 		elif parent_fid == &"moonspear":
 			match fs.lunar_phase:
-				0: f.attack += int(f.attack * 0.10)
-				2: f.defense += int(f.defense * 0.10)
+				0: # New Moon: aggression, stealth
+					f.attack += int(f.attack * 0.15)
+					f.defense -= int(f.defense * 0.05)
+				1: # Waxing: speed bonus
+					f.speed += 1
+					f.move_speed = f.speed * BASE_MOVE_SPEED
+				2: # Full Moon: defense, morale
+					f.defense += int(f.defense * 0.15)
+					f.base_morale += 10
+				3: # Waning: healing during battle
+					f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.4)
+			# Ethereal soldiers (always)
 			f.ethereal_dodge_chance = 0.15
 			f.base_morale += 15
 			f.max_hp = int(float(f.max_hp) * 0.85)
 			f.current_hp = mini(f.current_hp, f.max_hp)
-		# Thunderswarm: storm fury combat bonuses
+
+		# ── Thunderswarm: Storm Fury — bigger bonuses ──
 		elif parent_fid == &"thunderswarm":
 			if fs.storm_fury >= 80:
-				f.attack += int(f.attack * 0.20)
-				f.defense -= int(f.defense * 0.05)
-			elif fs.storm_fury >= 50:
-				f.attack += int(f.attack * 0.10)
-		# Cinderguard: border vigilance defense bonus when defensive
+				f.attack += int(f.attack * 0.22)
+				f.defense -= int(f.defense * 0.08)
+				f.base_morale += 5 # Fury-fueled courage
+			elif fs.storm_fury >= 60:
+				f.attack += int(f.attack * 0.15)
+				f.defense -= int(f.defense * 0.03)
+			elif fs.storm_fury >= 40:
+				f.attack += int(f.attack * 0.08)
+			# Mountain terrain: storm warriors get bonus
+			if _campaign_terrain == Enums.TerrainType.MOUNTAINS:
+				f.attack += 3
+				f.defense += 2
+
+		# ── Cinderguard: Forge Mode — clear attack/defense trade-off ──
 		elif parent_fid == &"cinderguard":
-			if fs.border_vigilance <= 30:
-				f.defense += int(f.defense * 0.15)
-			elif fs.border_vigilance >= 85:
-				f.attack += int(f.attack * 0.05)
-		# Ivoryscar: relic power boosts defense
-		elif parent_fid == &"ivoryscar":
-			if fs.relic_power >= 30:
+			if fs.border_vigilance <= 25:
+				# Fortress mode: significant defense
+				f.defense += int(f.defense * 0.20)
+				f.base_morale += 8
+			elif fs.border_vigilance <= 40:
 				f.defense += int(f.defense * 0.10)
-			elif fs.relic_power >= 15:
+			elif fs.border_vigilance >= 85:
+				# War forge: attack power
+				f.attack += int(f.attack * 0.15)
+			elif fs.border_vigilance >= 70:
+				f.attack += int(f.attack * 0.08)
+			# Storm wall city bonus (from Thunderswarm ability — reused for Cinderguard fortress defense)
+			# City defense handled in siege system
+
+		# ── Ivoryscar: Relic Power — stronger defense scaling ──
+		elif parent_fid == &"ivoryscar":
+			if fs.relic_power >= 40:
+				f.defense += int(f.defense * 0.18)
+				f.base_morale += 5
+			elif fs.relic_power >= 30:
+				f.defense += int(f.defense * 0.13)
+			elif fs.relic_power >= 20:
+				f.defense += int(f.defense * 0.08)
+			elif fs.relic_power >= 10:
 				f.defense += int(f.defense * 0.05)
-		# Sunblessed: solar faith boosts morale (attack proxy)
+			# Desert/Wastes terrain: home advantage
+			if _campaign_terrain == Enums.TerrainType.DESERT or _campaign_terrain == Enums.TerrainType.SHARD_WASTES:
+				f.defense += 2
+				f.speed += 1
+				f.move_speed = f.speed * BASE_MOVE_SPEED
+
+		# ── Sunblessed: Solar Faith — strong faith scaling ──
 		elif parent_fid == &"sunblessed":
 			if fs.solar_faith >= 85:
-				f.attack += int(f.attack * 0.10)
-				f.defense += int(f.defense * 0.05)
+				f.attack += int(f.attack * 0.12)
+				f.defense += int(f.defense * 0.08)
+				f.base_morale += 12
 			elif fs.solar_faith >= 70:
-				f.attack += int(f.attack * 0.05)
+				f.attack += int(f.attack * 0.08)
+				f.defense += int(f.defense * 0.05)
+				f.base_morale += 6
+			elif fs.solar_faith <= 24:
+				f.attack -= int(f.attack * 0.10)
+				f.base_morale -= 10
+			elif fs.solar_faith <= 39:
+				f.base_morale -= 5
+
+		# ── Forsaken: Espionage ambush bonus ──
+		elif parent_fid == &"forsaken":
+			if fs.espionage_network >= 15:
+				# Intelligence advantage: bonus when attacking (side == 0 = attacker)
+				if side == 0:
+					f.attack += int(f.attack * 0.08)
+					f.speed += 1
+					f.move_speed = f.speed * BASE_MOVE_SPEED
+			if fs.espionage_network >= 30:
+				f.base_morale += 5 # Confidence from knowing enemy positions
 
 	# Empire anti-mage war mages: Empire mage units deal extra damage to enemy mages
 	if parent_fid == &"empire" and ud.tags.has("mage"):
@@ -2042,6 +2166,7 @@ func _execute_skirmish_fire(f: BattleFormationV3) -> Array[Dictionary]:
 	for tag in f.tags:
 		ranged_def += float(target.vs_defense_bonuses.get(tag, 0)) * 0.3
 	var dmg_per_entity := maxf(0.5, ranged_atk * ranged_atk / (ranged_atk + ranged_def))
+	dmg_per_entity *= 0.86 # Skirmish fire DPS reduction vs volley mode
 	var ranged_end_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
 	if ranged_end_ratio < 0.5:
 		dmg_per_entity *= lerpf(0.6, 1.0, ranged_end_ratio * 2.0)

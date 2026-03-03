@@ -6,10 +6,10 @@
 script = ExtResource("1")
 id = &"thornwardens"
 display_name = "Thornwardens"
-description = "Fierce protectors of the Verdant Glade who blend druidic magic with guerrilla warfare. Their thorned barricades are legendary."
+description = "Fierce protectors of Altaban who blend druidic magic with guerrilla warfare. Their thorned barricades are legendary."
 color = Color(0.4, 0.55, 0.3, 1)
 is_playable = false
-starting_regions = Array[StringName]([&"verdant_glade"])
+starting_regions = Array[StringName]([&"altaban"])
 realm_affinity = 3
 shard_preferences = {}
 ai_personality = {"aggression": 0.4, "expansion": 0.3}

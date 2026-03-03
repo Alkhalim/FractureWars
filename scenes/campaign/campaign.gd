@@ -125,6 +125,11 @@ var _fog_of_war_enabled := true
 var _fog_draw_node: Node2D = null  # Batched fog draw node
 var _explored_tiles: Dictionary = {} # coord -> true (tiles that have been seen at least once)
 
+# Trade route visualization
+var _trade_route_draw_node: Node2D = null
+var _trade_caravans: Array[Node2D] = []
+var _trade_route_data: Array[Dictionary] = [] # Cached route pixel paths for caravans
+
 @onready var hex_map_layer: Node2D = $HexMapLayer
 @onready var reachable_overlay: Node2D = $OverlayLayer/ReachableOverlay
 @onready var path_overlay: Node2D = $OverlayLayer/PathOverlay
@@ -169,6 +174,7 @@ func _ready() -> void:
 	_create_elderbeast_markers()
 	_build_region_tiles_cache()
 	_create_fog_overlay()
+	_update_trade_routes()
 	# Ensure labels render above region borders
 	region_labels_node.z_index = 2
 	city_markers_node.z_index = 2
@@ -211,6 +217,10 @@ func _process(delta: float) -> void:
 	_cloud_time += delta
 	if _cloud_shadow_material:
 		_cloud_shadow_material.set_shader_parameter("time_val", _cloud_time)
+
+	# Trade caravan animation
+	if not _trade_caravans.is_empty():
+		_process_trade_caravans(delta)
 
 	# Refresh minimap on timer: dirty flag for content changes, camera for viewport
 	_minimap_update_timer += delta
@@ -877,6 +887,36 @@ class _MultiColorOverlayDrawNode extends Node2D:
 		for entry in entries:
 			draw_colored_polygon(entry[0], entry[1])
 
+class _CaravanDrawNode extends Node2D:
+	func _draw() -> void:
+		draw_circle(Vector2.ZERO, 3.5, Color(0.75, 0.55, 0.2, 0.9))
+		draw_circle(Vector2.ZERO, 2.0, Color(0.95, 0.8, 0.4, 0.95))
+
+class _TradeRouteDrawNode extends Node2D:
+	var routes: Array = [] # Array of {points: PackedVector2Array, color: Color}
+	func _draw() -> void:
+		var dash_len := 6.0
+		var gap_len := 4.0
+		for route in routes:
+			var pts: PackedVector2Array = route.points
+			var col: Color = route.color
+			for i in pts.size() - 1:
+				var a: Vector2 = pts[i]
+				var b: Vector2 = pts[i + 1]
+				var seg_len := a.distance_to(b)
+				if seg_len < 0.1:
+					continue
+				var dir := (b - a) / seg_len
+				var drawn := 0.0
+				var is_dash := true
+				while drawn < seg_len:
+					var chunk := dash_len if is_dash else gap_len
+					var end := minf(drawn + chunk, seg_len)
+					if is_dash:
+						draw_line(a + dir * drawn, a + dir * end, col, 2.0, true)
+					drawn = end
+					is_dash = not is_dash
+
 class _FogDrawNode extends Node2D:
 	var tile_polys: Dictionary = {}   # coord -> PackedVector2Array (world-space)
 	var tile_alphas: Dictionary = {}  # coord -> float (0.0=visible, 0.45=explored, 0.75=hidden)
@@ -988,6 +1028,18 @@ func _on_region_label_clicked(event: InputEvent, region_id: StringName) -> void:
 		var hud: Control = $UILayer/HUD
 		hud._show_region_overview(region_id)
 
+const CULTURE_COLORS := {
+	&"frostlands": Color(0.55, 0.7, 0.9),
+	&"storm_peaks": Color(0.6, 0.5, 0.8),
+	&"western_marches": Color(0.3, 0.7, 0.45),
+	&"imperial_heartland": Color(0.85, 0.75, 0.35),
+	&"ashlands": Color(0.8, 0.4, 0.25),
+	&"central_steppe": Color(0.65, 0.55, 0.35),
+	&"emerald_south": Color(0.25, 0.6, 0.3),
+	&"southern_reaches": Color(0.5, 0.4, 0.55),
+	&"eastern_wastes": Color(0.75, 0.55, 0.5),
+}
+
 func _update_political_overlay() -> void:
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
@@ -1001,21 +1053,29 @@ func _update_political_overlay() -> void:
 		if container.get_child_count() > 0:
 			var fill: Polygon2D = container.get_child(0)
 			var has_texture := fill.texture != null
-			if _minimap_political_mode:
+			if _minimap_view_mode == 1:
+				# POLITICAL VIEW: vibrant faction colors
 				if tile.owner_faction != &"" and tile.owner_faction != &"independent":
 					var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
 					if faction_data:
-						# Use vibrant faction color — texture contours/patterns still show through
 						var pol_color: Color = faction_data.color
-						pol_color.s = minf(pol_color.s * 1.4, 1.0)  # Boost saturation
+						pol_color.s = minf(pol_color.s * 1.4, 1.0)
 						fill.color = pol_color.lightened(0.15)
 					else:
 						fill.color = Color(0.35, 0.33, 0.3) if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
 				else:
-					# Unowned: desaturated grey so owned territory pops
+					fill.color = Color(0.35, 0.33, 0.3) if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
+			elif _minimap_view_mode == 2:
+				# CULTURE VIEW: color by culture region
+				var culture_id: StringName = GameManager.REGION_CULTURE.get(tile.region_id, &"")
+				if culture_id != &"":
+					var cul_color: Color = CULTURE_COLORS.get(culture_id, Color(0.5, 0.5, 0.5))
+					cul_color.s = minf(cul_color.s * 1.3, 1.0)
+					fill.color = cul_color.lightened(0.1)
+				else:
 					fill.color = Color(0.35, 0.33, 0.3) if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
 			else:
-				# Normal mode: subtle faction tint
+				# TERRAIN VIEW: subtle faction tint
 				var base_color: Color = Color.WHITE if has_texture else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
 				if tile.owner_faction != &"" and tile.owner_faction != &"independent":
 					var faction_data: FactionData = DataManager.get_faction(tile.owner_faction)
@@ -2155,6 +2215,10 @@ func _animate_army_along_path(army_id: StringName, path: Array[Vector2i]) -> voi
 
 		var tile_coord := path[i]
 		var cost := GameManager.state.hex_map.get_movement_cost(tile_coord, army.faction_id)
+		# Apply army terrain stride modifier (junglestrider, desertstrider, etc.)
+		var _tile := GameManager.state.hex_map.get_tile(tile_coord)
+		if _tile:
+			cost *= army.get_terrain_stride_modifier(_tile.terrain)
 		if army.movement_remaining < cost:
 			break
 
@@ -2916,6 +2980,7 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 
 	# Handle siege consequences (same as manual battle)
 	if atk_alive and not def_alive and not garrison_retreat:
+		attacker_army.hex_pos = hex_pos
 		attacker_army.battle_exhausted = true
 		attacker_army.movement_remaining = 0.0
 		EventBus.battle_resolved.emit(attacker_army.faction_id, hex_pos)
@@ -3231,36 +3296,17 @@ func _grant_auto_veterancy_xp(army: ArmyState, survivors: Array[BattleSimulatorV
 		var damage_bonus := mini(dmg / 40, 10)
 		unit.grant_xp(base_xp + damage_bonus)
 
-func _separate_armies_stalemate(army_a: ArmyState, army_b: ArmyState) -> void:
-	var hex_map := GameManager.state.hex_map
-	# Move army_a away from army_b
-	var best_a := army_a.hex_pos
-	var best_a_dist := 0
-	for neighbor in HexHelper.get_neighbors(army_a.hex_pos):
-		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-			continue
-		var tile := hex_map.get_tile(neighbor) if hex_map else null
-		if tile and tile.terrain == Enums.TerrainType.WATER:
-			continue
-		var dist := HexHelper.hex_distance(neighbor, army_b.hex_pos)
-		if dist > best_a_dist:
-			best_a_dist = dist
-			best_a = neighbor
-	# Move army_b away from army_a
-	var best_b := army_b.hex_pos
-	var best_b_dist := 0
-	for neighbor in HexHelper.get_neighbors(army_b.hex_pos):
-		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-			continue
-		var tile := hex_map.get_tile(neighbor) if hex_map else null
-		if tile and tile.terrain == Enums.TerrainType.WATER:
-			continue
-		var dist := HexHelper.hex_distance(neighbor, army_a.hex_pos)
-		if dist > best_b_dist:
-			best_b_dist = dist
-			best_b = neighbor
-	army_a.hex_pos = best_a
-	army_b.hex_pos = best_b
+func _separate_armies_stalemate(attacker: ArmyState, defender: ArmyState) -> void:
+	# Defender stays at battle hex, attacker retreats to adjacent tile
+	var battle_hex := defender.hex_pos
+	var retreat_hex := _find_retreat_hex(attacker, battle_hex)
+	if retreat_hex != Vector2i(-1, -1):
+		attacker.hex_pos = retreat_hex
+	else:
+		# No valid retreat tile — push defender instead as fallback
+		var def_retreat := _find_retreat_hex(defender, attacker.hex_pos)
+		if def_retreat != Vector2i(-1, -1):
+			defender.hex_pos = def_retreat
 
 func _flash_turn_transition() -> void:
 	var fade := ColorRect.new()
@@ -3290,6 +3336,7 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 		_create_army_markers()
 		_create_elderbeast_markers()
 		_update_fog_of_war()
+		_update_trade_routes()
 		_minimap_dirty = true
 		if selected_army_id != &"":
 			var army: ArmyState = GameManager.state.armies.get(selected_army_id)
@@ -3404,6 +3451,8 @@ func _on_city_captured(city_id: StringName, _old_owner: StringName, new_owner: S
 			var faction: FactionData = DataManager.get_faction(new_owner)
 			var fname: String = faction.display_name if faction else str(new_owner)
 			_show_notification(fname + " captured " + city.get_display_name() + "!")
+	if new_owner == GameManager.state.player_faction_id:
+		AudioManager.play_sfx(&"victory")
 	_city_markers_dirty = true
 	_refresh_city_markers()
 	_update_political_overlay()
@@ -3414,6 +3463,7 @@ func _on_siege_started(city_id: StringName, faction_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city:
 		if _is_tile_visible(city.hex_pos):
+			AudioManager.play_sfx(&"march")
 			var faction: FactionData = DataManager.get_faction(faction_id)
 			var fname: String = faction.display_name if faction else str(faction_id)
 			_show_notification(fname + " is besieging " + city.get_display_name() + "!")
@@ -3424,6 +3474,7 @@ func _on_siege_broken(city_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city:
 		if _is_tile_visible(city.hex_pos):
+			AudioManager.play_sfx(&"battle_hit")
 			_show_notification("Siege of " + city.get_display_name() + " broken!")
 	_city_markers_dirty = true
 	_refresh_city_markers()
@@ -3442,6 +3493,7 @@ func _on_building_completed(city_id: StringName, building_id: StringName) -> voi
 func _on_building_demolished(city_id: StringName, _building_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city and city.faction_id == GameManager.state.player_faction_id:
+		AudioManager.play_sfx(&"demolish")
 		_show_notification("Building demolished in " + city.get_display_name())
 	_city_markers_dirty = true
 	_refresh_city_markers()
@@ -3453,6 +3505,7 @@ func _on_battle_resolved_sfx(_winner_faction: StringName, hex_pos: Vector2i) -> 
 func _on_unit_recruited(city_id: StringName, unit_data_id: StringName, _army_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city and city.faction_id == GameManager.state.player_faction_id:
+		AudioManager.play_sfx(&"recruit_start")
 		var unit_data: UnitData = DataManager.get_unit(unit_data_id)
 		var uname: String = unit_data.display_name if unit_data else str(unit_data_id)
 		_show_notification(uname + " recruited in " + city.get_display_name())
@@ -3655,6 +3708,94 @@ func _create_fog_overlay() -> void:
 	fog_overlay_node.add_child(_fog_draw_node)
 	_update_fog_of_war()
 
+func _update_trade_routes() -> void:
+	# Remove old draw node and caravans
+	if _trade_route_draw_node:
+		_trade_route_draw_node.queue_free()
+		_trade_route_draw_node = null
+	for caravan in _trade_caravans:
+		if is_instance_valid(caravan):
+			caravan.queue_free()
+	_trade_caravans.clear()
+	_trade_route_data.clear()
+
+	var diplo: DiplomacySystem = GameManager.diplomacy_system
+	if diplo == null:
+		return
+	var routes := diplo.get_active_trade_routes()
+	if routes.is_empty():
+		return
+
+	_trade_route_draw_node = _TradeRouteDrawNode.new()
+	_trade_route_draw_node.z_index = 1
+	var route_color := Color(0.85, 0.7, 0.3, 0.5)
+
+	for route in routes:
+		var hex_path := DiplomacySystem.get_trade_route_hex_path(route.city_a_hex, route.city_b_hex)
+		var pixel_path := PackedVector2Array()
+		var visible_any := false
+		for coord in hex_path:
+			var elevation: float = _hex_elevations.get(coord, 0.0)
+			var px := _hex_to_pixel(coord)
+			px.y -= elevation
+			pixel_path.append(px)
+			if _is_tile_visible(coord) or _explored_tiles.has(coord):
+				visible_any = true
+		if not visible_any:
+			continue
+		_trade_route_draw_node.routes.append({points = pixel_path, color = route_color})
+		_trade_route_data.append({pixel_path = pixel_path, progress = randf()})
+
+		# Create caravan sprite (small gold dot)
+		var caravan := _CaravanDrawNode.new()
+		caravan.z_index = 2
+		$OverlayLayer.add_child(caravan)
+		_trade_caravans.append(caravan)
+
+	$OverlayLayer.add_child(_trade_route_draw_node)
+	# Move trade routes below fog overlay
+	$OverlayLayer.move_child(_trade_route_draw_node, fog_overlay_node.get_index())
+
+func _process_trade_caravans(delta: float) -> void:
+	for i in _trade_caravans.size():
+		if i >= _trade_route_data.size():
+			break
+		var caravan := _trade_caravans[i]
+		if not is_instance_valid(caravan):
+			continue
+		var data: Dictionary = _trade_route_data[i]
+		var pixel_path: PackedVector2Array = data.pixel_path
+		if pixel_path.size() < 2:
+			caravan.visible = false
+			continue
+		# Advance progress (loop back and forth)
+		var speed := 2.0 * delta # ~1 hex per 0.5s (HEX_H_SPACING pixels per 0.5s mapped to 0-1 range)
+		var total_len := 0.0
+		for j in pixel_path.size() - 1:
+			total_len += pixel_path[j].distance_to(pixel_path[j + 1])
+		if total_len < 1.0:
+			caravan.visible = false
+			continue
+		data.progress = fmod(data.progress + speed / total_len * HEX_H_SPACING, 2.0)
+		var t: float = data.progress
+		if t > 1.0:
+			t = 2.0 - t # Bounce back
+		# Find position along path at t
+		var target_dist := t * total_len
+		var accumulated := 0.0
+		var pos := pixel_path[0]
+		for j in pixel_path.size() - 1:
+			var seg_len := pixel_path[j].distance_to(pixel_path[j + 1])
+			if accumulated + seg_len >= target_dist:
+				var seg_t := (target_dist - accumulated) / seg_len if seg_len > 0 else 0.0
+				pos = pixel_path[j].lerp(pixel_path[j + 1], seg_t)
+				break
+			accumulated += seg_len
+		caravan.position = pos
+		# Check fog visibility at caravan position
+		var caravan_hex := _pixel_to_hex(pos)
+		caravan.visible = _is_tile_visible(caravan_hex) or _explored_tiles.has(caravan_hex)
+
 var _visible_tile_cache: Dictionary = {}  # coord -> bool, rebuilt per fog update
 
 func _rebuild_visible_tile_cache() -> void:
@@ -3840,15 +3981,9 @@ func _update_encountered_factions(player_id: StringName) -> void:
 			continue
 		if _visible_tile_cache.get(army.hex_pos, false):
 			enc[army.faction_id] = true
-	# Also mark factions we have diplomatic relations with (war, alliance, etc.)
-	for key in GameManager.state.diplomacy:
-		var parts := str(key).split(":")
-		if parts.size() != 2:
-			continue
-		if parts[0] == str(player_id):
-			enc[StringName(parts[1])] = true
-		elif parts[1] == str(player_id):
-			enc[StringName(parts[0])] = true
+	# Note: Diplomatic relations are NOT used for discovery because _init_diplomacy
+	# pre-populates relations for all faction pairs. Discovery happens through
+	# visual contact (tiles, cities, armies) and diplomatic events (standing changes).
 
 # ── Settlement Placement Mode ─────────────────────────────────
 
@@ -4108,7 +4243,8 @@ const MINIMAP_SIZE := Vector2(380, 240)
 const MINIMAP_MARGIN := Vector2(10, 10)
 var _minimap_panel: PanelContainer
 var _minimap_image: TextureRect
-var _minimap_political_mode := false
+var _minimap_view_mode := 0  # 0=terrain, 1=political, 2=culture
+var _minimap_political_mode := false  # Kept for backward compatibility
 var _minimap_dragging := false
 var _minimap_terrain_cache: Image  # Cached terrain-only base image (no fog/armies/viewport)
 var _minimap_terrain_dirty := true  # True when territory/ownership changes require terrain recache
@@ -4120,20 +4256,38 @@ func _create_minimap() -> void:
 	var outer_vbox := VBoxContainer.new()
 	outer_vbox.add_theme_constant_override("separation", 2)
 
-	# Political toggle button above the minimap
-	var toggle_btn := Button.new()
-	toggle_btn.text = "Political View"
-	toggle_btn.toggle_mode = true
-	toggle_btn.custom_minimum_size = Vector2(0, 24)
-	toggle_btn.add_theme_font_size_override("font_size", 11)
-	toggle_btn.toggled.connect(func(pressed: bool):
-		_minimap_political_mode = pressed
-		toggle_btn.text = "Terrain View" if pressed else "Political View"
-		_minimap_terrain_dirty = true
-		_update_minimap()
-		_update_political_overlay()
-	)
-	outer_vbox.add_child(toggle_btn)
+	# Map view mode buttons (Terrain | Political | Culture)
+	var view_btn_row := HBoxContainer.new()
+	view_btn_row.add_theme_constant_override("separation", 2)
+	var view_names := ["Terrain", "Political", "Culture"]
+	var _view_buttons: Array[Button] = []
+	for i in view_names.size():
+		var btn := Button.new()
+		btn.text = view_names[i]
+		btn.toggle_mode = true
+		btn.button_pressed = (i == _minimap_view_mode)
+		btn.custom_minimum_size = Vector2(0, 24)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.add_theme_font_size_override("font_size", 11)
+		if i == _minimap_view_mode:
+			btn.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+		var idx := i
+		btn.pressed.connect(func():
+			_minimap_view_mode = idx
+			_minimap_political_mode = (idx == 1)
+			for j in _view_buttons.size():
+				_view_buttons[j].button_pressed = (j == idx)
+				if j == idx:
+					_view_buttons[j].add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+				else:
+					_view_buttons[j].remove_theme_color_override("font_color")
+			_minimap_terrain_dirty = true
+			_update_minimap()
+			_update_political_overlay()
+		)
+		_view_buttons.append(btn)
+		view_btn_row.add_child(btn)
+	outer_vbox.add_child(view_btn_row)
 
 	_minimap_panel = PanelContainer.new()
 	_minimap_panel.custom_minimum_size = MINIMAP_SIZE + Vector2(8, 8)
@@ -4201,12 +4355,21 @@ func _rebuild_minimap_terrain_cache() -> void:
 			if tile == null:
 				continue
 			var color: Color
-			if _minimap_political_mode:
+			if _minimap_view_mode == 1:
+				# Political mode
 				if tile.owner_faction != &"" and tile.owner_faction != &"independent" and faction_colors.has(tile.owner_faction):
 					color = faction_colors[tile.owner_faction].darkened(0.15)
 				else:
 					color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3)).darkened(0.3)
+			elif _minimap_view_mode == 2:
+				# Culture mode
+				var cul_id: StringName = GameManager.REGION_CULTURE.get(tile.region_id, &"")
+				if cul_id != &"":
+					color = CULTURE_COLORS.get(cul_id, Color(0.5, 0.5, 0.5)).darkened(0.15)
+				else:
+					color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3)).darkened(0.3)
 			else:
+				# Terrain mode
 				color = TERRAIN_COLORS.get(tile.terrain, Color(0.3, 0.3, 0.3))
 				if tile.owner_faction != &"" and tile.owner_faction != &"independent" and faction_colors.has(tile.owner_faction):
 					color = color.lerp(faction_colors[tile.owner_faction], 0.15)
@@ -4259,6 +4422,19 @@ func _rebuild_minimap_terrain_cache() -> void:
 				city_color = Color(0.9, 0.9, 0.9)
 		if px >= 0 and px < px_w and py >= 0 and py < px_h:
 			img.set_pixel(px, py, city_color)
+
+	# Draw trade routes as subtle gold dots
+	var diplo: DiplomacySystem = GameManager.diplomacy_system
+	if diplo:
+		var trade_routes := diplo.get_active_trade_routes()
+		var route_dot_color := Color(0.85, 0.7, 0.3, 0.7)
+		for route in trade_routes:
+			var hex_path := DiplomacySystem.get_trade_route_hex_path(route.city_a_hex, route.city_b_hex)
+			for coord in hex_path:
+				var rpx: int = coord.x * 4 + 2
+				var rpy: int = coord.y * 4 + 2
+				if rpx >= 0 and rpx < px_w and rpy >= 0 and rpy < px_h:
+					img.set_pixel(rpx, rpy, route_dot_color)
 
 	_minimap_terrain_cache = img
 	_minimap_terrain_dirty = false

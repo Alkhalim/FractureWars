@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fae_enchanter"
+display_name = "Fae Enchanters"
+description = "Fey spirits who hurl bolts of wild magic. Their attacks bypass physical armor entirely, making them deadly against heavily armored foes."
+faction_id = &"gladehost"
+max_hp = 2000
+attack = 60
+melee_defense = 10
+projectile_defense = 10
+magic_defense = 30
+speed = 6
+attack_range = 3
+squad_size = 15
+hp_per_soldier = 133
+movement_points = 3.5
+upkeep_cost = {0: 5, 3: 1}
+recruit_cost = {0: 120, 5: 42}
+recruit_time = 3
+population_cost = 3
+terrain_bonuses = {1: 0.15}
+realm_bonuses = {}
+tags = Array[String](["ranged", "mage"])
+base_morale = 45
+captive_chance = 0.1

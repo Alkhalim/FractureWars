@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tainted_colossus"
+display_name = "Tainted Colossus"
+description = "An ancient temple guardian consumed by the Taint, now a shambling mountain of jade-veined stone. Its footfalls shake the earth and scatter armies."
+faction_id = &"tainted_jade"
+max_hp = 12000
+attack = 130
+melee_defense = 60
+projectile_defense = 40
+magic_defense = 20
+speed = 3
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 12
+movement_points = 2.5
+upkeep_cost = {0: 15, 3: 8}
+recruit_cost = {0: 400, 3: 200, 5: 147}
+recruit_time = 6
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "melee"])
+base_morale = 80
+morale_aura = -6
+fear_radius = 5
+captive_chance = 0

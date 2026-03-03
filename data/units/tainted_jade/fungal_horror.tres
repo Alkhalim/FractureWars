@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fungal_horror"
+display_name = "Fungal Horror"
+description = "A towering mass of fungal growth animated by the Taint. Spores cloud the air around it, choking enemies and spreading corruption wherever it treads."
+faction_id = &"tainted_jade"
+max_hp = 8500
+attack = 85
+melee_defense = 50
+projectile_defense = 35
+magic_defense = 15
+speed = 4
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 8
+movement_points = 3
+upkeep_cost = {0: 10, 3: 5}
+recruit_cost = {0: 280, 3: 150, 5: 105}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {4: 0.2, 9: 0.2}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "monster"])
+base_morale = 70
+morale_aura = -4
+fear_radius = 4
+captive_chance = 0

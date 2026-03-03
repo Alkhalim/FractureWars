@@ -151,6 +151,24 @@ func get_leader_portrait(faction_id: StringName) -> Texture2D:
 	_leader_cache[faction_id] = tex
 	return tex
 
+var _commander_portrait_cache: Dictionary = {}
+
+func get_commander_portrait(commander: CommanderState) -> Texture2D:
+	if commander == null:
+		return null
+	var cid: StringName = commander.commander_id
+	if _commander_portrait_cache.has(cid):
+		return _commander_portrait_cache[cid]
+	if commander.portrait_path != "":
+		if ResourceLoader.exists(commander.portrait_path):
+			var tex: Texture2D = load(commander.portrait_path)
+			_commander_portrait_cache[cid] = tex
+			return tex
+	# Fallback to faction default
+	var tex := get_leader_portrait(commander.faction_id)
+	_commander_portrait_cache[cid] = tex
+	return tex
+
 # --- Unit Portrait System ---
 const PORTRAIT_DIR := "res://assets/sprites/units/portraits/"
 

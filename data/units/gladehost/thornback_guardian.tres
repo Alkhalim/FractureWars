@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"thornback_guardian"
+display_name = "Thornback Guardian"
+description = "A great tortoise-like beast armored in living thorns. It anchors defensive lines, its spiked shell turning aside arrows and its presence steadying nearby troops."
+faction_id = &"gladehost"
+max_hp = 6500
+attack = 55
+melee_defense = 50
+projectile_defense = 40
+magic_defense = 20
+speed = 4
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 6
+movement_points = 2.5
+upkeep_cost = {0: 6, 3: 3}
+recruit_cost = {0: 160, 5: 63}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {1: 0.2}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee"])
+base_morale = 65
+fear_radius = 3
+armor_aura = 3
+captive_chance = 0

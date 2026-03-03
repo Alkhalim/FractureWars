@@ -88,9 +88,14 @@ func get_movement_cost(coord: Vector2i, faction_id: StringName) -> float:
 	elif tile.road_level >= 2:
 		base_cost *= 0.5
 
-	# Friendly territory with development 2+
-	if tile.owner_faction == faction_id and tile.development_level >= 2:
-		base_cost *= 0.75
+	# Friendly territory development reduces movement cost
+	if tile.owner_faction == faction_id and tile.development_level >= 1:
+		if tile.development_level >= 3:
+			base_cost *= 0.65
+		elif tile.development_level >= 2:
+			base_cost *= 0.75
+		else:
+			base_cost *= 0.85
 
 	return maxf(base_cost, 0.5)
 
@@ -120,6 +125,71 @@ func get_region_owner(region_id: StringName) -> StringName:
 			best_count = counts[faction_id]
 			best_faction = faction_id
 	return best_faction
+
+func regions_adjacent(region_a: StringName, region_b: StringName) -> bool:
+	# Check if two regions share a border (any tile in A neighbors a tile in B)
+	var tiles_a := get_region_tiles(region_a)
+	var tiles_b_set: Dictionary = {}
+	for coord in get_region_tiles(region_b):
+		tiles_b_set[coord] = true
+	for coord in tiles_a:
+		for n in HexHelper.get_neighbors(coord):
+			if tiles_b_set.has(n):
+				return true
+	return false
+
+## Updates development_level (0-3) for all owned tiles based on nearby cities.
+## City score = population + building_count. Full bonus within 2 tiles,
+## linear falloff from tiles 3-4, no effect beyond 4. Overlapping cities
+## use the highest value (not additive). Settlements (villages) count too.
+## Thresholds: 0 = undeveloped, 1 = score 8+, 2 = score 15+, 3 = score 25+.
+func update_development_levels(cities: Array) -> void:
+	# Build lookup: faction_id -> [{hex_pos, score}]
+	var faction_cities: Dictionary = {}
+	for city in cities:
+		var fid: StringName = city.faction_id
+		if fid == &"" or fid == &"independent":
+			continue
+		if not faction_cities.has(fid):
+			faction_cities[fid] = []
+		var score: int = city.population + city.buildings.size()
+		faction_cities[fid].append({hex_pos = city.hex_pos, score = score})
+
+	for coord in tiles:
+		var tile: TileState = tiles[coord]
+		if tile.owner_faction == &"":
+			tile.development_level = 0
+			continue
+		var fcities: Array = faction_cities.get(tile.owner_faction, [])
+		if fcities.is_empty():
+			tile.development_level = 0
+			continue
+		# Use highest effective score from any nearby city (not additive)
+		var best_effective := 0.0
+		for cdata in fcities:
+			var dist := HexHelper.hex_distance(coord, cdata.hex_pos)
+			if dist > 5:
+				continue
+			var effective: float
+			if dist <= 2:
+				# Full bonus within 2 tiles
+				effective = float(cdata.score)
+			elif dist <= 4:
+				# Linear falloff from tile 3 to 4 (at dist 3: 66%, at dist 4: 33%)
+				effective = float(cdata.score) * (1.0 - float(dist - 2) / 3.0)
+			else:
+				# 15% at tile 5
+				effective = float(cdata.score) * 0.15
+			if effective > best_effective:
+				best_effective = effective
+		if best_effective >= 25.0:
+			tile.development_level = 3
+		elif best_effective >= 15.0:
+			tile.development_level = 2
+		elif best_effective >= 8.0:
+			tile.development_level = 1
+		else:
+			tile.development_level = 0
 
 func set_region_owner(region_id: StringName, faction_id: StringName) -> void:
 	var region_coords: Array[Vector2i] = get_region_tiles(region_id)
@@ -165,6 +235,7 @@ func set_city_territory_owner(cities: Array) -> void:
 		else:
 			tile.owner_faction = &""
 	cleanup_ownership_pockets()
+	update_development_levels(cities)
 
 ## Same as set_city_territory_owner but only for a single region.
 func set_region_city_territory(region_id: StringName, cities: Array) -> void:
@@ -186,6 +257,7 @@ func set_region_city_territory(region_id: StringName, cities: Array) -> void:
 		else:
 			tile.owner_faction = &""
 	cleanup_ownership_pockets(region_id)
+	update_development_levels(cities)
 
 ## Removes small isolated pockets of faction ownership.
 ## Finds connected components per faction; any component smaller than

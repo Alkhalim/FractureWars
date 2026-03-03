@@ -4,10 +4,10 @@ class_name MapGenerator
 # Grid: 117 columns x 78 rows of hex tiles.
 # Continental layout — six geographic zones with scattered factions:
 #   North:      Iskar, Asdrol, Nightfall Sanctum, Dragonspire Mtns, Thundercrest Peaks
-#   West:       Altaban, Aurentis, Sainkhu Groves, Orisyl
+#   West:       Verdant Glade, Aurentis, Sainkhu Groves, Orisyl
 #   Center:     Sunburst Valley, Eternal Plains, Valkarn, Duststorm Valley, Bataarbad
 #   East:       Skalvar, Ashenmark, Morvane, Whispering Dunes
-#   South-West: Coatlantli, Verdant Glade, Xotchi, Southern Reach, Orenthal
+#   South-West: Coatlantli, Altaban, Xotchi, Southern Reach, Orenthal
 #   South-East: Tsagan, Torgalun Desert, Weeping Barrows, Qareth
 
 # Region seed positions (in hex grid coordinates) — scaled for 117x78 grid
@@ -21,7 +21,7 @@ const REGION_SEEDS := {
 	&"thundercrest_peaks":   Vector2i(92, 13),   # Stormbound
 
 	# ── West Zone ──
-	&"altaban":              Vector2i(10, 26),   # Salt Reavers
+	&"verdant_glade":        Vector2i(10, 26),   # Salt Reavers
 	&"aurentis":             Vector2i(24, 21),   # Aurentis Guard
 	&"sainkhu_groves":       Vector2i(18, 34),   # Gladehost
 	&"orisyl":               Vector2i(14, 46),   # Miststriders
@@ -41,7 +41,7 @@ const REGION_SEEDS := {
 
 	# ── South-West Zone ──
 	&"coatlantli":           Vector2i(28, 48),   # Tainted Jade
-	&"verdant_glade":        Vector2i(46, 50),   # Thornwardens
+	&"altaban":              Vector2i(46, 50),   # Thornwardens
 	&"xotchi":               Vector2i(38, 56),   # Twilight Veil
 	&"southern_reach":       Vector2i(16, 64),   # Jade Conclave
 	&"orenthal":             Vector2i(36, 64),   # Forsaken
@@ -55,10 +55,10 @@ const REGION_SEEDS := {
 
 # Geographic zone definitions (factions scattered across zones)
 const ZONE_NORTH := [&"iskar", &"asdrol", &"nightfall_sanctum", &"dragonspire_mountains", &"thundercrest_peaks"]
-const ZONE_WEST := [&"altaban", &"aurentis", &"sainkhu_groves", &"orisyl"]
+const ZONE_WEST := [&"verdant_glade", &"aurentis", &"sainkhu_groves", &"orisyl"]
 const ZONE_CENTER := [&"sunburst_valley", &"eternal_plains", &"valkarn", &"duststorm_valley", &"bataarbad"]
 const ZONE_EAST := [&"skalvar", &"ashenmark", &"morvane", &"whispering_dunes"]
-const ZONE_SOUTH_WEST := [&"coatlantli", &"verdant_glade", &"xotchi", &"southern_reach", &"orenthal"]
+const ZONE_SOUTH_WEST := [&"coatlantli", &"altaban", &"xotchi", &"southern_reach", &"orenthal"]
 const ZONE_SOUTH_EAST := [&"tsagan", &"torgalun_desert", &"weeping_barrows", &"qareth"]
 
 static func generate_hex_map(regions: Dictionary) -> HexMapData:
@@ -81,6 +81,9 @@ static func generate_hex_map(regions: Dictionary) -> HexMapData:
 
 	# 4c. Thin mountains to prevent thick blobs
 	_thin_mountains(map)
+
+	# 4d. Fix small region pockets and mountain-isolated tiles
+	_fix_region_pockets(map)
 
 	# 5. Carve rivers through land
 	_carve_rivers(map)
@@ -328,10 +331,10 @@ static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.T
 
 	# ── West Zone — forest/swamp coastal ──
 	if region_id in ZONE_WEST:
-		if region_id == &"altaban":
-			# Salt Reavers — coastal forest/swamp
-			if h10 <= 1: return Enums.TerrainType.SWAMP
-			if h10 == 2: return Enums.TerrainType.WETLANDS
+		if region_id == &"verdant_glade":
+			# Salt Reavers — pirate-infested mangrove forests
+			if h10 <= 2: return Enums.TerrainType.WETLANDS
+			if h10 <= 4: return Enums.TerrainType.SWAMP
 			return Enums.TerrainType.FOREST
 		if region_id == &"aurentis":
 			# Aurentis Guard — plains/forest
@@ -401,8 +404,8 @@ static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.T
 			if h10 <= 1: return Enums.TerrainType.SWAMP
 			if h10 == 2: return Enums.TerrainType.FOREST
 			return Enums.TerrainType.JUNGLE
-		if region_id == &"verdant_glade":
-			# Thornwardens — forest/jungle
+		if region_id == &"altaban":
+			# Thornwardens — dense forest/jungle
 			if h10 <= 3: return Enums.TerrainType.FOREST
 			if h10 <= 5: return Enums.TerrainType.JUNGLE
 			return Enums.TerrainType.PLAINS
@@ -557,6 +560,122 @@ static func _thin_mountains(map: HexMapData) -> void:
 		if tile:
 			tile.terrain = _terrain_for_region(tile.region_id, _hash_coord(coord.x + 7, coord.y + 13))
 
+# ── Region Pocket Cleanup ────────────────────────────────────────────────────
+# Removes small isolated pockets where Voronoi noise placed 1-2 tiles of one
+# region inside another. Also reassigns tiles connected to their region only
+# through mountain tiles (impassable connectivity).
+
+static func _fix_region_pockets(map: HexMapData) -> void:
+	# Pass 1: Find connected components per region using passable tiles (no water, no mountains)
+	var visited: Dictionary = {}
+	var components: Array = []
+
+	for coord in map.tiles:
+		if visited.has(coord):
+			continue
+		var tile: HexMapData.TileState = map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.MOUNTAINS:
+			continue
+		if tile.region_id == &"":
+			continue
+
+		var region_id := tile.region_id
+		var seed_pos: Vector2i = REGION_SEEDS.get(region_id, Vector2i(-1, -1))
+		var comp_tiles: Array[Vector2i] = [coord]
+		var has_seed := (coord == seed_pos)
+		visited[coord] = true
+		var queue: Array[Vector2i] = [coord]
+		while not queue.is_empty():
+			var c: Vector2i = queue.pop_back()
+			for n in HexHelper.get_neighbors(c):
+				if visited.has(n):
+					continue
+				if not map.tiles.has(n):
+					continue
+				var ntile: HexMapData.TileState = map.tiles[n]
+				if ntile.terrain == Enums.TerrainType.WATER or ntile.terrain == Enums.TerrainType.MOUNTAINS:
+					continue
+				if ntile.region_id != region_id:
+					continue
+				visited[n] = true
+				comp_tiles.append(n)
+				queue.append(n)
+				if n == seed_pos:
+					has_seed = true
+		components.append({region_id = region_id, tiles = comp_tiles, has_seed = has_seed})
+
+	# Find largest component per region
+	var largest: Dictionary = {}
+	for comp in components:
+		var rid: StringName = comp.region_id
+		var sz: int = comp.tiles.size()
+		if sz > largest.get(rid, 0):
+			largest[rid] = sz
+
+	# Reassign small components (< 5 tiles, not having seed, not the largest)
+	for comp in components:
+		if comp.has_seed:
+			continue
+		var rid: StringName = comp.region_id
+		var sz: int = comp.tiles.size()
+		if sz >= 5 and sz == largest.get(rid, 0):
+			continue
+		# Find majority neighboring region (non-mountain, non-water neighbors)
+		var neighbor_counts: Dictionary = {}
+		for coord in comp.tiles:
+			for n in HexHelper.get_neighbors(coord):
+				if not map.tiles.has(n):
+					continue
+				var ntile: HexMapData.TileState = map.tiles[n]
+				if ntile.terrain == Enums.TerrainType.WATER:
+					continue
+				if ntile.region_id == rid or ntile.region_id == &"":
+					continue
+				neighbor_counts[ntile.region_id] = neighbor_counts.get(ntile.region_id, 0) + 1
+		var best_rid: StringName = &""
+		var best_count := 0
+		for nrid in neighbor_counts:
+			if neighbor_counts[nrid] > best_count:
+				best_count = neighbor_counts[nrid]
+				best_rid = nrid
+		if best_rid != &"":
+			for coord in comp.tiles:
+				map.tiles[coord].region_id = best_rid
+
+	# Pass 2: Reassign mountain tiles that have no same-region non-mountain neighbors
+	for coord in map.tiles:
+		var tile: HexMapData.TileState = map.tiles[coord]
+		if tile.terrain != Enums.TerrainType.MOUNTAINS:
+			continue
+		if tile.region_id == &"":
+			continue
+		var has_same_region_passable := false
+		for n in HexHelper.get_neighbors(coord):
+			if not map.tiles.has(n):
+				continue
+			var ntile: HexMapData.TileState = map.tiles[n]
+			if ntile.region_id == tile.region_id and ntile.terrain != Enums.TerrainType.WATER and ntile.terrain != Enums.TerrainType.MOUNTAINS:
+				has_same_region_passable = true
+				break
+		if has_same_region_passable:
+			continue
+		# Reassign to majority neighboring region
+		var neighbor_counts: Dictionary = {}
+		for n in HexHelper.get_neighbors(coord):
+			if not map.tiles.has(n):
+				continue
+			var ntile: HexMapData.TileState = map.tiles[n]
+			if ntile.region_id != &"" and ntile.region_id != tile.region_id:
+				neighbor_counts[ntile.region_id] = neighbor_counts.get(ntile.region_id, 0) + 1
+		var best_rid: StringName = &""
+		var best_count := 0
+		for nrid in neighbor_counts:
+			if neighbor_counts[nrid] > best_count:
+				best_count = neighbor_counts[nrid]
+				best_rid = nrid
+		if best_rid != &"":
+			tile.region_id = best_rid
+
 static func _assign_realm_influence(map: HexMapData, regions: Dictionary) -> void:
 	for coord in map.tiles:
 		var tile: HexMapData.TileState = map.tiles[coord]
@@ -680,7 +799,7 @@ static func _hex_line(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
 static func _create_wetland_bridges(map: HexMapData) -> void:
 	# Each bridge is a list of tile positions to set as WETLANDS
 	var bridges := [
-		# Western isle → Altaban/West coast
+		# Western isle → Verdant Glade/West coast
 		[Vector2i(8, 29), Vector2i(9, 29), Vector2i(10, 28)],
 		# Southern isle → SW jungle
 		[Vector2i(31, 72), Vector2i(32, 71), Vector2i(33, 70), Vector2i(34, 69)],

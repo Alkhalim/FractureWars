@@ -62,6 +62,7 @@ signal diplomacy_action(action_type: int, faction_a: StringName, faction_b: Stri
 signal treaty_created(treaty_id: StringName, treaty_type: int, faction_a: StringName, faction_b: StringName)
 signal treaty_expired(treaty_id: StringName)
 signal standing_changed(faction_a: StringName, faction_b: StringName, new_standing: int)
+signal trade_intercepted(interceptor_faction: StringName, treaty_id: StringName, gold_stolen: int)
 
 # Research signals
 signal research_started(faction_id: StringName, research_id: StringName)
@@ -74,6 +75,10 @@ signal policy_revoked(faction_id: StringName, policy_id: StringName)
 # Senate / Forsaken signals
 signal forsaken_offer(faction_id: StringName, offer: Dictionary)
 signal senate_dilemma(faction_id: StringName, dilemma: Dictionary)
+
+# Faction mechanic dilemma (Empire edicts, Tainted Jade focus, Moonspear rituals, etc.)
+signal dilemma_triggered(faction_id: StringName, dilemma_type: StringName, dilemma_data: Dictionary)
+signal dilemma_resolved(faction_id: StringName, dilemma_type: StringName, choice_effect: String)
 
 # Victory / defeat signals
 signal game_over(faction_id: StringName, victory_type: int, is_player: bool)

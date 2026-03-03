@@ -1948,11 +1948,12 @@ func _apply_battle_results() -> void:
 		var attacker_side := 0 if is_player_attacker else 1
 		var attacker_won := simulator.winner_side == attacker_side
 		if attacker_won and attacker_alive:
-			# Attacker won — garrison eradicated, attacker stays on city hex
+			# Attacker won — garrison eradicated, move attacker to city hex and start siege
 			var garrison_city := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 			if garrison_city:
 				garrison_city.garrison_defeated_turn = GameManager.state.current_turn
 				garrison_city.garrison_hp_ratio = 0.0
+			attacker_army.hex_pos = battle_hex_pos
 			attacker_army.movement_remaining = 0.0
 			attacker_army.battle_exhausted = true
 		elif attacker_alive:
@@ -2247,45 +2248,15 @@ func _find_garrison_retreat_hex(army: ArmyState, city_hex: Vector2i) -> Vector2i
 	return best_hex
 
 func _separate_armies_after_stalemate() -> void:
-	# Move each army 1 tile away from the other (no water or mountains)
-	var atk_pos := attacker_army.hex_pos
-	var def_pos := defender_army.hex_pos
-	var hex_map := GameManager.state.hex_map
-
-	# Find a valid neighbor tile for the attacker that's farther from the defender
-	var best_atk := atk_pos
-	var best_atk_dist := 0
-	for neighbor in HexHelper.get_neighbors(atk_pos):
-		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-			continue
-		var tile = hex_map.get_tile(neighbor) if hex_map else null
-		if tile and tile.terrain == Enums.TerrainType.WATER:
-			continue
-		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
-			continue
-		var dist := HexHelper.hex_distance(neighbor, def_pos)
-		if dist > best_atk_dist:
-			best_atk_dist = dist
-			best_atk = neighbor
-
-	# Find a valid neighbor tile for the defender that's farther from the attacker
-	var best_def := def_pos
-	var best_def_dist := 0
-	for neighbor in HexHelper.get_neighbors(def_pos):
-		if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-			continue
-		var tile = hex_map.get_tile(neighbor) if hex_map else null
-		if tile and tile.terrain == Enums.TerrainType.WATER:
-			continue
-		if tile and tile.terrain == Enums.TerrainType.MOUNTAINS:
-			continue
-		var dist := HexHelper.hex_distance(neighbor, atk_pos)
-		if dist > best_def_dist:
-			best_def_dist = dist
-			best_def = neighbor
-
-	attacker_army.hex_pos = best_atk
-	defender_army.hex_pos = best_def
+	# Defender stays at battle hex, attacker retreats to adjacent tile
+	var retreat_hex := _find_garrison_retreat_hex(attacker_army, defender_army.hex_pos)
+	if retreat_hex != Vector2i(-1, -1):
+		attacker_army.hex_pos = retreat_hex
+	else:
+		# No valid retreat for attacker — push defender instead as fallback
+		var def_retreat := _find_garrison_retreat_hex(defender_army, attacker_army.hex_pos)
+		if def_retreat != Vector2i(-1, -1):
+			defender_army.hex_pos = def_retreat
 
 func _apply_elderbeast_battle_results() -> void:
 	# Sync elderbeast HP from battle formations and handle survival mechanic

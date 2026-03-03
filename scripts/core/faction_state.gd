@@ -71,3 +71,32 @@ extends Resource
 # Sunblessed unique: Wisdom (accumulated from aiding allies)
 # Boosts research speed, diplomacy standing gains, and educator aura radius
 @export var wisdom: int = 0
+
+# Empire unique: Imperial Authority (0-100, starts at 60)
+# High = tribute/diplomacy/cheaper recruits. Low = rebellion risk, loyalty decay
+@export var imperial_authority: int = 60
+# Empire Edict: active policy choice (0=none, 1=military, 2=economic, 3=cultural, 4=diplomatic)
+@export var imperial_edict: int = 0
+@export var imperial_edict_turns: int = 0
+
+# Forsaken: espionage operation cooldowns & tracking
+@export var espionage_sabotage_cooldown: int = 0
+@export var espionage_caught_by: Array[StringName] = [] # factions that detected your spies
+
+# Tainted Jade: Taint Focus (0=balanced, 1=verdant growth, 2=venomous war, 3=creeping doom)
+@export var taint_focus: int = 0
+
+# Cinderguard: Player-directed forge shift queued from dilemmas
+@export var forge_shift_queued: int = 0 # -10 to +10 per dilemma choice
+
+# Moonspear: Lunar ritual state
+@export var lunar_ritual_extended: int = 0 # extra turns on current phase
+@export var lunar_skip_cooldown: int = 0
+
+# Thunderswarm: Storm ability cooldowns
+@export var storm_ability_cooldown: int = 0
+@export var storm_wall_city: StringName = &""
+@export var storm_wall_turns: int = 0
+
+# Ivoryscar: Relic expedition cooldown
+@export var relic_expedition_cooldown: int = 0

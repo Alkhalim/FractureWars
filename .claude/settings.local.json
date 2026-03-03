@@ -62,7 +62,10 @@
       "Bash(head:*)",
       "Bash(IFS='|' read faction:*)",
       "Bash(/c/Python313/python.exe:*)",
-      "Bash(cygpath:*)"
+      "Bash(cygpath:*)",
+      "Bash(perl:*)",
+      "Bash(/tmp/faction_buildings.txt:*)",
+      "Bash(/tmp/summary.txt:*)"
     ]
   }
 }

@@ -14,6 +14,7 @@ extends Resource
 @export var battles_won_no_drop: int = 0
 @export var influence_radius: int = 3
 @export var is_elderbeast: bool = false
+@export var portrait_path: String = ""
 
 var level_up_context: Array[StringName] = []
 

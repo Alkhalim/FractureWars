@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sylvan_lancer"
+display_name = "Sylvan Lancers"
+description = "Elite forest knights mounted on great stags. Their devastating charges scatter infantry and their woodland affinity lets them strike from unexpected angles."
+faction_id = &"gladehost"
+max_hp = 3500
+attack = 70
+melee_defense = 30
+projectile_defense = 20
+magic_defense = 15
+speed = 8
+attack_range = 1
+squad_size = 25
+hp_per_soldier = 140
+tiles_per_entity = 2
+movement_points = 5.5
+upkeep_cost = {0: 6, 3: 2}
+recruit_cost = {0: 140, 1: 32, 5: 53}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {1: 0.15}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 60
+captive_chance = 0.15

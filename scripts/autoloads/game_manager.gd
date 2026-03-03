@@ -255,9 +255,9 @@ const REGION_CITIES := {
 		{name = "Roothollow", offset = Vector2i(0, 5)},
 	],
 	&"verdant_glade": [
-		{name = "Fernhall", offset = Vector2i(-3, -4)},
-		{name = "Mosskeep", offset = Vector2i(4, 3)},
-		{name = "Briargate", offset = Vector2i(-4, 4)},
+		{name = "Tidewrack", offset = Vector2i(-3, -4)},
+		{name = "Mangrove Haven", offset = Vector2i(4, 3)},
+		{name = "Corsair's Reach", offset = Vector2i(-4, 4)},
 	],
 	&"orisyl": [
 		{name = "Orisyl Canopy", offset = Vector2i(0, -4)},
@@ -319,9 +319,9 @@ const REGION_CITIES := {
 		{name = "Dreadcamp", offset = Vector2i(0, 5)},
 	],
 	&"altaban": [
-		{name = "Altaban Outpost", offset = Vector2i(0, -4)},
-		{name = "Salt Hollow", offset = Vector2i(4, 3)},
-		{name = "Reaver's Den", offset = Vector2i(-4, 4)},
+		{name = "Thornwatch", offset = Vector2i(0, -4)},
+		{name = "Rootspire", offset = Vector2i(4, 3)},
+		{name = "Verdant Hall", offset = Vector2i(-4, 4)},
 	],
 	&"tsagan": [
 		{name = "Tsagan Camp", offset = Vector2i(-3, -4)},
@@ -382,10 +382,10 @@ const REGION_CITIES := {
 const REGION_CULTURE := {
 	&"iskar": &"frostlands", &"asdrol": &"frostlands", &"nightfall_sanctum": &"frostlands",
 	&"dragonspire_mountains": &"storm_peaks", &"thundercrest_peaks": &"storm_peaks", &"skalvar": &"storm_peaks",
-	&"altaban": &"western_marches", &"aurentis": &"western_marches", &"sainkhu_groves": &"western_marches",
+	&"verdant_glade": &"western_marches", &"aurentis": &"western_marches", &"sainkhu_groves": &"western_marches",
 	&"eternal_plains": &"imperial_heartland", &"sunburst_valley": &"imperial_heartland", &"valkarn": &"imperial_heartland",
 	&"duststorm_valley": &"ashlands", &"ashenmark": &"ashlands", &"morvane": &"ashlands",
-	&"bataarbad": &"central_steppe", &"verdant_glade": &"central_steppe", &"tsagan": &"central_steppe",
+	&"bataarbad": &"central_steppe", &"altaban": &"central_steppe", &"tsagan": &"central_steppe",
 	&"coatlantli": &"emerald_south", &"orisyl": &"emerald_south", &"xotchi": &"emerald_south",
 	&"southern_reach": &"southern_reaches", &"orenthal": &"southern_reaches", &"torgalun_desert": &"southern_reaches",
 	&"whispering_dunes": &"eastern_wastes", &"weeping_barrows": &"eastern_wastes", &"qareth": &"eastern_wastes",
@@ -395,10 +395,10 @@ const REGION_CULTURE := {
 const CULTURE_REGIONS := {
 	&"frostlands": [&"iskar", &"asdrol", &"nightfall_sanctum"],
 	&"storm_peaks": [&"dragonspire_mountains", &"thundercrest_peaks", &"skalvar"],
-	&"western_marches": [&"altaban", &"aurentis", &"sainkhu_groves"],
+	&"western_marches": [&"verdant_glade", &"aurentis", &"sainkhu_groves"],
 	&"imperial_heartland": [&"eternal_plains", &"sunburst_valley", &"valkarn"],
 	&"ashlands": [&"duststorm_valley", &"ashenmark", &"morvane"],
-	&"central_steppe": [&"bataarbad", &"verdant_glade", &"tsagan"],
+	&"central_steppe": [&"bataarbad", &"altaban", &"tsagan"],
 	&"emerald_south": [&"coatlantli", &"orisyl", &"xotchi"],
 	&"southern_reaches": [&"southern_reach", &"orenthal", &"torgalun_desert"],
 	&"eastern_wastes": [&"whispering_dunes", &"weeping_barrows", &"qareth"],
@@ -1200,6 +1200,33 @@ func _init_cities() -> void:
 					var building: StringName = faction_starting_buildings.get(owning_faction, &"")
 					if building != &"":
 						city.buildings.append(building)
+						# Assign starting building to a tile — pick the neighbor most bordered by other city neighbors
+						var best_tile := Vector2i(-1, -1)
+						var best_score := -1
+						var city_neighbors := HexHelper.get_neighbors(city_pos)
+						var neighbor_set: Dictionary = {}
+						for cn in city_neighbors:
+							neighbor_set[cn] = true
+						for cn in city_neighbors:
+							if not HexHelper.is_valid(cn, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+								continue
+							var tile := state.hex_map.get_tile(cn)
+							if tile == null or tile.terrain == Enums.TerrainType.WATER:
+								continue
+							# Check building terrain requirement
+							var bdata: BuildingData = DataManager.get_building(building)
+							if bdata and bdata.required_terrain >= 0 and tile.terrain != bdata.required_terrain:
+								continue
+							# Score = how many of this tile's own neighbors are also neighbors of the city
+							var score := 0
+							for nn in HexHelper.get_neighbors(cn):
+								if neighbor_set.has(nn):
+									score += 1
+							if score > best_score:
+								best_score = score
+								best_tile = cn
+						if best_tile != Vector2i(-1, -1):
+							city.building_tiles[building] = best_tile
 					# Grant player a free settlement founding on turn 1
 					if owning_faction == state.player_faction_id:
 						city.can_found_settlement = true
@@ -1318,9 +1345,27 @@ func _create_commander(faction_id: StringName) -> CommanderState:
 	cmd.faction_id = faction_id
 	cmd.level = 1
 	cmd.xp = 0
+	cmd.portrait_path = _pick_random_leader_portrait(faction_id)
 	if CommanderSystem:
 		CommanderSystem.assign_starting_traits(cmd)
 	return cmd
+
+func _pick_random_leader_portrait(faction_id: StringName) -> String:
+	var leader_dir := "res://assets/sprites/factions/" + str(faction_id) + "/leaders/"
+	var dir := DirAccess.open(leader_dir)
+	if dir == null:
+		return ""
+	var portraits: Array[String] = []
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while file_name != "":
+		if file_name.ends_with(".png") or file_name.ends_with(".jpg") or file_name.ends_with(".webp"):
+			portraits.append(leader_dir + file_name)
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	if portraits.is_empty():
+		return ""
+	return portraits[randi() % portraits.size()]
 
 func _init_commander_pools() -> void:
 	for faction_id in state.faction_states:

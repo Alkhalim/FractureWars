@@ -6,14 +6,14 @@
 script = ExtResource("1")
 id = &"captive_processing_camp"
 display_name = "Captive Processing Camp II"
-description = "A vast work camp where captives labor to process jungle hardwood and forge jade-steel. More efficient than thrall quarters but requires more captive throughput. Some captives are broken and integrated into the population (15% conversion rate)."
+description = "A vast work camp where captives labor to process jungle hardwood and forge jade-steel. More efficient than thrall quarters but requires more captive throughput. Some captives are broken and integrated into the population (20% conversion rate)."
 faction_id = &"tainted_jade"
 category = &"economic"
-build_cost = {0: 270, 1: 25}
+build_cost = {0: 243, 1: 28}
 build_time = 3
 income_bonus = {5: 21, 1: 16}
 population_growth_bonus = 6
 required_capital_level = 2
 upgrades_from = &"thrall_quarters"
 class_loyalty_bonus = {"captives": -8, "artisans": 2}
-special_effects = {"captive_conversion_rate": 0.15}
+special_effects = {"captive_conversion_rate": 0.20, "taint_generation": 2}

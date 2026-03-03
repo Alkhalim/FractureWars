@@ -902,22 +902,51 @@ func _find_province_capital(region_id: StringName, faction_id: StringName) -> Ci
 	return null
 
 func _trigger_revolt(city: CityState, faction_id: StringName) -> void:
-	# Spawn rebel army at city hex
+	# Spawn rebel army at city hex using dedicated rebel units
 	var rebel_army := ArmyState.new()
 	rebel_army.army_id = GameManager.state.generate_id()
 	rebel_army.faction_id = &"rebels"
 	rebel_army.hex_pos = city.hex_pos
 
-	# Composition scales with province population (1-4 units)
-	var num_units := clampi(get_province_population(city) / 75, 1, 4)
-	# Use a generic rebel unit - pick the first available unit as a template
-	var rebel_unit_id := &"warband_raider"  # Fallback rebel unit
-	for _i in num_units:
-		var unit_data := DataManager.get_unit(rebel_unit_id)
-		if unit_data:
-			var instance := UnitInstance.new()
-			instance.init_from_data(unit_data, GameManager.state.generate_id())
-			rebel_army.units.append(instance)
+	# City development score determines rebel strength and variety
+	var dev_score: int = city.population + city.buildings.size()
+	var num_units := clampi(dev_score / 40, 2, 5)
+
+	# Rebel unit pools by tier
+	const REBEL_LOW: Array[StringName] = [&"rebel_militia", &"rebel_archer"]
+	const REBEL_MID: Array[StringName] = [&"rebel_militia", &"rebel_archer", &"rebel_horseman"]
+	const REBEL_HIGH: Array[StringName] = [&"rebel_militia", &"rebel_archer", &"rebel_horseman", &"rebel_warbeast", &"rebel_brutes"]
+
+	var pool: Array[StringName]
+	if dev_score < 30:
+		pool = REBEL_LOW
+	elif dev_score < 60:
+		pool = REBEL_MID
+	else:
+		pool = REBEL_HIGH
+
+	# Pick 2-3 different unit types for variety
+	var num_types := clampi(dev_score / 40, 2, 3)
+	var shuffled_pool := pool.duplicate()
+	shuffled_pool.shuffle()
+	var chosen_types: Array[UnitData] = []
+	for i in mini(num_types, shuffled_pool.size()):
+		var ud := DataManager.get_unit(shuffled_pool[i])
+		if ud:
+			chosen_types.append(ud)
+	if chosen_types.is_empty():
+		var fallback := DataManager.get_unit(&"rebel_militia")
+		if fallback:
+			chosen_types.append(fallback)
+
+	# Distribute units across chosen types
+	for i in num_units:
+		var ud: UnitData = chosen_types[i % chosen_types.size()]
+		var instance := UnitInstance.new()
+		instance.init_from_data(ud, GameManager.state.generate_id())
+		# Rebels are less experienced — reduce HP by 15%
+		instance.current_hp = maxi(1, int(instance.current_hp * 0.85))
+		rebel_army.units.append(instance)
 
 	rebel_army.movement_remaining = 0.0
 	GameManager.state.armies[rebel_army.army_id] = rebel_army
@@ -1377,7 +1406,7 @@ const GARRISON_UNITS := {
 	&"forsaken": [&"shadow_thrall", &"shadow_thrall"],
 	&"ivoryscar": [&"ivoryscar_seeker", &"ivoryscar_seeker"],
 	&"sunblessed": [&"sunblessed_pilgrim", &"sunblessed_pilgrim"],
-	&"independent": [&"citizen_phalanx", &"citizen_phalanx"],
+	&"independent": [&"citizen_phalanx", &"hoplite_guard"],
 }
 
 func _get_garrison_bonus_units(city: CityState) -> Array[StringName]:
@@ -1419,6 +1448,14 @@ func _get_garrison_composition(city: CityState) -> Array:
 	var bonus := _get_garrison_bonus_units(city)
 	for bonus_uid in bonus:
 		result.append({unit_id = bonus_uid, count = 1})
+	# Independent cities get extra Greek-themed units at higher levels
+	if city.faction_id == &"independent":
+		if city.level >= 2:
+			result.append({unit_id = &"toxotes", count = 2})
+		if city.level >= 3:
+			result.append({unit_id = &"citizen_cavalry", count = 1})
+		if city.level >= 4:
+			result.append({unit_id = &"war_ballista", count = 1})
 	return result
 
 func create_garrison_army(city: CityState) -> ArmyState:

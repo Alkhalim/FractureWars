@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shard_colossus"
+display_name = "Shard Colossus"
+description = "A towering construct of fused crystal shards animated by pure resonance. It moves with deceptive speed for its size and shatters everything it strikes."
+faction_id = &"shardhorde"
+max_hp = 12000
+attack = 110
+melee_defense = 65
+projectile_defense = 45
+magic_defense = 25
+speed = 3
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 12
+movement_points = 2.5
+upkeep_cost = {0: 15, 4: 3}
+recruit_cost = {0: 380, 1: 105, 4: 40}
+recruit_time = 6
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {2: 0.2}
+tags = Array[String](["monster", "melee", "construct"])
+base_morale = 85
+morale_aura = -6
+fear_radius = 5
+captive_chance = 0

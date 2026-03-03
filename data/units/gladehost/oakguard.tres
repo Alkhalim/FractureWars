@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"oakguard"
+display_name = "Oakguard"
+description = "Warriors clad in bark-plate armor blessed by the elder trees. They stand like living walls, unbreakable as the ancient oaks they serve."
+faction_id = &"gladehost"
+max_hp = 9000
+attack = 50
+melee_defense = 55
+projectile_defense = 30
+magic_defense = 20
+speed = 3
+attack_range = 1
+squad_size = 70
+hp_per_soldier = 128
+movement_points = 3
+upkeep_cost = {0: 7, 3: 4, 5: 2}
+recruit_cost = {0: 180, 5: 84}
+recruit_time = 4
+population_cost = 14
+terrain_bonuses = {1: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 70
+fear_radius = 3
+armor_aura = 1
+captive_chance = 0.2
