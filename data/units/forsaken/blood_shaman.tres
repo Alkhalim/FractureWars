@@ -25,6 +25,7 @@ population_cost = 4
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["mage", "ranged", "support", "undead"])
+spell_type = &"heal_bolt"
 base_morale = 35
 morale_aura = -2
 fear_radius = 3

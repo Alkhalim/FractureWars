@@ -28,6 +28,7 @@ extends Resource
 @export var upgrade_turns_remaining: int = 0 # 0 = no upgrade in progress; >0 = turns left
 @export var garrison_defeated_turn: int = -1 # Turn when garrison was last defeated (-1 = never)
 @export var garrison_hp_ratio: float = 1.0 # 0.0 = destroyed, 1.0 = full; heals over time when not sieged
+@export var garrison_units: Array[Dictionary] = [] # Independent cities: persistent garrison [{unit_id, count}]
 @export var building_recruit_queues: Dictionary = {} # building_id -> Array[Dict] (per-building training queues)
 
 const GROWTH_THRESHOLDS := [200, 400, 700, 1100] # pop needed for levels 2-5

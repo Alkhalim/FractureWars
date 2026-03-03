@@ -17,7 +17,7 @@ class TileState:
 	var owner_faction: StringName = &""
 
 const TERRAIN_COSTS := {
-	Enums.TerrainType.PLAINS: 1.0,
+	Enums.TerrainType.PLAINS: 1.1,
 	Enums.TerrainType.FOREST: 2.0,
 	Enums.TerrainType.MOUNTAINS: 4.2,
 	Enums.TerrainType.DESERT: 1.5,

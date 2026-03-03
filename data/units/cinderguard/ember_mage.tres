@@ -25,4 +25,5 @@ population_cost = 5
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["mage", "ranged", "cinderguard"])
+spell_type = &"fireball"
 base_morale = 50

@@ -53,6 +53,10 @@ func process_turn(faction_id: StringName) -> void:
 			else:
 				city.garrison_hp_ratio = minf(city.garrison_hp_ratio + 0.15, 1.0)
 
+		# Independent city garrison growth: +1 unit every 5 turns, max 9
+		if city.faction_id == &"independent" and city.garrison_units.size() > 0:
+			_grow_independent_garrison(city)
+
 		# Loyalty update (capitals compute; settlements inherit)
 		_update_loyalty(city, faction_id)
 		if city.turns_since_capture >= 0:
@@ -1409,6 +1413,35 @@ const GARRISON_UNITS := {
 	&"independent": [&"citizen_phalanx", &"hoplite_guard"],
 }
 
+func _grow_independent_garrison(city: CityState) -> void:
+	var turn: int = GameManager.state.current_turn
+	if turn % 5 != 0:
+		return
+	# Count total units in garrison
+	var total := 0
+	for entry in city.garrison_units:
+		total += entry.count
+	if total >= 9:
+		return
+	# Build pool based on turn number
+	var pool: Array[StringName] = [&"citizen_phalanx", &"toxotes"]
+	if turn >= 15:
+		pool.append(&"citizen_cavalry")
+	if turn >= 20:
+		pool.append(&"hoplite_guard")
+	if turn >= 25:
+		pool.append(&"war_ballista")
+	var pick: StringName = pool[randi() % pool.size()]
+	# Add to existing entry or create new one
+	var found := false
+	for entry in city.garrison_units:
+		if entry.unit_id == pick:
+			entry.count += 1
+			found = true
+			break
+	if not found:
+		city.garrison_units.append({unit_id = pick, count = 1})
+
 func _get_garrison_bonus_units(city: CityState) -> Array[StringName]:
 	var bonus_units: Array[StringName] = []
 	for building_id in city.buildings:
@@ -1448,14 +1481,9 @@ func _get_garrison_composition(city: CityState) -> Array:
 	var bonus := _get_garrison_bonus_units(city)
 	for bonus_uid in bonus:
 		result.append({unit_id = bonus_uid, count = 1})
-	# Independent cities get extra Greek-themed units at higher levels
-	if city.faction_id == &"independent":
-		if city.level >= 2:
-			result.append({unit_id = &"toxotes", count = 2})
-		if city.level >= 3:
-			result.append({unit_id = &"citizen_cavalry", count = 1})
-		if city.level >= 4:
-			result.append({unit_id = &"war_ballista", count = 1})
+	# Independent cities use persistent garrison that grows over time
+	if city.faction_id == &"independent" and city.garrison_units.size() > 0:
+		return city.garrison_units.duplicate(true)
 	return result
 
 func create_garrison_army(city: CityState) -> ArmyState:
@@ -1477,6 +1505,26 @@ func create_garrison_army(city: CityState) -> ArmyState:
 			var instance := UnitInstance.new()
 			instance.init_from_data(unit_data, GameManager.state.generate_id())
 			army.units.append(instance)
+
+	# Independent cities: order units with melee on flanks, ranged in middle
+	if city.faction_id == &"independent" and army.units.size() > 1:
+		var melee_units: Array[UnitInstance] = []
+		var ranged_units: Array[UnitInstance] = []
+		for unit in army.units:
+			var ud := DataManager.get_unit(unit.unit_data_id)
+			if ud and ud.attack_range >= 2:
+				ranged_units.append(unit)
+			else:
+				melee_units.append(unit)
+		army.units.clear()
+		# Split melee: half left flank, half right flank
+		var left_count := melee_units.size() / 2
+		for i in left_count:
+			army.units.append(melee_units[i])
+		for unit in ranged_units:
+			army.units.append(unit)
+		for i in range(left_count, melee_units.size()):
+			army.units.append(melee_units[i])
 
 	# Apply garrison HP ratio (damaged garrison from previous battles)
 	if city.garrison_hp_ratio <= 0.0:

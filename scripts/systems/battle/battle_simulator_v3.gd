@@ -20,7 +20,7 @@ const RANGED_PX_PER_RANGE := 48.0
 const DEATH_PROXIMITY := 120.0
 const ROUT_SPEED_MULT := 1.5
 const BASE_MOVE_SPEED := 0.3  # Pixels per tick per speed point (scaled for 10 ticks/sec)
-const TICK_SCALE := 0.2       # Damage/morale scale factor for high tick rate
+const TICK_SCALE := 0.17      # Damage/morale scale factor for high tick rate (15% slower than 0.2)
 const FORCE_ADVANCE_TICK := 600  # After this tick, attacker forced to advance
 
 # Endurance system
@@ -207,6 +207,15 @@ class BattleFormationV3:
 	var spawn_interval: int = 0           # Ticks between spawns
 	var spawn_counter: int = 0            # Current spawn countdown
 
+	# Chariot trample
+	var chariot_trample_cooldown: int = 0  # Ticks until next trample tick
+
+	# Mage spell type
+	var spell_type: StringName = &""  # fireball, lightning, frost_bolt, death_curse, heal_bolt, sunfire, hex_curse, shard_pulse, sand_blast
+
+	# Debuffs applied by spells (each: {type: StringName, value: float, ticks: int})
+	var debuffs: Array[Dictionary] = []
+
 	# Debt penalty: faction has negative gold
 	var faction_in_debt: bool = false
 
@@ -311,6 +320,7 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.faction_id = ud.faction_id
 	f.side = side
 	f.tags = ud.tags.duplicate()
+	f.spell_type = ud.spell_type if ud.spell_type != &"" else &"bolt"
 	var atk_bonus: int = cmd_bonuses.get("attack_bonus", 0)
 	var def_bonus: int = cmd_bonuses.get("defense_bonus", 0)
 	var spd_bonus: int = cmd_bonuses.get("speed_bonus", 0)
@@ -711,9 +721,13 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 
 	# Ranged attack cooldown: mages fire slower than archers (high burst, lower frequency)
 	if ud.tags.has("mage"):
-		f.ranged_cooldown_max = 12
+		f.ranged_cooldown_max = 14
 	elif ud.tags.has("ranged"):
-		f.ranged_cooldown_max = 7
+		# Fast ranged units (speed 6+) fire slightly faster — 10% reduction instead of 15%
+		if ud.tags.has("fast") or ud.speed >= 6:
+			f.ranged_cooldown_max = 7
+		else:
+			f.ranged_cooldown_max = 8
 
 	if ud.tags.has("ranged") or ud.tags.has("mage"):
 		f.stance = Enums.UnitStance.DEFENSIVE
@@ -1135,7 +1149,20 @@ func simulate_tick() -> Array[Dictionary]:
 		if f.is_routing:
 			actions.append_array(_execute_rout_movement(f))
 			continue
+		# Chariot trample cooldown tick-down
+		if f.chariot_trample_cooldown > 0:
+			f.chariot_trample_cooldown -= 1
 		if _check_melee_contact(f):
+			# Chariots don't stop at melee contact — they plow through dealing trample damage
+			if f.tags.has("chariot"):
+				f.in_melee_contact = true
+				f.is_idle_this_tick = false
+				f.current_endurance = maxf(0.0, f.current_endurance - ENDURANCE_DRAIN_CHARGE)
+				# Deal trample damage while passing through
+				actions.append_array(_execute_chariot_trample(f))
+				# Keep moving — don't stop at contact
+				actions.append_array(_execute_order_movement(f))
+				continue
 			if f.first_contact_tick < 0:
 				f.first_contact_tick = tick_count
 			f.in_melee_contact = true
@@ -1152,8 +1179,14 @@ func simulate_tick() -> Array[Dictionary]:
 				_rotate_toward_smooth(f, melee_target.position)
 				var dist_to_target := f.position.distance_to(melee_target.position)
 				var engage_dist := f.cached_radius + melee_target.cached_radius + 12.0
-				# Large units: stop advancing when already at engage distance to prevent oscillation
-				if dist_to_target > engage_dist * 0.8:
+				# Depleted ranged units advance aggressively into melee (no tapering)
+				var is_depleted_ranged := f.attack_range > 1 and ((f.max_ammo > 0 and f.current_ammo <= 0) or (f.max_mana > 0.0 and f.current_mana < MANA_COST_SPELL * 0.3))
+				if is_depleted_ranged:
+					# Commit fully to melee — close gap at full speed
+					if dist_to_target > engage_dist * 0.5:
+						var close_dir := f.position.direction_to(melee_target.position)
+						f.position += close_dir * f.move_speed * 0.8
+				elif dist_to_target > engage_dist * 0.8:
 					var close_dir := f.position.direction_to(melee_target.position)
 					var close_speed := f.move_speed * 0.6
 					if f.tags.has("cavalry"):
@@ -1312,6 +1345,37 @@ func simulate_tick() -> Array[Dictionary]:
 				var spawned := _spawn_unit_from_beast(f)
 				if spawned:
 					actions.append({"type": "spawn", "source": f.instance_id, "spawned": spawned.instance_id})
+
+	# Phase 5d: Process debuffs (DoT, slow, defense reduction)
+	for f in all:
+		if f.is_dead or f.is_fled:
+			continue
+		if f.debuffs.is_empty():
+			continue
+		var i_db := 0
+		while i_db < f.debuffs.size():
+			var db: Dictionary = f.debuffs[i_db]
+			db.ticks -= 1
+			if db.type == &"dot":
+				var dot_tick_dmg := maxi(1, int(db.value))
+				f.damage_dealt -= 0  # DoT doesn't count as attacker DPS
+				var killed := f.take_damage(dot_tick_dmg)
+				if killed > 0:
+					actions.append({"type": "dot_damage", "target": f.instance_id, "damage": dot_tick_dmg, "killed": killed})
+				if f.is_dead:
+					recent_deaths.append({"side": f.side, "position": f.position, "tick": tick_count})
+					break
+			if db.ticks <= 0:
+				# Remove expired debuff and restore effects
+				if db.type == &"slow":
+					f.move_speed /= maxf(0.01, 1.0 - db.value)
+				elif db.type == &"defense_down":
+					f.defense += int(db.value)
+					f.melee_defense += int(db.value)
+					f.magic_defense += int(db.value)
+				f.debuffs.remove_at(i_db)
+			else:
+				i_db += 1
 
 	# Phase 6: Victory check
 	_check_victory()
@@ -1746,29 +1810,30 @@ func _find_all_contact_pairs() -> Array[Array]:
 func _resolve_combat_pair(a: BattleFormationV3, b: BattleFormationV3) -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
 
-	# A attacks B
-	var result_ab := _resolve_melee_combat(a, b)
-	var ab_dmg: int = result_ab.damage
-	if ab_dmg > 0:
-		a.damage_dealt += ab_dmg
-		var killed := b.take_damage(ab_dmg)
-		b.current_morale -= result_ab.morale_damage
-		if b.total_entities > 1 and killed > 0:
-			b.current_morale -= killed * 3.0 * TICK_SCALE
-		actions.append({
-			"type": "melee_hit", "attacker": a.instance_id, "defender": b.instance_id,
-			"damage": ab_dmg, "killed": killed,
-			"contact": result_ab.contact, "flank": result_ab.flank, "rear": result_ab.rear
-		})
-		if killed > 0:
-			var caps := _generate_captives(a, b, killed)
-			if caps > 0:
-				actions.append({"type": "captive", "side": a.side, "count": caps})
-		if b.is_dead:
-			recent_deaths.append({"side": b.side, "position": b.position, "tick": tick_count})
+	# A attacks B (chariots deal damage via trample instead — skip their melee attack)
+	if not a.tags.has("chariot"):
+		var result_ab := _resolve_melee_combat(a, b)
+		var ab_dmg: int = result_ab.damage
+		if ab_dmg > 0:
+			a.damage_dealt += ab_dmg
+			var killed := b.take_damage(ab_dmg)
+			b.current_morale -= result_ab.morale_damage
+			if b.total_entities > 1 and killed > 0:
+				b.current_morale -= killed * 3.0 * TICK_SCALE
+			actions.append({
+				"type": "melee_hit", "attacker": a.instance_id, "defender": b.instance_id,
+				"damage": ab_dmg, "killed": killed,
+				"contact": result_ab.contact, "flank": result_ab.flank, "rear": result_ab.rear
+			})
+			if killed > 0:
+				var caps := _generate_captives(a, b, killed)
+				if caps > 0:
+					actions.append({"type": "captive", "side": a.side, "count": caps})
+			if b.is_dead:
+				recent_deaths.append({"side": b.side, "position": b.position, "tick": tick_count})
 
-	# B attacks A (routing units don't fight back)
-	if not b.is_dead and not b.is_fled and not b.is_routing:
+	# B attacks A (routing units don't fight back; chariots skip their attack here too)
+	if not b.is_dead and not b.is_fled and not b.is_routing and not b.tags.has("chariot"):
 		var result_ba := _resolve_melee_combat(b, a)
 		var ba_dmg: int = result_ba.damage
 		if ba_dmg > 0:
@@ -1915,6 +1980,10 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	if attacker.tags.has("infantry") and defender.tags.has("infantry"):
 		per_tile_dps *= 0.55
 
+	# Fast attackers (speed 6+) get less of a speed reduction (10% total instead of 15%)
+	if attacker.tags.has("fast") or attacker.speed >= 6:
+		per_tile_dps *= 1.06
+
 	var total_damage := maxi(1, int(per_tile_dps * total_contact * randf_range(0.85, 1.15) * TICK_SCALE))
 
 	# Stance modifiers
@@ -1964,6 +2033,236 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 		"flank": flank_contact,
 		"rear": rear_contact
 	}
+
+# --- Chariot Trample ---
+
+func _execute_chariot_trample(chariot: BattleFormationV3) -> Array[Dictionary]:
+	var actions: Array[Dictionary] = []
+	# Trample cooldown: deal trample damage every 3 ticks (not every tick)
+	if chariot.chariot_trample_cooldown > 0:
+		return actions
+	chariot.chariot_trample_cooldown = 3
+
+	var enemies := defender_formations if chariot.side == 0 else attacker_formations
+	var trample_range := chariot.cached_radius * 3.0 + 20.0
+	var speed_factor := clampf(chariot.move_speed / 4.0, 0.5, 2.5)
+	if chariot.momentum > 0.3:
+		speed_factor *= 1.0 + chariot.momentum * 0.6
+
+	for enemy in enemies:
+		if enemy.is_dead or enemy.is_fled:
+			continue
+		var dist := chariot.position.distance_to(enemy.position)
+		if dist > trample_range:
+			continue
+
+		# Trample damage: attack-based, scaled by speed and momentum
+		var atk_f := float(chariot.attack)
+		var def_f := float(enemy.melee_defense) * 0.3  # Armor helps less against trampling
+		var trample_dps := maxf(1.0, atk_f * atk_f / (atk_f + def_f))
+		trample_dps *= speed_factor * TICK_SCALE * 1.5  # 50% bonus over regular melee
+
+		# Contact estimate: how many chariot entities are near the enemy
+		var contact := 0.0
+		var c_limit := mini(chariot.entities_alive, chariot.entity_positions.size())
+		var e_limit := mini(enemy.entities_alive, enemy.entity_positions.size())
+		var engage_sq := trample_range * trample_range
+		for ci in mini(c_limit, 10):
+			for ei in mini(e_limit, 15):
+				if chariot.entity_positions[ci].distance_squared_to(enemy.entity_positions[ei]) < engage_sq:
+					contact += 1.0
+					break  # One match per chariot entity is enough
+		contact = minf(contact, float(chariot.entities_alive))
+		if contact < 0.5:
+			continue
+
+		var total_damage := maxi(1, int(trample_dps * contact))
+
+		if chariot.faction_in_debt:
+			total_damage = int(total_damage * 0.85)
+
+		chariot.damage_dealt += total_damage
+		var killed := enemy.take_damage(total_damage)
+
+		# Trample causes heavy morale damage — being run over is terrifying
+		enemy.current_morale -= contact * 2.5 * TICK_SCALE
+
+		# Push enemy entities aside (scatter effect)
+		if not enemy.is_dead:
+			var push_dir := chariot.get_facing_vector()
+			var push_strength := chariot.move_speed * 0.4
+			var scatter_limit := mini(e_limit, 10)
+			for ei in scatter_limit:
+				if chariot.position.distance_squared_to(enemy.entity_positions[ei]) < engage_sq:
+					var scatter := push_dir * push_strength + Vector2(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0))
+					enemy.entity_positions[ei] += scatter
+					if enemy.entity_target_positions.size() > ei:
+						enemy.entity_target_positions[ei] += scatter * 0.5
+
+		actions.append({
+			"type": "melee_hit", "attacker": chariot.instance_id, "defender": enemy.instance_id,
+			"damage": total_damage, "killed": killed,
+			"contact": contact, "flank": 0.0, "rear": 0.0
+		})
+
+		if killed > 0:
+			var caps := _generate_captives(chariot, enemy, killed)
+			if caps > 0:
+				actions.append({"type": "captive", "side": chariot.side, "count": caps})
+		if enemy.is_dead:
+			recent_deaths.append({"side": enemy.side, "position": enemy.position, "tick": tick_count})
+
+	return actions
+
+# --- Spell Effect Helpers ---
+
+func _apply_debuff(target: BattleFormationV3, type: StringName, value: float, ticks: int) -> void:
+	# Check if debuff already exists — refresh duration, don't stack
+	for db in target.debuffs:
+		if db.type == type:
+			db.ticks = maxi(db.ticks, ticks)
+			return
+	# Apply new debuff
+	target.debuffs.append({type = type, value = value, ticks = ticks})
+	if type == &"slow":
+		target.move_speed *= (1.0 - value)
+	elif type == &"defense_down":
+		target.defense = maxi(0, target.defense - int(value))
+		target.melee_defense = maxi(0, target.melee_defense - int(value))
+		target.magic_defense = maxi(0, target.magic_defense - int(value))
+
+func _find_splash_target(caster: BattleFormationV3, primary_target: BattleFormationV3) -> BattleFormationV3:
+	var enemies := defender_formations if caster.side == 0 else attacker_formations
+	var best: BattleFormationV3 = null
+	var best_dist := 999999.0
+	for e in enemies:
+		if e == primary_target or e.is_dead or e.is_fled:
+			continue
+		var d := primary_target.position.distance_to(e.position)
+		if d < best_dist and d < RANGED_PX_PER_RANGE * 3.0:
+			best_dist = d
+			best = e
+	return best
+
+func _heal_nearest_ally(caster: BattleFormationV3, amount: int) -> void:
+	if amount <= 0:
+		return
+	var allies := attacker_formations if caster.side == 0 else defender_formations
+	var best: BattleFormationV3 = null
+	var best_dist := 999999.0
+	for ally in allies:
+		if ally == caster or ally.is_dead or ally.is_fled:
+			continue
+		if ally.current_hp >= ally.max_hp:
+			continue
+		var d := caster.position.distance_to(ally.position)
+		if d < best_dist:
+			best_dist = d
+			best = ally
+	if best:
+		best.current_hp = mini(best.max_hp, best.current_hp + amount)
+		if best.total_entities == 1:
+			best.front_entity_hp = best.current_hp
+
+func _apply_spell_pre_damage(f: BattleFormationV3, target: BattleFormationV3, dmg_per_entity: float, miss_chance: float, cooldown: int) -> Array:
+	# Returns [dmg_per_entity, miss_chance, cooldown] modified by spell type
+	match f.spell_type:
+		&"fireball":
+			cooldown = int(float(cooldown) * 1.2)
+		&"lightning":
+			miss_chance = 0.15
+		&"frost_bolt":
+			miss_chance = 0.25
+		&"death_curse":
+			dmg_per_entity *= 0.8
+		&"sunfire":
+			dmg_per_entity *= 1.15
+			for tag in target.tags:
+				if tag == "undead" or tag == "demonic":
+					dmg_per_entity *= 1.2
+					break
+		&"hex_curse":
+			dmg_per_entity *= 0.75
+		&"shard_pulse":
+			cooldown = int(float(cooldown) * 0.85)
+		&"lunar_beam":
+			dmg_per_entity *= 0.8  # Lower per-entity but pierces to splash
+	return [dmg_per_entity, miss_chance, cooldown]
+
+func _apply_spell_post_damage(f: BattleFormationV3, target: BattleFormationV3, total_damage: int, hit_count: int, actions: Array[Dictionary]) -> void:
+	match f.spell_type:
+		&"fireball":
+			var splash_dmg := int(total_damage * 0.25)
+			if splash_dmg > 0:
+				var splash_target := _find_splash_target(f, target)
+				if splash_target:
+					f.damage_dealt += splash_dmg
+					var killed := splash_target.take_damage(splash_dmg)
+					splash_target.current_morale -= 0.5
+					if killed > 0:
+						actions.append({"type": "spell_splash", "source": f.instance_id, "target": splash_target.instance_id, "damage": splash_dmg, "killed": killed})
+					if splash_target.is_dead:
+						recent_deaths.append({"side": splash_target.side, "position": splash_target.position, "tick": tick_count})
+		&"lightning":
+			# 20% chance to chain to another nearby enemy for 40% damage
+			if hit_count > 0 and randf() < 0.20:
+				var chain_dmg := int(total_damage * 0.4)
+				if chain_dmg > 0:
+					var chain_target := _find_splash_target(f, target)
+					if chain_target:
+						f.damage_dealt += chain_dmg
+						var killed := chain_target.take_damage(chain_dmg)
+						chain_target.current_morale -= 0.5
+						if killed > 0:
+							actions.append({"type": "spell_chain", "source": f.instance_id, "target": chain_target.instance_id, "damage": chain_dmg, "killed": killed})
+						if chain_target.is_dead:
+							recent_deaths.append({"side": chain_target.side, "position": chain_target.position, "tick": tick_count})
+		&"frost_bolt":
+			if hit_count > 0:
+				_apply_debuff(target, &"slow", 0.15, 30)
+		&"death_curse":
+			if total_damage > 0:
+				# DoT: 50% of damage dealt over 30 ticks
+				var dot_per_tick := float(total_damage) * 0.5 / 30.0
+				_apply_debuff(target, &"dot", dot_per_tick, 30)
+		&"heal_bolt":
+			if total_damage > 0:
+				_heal_nearest_ally(f, int(total_damage * 0.15))
+		&"hex_curse":
+			if hit_count > 0:
+				_apply_debuff(target, &"defense_down", 2.0, 40)
+		&"shard_pulse":
+			var splash_dmg := int(total_damage * 0.4)
+			if splash_dmg > 0:
+				var splash_target := _find_splash_target(f, target)
+				if splash_target:
+					f.damage_dealt += splash_dmg
+					var killed := splash_target.take_damage(splash_dmg)
+					if killed > 0:
+						actions.append({"type": "spell_splash", "source": f.instance_id, "target": splash_target.instance_id, "damage": splash_dmg, "killed": killed})
+					if splash_target.is_dead:
+						recent_deaths.append({"side": splash_target.side, "position": splash_target.position, "tick": tick_count})
+		&"sand_blast":
+			if hit_count > 0:
+				_apply_debuff(target, &"defense_down", 3.0, 30)
+		&"lunar_beam":
+			# Beam pierces — splash 35% damage to 1 nearby enemy
+			var beam_splash := int(total_damage * 0.35)
+			if beam_splash > 0:
+				var beam_target := _find_splash_target(f, target)
+				if beam_target:
+					f.damage_dealt += beam_splash
+					var killed := beam_target.take_damage(beam_splash)
+					beam_target.current_morale -= 0.5
+					if killed > 0:
+						actions.append({"type": "spell_splash", "source": f.instance_id, "target": beam_target.instance_id, "damage": beam_splash, "killed": killed})
+					if beam_target.is_dead:
+						recent_deaths.append({"side": beam_target.side, "position": beam_target.position, "tick": tick_count})
+
+func _get_spell_morale_mult(spell_type: StringName) -> float:
+	if spell_type == &"hex_curse":
+		return 3.0  # 3x morale damage
+	return 1.0
 
 # --- Ranged Combat ---
 
@@ -2046,6 +2345,13 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	var ranged_end_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
 	if ranged_end_ratio < 0.5:
 		dmg_per_entity *= lerpf(0.6, 1.0, ranged_end_ratio * 2.0)
+	# Spell type pre-damage modifiers (accuracy, damage mult, cooldown)
+	if f.spell_type != &"bolt" and f.tags.has("mage"):
+		var spell_mods := _apply_spell_pre_damage(f, target, dmg_per_entity, miss_chance, cooldown)
+		dmg_per_entity = spell_mods[0]
+		miss_chance = spell_mods[1]
+		cooldown = spell_mods[2]
+		f.ranged_cooldown_timer = cooldown  # Update cooldown with spell modifier
 	var total_damage := 0
 	var hit_count := 0
 	var miss_count := 0
@@ -2077,6 +2383,7 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 			if is_mage:
 				proj_data["is_mage"] = true
 				proj_data["faction_id"] = f.faction_id
+				proj_data["spell_type"] = f.spell_type
 				proj_data["speed_var"] = randf_range(0.8, 1.3)
 			visual_projs.append(proj_data)
 
@@ -2087,7 +2394,8 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 	if total_damage > 0:
 		f.damage_dealt += total_damage
 		var killed := target.take_damage(total_damage)
-		target.current_morale -= 1.5 * (float(hit_count) / maxf(1.0, float(entity_limit)))
+		var morale_mult := _get_spell_morale_mult(f.spell_type) if f.tags.has("mage") else 1.0
+		target.current_morale -= 1.5 * morale_mult * (float(hit_count) / maxf(1.0, float(entity_limit)))
 
 		actions.append({
 			"type": "ranged_hit", "attacker": f.instance_id, "defender": target.instance_id,
@@ -2102,6 +2410,10 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 
 		if target.is_dead:
 			recent_deaths.append({"side": target.side, "position": target.position, "tick": tick_count})
+
+		# Spell post-damage effects (splash, chain, debuffs, DoT, heal)
+		if f.tags.has("mage") and f.spell_type != &"bolt":
+			_apply_spell_post_damage(f, target, total_damage, hit_count, actions)
 	elif visual_projs.size() > 0:
 		# All missed but still show the projectiles
 		actions.append({
@@ -2170,6 +2482,12 @@ func _execute_skirmish_fire(f: BattleFormationV3) -> Array[Dictionary]:
 	var ranged_end_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
 	if ranged_end_ratio < 0.5:
 		dmg_per_entity *= lerpf(0.6, 1.0, ranged_end_ratio * 2.0)
+	# Spell type pre-damage modifiers for skirmish fire (same as volley)
+	var skirmish_cooldown_unused := f.ranged_cooldown_max
+	if f.spell_type != &"bolt" and f.tags.has("mage"):
+		var spell_mods := _apply_spell_pre_damage(f, target, dmg_per_entity, miss_chance, skirmish_cooldown_unused)
+		dmg_per_entity = spell_mods[0]
+		miss_chance = spell_mods[1]
 
 	var total_damage := 0
 	var hit_count := 0
@@ -2197,6 +2515,7 @@ func _execute_skirmish_fire(f: BattleFormationV3) -> Array[Dictionary]:
 			if is_mage:
 				proj_data["is_mage"] = true
 				proj_data["faction_id"] = f.faction_id
+				proj_data["spell_type"] = f.spell_type
 				proj_data["speed_var"] = randf_range(0.8, 1.3)
 			visual_projs.append(proj_data)
 
@@ -2206,7 +2525,8 @@ func _execute_skirmish_fire(f: BattleFormationV3) -> Array[Dictionary]:
 	if total_damage > 0:
 		f.damage_dealt += total_damage
 		var killed := target.take_damage(total_damage)
-		target.current_morale -= 1.5 * (float(hit_count) / maxf(1.0, float(firing_entities.size())))
+		var skirmish_morale_mult := _get_spell_morale_mult(f.spell_type) if f.tags.has("mage") else 1.0
+		target.current_morale -= 1.5 * skirmish_morale_mult * (float(hit_count) / maxf(1.0, float(firing_entities.size())))
 
 		actions.append({
 			"type": "ranged_hit", "attacker": f.instance_id, "defender": target.instance_id,
@@ -2221,6 +2541,10 @@ func _execute_skirmish_fire(f: BattleFormationV3) -> Array[Dictionary]:
 
 		if target.is_dead:
 			recent_deaths.append({"side": target.side, "position": target.position, "tick": tick_count})
+
+		# Spell post-damage effects for skirmish fire
+		if f.tags.has("mage") and f.spell_type != &"bolt":
+			_apply_spell_post_damage(f, target, total_damage, hit_count, actions)
 	elif visual_projs.size() > 0:
 		actions.append({
 			"type": "ranged_hit", "attacker": f.instance_id, "defender": target.instance_id,
@@ -2492,6 +2816,7 @@ func _spawn_unit_from_beast(beast_f: BattleFormationV3) -> BattleFormationV3:
 	f.faction_id = beast_f.faction_id
 	f.side = beast_f.side
 	f.tags = ud.tags.duplicate()
+	f.spell_type = ud.spell_type if ud.spell_type != &"" else &"bolt"
 	f.attack = ud.attack
 	f.defense = ud.melee_defense
 	f.melee_defense = ud.melee_defense

@@ -934,9 +934,9 @@ func _get_generic_starting_units(faction_id: StringName) -> Array:
 		else:
 			tier2_units.append(faction_units[i])
 
-	# Major factions get 5 units, minor factions get 3
+	# Major factions get 5 units, minor factions get 4
 	var is_minor := MINOR_FACTION_PARENTS.has(faction_id)
-	var total_count := 3 if is_minor else 5
+	var total_count := 4 if is_minor else 5
 	var max_tier2 := 1 if is_minor else 2
 
 	var result: Array = []
@@ -967,8 +967,10 @@ func _init_nomadic_army(faction_id: StringName, occupied_tiles: Dictionary) -> v
 	var unit_ids := _get_generic_starting_units(faction_id)
 	if unit_ids.is_empty():
 		return
-	# Find a suitable spawn position (neutral, unoccupied tile near center)
+	# Faction-specific spawn positions (south-east of Marcellum for Oaseans, etc.)
 	var search_center := Vector2i(42, 29)
+	if faction_id == &"oaseans":
+		search_center = Vector2i(44, 37)  # South-east of Marcellum, desert terrain
 	var spawn_pos := search_center
 	for coord in state.hex_map.tiles:
 		var tile: HexMapData.TileState = state.hex_map.tiles[coord]
@@ -1240,6 +1242,11 @@ func _init_cities() -> void:
 				city.class_loyalty = {
 					"peasants": 60, "artisans": 60, "scholars": 60, "nobles": 60, "captives": 0
 				}
+				# Persistent garrison: 3 phalanx + 1 toxotes
+				city.garrison_units = [
+					{unit_id = &"citizen_phalanx", count = 3},
+					{unit_id = &"toxotes", count = 1},
+				]
 
 			state.cities[city.city_id] = city
 
@@ -1750,6 +1757,89 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	parent_city.can_found_settlement = false
 
 	return city.city_id
+
+# ── Sunblessed Camp ────────────────────────────────────────
+
+func setup_sunblessed_camp(army_id: StringName) -> StringName:
+	## Sunblessed army with a commander sets up camp: creates a temporary city.
+	## Returns the camp city_id or &"" on failure.
+	var army: ArmyState = state.armies.get(army_id)
+	if army == null or army.is_camp:
+		return &""
+	if army.commander == null:
+		return &""
+	# Create camp city at army position
+	var tile: HexMapData.TileState = state.hex_map.get_tile(army.hex_pos)
+	if tile == null:
+		return &""
+	var city := CityState.new()
+	city.city_id = state.generate_id()
+	city.city_name = army.get_commander_name() + "'s Camp"
+	city.region_id = tile.region_id if tile else &""
+	city.faction_id = army.faction_id
+	city.hex_pos = army.hex_pos
+	city.level = 1
+	city.population = 30
+	city.is_capital = false
+	city.is_settlement = true
+	city.original_faction_id = army.faction_id
+	city.loyalty = 60
+	city.class_loyalty = {
+		"peasants": 60, "artisans": 50, "scholars": 40, "nobles": 40, "captives": 0
+	}
+	city.turns_since_capture = -1
+	state.cities[city.city_id] = city
+	var fs: FactionState = state.faction_states.get(army.faction_id)
+	if fs:
+		fs.owned_cities.append(city.city_id)
+	army.is_camp = true
+	army.camp_city_id = city.city_id
+	army.movement_remaining = 0.0
+	return city.city_id
+
+func break_sunblessed_camp(army_id: StringName) -> bool:
+	## Break camp: removes the temporary camp city and frees the army.
+	var army: ArmyState = state.armies.get(army_id)
+	if army == null or not army.is_camp:
+		return false
+	var city_id := army.camp_city_id
+	if city_id != &"" and state.cities.has(city_id):
+		var fs: FactionState = state.faction_states.get(army.faction_id)
+		if fs:
+			fs.owned_cities.erase(city_id)
+		state.cities.erase(city_id)
+	army.is_camp = false
+	army.camp_city_id = &""
+	return true
+
+func recruit_to_army(army_id: StringName, unit_data_id: StringName) -> bool:
+	## Sunblessed: recruit a unit directly into an army (basic units only, no camp needed).
+	var army: ArmyState = state.armies.get(army_id)
+	if army == null:
+		return false
+	var ud := DataManager.get_unit(unit_data_id)
+	if ud == null:
+		return false
+	# Only faction basic unit can be recruited without a camp
+	var basic_unit: StringName = CityState.FACTION_BASIC_UNITS.get(army.faction_id, &"")
+	if unit_data_id != basic_unit:
+		return false
+	# Check cost
+	var fs: FactionState = state.faction_states.get(army.faction_id)
+	if fs == null:
+		return false
+	for res_type in ud.recruit_cost:
+		if fs.resources.get(res_type, 0) < ud.recruit_cost[res_type]:
+			return false
+	# Deduct cost
+	for res_type in ud.recruit_cost:
+		fs.resources[res_type] = fs.resources.get(res_type, 0) - ud.recruit_cost[res_type]
+	# Spawn unit
+	var instance := UnitInstance.new()
+	instance.init_from_data(ud, state.generate_id())
+	army.units.append(instance)
+	EventBus.unit_recruited.emit(&"", unit_data_id, army_id)
+	return true
 
 func get_faction_armies(faction_id: StringName) -> Array[ArmyState]:
 	if not _faction_army_cache_valid:

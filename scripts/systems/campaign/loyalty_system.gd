@@ -203,7 +203,7 @@ const W_CAPTURED_FADING := {peasants = -2, artisans = -1, scholars = -3, nobles 
 const W_WAR_NEIGHBOR := {peasants = -3, artisans = -2, scholars = -1, nobles = -1, captives = 0}
 const W_UNDER_SIEGE := {peasants = -8, artisans = -6, scholars = -6, nobles = -5, captives = -3}
 const W_LOW_POP := {peasants = -3, artisans = -2, scholars = 0, nobles = 0, captives = 0}
-const W_HIGH_CAPTIVE_RATIO := {peasants = -3, artisans = -1, scholars = -5, nobles = 3, captives = 1}
+const W_HIGH_CAPTIVE_RATIO := {peasants = -2, artisans = -1, scholars = -4, nobles = 3, captives = 1}
 # High loyalty decay — classes naturally drift toward 0 when loyalty is very high
 const W_HIGH_LOYALTY_DECAY := {peasants = -1, artisans = -1, scholars = -2, nobles = -2, captives = 0}
 # Population pressure — large populations have competing interests

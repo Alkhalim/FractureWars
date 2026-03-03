@@ -129,6 +129,7 @@ var _explored_tiles: Dictionary = {} # coord -> true (tiles that have been seen 
 var _trade_route_draw_node: Node2D = null
 var _trade_caravans: Array[Node2D] = []
 var _trade_route_data: Array[Dictionary] = [] # Cached route pixel paths for caravans
+var _trade_route_tooltip: Label = null
 
 @onready var hex_map_layer: Node2D = $HexMapLayer
 @onready var reachable_overlay: Node2D = $OverlayLayer/ReachableOverlay
@@ -142,6 +143,10 @@ var _trade_route_data: Array[Dictionary] = [] # Cached route pixel paths for car
 @onready var fog_overlay_node: Node2D = $OverlayLayer/FogOverlay
 @onready var elderbeast_markers_node: Node2D = $EntityLayer/ElderbeastMarkers
 @onready var camera: Camera2D = $Camera2D
+
+const _RES_NAMES := {0: "Gold", 1: "Iron", 2: "Tech", 3: "Food", 4: "Shards", 5: "Wood", 6: "Captives"}
+func _res_name(res_type: int) -> String:
+	return _RES_NAMES.get(res_type, "???")
 
 func _ready() -> void:
 	_render_hex_map()
@@ -351,8 +356,8 @@ func _render_hex_map() -> void:
 	_load_terrain_textures()
 
 	var border_poly := _make_hex_polygon(HEX_RADIUS)
-	var fill_poly := _make_hex_polygon(HEX_RADIUS * 0.96)
-	var fill_r := HEX_RADIUS * 0.96
+	var fill_poly := _make_hex_polygon(HEX_RADIUS * 0.995)
+	var fill_r := HEX_RADIUS * 0.995
 
 	# Pre-compute normalized UV coordinates for hex polygon (centered 0-1 space)
 	var hex_uvs := PackedVector2Array()
@@ -449,7 +454,7 @@ func _draw_elevation_edges() -> void:
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
 		return
-	var hex_points := _make_hex_polygon(HEX_RADIUS * 0.96)
+	var hex_points := _make_hex_polygon(HEX_RADIUS * 0.995)
 	var cliff_polys: Array = []
 	var medium_polys: Array = []
 	var subtle_polys: Array = []
@@ -590,7 +595,7 @@ func _draw_region_borders() -> void:
 
 	# For each hex, check each of 6 edges. If the neighbor belongs to a different
 	# region (or is water/off-map), draw the shared hex edge as a border segment.
-	var hex_points := _make_hex_polygon(HEX_RADIUS * 0.96)
+	var hex_points := _make_hex_polygon(HEX_RADIUS * 0.995)
 	var all_edges: Array = []
 
 	for coord in hex_map.tiles:
@@ -2074,10 +2079,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_A:
 				$UILayer/HUD._toggle_army_overview()
 
-	# Hover: region highlighting + path preview
+	# Hover: region highlighting + path preview + trade route tooltip
 	if event is InputEventMouseMotion:
 		var world_pos := get_global_mouse_position()
 		_update_region_hover(world_pos)
+		_update_trade_route_hover(world_pos)
 		if selected_army_id != &"":
 			var hex_coord := _pixel_to_hex(world_pos)
 			if _reachable_tiles.has(hex_coord):
@@ -2150,6 +2156,8 @@ func _handle_move_command(hex_coord: Vector2i) -> void:
 	var army: ArmyState = GameManager.state.armies.get(selected_army_id)
 	if army == null or army.movement_remaining <= 0 or army.battle_exhausted:
 		return
+	if army.is_camp:
+		return # Camped armies cannot move — break camp first
 	if _reachable_tiles.has(hex_coord):
 		_move_army_to(army, hex_coord)
 	else:
@@ -2435,6 +2443,24 @@ func _cycle_player_armies() -> void:
 	if army and camera:
 		camera.position = _hex_to_pixel(army.hex_pos)
 
+var _city_cycle_index: int = -1
+
+func _cycle_player_cities() -> void:
+	var player_cities: Array[StringName] = []
+	for cid in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[cid]
+		if city.faction_id == GameManager.state.player_faction_id:
+			player_cities.append(cid)
+	if player_cities.is_empty():
+		return
+	_city_cycle_index = (_city_cycle_index + 1) % player_cities.size()
+	var city_id := player_cities[_city_cycle_index]
+	var city: CityState = GameManager.state.cities[city_id]
+	_selected_city_id = city_id
+	if camera:
+		camera.position = _hex_to_pixel(city.hex_pos)
+	$UILayer/HUD._show_city_panel(city_id)
+
 func _toggle_minimap() -> void:
 	var minimap := get_node_or_null("UILayer/Minimap")
 	if minimap:
@@ -2629,6 +2655,13 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	if _battle_dialog:
 		_battle_dialog.queue_free()
 
+	# Hide army panel so it doesn't block battle dialog buttons
+	var hud_node := $UILayer/HUD
+	if hud_node.has_method("_close_army_panel"):
+		hud_node._close_army_panel()
+	elif hud_node.has_node("SelectedArmyPanel"):
+		hud_node.get_node("SelectedArmyPanel").visible = false
+
 	var atk_faction: FactionData = DataManager.get_faction(attacker_army.faction_id)
 	var def_faction: FactionData = DataManager.get_faction(defender_army.faction_id)
 	var atk_name: String = atk_faction.display_name if atk_faction else str(attacker_army.faction_id)
@@ -2812,6 +2845,7 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	btn_row.add_child(auto_btn)
 
 	$UILayer/HUD.add_child(_battle_dialog)
+	_battle_dialog.move_to_front()
 
 func _on_battle_dialog_manual() -> void:
 	if _battle_dialog:
@@ -2895,12 +2929,17 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 	_apply_auto_battle_results(attacker_army, atk_survivors)
 	_apply_auto_battle_results(defender_army, def_survivors)
 
+	# Elderbeast recovery: if a beast's escort army lost, apply recovery mechanic
+	for side_army in [attacker_army, defender_army]:
+		if side_army.elderbeast_id != &"":
+			_handle_elderbeast_battle_aftermath(side_army)
+
 	# Grant veterancy XP to surviving units
 	_grant_auto_veterancy_xp(attacker_army, atk_survivors, def_strength_pre)
 	_grant_auto_veterancy_xp(defender_army, def_survivors, atk_strength_pre)
 
-	var atk_alive := atk_survivors.size() > 0
-	var def_alive := def_survivors.size() > 0
+	var atk_alive := atk_survivors.size() > 0 or attacker_army.elderbeast_id != &""
+	var def_alive := def_survivors.size() > 0 or defender_army.elderbeast_id != &""
 
 	# Build HP after data for report
 	var atk_hp_after: Dictionary = {} # index -> hp
@@ -2933,35 +2972,45 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 				garrison_city.garrison_hp_ratio = 0.0
 		GameManager.remove_army(defender_id)
 
-	# Garrison assault failure: attacker didn't win — force retreat 1 tile
+	# Garrison assault: check if attacker won (morale/routing victory counts)
 	var garrison_retreat := false
 	var def_faction_id := defender_army.faction_id
 	if defender_army.is_garrison and def_alive:
-		# Attacker failed to defeat garrison — retreat with survivors or die
-		GameManager.remove_army(defender_id) # garrison regenerates next attack
-		def_alive = false
-		if atk_alive:
-			# Retreat attacker 1 tile back from the city
-			var retreat_hex := _find_retreat_hex(attacker_army, hex_pos)
-			if retreat_hex != Vector2i(-1, -1):
-				attacker_army.hex_pos = retreat_hex
-			attacker_army.movement_remaining = 0.0
-			attacker_army.battle_exhausted = true
-			garrison_retreat = true
-			# Persist garrison damage — surviving garrison spawns with reduced HP
+		var attacker_won_garrison := (winner_side == 0 and atk_alive)
+		if attacker_won_garrison:
+			# Attacker won — garrison overrun, treat as destroyed
 			var garrison_city := GameManager.city_system.get_city_at_hex(hex_pos)
 			if garrison_city:
-				var total_max := 0
-				var total_current := 0
-				for unit in defender_army.units:
-					var data := DataManager.get_unit(unit.unit_data_id)
-					if data:
-						total_max += data.max_hp
-					total_current += unit.current_hp
-				if total_max > 0:
-					garrison_city.garrison_hp_ratio = clampf(float(total_current) / float(total_max), 0.01, 1.0)
+				garrison_city.garrison_defeated_turn = GameManager.state.current_turn
+				garrison_city.garrison_hp_ratio = 0.0
+			GameManager.remove_army(defender_id)
+			def_alive = false
 		else:
-			GameManager.remove_army(attacker_id)
+			# Attacker failed to defeat garrison — retreat with survivors or die
+			GameManager.remove_army(defender_id) # garrison regenerates next attack
+			def_alive = false
+			if atk_alive:
+				# Retreat attacker 1 tile back from the city
+				var retreat_hex := _find_retreat_hex(attacker_army, hex_pos)
+				if retreat_hex != Vector2i(-1, -1):
+					attacker_army.hex_pos = retreat_hex
+				attacker_army.movement_remaining = 0.0
+				attacker_army.battle_exhausted = true
+				garrison_retreat = true
+				# Persist garrison damage — surviving garrison spawns with reduced HP
+				var garrison_city := GameManager.city_system.get_city_at_hex(hex_pos)
+				if garrison_city:
+					var total_max := 0
+					var total_current := 0
+					for unit in defender_army.units:
+						var data := DataManager.get_unit(unit.unit_data_id)
+						if data:
+							total_max += data.max_hp
+						total_current += unit.current_hp
+					if total_max > 0:
+						garrison_city.garrison_hp_ratio = clampf(float(total_current) / float(total_max), 0.01, 1.0)
+			else:
+				GameManager.remove_army(attacker_id)
 	elif not atk_alive:
 		GameManager.remove_army(attacker_id)
 
@@ -3066,20 +3115,23 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 			CommanderSystem.apply_item_drop(defender_army.commander, attacker_army.faction_id)
 
 	# Battle loot for the winner
+	var _loot_gold := 0
+	var _loot_iron := 0
+	var _loot_captives := 0
 	if atk_alive and not def_alive:
-		var loot_gold := int(def_strength_pre * 0.1)
-		var loot_iron := int(def_strength_pre * 0.03)
+		_loot_gold = int(sqrt(def_strength_pre) * 1.26)
+		_loot_iron = int(sqrt(def_strength_pre) * 0.31)
 		var wfs: FactionState = GameManager.state.faction_states.get(attacker_army.faction_id)
 		if wfs:
-			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
-			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
+			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + _loot_gold
+			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + _loot_iron
 	elif def_alive and not atk_alive:
-		var loot_gold := int(atk_strength_pre * 0.1)
-		var loot_iron := int(atk_strength_pre * 0.03)
+		_loot_gold = int(sqrt(atk_strength_pre) * 1.26)
+		_loot_iron = int(sqrt(atk_strength_pre) * 0.31)
 		var wfs: FactionState = GameManager.state.faction_states.get(defender_army.faction_id)
 		if wfs:
-			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + loot_gold
-			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + loot_iron
+			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + _loot_gold
+			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + _loot_iron
 
 	# Faction mechanic: Thunderswarm storm fury rises from battles
 	for fid in [attacker_army.faction_id, defender_army.faction_id]:
@@ -3102,6 +3154,8 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 	var player_fid := GameManager.state.player_faction_id
 	var player_involved := attacker_army.faction_id == player_fid or defender_army.faction_id == player_fid
 	if player_involved:
+		var player_won := (attacker_army.faction_id == player_fid and atk_alive and not def_alive) or \
+			(defender_army.faction_id == player_fid and def_alive and not atk_alive)
 		var report := {
 			"atk_faction": attacker_army.faction_id,
 			"def_faction": defender_army.faction_id,
@@ -3112,6 +3166,8 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 			"atk_alive": atk_alive,
 			"def_alive": def_alive,
 			"captives": sim.captives.get(0 if attacker_army.faction_id == player_fid else 1, 0),
+			"loot_gold": _loot_gold if player_won else 0,
+			"loot_iron": _loot_iron if player_won else 0,
 		}
 		_show_battle_report(report)
 
@@ -3285,6 +3341,50 @@ func _apply_auto_battle_results(army: ArmyState, survivors: Array[BattleSimulato
 			unit.current_hp = surviving_ids[unit.instance_id]
 			updated_units.append(unit)
 	army.units = updated_units
+
+func _handle_elderbeast_battle_aftermath(army: ArmyState) -> void:
+	var beast: ElderbeastState = GameManager.state.elderbeasts.get(army.elderbeast_id)
+	if beast == null:
+		return
+	# Check if beast unit survived in the army
+	var beast_alive := false
+	for unit in army.units:
+		if unit.instance_id == beast.unit_instance_id:
+			beast.hp = unit.current_hp
+			beast_alive = true
+			break
+	if beast_alive:
+		return
+	# Beast unit was killed — check recovery eligibility
+	var other_units_alive := army.units.size() > 0
+	if other_units_alive and not beast.is_injured():
+		# Recovery: beast flees with 1 HP and becomes injured for 3 turns
+		beast.hp = 1
+		beast.injured_turns = 3
+		beast.movement_remaining = 0.0
+		# Re-add beast unit to army at 1 HP
+		var unit_data := DataManager.get_unit(beast.get_unit_data_id())
+		if unit_data:
+			var instance := UnitInstance.new()
+			instance.instance_id = beast.unit_instance_id
+			instance.unit_data_id = unit_data.id
+			instance.current_hp = 1
+			army.units.insert(0, instance)
+		# Spawn emergency escort units (2 basic crystal swarmlings)
+		var swarmling_data := DataManager.get_unit(&"crystal_swarmling")
+		if swarmling_data:
+			for i in 2:
+				var escort := UnitInstance.new()
+				escort.instance_id = StringName("emergency_%s_%d" % [beast.beast_id, i])
+				escort.unit_data_id = &"crystal_swarmling"
+				escort.current_hp = swarmling_data.max_hp
+				army.units.append(escort)
+	else:
+		# Beast dies permanently (already injured, or entire army wiped)
+		beast.hp = 0
+		GameManager.state.elderbeasts.erase(beast.beast_id)
+		EventBus.elderbeast_destroyed.emit(beast.beast_id, beast.faction_id)
+		army.elderbeast_id = &""
 
 func _grant_auto_veterancy_xp(army: ArmyState, survivors: Array[BattleSimulatorV2.BattleFormation], enemy_strength: int) -> void:
 	var formation_damage: Dictionary = {} # instance_id -> damage_dealt
@@ -3648,6 +3748,25 @@ func _show_battle_report(report: Dictionary) -> void:
 		winner_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.5))
 	vbox.add_child(winner_label)
 
+	# Spoils of war (loot + captives)
+	var loot_gold: int = report.get("loot_gold", 0)
+	var loot_iron: int = report.get("loot_iron", 0)
+	var captives_gained: int = report.get("captives", 0)
+	if loot_gold > 0 or loot_iron > 0 or captives_gained > 0:
+		var spoils_label := Label.new()
+		spoils_label.add_theme_font_size_override("font_size", 12)
+		spoils_label.add_theme_color_override("font_color", Color(0.85, 0.75, 0.35))
+		spoils_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var spoils_parts: Array[String] = []
+		if loot_gold > 0:
+			spoils_parts.append("+%d Gold" % loot_gold)
+		if loot_iron > 0:
+			spoils_parts.append("+%d Iron" % loot_iron)
+		if captives_gained > 0:
+			spoils_parts.append("+%d Captives" % captives_gained)
+		spoils_label.text = "Spoils: " + "  ".join(spoils_parts)
+		vbox.add_child(spoils_label)
+
 	# Continue button
 	var btn := Button.new()
 	btn.text = "Continue"
@@ -3732,6 +3851,8 @@ func _update_trade_routes() -> void:
 
 	for route in routes:
 		var hex_path := DiplomacySystem.get_trade_route_hex_path(route.city_a_hex, route.city_b_hex)
+		if hex_path.size() < 2:
+			continue
 		var pixel_path := PackedVector2Array()
 		var visible_any := false
 		for coord in hex_path:
@@ -3743,7 +3864,7 @@ func _update_trade_routes() -> void:
 				visible_any = true
 		if not visible_any:
 			continue
-		_trade_route_draw_node.routes.append({points = pixel_path, color = route_color})
+		_trade_route_draw_node.routes.append({points = pixel_path, color = route_color, faction_a = route.faction_a, faction_b = route.faction_b})
 		_trade_route_data.append({pixel_path = pixel_path, progress = randf()})
 
 		# Create caravan sprite (small gold dot)
@@ -3769,7 +3890,7 @@ func _process_trade_caravans(delta: float) -> void:
 			caravan.visible = false
 			continue
 		# Advance progress (loop back and forth)
-		var speed := 2.0 * delta # ~1 hex per 0.5s (HEX_H_SPACING pixels per 0.5s mapped to 0-1 range)
+		var speed := 0.8 * delta # ~1 hex per 1.25s (slower caravan movement)
 		var total_len := 0.0
 		for j in pixel_path.size() - 1:
 			total_len += pixel_path[j].distance_to(pixel_path[j + 1])
@@ -3795,6 +3916,75 @@ func _process_trade_caravans(delta: float) -> void:
 		# Check fog visibility at caravan position
 		var caravan_hex := _pixel_to_hex(pos)
 		caravan.visible = _is_tile_visible(caravan_hex) or _explored_tiles.has(caravan_hex)
+
+func _update_trade_route_hover(world_pos: Vector2) -> void:
+	if _trade_route_draw_node == null or not _trade_route_draw_node.is_inside_tree():
+		if _trade_route_tooltip and _trade_route_tooltip.visible:
+			_trade_route_tooltip.visible = false
+		return
+	var hover_dist := 18.0  # Max pixel distance to count as hovering
+	var best_idx := -1
+	var best_d := hover_dist
+	for i in _trade_route_draw_node.routes.size():
+		var pts: PackedVector2Array = _trade_route_draw_node.routes[i].points
+		for j in pts.size() - 1:
+			var a: Vector2 = pts[j]
+			var b: Vector2 = pts[j + 1]
+			var seg := b - a
+			var seg_len := seg.length()
+			if seg_len < 0.1:
+				continue
+			var t := clampf((world_pos - a).dot(seg) / (seg_len * seg_len), 0.0, 1.0)
+			var closest := a + seg * t
+			var d := world_pos.distance_to(closest)
+			if d < best_d:
+				best_d = d
+				best_idx = i
+	if best_idx >= 0:
+		var route_info: Dictionary = _trade_route_draw_node.routes[best_idx]
+		var fa: StringName = route_info.get("faction_a", &"")
+		var fb: StringName = route_info.get("faction_b", &"")
+		var fa_data = DataManager.get_faction(fa)
+		var fb_data = DataManager.get_faction(fb)
+		var name_a: String = fa_data.display_name if fa_data else str(fa)
+		var name_b: String = fb_data.display_name if fb_data else str(fb)
+		var tip_text := "%s <-> %s" % [name_a, name_b]
+		# Show trade amounts from active treaty
+		var diplo: DiplomacySystem = GameManager.diplomacy_system
+		if diplo:
+			for tid in GameManager.state.diplomacy_state.treaties:
+				var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[tid]
+				if (t.faction_a == fa and t.faction_b == fb) or (t.faction_a == fb and t.faction_b == fa):
+					if t.treaty_type == Enums.TreatyType.TRADE_DEAL:
+						var give_res: int = t.terms.get("give_resource", 0)
+						var recv_res: int = t.terms.get("receive_resource", 0)
+						var give_amt: int = t.terms.get("give_amount", 0)
+						var recv_amt: int = t.terms.get("receive_amount", 0)
+						tip_text += "\n%d %s <-> %d %s" % [give_amt, _res_name(give_res), recv_amt, _res_name(recv_res)]
+					elif t.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
+						var res_a: int = t.terms.get("resource_a", 0)
+						var res_b: int = t.terms.get("resource_b", 0)
+						var turns_active: int = t.terms.get("turns_active", 0)
+						var share_pct := diplo.get_trade_relations_share(turns_active) / 100.0
+						var inc_a := diplo.get_faction_resource_income(t.faction_a, res_a)
+						var inc_b := diplo.get_faction_resource_income(t.faction_b, res_b)
+						var amt_to_b := maxi(1, int(float(inc_a) * share_pct))
+						var amt_to_a := maxi(1, int(float(inc_b) * share_pct))
+						tip_text += "\n%d %s <-> %d %s" % [amt_to_b, _res_name(res_a), amt_to_a, _res_name(res_b)]
+					break
+		if _trade_route_tooltip == null:
+			_trade_route_tooltip = Label.new()
+			_trade_route_tooltip.add_theme_font_size_override("font_size", 11)
+			_trade_route_tooltip.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+			_trade_route_tooltip.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+			_trade_route_tooltip.add_theme_constant_override("outline_size", 3)
+			$UILayer.add_child(_trade_route_tooltip)
+		_trade_route_tooltip.text = tip_text
+		_trade_route_tooltip.position = get_viewport().get_mouse_position() + Vector2(15, -30)
+		_trade_route_tooltip.visible = true
+	else:
+		if _trade_route_tooltip and _trade_route_tooltip.visible:
+			_trade_route_tooltip.visible = false
 
 var _visible_tile_cache: Dictionary = {}  # coord -> bool, rebuilt per fog update
 
@@ -4289,6 +4479,25 @@ func _create_minimap() -> void:
 		view_btn_row.add_child(btn)
 	outer_vbox.add_child(view_btn_row)
 
+	# Select Next Army / Next City buttons
+	var cycle_row := HBoxContainer.new()
+	cycle_row.add_theme_constant_override("separation", 4)
+	var next_army_btn := Button.new()
+	next_army_btn.text = "Next Army"
+	next_army_btn.custom_minimum_size = Vector2(0, 24)
+	next_army_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	next_army_btn.add_theme_font_size_override("font_size", 11)
+	next_army_btn.pressed.connect(_cycle_player_armies)
+	cycle_row.add_child(next_army_btn)
+	var next_city_btn := Button.new()
+	next_city_btn.text = "Next City"
+	next_city_btn.custom_minimum_size = Vector2(0, 24)
+	next_city_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	next_city_btn.add_theme_font_size_override("font_size", 11)
+	next_city_btn.pressed.connect(_cycle_player_cities)
+	cycle_row.add_child(next_city_btn)
+	outer_vbox.add_child(cycle_row)
+
 	_minimap_panel = PanelContainer.new()
 	_minimap_panel.custom_minimum_size = MINIMAP_SIZE + Vector2(8, 8)
 	var style := StyleBoxFlat.new()
@@ -4321,7 +4530,7 @@ func _create_minimap() -> void:
 	outer_vbox.anchor_right = 1.0
 	outer_vbox.anchor_bottom = 1.0
 	outer_vbox.offset_left = -MINIMAP_SIZE.x - MINIMAP_MARGIN.x - 12
-	outer_vbox.offset_top = -MINIMAP_SIZE.y - MINIMAP_MARGIN.y - 38
+	outer_vbox.offset_top = -MINIMAP_SIZE.y - MINIMAP_MARGIN.y - 66
 	outer_vbox.offset_right = -MINIMAP_MARGIN.x
 	outer_vbox.offset_bottom = -MINIMAP_MARGIN.y
 

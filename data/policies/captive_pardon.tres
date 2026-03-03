@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"captive_pardon"
+display_name = "Captive Pardon"
+description = "Release captives into the general population. Scholars and peasants welcome the reform, but nobles see it as weakness."
+category = 3
+class_loyalty_effects = { "nobles": -4, "scholars": 2, "peasants": 1, "captives": 3 }
+resource_effects = { 6: -5 }
+required_class_loyalty = {}
+mutually_exclusive = Array[StringName]([&"levy_conscription"])
+cooldown_turns = 3
+faction_id = &"empire"

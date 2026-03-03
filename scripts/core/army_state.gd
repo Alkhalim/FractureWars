@@ -12,6 +12,8 @@ extends Resource
 @export var is_garrison: bool = false # City garrison, not player-controlled, no upkeep
 @export var elderbeast_id: StringName = &"" # Shardhorde: elderbeast attached to this army
 @export var battle_exhausted: bool = false # Cannot move or fight again this turn (stalemate)
+@export var is_camp: bool = false # Sunblessed: army has set up camp (can build)
+@export var camp_city_id: StringName = &"" # Sunblessed: city created by this camp
 
 func get_region_id() -> StringName:
 	if GameManager.state and GameManager.state.hex_map:

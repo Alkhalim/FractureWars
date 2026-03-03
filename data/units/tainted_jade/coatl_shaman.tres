@@ -25,5 +25,6 @@ population_cost = 6
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["mage", "ranged"])
+spell_type = &"hex_curse"
 base_morale = 35
 captive_chance = 0.05

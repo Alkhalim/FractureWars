@@ -208,6 +208,9 @@ func propose_peace(proposer: StringName, target: StringName, force_accept: bool 
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_PEACE, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.PEACE, proposer, target)
 		return {accepted = true, reason = "Peace accepted"}
+	var peace_counter := _calculate_sweetener_counter(proposer, target, score, "peace")
+	if not peace_counter.is_empty():
+		return {accepted = false, reason = "They demand compensation for peace.", counter_offer = peace_counter}
 	return {accepted = false, reason = "They are not ready for peace"}
 
 func propose_alliance(proposer: StringName, target: StringName, force_accept: bool = false) -> Dictionary:
@@ -233,6 +236,9 @@ func propose_alliance(proposer: StringName, target: StringName, force_accept: bo
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_ALLIANCE, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.ALLIANCE, proposer, target)
 		return {accepted = true, reason = "Alliance formed"}
+	var alliance_counter := _calculate_sweetener_counter(proposer, target, score, "alliance")
+	if not alliance_counter.is_empty():
+		return {accepted = false, reason = "They want gold to seal the alliance.", counter_offer = alliance_counter}
 	return {accepted = false, reason = "They decline the alliance"}
 
 func has_traded_this_turn(from: StringName, to: StringName) -> bool:
@@ -727,6 +733,9 @@ func propose_non_aggression(proposer: StringName, target: StringName, force_acce
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_NON_AGGRESSION, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.NON_AGGRESSION_PACT, proposer, target)
 		return {accepted = true, reason = "Non-aggression pact accepted"}
+	var nap_counter := _calculate_sweetener_counter(proposer, target, score, "non_aggression")
+	if not nap_counter.is_empty():
+		return {accepted = false, reason = "They want gold to agree to non-aggression.", counter_offer = nap_counter}
 	return {accepted = false, reason = "They see no reason for a non-aggression pact"}
 
 func demand_tributary(demander: StringName, target: StringName) -> Dictionary:
@@ -854,6 +863,126 @@ func _evaluate_trade(proposer: StringName, target: StringName, give_res: int, gi
 	required_fairness += enemy_treaty_penalty
 	return (fairness - required_fairness) * 50.0
 
+func _get_faction_greed(faction_id: StringName) -> float:
+	## Returns a greed multiplier for counter-offer demands. Greedy/aggressive factions demand more.
+	var fd: FactionData = DataManager.get_faction(faction_id)
+	var aggression: float = 0.4
+	if fd and fd.ai_personality.has("aggression"):
+		aggression = fd.ai_personality.aggression
+	# Base greed from aggression: 0.0 aggr → 1.0x, 0.8 aggr → 1.6x
+	var greed := 1.0 + aggression * 0.75
+	# Specific faction overrides for notoriously greedy factions
+	match faction_id:
+		&"salt_reavers": greed = maxf(greed, 1.7)
+		&"skulloath": greed = maxf(greed, 1.5)
+		&"bloodthrone": greed = maxf(greed, 1.4)
+		&"crimson_legion": greed = maxf(greed, 1.35)
+	return greed
+
+func _get_most_needed_resource(faction_id: StringName) -> Dictionary:
+	## Returns {resource_type: int, deficit: float} for the resource the faction needs most.
+	## Higher deficit = more desperately needed.
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return {resource_type = Enums.ResourceType.GOLD, deficit = 1.0}
+	# Thresholds below which a resource is considered scarce
+	var thresholds: Dictionary = {
+		Enums.ResourceType.GOLD: 120.0,
+		Enums.ResourceType.IRON: 40.0,
+		Enums.ResourceType.FOOD: 50.0,
+		Enums.ResourceType.WOOD: 30.0,
+		Enums.ResourceType.TECHNOLOGY: 15.0,
+	}
+	var worst_type: int = Enums.ResourceType.GOLD
+	var worst_ratio: float = 999.0  # Lower = more needed
+	for res_type in thresholds:
+		var stock: float = float(fs.resources.get(res_type, 0))
+		var threshold: float = thresholds[res_type]
+		var ratio := stock / maxf(threshold, 1.0)
+		if ratio < worst_ratio:
+			worst_ratio = ratio
+			worst_type = res_type
+	return {resource_type = worst_type, deficit = maxf(0.0, 1.0 - worst_ratio)}
+
+func _find_desired_item(proposer: StringName, target: StringName) -> Dictionary:
+	## Check if the proposer has any items in faction storage that the target would value.
+	## Returns {item_id, item_name, rarity} or empty dict.
+	var proposer_fs: FactionState = GameManager.state.faction_states.get(proposer)
+	if proposer_fs == null or proposer_fs.item_storage.is_empty():
+		return {}
+	var target_fd: FactionData = DataManager.get_faction(target)
+	if target_fd == null:
+		return {}
+	var likes: Array = target_fd.gift_likes if target_fd.gift_likes else []
+	var best_item_id: StringName = &""
+	var best_score: float = 0.0
+	for item_id in proposer_fs.item_storage:
+		var item: CommanderItem = CommanderSystem.items.get(item_id)
+		if item == null:
+			continue
+		var item_score: float = 0.0
+		# Rarity value
+		match item.rarity:
+			&"legendary": item_score += 8.0
+			&"rare": item_score += 4.0
+			&"common": item_score += 1.5
+		# Gift tag matching
+		for tag in item.gift_tags:
+			if tag in likes:
+				item_score += 3.0
+		if item_score > best_score:
+			best_score = item_score
+			best_item_id = item_id
+	# Only demand items the AI actually values (score >= 4 means rare+ or good tag match)
+	if best_score >= 4.0 and best_item_id != &"":
+		var item: CommanderItem = CommanderSystem.items.get(best_item_id)
+		return {item_id = best_item_id, item_name = item.display_name, rarity = item.rarity}
+	return {}
+
+func _calculate_sweetener_counter(proposer: StringName, target: StringName, score: float, proposal_type: String) -> Dictionary:
+	## Generate a sweetener counter-offer for non-trade proposals (peace, alliance, NAP, etc.)
+	## The AI demands the resource they need most, or an item from the player's storage.
+	## Greedy factions demand more. Returns {type, resource_type, amount} or {type, item_id, item_name} or empty.
+	var standing := get_standing(proposer, target)
+	if standing < -50:
+		return {}  # Too hostile to negotiate
+	var greed := _get_faction_greed(target)
+	var deficit := absf(score)
+	# Check if an item demand makes sense (greedy factions with high deficit)
+	if greed >= 1.3 and deficit > 5.0:
+		var item_demand := _find_desired_item(proposer, target)
+		if not item_demand.is_empty():
+			return {type = proposal_type, item_id = item_demand.item_id, item_name = item_demand.item_name}
+	# Resource-based sweetener: demand what the AI needs most
+	var need := _get_most_needed_resource(target)
+	var res_type: int = need.resource_type
+	# Base amount scales with deficit score + faction greed
+	var base_amount := 15.0 + deficit * 6.0
+	var standing_mult := clampf(1.0 - standing * 0.006, 0.8, 1.8)
+	var amount := int(base_amount * standing_mult * greed)
+	amount = maxi(int(round(float(amount) / 5.0)) * 5, 10)  # Snap to 5s, min 10
+	# Cap per resource type
+	var caps: Dictionary = {
+		Enums.ResourceType.GOLD: 250,
+		Enums.ResourceType.IRON: 80,
+		Enums.ResourceType.FOOD: 80,
+		Enums.ResourceType.WOOD: 60,
+		Enums.ResourceType.TECHNOLOGY: 30,
+	}
+	amount = mini(amount, caps.get(res_type, 200))
+	# Check if proposer can afford it
+	var proposer_fs: FactionState = GameManager.state.faction_states.get(proposer)
+	if proposer_fs and proposer_fs.resources.get(res_type, 0) < amount:
+		# Fall back to gold if they can't afford the needed resource
+		if res_type != Enums.ResourceType.GOLD:
+			var gold_amount := int(float(amount) * 1.5)  # Gold conversion premium
+			gold_amount = maxi(int(round(float(gold_amount) / 5.0)) * 5, 10)
+			gold_amount = mini(gold_amount, 250)
+			if proposer_fs.resources.get(Enums.ResourceType.GOLD, 0) >= gold_amount:
+				return {type = proposal_type, resource_type = Enums.ResourceType.GOLD, amount = gold_amount}
+		return {}  # Can't afford — no counter
+	return {type = proposal_type, resource_type = res_type, amount = amount}
+
 func _calculate_counter_offer(proposer: StringName, target: StringName, give_res: int, give_amt: int, recv_res: int, recv_amt: int) -> Dictionary:
 	## Generate a counter-offer the AI would accept.
 	## Returns empty dictionary if standing is too low or no reasonable counter exists.
@@ -907,12 +1036,23 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 	match proposal_type:
 		"peace":
 			var score := _evaluate_peace(proposer, target)
-			return {accepted = score > 0}
+			if score > 0:
+				return {accepted = true}
+			var pc := _calculate_sweetener_counter(proposer, target, score, "peace")
+			if not pc.is_empty():
+				return {accepted = false, counter_offer = pc}
+			return {accepted = false}
 		"alliance":
 			var relation := GameManager.get_relation(proposer, target)
 			if relation == Enums.FactionRelation.WAR or relation == Enums.FactionRelation.HOSTILE:
 				return {accepted = false}
-			return {accepted = _evaluate_alliance(proposer, target) > 0}
+			var al_score := _evaluate_alliance(proposer, target)
+			if al_score > 0:
+				return {accepted = true}
+			var ac := _calculate_sweetener_counter(proposer, target, al_score, "alliance")
+			if not ac.is_empty():
+				return {accepted = false, counter_offer = ac}
+			return {accepted = false}
 		"trade":
 			var relation := GameManager.get_relation(proposer, target)
 			if relation == Enums.FactionRelation.WAR:
@@ -939,8 +1079,14 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 			var relation := GameManager.get_relation(proposer, target)
 			if relation == Enums.FactionRelation.WAR:
 				return {accepted = false}
-			var standing := get_standing(proposer, target)
-			return {accepted = (standing * 0.4 + 10.0) > 0}
+			var nap_standing := get_standing(proposer, target)
+			var nap_score := nap_standing * 0.4 + 10.0
+			if nap_score > 0:
+				return {accepted = true}
+			var nc := _calculate_sweetener_counter(proposer, target, nap_score, "non_aggression")
+			if not nc.is_empty():
+				return {accepted = false, counter_offer = nc}
+			return {accepted = false}
 		"demand_tributary":
 			var ratio := get_strength_ratio(proposer, target)
 			var standing := get_standing(proposer, target)
@@ -952,7 +1098,6 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 			var score := (ratio - 1.0) * 30.0 - float(standing) * 0.3 - float(amount) * 0.15
 			return {accepted = score > 0}
 		"free_passage":
-			# Offering free passage is beneficial to both — easy to accept
 			var relation := GameManager.get_relation(proposer, target)
 			if relation == Enums.FactionRelation.WAR:
 				return {accepted = false}
@@ -967,7 +1112,13 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 					   (t.faction_a == target and t.faction_b == proposer):
 						trade_bonus = 15.0
 						break
-			return {accepted = (standing * 0.5 + trade_bonus + 15.0) > 0}
+			var fp_eval_score := standing * 0.5 + trade_bonus + 15.0
+			if fp_eval_score > 0:
+				return {accepted = true}
+			var fpc := _calculate_sweetener_counter(proposer, target, fp_eval_score, "free_passage")
+			if not fpc.is_empty():
+				return {accepted = false, counter_offer = fpc}
+			return {accepted = false}
 		"offer_city":
 			return {accepted = true}  # AI always accepts city gifts
 		"demand_city":
@@ -1010,6 +1161,7 @@ func execute_ai_diplomacy(faction_id: StringName) -> void:
 		if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.WAR:
 			my_enemies.append(other_id)
 
+	var trade_proposed_this_tick := false  # Limit: one trade proposal per diplomacy tick
 	for other_id in GameManager.state.faction_states:
 		if other_id == faction_id or GameManager.is_npc_faction(other_id):
 			continue
@@ -1049,10 +1201,16 @@ func execute_ai_diplomacy(faction_id: StringName) -> void:
 						propose_alliance(faction_id, other_id)
 						continue
 			# Trade logic (available to all including trade-only factions)
-			if relation != Enums.FactionRelation.WAR:
+			if relation != Enums.FactionRelation.WAR and not trade_proposed_this_tick:
 				var standing := get_standing(faction_id, other_id)
-				if standing >= 5:
-					propose_trade_relations(faction_id, other_id)
+				# Don't flood early game with trade: diplomatic factions can trade from turn 5,
+				# others from turn 8. Only one trade proposal per diplomacy tick per faction.
+				var is_diplomatic: bool = faction_id in [&"sunblessed", &"oaseans", &"venerated", &"luminarch"]
+				var min_turn: int = 5 if is_diplomatic else 8
+				if standing >= 5 and GameManager.state.current_turn >= min_turn:
+					var result := propose_trade_relations(faction_id, other_id)
+					if result.get("accepted", false):
+						trade_proposed_this_tick = true
 				elif standing >= 10:
 					var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 					if fs:
@@ -1209,6 +1367,9 @@ func propose_free_passage(proposer: StringName, target: StringName, force_accept
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_FREE_PASSAGE, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.FREE_PASSAGE, proposer, target)
 		return {accepted = true, reason = "Free passage accepted"}
+	var fp_counter := _calculate_sweetener_counter(proposer, target, score, "free_passage")
+	if not fp_counter.is_empty():
+		return {accepted = false, reason = "They want gold to grant passage.", counter_offer = fp_counter}
 	return {accepted = false, reason = "They see no benefit in granting free passage"}
 
 # ── City Transfer ──────────────────────────────────────────
@@ -1361,35 +1522,68 @@ func get_active_trade_routes() -> Array[Dictionary]:
 	return routes
 
 static func get_trade_route_hex_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
-	## Hex line-drawing via cube coordinate lerp.
-	var path: Array[Vector2i] = []
-	var ac := HexHelper.offset_to_cube(from.x, from.y)
-	var bc := HexHelper.offset_to_cube(to.x, to.y)
-	var dist := HexHelper.hex_distance(from, to)
-	if dist == 0:
-		path.append(from)
-		return path
-	for i in dist + 1:
-		var t := float(i) / float(dist)
-		# Cube lerp with 1e-6 nudge to avoid ambiguous rounding at midpoints
-		var cx := float(ac.x) + (float(bc.x) - float(ac.x)) * t + 1e-6
-		var cy := float(ac.y) + (float(bc.y) - float(ac.y)) * t + 1e-6
-		var cz := float(ac.z) + (float(bc.z) - float(ac.z)) * t - 2e-6
-		# Cube round
-		var rx := roundi(cx)
-		var ry := roundi(cy)
-		var rz := roundi(cz)
-		var dx := absf(float(rx) - cx)
-		var dy := absf(float(ry) - cy)
-		var dz := absf(float(rz) - cz)
-		if dx > dy and dx > dz:
-			rx = -ry - rz
-		elif dy > dz:
-			ry = -rx - rz
-		else:
-			rz = -rx - ry
-		path.append(HexHelper.cube_to_offset(Vector3i(rx, ry, rz)))
-	return path
+	## A* pathfinding for trade routes — avoids mountains and water tiles.
+	if from == to:
+		return [from] as Array[Vector2i]
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return [from, to] as Array[Vector2i]
+	# A* with hex distance heuristic
+	var open: Array[Vector2i] = [from]
+	var g_cost: Dictionary = {from: 0.0}
+	var came_from: Dictionary = {} # coord -> coord
+	var f_cost: Dictionary = {from: float(HexHelper.hex_distance(from, to))}
+	var closed: Dictionary = {}
+	while not open.is_empty():
+		# Find lowest f_cost in open set
+		var best_idx := 0
+		var best_f: float = f_cost.get(open[0], INF)
+		for i in range(1, open.size()):
+			var fc: float = f_cost.get(open[i], INF)
+			if fc < best_f:
+				best_f = fc
+				best_idx = i
+		var current: Vector2i = open[best_idx]
+		if current == to:
+			# Reconstruct path
+			var path: Array[Vector2i] = []
+			var c := to
+			while c != from:
+				path.append(c)
+				c = came_from[c]
+			path.append(from)
+			path.reverse()
+			return path
+		open.remove_at(best_idx)
+		closed[current] = true
+		for neighbor in HexHelper.get_neighbors(current):
+			if closed.has(neighbor):
+				continue
+			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var tile: HexMapData.TileState = hex_map.tiles.get(neighbor)
+			# Block mountains and water (unless it's the destination tile)
+			if tile and neighbor != to:
+				if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.MOUNTAINS:
+					continue
+			var move_cost := 1.0
+			if tile:
+				match tile.terrain:
+					Enums.TerrainType.FOREST, Enums.TerrainType.TUNDRA: move_cost = 1.5
+					Enums.TerrainType.SWAMP, Enums.TerrainType.JUNGLE: move_cost = 2.0
+					Enums.TerrainType.DESERT: move_cost = 1.2
+					Enums.TerrainType.SHARD_WASTES: move_cost = 1.8
+				if tile.road_level > 0:
+					move_cost *= 0.6
+			var tentative_g: float = g_cost[current] + move_cost
+			if tentative_g < g_cost.get(neighbor, INF):
+				came_from[neighbor] = current
+				g_cost[neighbor] = tentative_g
+				f_cost[neighbor] = tentative_g + float(HexHelper.hex_distance(neighbor, to))
+				if not open.has(neighbor):
+					open.append(neighbor)
+	# No path found — fall back to straight line
+	return [from, to] as Array[Vector2i]
 
 func get_intercepting_armies(route_path: Array[Vector2i], faction_a: StringName, faction_b: StringName) -> Array[Dictionary]:
 	## Returns hostile armies standing on trade route tiles.

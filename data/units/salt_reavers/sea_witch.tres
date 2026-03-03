@@ -25,4 +25,5 @@ population_cost = 4
 terrain_bonuses = {5: 0.25}
 realm_bonuses = {}
 tags = Array[String](["mage", "ranged"])
+spell_type = &"frost_bolt"
 base_morale = 45

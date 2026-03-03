@@ -25,5 +25,6 @@ population_cost = 0
 terrain_bonuses = {}
 realm_bonuses = {1: 0.2}
 tags = Array[String](["mage", "ranged", "support"])
+spell_type = &"shard_pulse"
 base_morale = 60
 captive_chance = 0.0

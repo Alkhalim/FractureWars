@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"levy_conscription"
+display_name = "Levy Conscription"
+description = "Press captives into service as levy soldiers. Reduces captive population but strains food supplies and unnerves peasants."
+category = 1
+class_loyalty_effects = { "peasants": -2, "nobles": 1, "captives": -2 }
+resource_effects = { 6: -3, 3: -2 }
+required_class_loyalty = {}
+mutually_exclusive = Array[StringName]([&"captive_pardon"])
+cooldown_turns = 3
+faction_id = &"empire"

@@ -582,7 +582,7 @@ static func _fix_region_pockets(map: HexMapData) -> void:
 		var region_id := tile.region_id
 		var seed_pos: Vector2i = REGION_SEEDS.get(region_id, Vector2i(-1, -1))
 		var comp_tiles: Array[Vector2i] = [coord]
-		var has_seed := (coord == seed_pos)
+		var has_seed: bool = (coord == seed_pos)
 		visited[coord] = true
 		var queue: Array[Vector2i] = [coord]
 		while not queue.is_empty():

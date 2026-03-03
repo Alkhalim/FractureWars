@@ -258,18 +258,21 @@ func _start_faction_turn() -> void:
 	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 		if army.is_garrison:
 			continue
-		army.movement_remaining = army.get_max_movement()
-		# Road bonus: +0.6 MP per road level
-		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
-		if tile and tile.road_level >= 1:
-			army.movement_remaining += 0.6 * tile.road_level
-		# Building special_effects: army_movement_bonus
-		var army_city := GameManager.city_system.get_city_at_hex(army.hex_pos)
-		if army_city and army_city.faction_id == faction_id:
-			for bid in army_city.buildings:
-				var bld := DataManager.get_building(bid)
-				if bld and bld.special_effects.has("army_movement_bonus"):
-					army.movement_remaining += float(bld.special_effects["army_movement_bonus"])
+		if army.is_camp:
+			army.movement_remaining = 0.0 # Camped armies cannot move
+		else:
+			army.movement_remaining = army.get_max_movement()
+			# Road bonus: +0.6 MP per road level
+			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+			if tile and tile.road_level >= 1:
+				army.movement_remaining += 0.6 * tile.road_level
+			# Building special_effects: army_movement_bonus
+			var army_city := GameManager.city_system.get_city_at_hex(army.hex_pos)
+			if army_city and army_city.faction_id == faction_id:
+				for bid in army_city.buildings:
+					var bld := DataManager.get_building(bid)
+					if bld and bld.special_effects.has("army_movement_bonus"):
+						army.movement_remaining += float(bld.special_effects["army_movement_bonus"])
 		army.has_moved = false
 		army.battle_exhausted = false
 
@@ -400,12 +403,14 @@ func _check_victory_conditions() -> void:
 				if is_player:
 					_trigger_game_over(faction_id, Enums.VictoryType.DEFEAT, true)
 					return
+				EventBus.faction_defeated.emit(faction_id)
 				continue
 		elif not has_cities and not has_armies:
 			fs.is_defeated = true
 			if is_player:
 				_trigger_game_over(faction_id, Enums.VictoryType.DEFEAT, true)
 				return
+			EventBus.faction_defeated.emit(faction_id)
 			continue
 
 		# ── Quick Match: culture completion ──
@@ -589,7 +594,14 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		&"tainted_jade": [&"serpent_pit", &"vine_shelter", &"jade_forge", &"root_altar", &"thrall_quarters", &"jade_market", &"jungle_traps", &"taint_suppressor", &"hunting_ground"],
 		&"shardhorde": [&"crystal_nursery", &"shard_conduit", &"crystal_forge", &"shard_harvester", &"chitin_walls"],
 	}
-	var priority_list: Array = faction_build_priorities.get(faction_id, [&"cohort_barracks", &"grain_fields", &"iron_pit", &"market_square"])
+	var priority_list: Array = faction_build_priorities.get(faction_id, [])
+	if priority_list.is_empty():
+		# Minor factions use parent faction's building priorities
+		var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, &"")
+		if parent_id != &"":
+			priority_list = faction_build_priorities.get(parent_id, [])
+	if priority_list.is_empty():
+		priority_list = [&"cohort_barracks", &"grain_fields", &"iron_pit", &"market_square"]
 
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)

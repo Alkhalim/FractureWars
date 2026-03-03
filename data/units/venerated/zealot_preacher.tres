@@ -25,6 +25,7 @@ population_cost = 6
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["mage", "ranged", "support"])
+spell_type = &"sunfire"
 base_morale = 70
 morale_aura = 3
 fear_radius = 4

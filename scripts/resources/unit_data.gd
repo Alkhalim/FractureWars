@@ -28,6 +28,7 @@ extends Resource
 @export var terrain_bonuses: Dictionary = {} # TerrainType -> modifier
 @export var realm_bonuses: Dictionary = {} # Realm -> modifier
 @export var tags: Array[String] = [] # "infantry", "cavalry", "construct", "mage"
+@export var spell_type: StringName = &"" # Mage spell: fireball, lightning, frost_bolt, death_curse, heal_bolt, sunfire, hex_curse, shard_pulse, sand_blast
 
 # Battle V2 fields
 @export var base_morale: int = 50

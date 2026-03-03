@@ -25,4 +25,5 @@ population_cost = 5
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["mage", "ranged"])
+spell_type = &"lunar_beam"
 base_morale = 60

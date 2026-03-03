@@ -82,6 +82,7 @@ signal dilemma_resolved(faction_id: StringName, dilemma_type: StringName, choice
 
 # Victory / defeat signals
 signal game_over(faction_id: StringName, victory_type: int, is_player: bool)
+signal faction_defeated(faction_id: StringName)  # Non-player faction eliminated
 
 # AI diplomacy offer to player
 signal ai_diplomacy_offer(from_faction: StringName, offer_type: StringName, offer_data: Dictionary)
