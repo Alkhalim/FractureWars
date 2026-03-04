@@ -247,7 +247,7 @@ const UNIT_PORTRAIT_MAP := {
 	&"steppe_archers": "skulloath_cavalry",
 	&"runebound_wyvern": "dragon",
 	&"skull_reavers": "evil_leader",
-	&"steppe_slingers": "skulloath_cavalry",
+	&"steppe_skirmishers": "skulloath_cavalry",
 	&"steppe_mammoth": "elderbeast",
 	&"bone_priest": "mage",
 	&"dread_knight": "evil_leader",
@@ -416,6 +416,8 @@ const UNIT_PORTRAIT_MAP := {
 	&"temple_initiate": "basic_legionnaire",
 	&"radiant_priest": "mage",
 	&"sacred_hawk": "dragon",
+	&"griffin": "dragon",
+	&"sun_slinger": "lunar_archer",
 	# Sub-factions
 	&"ash_berserker": "evil_leader",
 	&"ash_ritualist": "mage",

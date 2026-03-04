@@ -971,6 +971,8 @@ func _init_nomadic_army(faction_id: StringName, occupied_tiles: Dictionary) -> v
 	var search_center := Vector2i(42, 29)
 	if faction_id == &"oaseans":
 		search_center = Vector2i(44, 37)  # South-east of Marcellum, desert terrain
+	elif faction_id == &"venerated":
+		search_center = Vector2i(64, 30)  # South of Cinderwatch
 	var spawn_pos := search_center
 	for coord in state.hex_map.tiles:
 		var tile: HexMapData.TileState = state.hex_map.tiles[coord]
@@ -1768,10 +1770,22 @@ func setup_sunblessed_camp(army_id: StringName) -> StringName:
 		return &""
 	if army.commander == null:
 		return &""
-	# Create camp city at army position
+	# Require > half movement remaining to set up camp
+	if army.movement_remaining <= army.get_max_movement() * 0.5:
+		return &""
 	var tile: HexMapData.TileState = state.hex_map.get_tile(army.hex_pos)
 	if tile == null:
 		return &""
+	# Check if army has a mobile camp city — re-use it instead of creating new
+	if army.camp_city_id != &"" and state.cities.has(army.camp_city_id):
+		var city: CityState = state.cities[army.camp_city_id]
+		city.is_mobile_camp = false
+		city.hex_pos = army.hex_pos
+		city.region_id = tile.region_id if tile else &""
+		army.is_camp = true
+		army.movement_remaining = 0.0
+		return city.city_id
+	# Create camp city at army position
 	var city := CityState.new()
 	city.city_id = state.generate_id()
 	city.city_name = army.get_commander_name() + "'s Camp"
@@ -1795,21 +1809,29 @@ func setup_sunblessed_camp(army_id: StringName) -> StringName:
 	army.is_camp = true
 	army.camp_city_id = city.city_id
 	army.movement_remaining = 0.0
+	# Restore saved buildings/queue from previous camp
+	if army.camp_saved_buildings.size() > 0:
+		city.buildings = army.camp_saved_buildings.duplicate()
+		army.camp_saved_buildings.clear()
+	if army.camp_saved_build_queue.size() > 0:
+		city.build_queue = army.camp_saved_build_queue.duplicate()
+		army.camp_saved_build_queue.clear()
 	return city.city_id
 
 func break_sunblessed_camp(army_id: StringName) -> bool:
-	## Break camp: removes the temporary camp city and frees the army.
+	## Break camp: converts camp city to mobile (80% income) instead of removing it.
 	var army: ArmyState = state.armies.get(army_id)
 	if army == null or not army.is_camp:
 		return false
 	var city_id := army.camp_city_id
 	if city_id != &"" and state.cities.has(city_id):
-		var fs: FactionState = state.faction_states.get(army.faction_id)
-		if fs:
-			fs.owned_cities.erase(city_id)
-		state.cities.erase(city_id)
+		var city: CityState = state.cities[city_id]
+		# Save buildings and build queue to army for persistence
+		army.camp_saved_buildings = city.buildings.duplicate()
+		army.camp_saved_build_queue = city.build_queue.duplicate()
+		# Convert to mobile camp instead of erasing
+		city.is_mobile_camp = true
 	army.is_camp = false
-	army.camp_city_id = &""
 	return true
 
 func recruit_to_army(army_id: StringName, unit_data_id: StringName) -> bool:

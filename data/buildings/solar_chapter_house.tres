@@ -15,6 +15,6 @@ income_bonus = {}
 population_growth_bonus = 2
 recruit_speed_bonus = 1
 upgrades_from = &"pilgrim_training_grounds"
-unlocks_units = Array[StringName]([&"dawn_crusader", &"sunfire_lancer", &"light_crossbow", &"solar_cavalry_archer"])
+unlocks_units = Array[StringName]([&"dawn_crusader", &"sunfire_lancer"])
 required_capital_level = 2
 class_loyalty_bonus = {"nobles": 4}

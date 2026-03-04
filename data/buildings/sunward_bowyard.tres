@@ -4,8 +4,8 @@
 
 [resource]
 script = ExtResource("1")
-id = &"sun_archery"
-display_name = "Sun Archery I"
+id = &"sunward_bowyard"
+display_name = "Sunward Bowyard I"
 description = "An open-air range where archers train under the blazing sun. They learn to fire with divine precision."
 faction_id = &"sunblessed"
 category = &"military"
@@ -13,5 +13,6 @@ build_cost = {0: 38, 1: 8, 5: 13}
 build_time = 2
 population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"sun_archer"])
+upgrades_from = &"pilgrim_training_grounds"
 required_capital_level = 1
 class_loyalty_bonus = {"peasants": -1, "nobles": 1}

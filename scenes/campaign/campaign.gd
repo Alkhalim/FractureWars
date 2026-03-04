@@ -2896,6 +2896,9 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 	# Calculate commander bonuses for both sides
 	var atk_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(attacker_army.commander)
 	var def_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(defender_army.commander)
+	# Apply camp building bonuses (Sunblessed Sunfire Forge etc.)
+	_apply_camp_building_bonuses(attacker_army, atk_cmd_bonuses)
+	_apply_camp_building_bonuses(defender_army, def_cmd_bonuses)
 
 	# Snapshot army strengths before battle (for loot and XP calculation)
 	var atk_strength_pre := attacker_army.get_total_strength()
@@ -3329,6 +3332,17 @@ func _show_retreat_report(army: ArmyState, losses: int, from_hex: Vector2i, to_h
 
 	_battle_report_panel.add_child(vbox)
 	$UILayer/HUD.add_child(_battle_report_panel)
+
+func _apply_camp_building_bonuses(army: ArmyState, cmd_bonuses: Dictionary) -> void:
+	if army.camp_city_id == &"":
+		return
+	var camp_city: CityState = GameManager.state.cities.get(army.camp_city_id)
+	if camp_city == null:
+		return
+	for bid in camp_city.buildings:
+		var bdata: BuildingData = DataManager.get_building(bid)
+		if bdata and bdata.special_effects.has("army_attack_bonus"):
+			cmd_bonuses["attack_bonus"] = cmd_bonuses.get("attack_bonus", 0) + int(bdata.special_effects["army_attack_bonus"])
 
 func _apply_auto_battle_results(army: ArmyState, survivors: Array[BattleSimulatorV2.BattleFormation]) -> void:
 	var surviving_ids: Dictionary = {}

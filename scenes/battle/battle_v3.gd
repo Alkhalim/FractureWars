@@ -19,7 +19,24 @@ var attacker_faction_id: StringName
 var defender_faction_id: StringName
 var battle_hex_pos: Vector2i
 
-var selected_formation: BattleSimulatorV3.BattleFormationV3 = null
+# Multi-select system
+var selected_formations: Array[BattleSimulatorV3.BattleFormationV3] = []
+var selected_formation: BattleSimulatorV3.BattleFormationV3:
+	get:
+		return selected_formations[0] if selected_formations.size() > 0 else null
+	set(value):
+		selected_formations.clear()
+		if value != null:
+			selected_formations.append(value)
+var _drag_select_start: Vector2 = Vector2.ZERO
+var _drag_select_active: bool = false
+var _drag_select_rect: Rect2 = Rect2()
+var _terrain_hover_info: Dictionary = {}  # {pos: Vector2, text: String} or empty
+
+# Group drag state
+var _group_drag_active: bool = false
+var _group_drag_offsets: Dictionary = {}  # formation -> Vector2 offset from click point
+
 var player_side: int = 0
 var is_player_attacker: bool = false
 var _battle_loot: Dictionary = {}
@@ -100,6 +117,10 @@ var strength_label: Label
 var roster_panel: PanelContainer
 var player_roster_container: VBoxContainer
 var enemy_roster_container: VBoxContainer
+var queue_panel: PanelContainer
+var _queue_slot_labels: Array[Label] = []
+var _queue_slot_x_buttons: Array[Button] = []
+var _queue_palette_buttons: Array[Button] = []
 var _player_power_initial: float = 0.0
 var _enemy_power_initial: float = 0.0
 
@@ -138,12 +159,18 @@ func _ready() -> void:
 	# Setup formations — player army always as side 0 (bottom)
 	var atk_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(attacker_army.commander)
 	var def_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(defender_army.commander)
+	# Apply camp building bonuses (Sunblessed Sunfire Forge etc.)
+	_apply_camp_building_bonuses(attacker_army, atk_cmd_bonuses)
+	_apply_camp_building_bonuses(defender_army, def_cmd_bonuses)
 	if is_player_attacker:
 		simulator.setup_attacker_formations(attacker_army, atk_cmd_bonuses)
 		simulator.setup_defender_formations(defender_army, def_cmd_bonuses)
 	else:
 		simulator.setup_attacker_formations(defender_army, def_cmd_bonuses)
 		simulator.setup_defender_formations(attacker_army, atk_cmd_bonuses)
+
+	# Spawn tower/siege formations from defensive buildings
+	simulator.setup_city_defense_formations()
 
 	# Set debt penalty flag on formations
 	_apply_debt_flags()
@@ -344,6 +371,97 @@ func _build_ui() -> void:
 
 	ui_layer.add_child(strength_meter_panel)
 
+	# --- Command Queue Panel (Right Side, below strength meter) ---
+	queue_panel = _create_panel()
+	queue_panel.name = "QueuePanel"
+	queue_panel.anchor_left = 1
+	queue_panel.anchor_right = 1
+	queue_panel.anchor_top = 0
+	queue_panel.anchor_bottom = 0
+	queue_panel.offset_left = -320
+	queue_panel.offset_right = -4
+	queue_panel.offset_top = 96
+	queue_panel.offset_bottom = 360
+	queue_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+
+	var queue_vbox := VBoxContainer.new()
+	queue_vbox.add_theme_constant_override("separation", 3)
+	queue_panel.add_child(queue_vbox)
+
+	var queue_title := Label.new()
+	queue_title.text = "COMMAND QUEUE"
+	queue_title.add_theme_font_size_override("font_size", 12)
+	queue_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	queue_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	queue_vbox.add_child(queue_title)
+
+	# 6 queue slots
+	_queue_slot_labels.clear()
+	_queue_slot_x_buttons.clear()
+	for i in 6:
+		var slot_hbox := HBoxContainer.new()
+		slot_hbox.add_theme_constant_override("separation", 4)
+
+		var num_lbl := Label.new()
+		num_lbl.text = "%d." % (i + 1)
+		num_lbl.add_theme_font_size_override("font_size", 11)
+		num_lbl.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45))
+		num_lbl.custom_minimum_size = Vector2(18, 0)
+		slot_hbox.add_child(num_lbl)
+
+		var cmd_lbl := Label.new()
+		cmd_lbl.text = "---"
+		cmd_lbl.add_theme_font_size_override("font_size", 11)
+		cmd_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+		cmd_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cmd_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+		var captured_slot_idx := i
+		cmd_lbl.gui_input.connect(_on_queue_slot_input.bind(captured_slot_idx))
+		slot_hbox.add_child(cmd_lbl)
+		_queue_slot_labels.append(cmd_lbl)
+
+		var x_btn := Button.new()
+		x_btn.text = "X"
+		x_btn.add_theme_font_size_override("font_size", 10)
+		x_btn.custom_minimum_size = Vector2(22, 20)
+		x_btn.pressed.connect(_on_queue_slot_remove.bind(captured_slot_idx))
+		slot_hbox.add_child(x_btn)
+		_queue_slot_x_buttons.append(x_btn)
+
+		queue_vbox.add_child(slot_hbox)
+
+	# Command palette
+	var palette_sep := HSeparator.new()
+	palette_sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	queue_vbox.add_child(palette_sep)
+
+	var palette_label := Label.new()
+	palette_label.text = "COMMANDS"
+	palette_label.add_theme_font_size_override("font_size", 11)
+	palette_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
+	palette_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	queue_vbox.add_child(palette_label)
+
+	var palette_grid := GridContainer.new()
+	palette_grid.columns = 3
+	palette_grid.add_theme_constant_override("h_separation", 3)
+	palette_grid.add_theme_constant_override("v_separation", 3)
+	queue_vbox.add_child(palette_grid)
+
+	_queue_palette_buttons.clear()
+	for cmd_val in Enums.QueueCommand.values():
+		var cmd_name: String = Enums.QueueCommand.keys()[cmd_val].capitalize().replace("_", " ")
+		var pbtn := Button.new()
+		pbtn.text = cmd_name
+		pbtn.add_theme_font_size_override("font_size", 10)
+		pbtn.custom_minimum_size = Vector2(90, 24)
+		var captured_cmd: Enums.QueueCommand = cmd_val
+		pbtn.pressed.connect(_on_queue_palette_pressed.bind(captured_cmd))
+		palette_grid.add_child(pbtn)
+		_queue_palette_buttons.append(pbtn)
+
+	ui_layer.add_child(queue_panel)
+
 	# --- Army Roster (Right Side) ---
 	roster_panel = _create_panel()
 	roster_panel.name = "RosterPanel"
@@ -353,7 +471,7 @@ func _build_ui() -> void:
 	roster_panel.anchor_bottom = 1
 	roster_panel.offset_left = -320
 	roster_panel.offset_right = -4
-	roster_panel.offset_top = 96
+	roster_panel.offset_top = 366
 	roster_panel.offset_bottom = -4
 	roster_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 
@@ -635,7 +753,21 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 		name_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
 		tags_lbl.mouse_filter = Control.MOUSE_FILTER_PASS
 		name_col.mouse_filter = Control.MOUSE_FILTER_PASS
-		header_hbox.mouse_filter = Control.MOUSE_FILTER_PASS
+		header_hbox.mouse_filter = Control.MOUSE_FILTER_STOP
+		# Click on portrait/header selects ALL formations of this unit type
+		var captured_group := group_formations.duplicate()
+		var captured_is_player := is_player
+		header_hbox.gui_input.connect(func(event: InputEvent) -> void:
+			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and captured_is_player:
+				selected_formations.clear()
+				for gf in captured_group:
+					if not gf.is_dead and not gf.is_fled:
+						selected_formations.append(gf)
+				if selected_formations.size() > 0:
+					_update_unit_info(selected_formations[0])
+				_populate_unit_list()
+				renderer.queue_redraw()
+		)
 		group_box.add_child(header_hbox)
 
 		# Individual HP bars for each formation of this type
@@ -724,7 +856,20 @@ func _on_roster_row_hover(f) -> void:
 func _on_roster_row_input(event: InputEvent, f: BattleSimulatorV3.BattleFormationV3, is_player: bool) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT and is_player and not f.is_dead and not f.is_fled:
-			_on_formation_selected(f)
+			if event.ctrl_pressed:
+				# Ctrl+click: toggle in multi-select
+				if f in selected_formations:
+					selected_formations.erase(f)
+				else:
+					selected_formations.append(f)
+				if selected_formations.size() > 0:
+					_update_unit_info(selected_formations[-1])
+				else:
+					unit_info_panel.visible = false
+				_populate_unit_list()
+				renderer.queue_redraw()
+			else:
+				_on_formation_selected(f)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			_update_unit_info(f)
 
@@ -845,19 +990,19 @@ func _input(event: InputEvent) -> void:
 	if current_phase == Phase.SETUP:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 			# Let Button controls (Begin Battle, orders, etc.) handle their own clicks
-			var hovered := get_viewport().gui_get_hovered_control()
-			if hovered is Button:
+			var gui_hovered := get_viewport().gui_get_hovered_control()
+			if gui_hovered is Button:
 				return
-			if event.pressed and _dragging_formation == null:
+			if event.pressed and _dragging_formation == null and not _drag_select_active and not _group_drag_active:
 				var world_pos := _screen_to_world(event.position)
-				_on_left_press(world_pos)
-				if _dragging_formation != null:
+				_on_left_press(world_pos, event)
+				if _dragging_formation != null or _drag_select_active or _group_drag_active:
 					get_viewport().set_input_as_handled()
 			elif not event.pressed:
 				var world_pos := _screen_to_world(event.position)
 				_on_left_release(world_pos)
 				get_viewport().set_input_as_handled()
-		elif event is InputEventMouseMotion and _dragging_formation != null:
+		elif event is InputEventMouseMotion and (_dragging_formation != null or _drag_select_active or _group_drag_active):
 			var world_pos := _screen_to_world(event.position)
 			_on_drag(world_pos)
 			get_viewport().set_input_as_handled()
@@ -894,7 +1039,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var world_pos := _screen_to_world(event.position)
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
-				_on_left_press(world_pos)
+				_on_left_press(world_pos, event)
 			else:
 				_on_left_release(world_pos)
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
@@ -908,6 +1053,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Clamp to field bounds with margin
 			cam.position.x = clampf(cam.position.x, -50, BattleSimulatorV3.FIELD_WIDTH + 50)
 			cam.position.y = clampf(cam.position.y, -50, BattleSimulatorV3.FIELD_HEIGHT + 50)
+			get_viewport().set_input_as_handled()
+			return
+		if _drag_select_active or _group_drag_active:
+			var world_pos := _screen_to_world(event.position)
+			_on_drag(world_pos)
 			get_viewport().set_input_as_handled()
 			return
 		var world_pos := _screen_to_world(event.position)
@@ -946,7 +1096,7 @@ func _handle_key_input(event: InputEventKey) -> void:
 				_set_speed(8)
 				get_viewport().set_input_as_handled()
 		KEY_ESCAPE:
-			if selected_formation:
+			if selected_formations.size() > 0:
 				_deselect_formation()
 				get_viewport().set_input_as_handled()
 		KEY_TAB:
@@ -960,42 +1110,147 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 	var zoom := cam.zoom
 	return cam_pos + (screen_pos - viewport_size / 2.0) / zoom
 
-func _on_left_press(world_pos: Vector2) -> void:
+func _on_left_press(world_pos: Vector2, event: InputEvent = null) -> void:
+	var ctrl_held: bool = event != null and event is InputEventMouseButton and event.ctrl_pressed
 	if current_phase == Phase.SETUP:
 		var f := _find_formation_at(world_pos)
 		if f and f.side == player_side:
-			# Clicked directly on a player formation — start dragging
-			selected_formation = f
-			_dragging_formation = f
-			_drag_offset = f.position - world_pos
-			_update_unit_info(f)
-			_populate_unit_list()
-			renderer.queue_redraw()
+			if ctrl_held:
+				# Ctrl+click: toggle formation in/out of multi-select
+				if f in selected_formations:
+					selected_formations.erase(f)
+				else:
+					selected_formations.append(f)
+				if selected_formations.size() > 0:
+					_update_unit_info(selected_formations[-1])
+				else:
+					unit_info_panel.visible = false
+				_populate_unit_list()
+				renderer.queue_redraw()
+			elif f in selected_formations and selected_formations.size() > 1:
+				# Clicked a formation already in multi-select — start group drag
+				_group_drag_active = true
+				_group_drag_offsets.clear()
+				for sf in selected_formations:
+					_group_drag_offsets[sf] = sf.position - world_pos
+			else:
+				# Single-select + start drag
+				selected_formations.clear()
+				selected_formations.append(f)
+				_dragging_formation = f
+				_drag_offset = f.position - world_pos
+				_update_unit_info(f)
+				_populate_unit_list()
+				renderer.queue_redraw()
 		elif f:
 			# Clicked enemy formation — just select to view info
-			selected_formation = f
+			if not ctrl_held:
+				selected_formations.clear()
+			selected_formations.append(f)
 			_update_unit_info(f)
 			_populate_unit_list()
 			renderer.queue_redraw()
 		else:
-			_deselect_formation()
+			if ctrl_held:
+				return  # Ctrl+click on empty: do nothing
+			# Start drag-select box
+			_drag_select_start = world_pos
+			_drag_select_active = true
+			_drag_select_rect = Rect2(world_pos, Vector2.ZERO)
 
 	elif current_phase == Phase.SIMULATION:
 		var f := _find_formation_at(world_pos)
 		if f and not f.is_dead and not f.is_fled:
-			selected_formation = f
-			_update_unit_info(f)
+			if ctrl_held:
+				if f in selected_formations:
+					selected_formations.erase(f)
+				else:
+					selected_formations.append(f)
+				if selected_formations.size() > 0:
+					_update_unit_info(selected_formations[-1])
+				else:
+					unit_info_panel.visible = false
+			else:
+				selected_formations.clear()
+				selected_formations.append(f)
+				_update_unit_info(f)
 			_populate_unit_list()
 			renderer.queue_redraw()
 		elif not f:
 			_deselect_formation()
 
-func _on_left_release(_world_pos: Vector2) -> void:
+func _on_left_release(world_pos: Vector2) -> void:
+	if _drag_select_active:
+		# Complete drag-box selection
+		_drag_select_active = false
+		var rect := _drag_select_rect.abs()
+		if rect.size.length() > 5.0:
+			selected_formations.clear()
+			var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
+			for f in player_formations:
+				if f.is_dead or f.is_fled:
+					continue
+				if rect.has_point(f.position):
+					selected_formations.append(f)
+			if selected_formations.size() > 0:
+				_update_unit_info(selected_formations[0])
+			else:
+				unit_info_panel.visible = false
+			_populate_unit_list()
+		renderer.queue_redraw()
+		return
+	if _group_drag_active:
+		_group_drag_active = false
+		_group_drag_offsets.clear()
+		renderer.queue_redraw()
+		return
 	if _dragging_formation != null:
 		_dragging_formation = null
 		renderer.queue_redraw()
 
 func _on_drag(world_pos: Vector2) -> void:
+	if _drag_select_active:
+		# Update drag-box rectangle
+		var tl := Vector2(minf(_drag_select_start.x, world_pos.x), minf(_drag_select_start.y, world_pos.y))
+		var br := Vector2(maxf(_drag_select_start.x, world_pos.x), maxf(_drag_select_start.y, world_pos.y))
+		_drag_select_rect = Rect2(tl, br - tl)
+		renderer.queue_redraw()
+		return
+	if _group_drag_active:
+		# Move all selected formations maintaining relative positions
+		# Compute group bounding box to clamp
+		var min_x := INF
+		var max_x := -INF
+		var min_y := INF
+		var max_y := -INF
+		for sf in selected_formations:
+			if not _group_drag_offsets.has(sf):
+				continue
+			var target: Vector2 = world_pos + _group_drag_offsets[sf]
+			min_x = minf(min_x, target.x)
+			max_x = maxf(max_x, target.x)
+			min_y = minf(min_y, target.y)
+			max_y = maxf(max_y, target.y)
+		# Clamp bounding box to deploy zone
+		var side: int = selected_formations[0].side if selected_formations.size() > 0 else 0
+		var zone_top := BattleSimulatorV3.DEPLOY_BOTTOM_Y if side == 0 else 20.0
+		var zone_bot := BattleSimulatorV3.FIELD_HEIGHT - 20.0 if side == 0 else BattleSimulatorV3.DEPLOY_TOP_Y
+		var shift := Vector2.ZERO
+		if min_x < 20.0:
+			shift.x = 20.0 - min_x
+		elif max_x > BattleSimulatorV3.FIELD_WIDTH - 20.0:
+			shift.x = BattleSimulatorV3.FIELD_WIDTH - 20.0 - max_x
+		if min_y < zone_top:
+			shift.y = zone_top - min_y
+		elif max_y > zone_bot:
+			shift.y = zone_bot - max_y
+		for sf in selected_formations:
+			if not _group_drag_offsets.has(sf):
+				continue
+			sf.position = world_pos + _group_drag_offsets[sf] + shift
+			simulator._update_entity_world_positions(sf)
+		renderer.queue_redraw()
+		return
 	if _dragging_formation == null:
 		return
 	var new_pos := world_pos + _drag_offset
@@ -1011,19 +1266,49 @@ func _on_drag(world_pos: Vector2) -> void:
 	renderer.queue_redraw()
 
 func _on_right_click(world_pos: Vector2) -> void:
-	if current_phase == Phase.SETUP and selected_formation and selected_formation.side == player_side:
-		# Rotate formation to face the clicked point
-		var diff := world_pos - selected_formation.position
-		if diff.length_squared() > 1.0:
-			selected_formation.rotation = atan2(diff.x, -diff.y)
-			simulator._update_entity_world_positions(selected_formation)
-			renderer.queue_redraw()
+	if current_phase == Phase.SETUP and selected_formations.size() > 0:
+		# Rotate all selected player formations to face the clicked point
+		for sf in selected_formations:
+			if sf.side != player_side:
+				continue
+			var diff := world_pos - sf.position
+			if diff.length_squared() > 1.0:
+				sf.rotation = atan2(diff.x, -diff.y)
+				simulator._update_entity_world_positions(sf)
+		renderer.queue_redraw()
+
+const BATTLE_TERRAIN_NAMES := ["Open", "Forest", "Rock", "Water", "Sand", "Mud", "Ice", "Crystal", "Brush"]
 
 func _update_battlefield_hover(world_pos: Vector2) -> void:
 	var f := _find_formation_at(world_pos)
-	if f != hovered_formation:
+	var changed := f != hovered_formation
+	if changed:
 		hovered_formation = f
 		_update_roster_highlight()
+
+	# Terrain hover tooltip during setup
+	if current_phase == Phase.SETUP:
+		var terrain := simulator.get_terrain_at(world_pos)
+		var terrain_idx := int(terrain)
+		var t_name: String = BATTLE_TERRAIN_NAMES[terrain_idx] if terrain_idx < BATTLE_TERRAIN_NAMES.size() else "?"
+		var spd_mod := BattleTerrainGen.get_speed_modifier(terrain)
+		var def_bonus := BattleTerrainGen.get_defense_bonus(terrain)
+		var passable := BattleTerrainGen.is_passable(terrain)
+		var tip := t_name
+		if not passable:
+			tip += " (impassable)"
+		else:
+			if spd_mod != 1.0:
+				tip += "  SPD:x%.1f" % spd_mod
+			if def_bonus != 0:
+				tip += "  DEF:%+d" % def_bonus
+		_terrain_hover_info = {"pos": world_pos, "text": tip}
+		changed = true
+	elif _terrain_hover_info.size() > 0:
+		_terrain_hover_info = {}
+		changed = true
+
+	if changed:
 		renderer.queue_redraw()
 
 func _update_roster_highlight() -> void:
@@ -1056,23 +1341,34 @@ func _find_formation_at(world_pos: Vector2) -> BattleSimulatorV3.BattleFormation
 	return best
 
 func _deselect_formation() -> void:
-	if selected_formation == null:
+	if selected_formations.is_empty():
 		return
-	selected_formation = null
+	selected_formations.clear()
 	unit_info_panel.visible = false
 	_populate_unit_list()
+	_update_queue_display()
 	renderer.queue_redraw()
 
 func _on_formation_selected(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	selected_formation = f
 	_update_unit_info(f)
 	_populate_unit_list()
+	_update_queue_display()
 	renderer.queue_redraw()
 
 func _on_order_button_pressed(order: Enums.BattleOrder) -> void:
-	if selected_formation and selected_formation.side == player_side:
-		selected_formation.current_order = order
-		_update_unit_info(selected_formation)
+	var changed := false
+	for sf in selected_formations:
+		if sf.side == player_side and not sf.is_dead and not sf.is_fled:
+			sf.current_order = order
+			# If battle is running, immediate order overrides queue (mark exhausted)
+			if current_phase == Phase.SIMULATION and sf.queue_locked:
+				sf.queue_index = sf.command_queue.size()
+				sf.focus_tag_filter = ""
+			changed = true
+	if changed:
+		if selected_formations.size() > 0:
+			_update_unit_info(selected_formations[-1])
 		_populate_unit_list()
 		renderer.queue_redraw()
 
@@ -1085,6 +1381,96 @@ func _on_retreat_all() -> void:
 		_update_unit_info(selected_formation)
 	_populate_unit_list()
 	renderer.queue_redraw()
+
+# --- Command Queue UI ---
+
+const QUEUE_COMMAND_NAMES := {
+	Enums.QueueCommand.ADVANCE: "Advance",
+	Enums.QueueCommand.HOLD: "Hold",
+	Enums.QueueCommand.CHARGE: "Charge",
+	Enums.QueueCommand.FLANK_LEFT: "Flank L",
+	Enums.QueueCommand.FLANK_RIGHT: "Flank R",
+	Enums.QueueCommand.RETREAT: "Retreat",
+	Enums.QueueCommand.FALL_BACK: "Fall Back",
+	Enums.QueueCommand.FOCUS_MAGE: "Focus Mage",
+	Enums.QueueCommand.FOCUS_RANGED: "Focus Rng",
+	Enums.QueueCommand.FOCUS_MONSTER: "Focus Mon",
+	Enums.QueueCommand.FOCUS_CAVALRY: "Focus Cav",
+	Enums.QueueCommand.FOCUS_INFANTRY: "Focus Inf",
+}
+
+const QUEUE_DURATION_CYCLE := [50, 100, 150, 200, 300, 0]  # 0 = until end
+
+func _on_queue_palette_pressed(cmd: Enums.QueueCommand) -> void:
+	if current_phase == Phase.SIMULATION:
+		return  # Locked during battle
+	for sf in selected_formations:
+		if sf.side != player_side or sf.is_dead or sf.is_fled:
+			continue
+		if sf.command_queue.size() >= 6:
+			continue
+		sf.command_queue.append({"command": cmd, "duration": 100})
+	_update_queue_display()
+
+func _on_queue_slot_remove(slot_idx: int) -> void:
+	if current_phase == Phase.SIMULATION:
+		return
+	for sf in selected_formations:
+		if sf.side != player_side:
+			continue
+		if slot_idx < sf.command_queue.size():
+			sf.command_queue.remove_at(slot_idx)
+	_update_queue_display()
+
+func _on_queue_slot_input(event: InputEvent, slot_idx: int) -> void:
+	if current_phase == Phase.SIMULATION:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		# Right-click: cycle duration
+		for sf in selected_formations:
+			if sf.side != player_side:
+				continue
+			if slot_idx >= sf.command_queue.size():
+				continue
+			var current_dur: int = sf.command_queue[slot_idx].get("duration", 100)
+			var next_idx := 0
+			for di in QUEUE_DURATION_CYCLE.size():
+				if QUEUE_DURATION_CYCLE[di] == current_dur:
+					next_idx = (di + 1) % QUEUE_DURATION_CYCLE.size()
+					break
+			sf.command_queue[slot_idx]["duration"] = QUEUE_DURATION_CYCLE[next_idx]
+		_update_queue_display()
+
+func _update_queue_display() -> void:
+	# Show queue of first selected player formation
+	var ref_f: BattleSimulatorV3.BattleFormationV3 = null
+	for sf in selected_formations:
+		if sf.side == player_side and not sf.is_dead and not sf.is_fled:
+			ref_f = sf
+			break
+
+	for i in 6:
+		if ref_f and i < ref_f.command_queue.size():
+			var slot: Dictionary = ref_f.command_queue[i]
+			var cmd: Enums.QueueCommand = slot.get("command", Enums.QueueCommand.ADVANCE)
+			var dur: int = slot.get("duration", 100)
+			var dur_text := "%ds" % (dur / 10) if dur > 0 else "END"
+			var cmd_name: String = QUEUE_COMMAND_NAMES.get(cmd, "?")
+			_queue_slot_labels[i].text = "%s (%s)" % [cmd_name, dur_text]
+			# Highlight active slot during simulation
+			if current_phase == Phase.SIMULATION and ref_f.queue_locked and i == ref_f.queue_index and ref_f.queue_index < ref_f.command_queue.size():
+				_queue_slot_labels[i].add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+			else:
+				_queue_slot_labels[i].add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+		else:
+			_queue_slot_labels[i].text = "---"
+			_queue_slot_labels[i].add_theme_color_override("font_color", Color(0.45, 0.4, 0.35))
+		# Disable X buttons during simulation
+		_queue_slot_x_buttons[i].disabled = current_phase == Phase.SIMULATION
+
+	# Disable palette buttons during simulation
+	for pbtn in _queue_palette_buttons:
+		pbtn.disabled = current_phase == Phase.SIMULATION
 
 func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	for child in unit_info_panel.get_children():
@@ -1200,6 +1586,14 @@ func _on_begin_battle() -> void:
 	is_simulating = true
 	sim_timer = 0.0
 
+	# Lock command queues on all player formations
+	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
+	for f in player_formations:
+		if f.command_queue.size() > 0:
+			f.queue_locked = true
+			f.queue_index = 0
+			f.queue_tick_start = 0
+
 	var begin_btn := sim_panel.find_child("BeginBtn", true, false)
 	if begin_btn:
 		begin_btn.visible = false
@@ -1209,6 +1603,8 @@ func _on_begin_battle() -> void:
 	var retreat_btn := order_panel.find_child("RetreatAllBtn", true, false)
 	if retreat_btn:
 		retreat_btn.visible = true
+
+	_update_queue_display()
 
 func _on_pause_toggle() -> void:
 	is_paused = not is_paused
@@ -1299,9 +1695,12 @@ func _process(delta: float) -> void:
 		sim_timer -= sim_speed
 		var actions := simulator.simulate_tick()
 		_process_visual_actions(actions)
-		tick_label.text = "Tick: %d" % simulator.tick_count
+		var remaining := maxi(0, BattleSimulatorV3.BATTLE_TIMER_TICKS - simulator.tick_count)
+		var rem_sec := remaining / 10
+		tick_label.text = "Tick: %d  Timer: %d:%02d" % [simulator.tick_count, rem_sec / 60, rem_sec % 60]
 		_update_roster()
 		_update_strength_meter()
+		_update_queue_display()
 		renderer.queue_redraw()
 
 		if simulator.is_finished:
@@ -2300,6 +2699,17 @@ func _apply_elderbeast_battle_results() -> void:
 		else:
 			# Beast survived — sync HP back
 			beast.hp = beast_unit.current_hp
+
+func _apply_camp_building_bonuses(army: ArmyState, cmd_bonuses: Dictionary) -> void:
+	if army.camp_city_id == &"":
+		return
+	var camp_city: CityState = GameManager.state.cities.get(army.camp_city_id)
+	if camp_city == null:
+		return
+	for bid in camp_city.buildings:
+		var bdata: BuildingData = DataManager.get_building(bid)
+		if bdata and bdata.special_effects.has("army_attack_bonus"):
+			cmd_bonuses["attack_bonus"] = cmd_bonuses.get("attack_bonus", 0) + int(bdata.special_effects["army_attack_bonus"])
 
 func _apply_debt_flags() -> void:
 	# Check if each side's faction is in gold debt and flag their formations

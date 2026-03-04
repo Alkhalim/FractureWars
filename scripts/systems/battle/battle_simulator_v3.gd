@@ -22,6 +22,7 @@ const ROUT_SPEED_MULT := 1.5
 const BASE_MOVE_SPEED := 0.3  # Pixels per tick per speed point (scaled for 10 ticks/sec)
 const TICK_SCALE := 0.17      # Damage/morale scale factor for high tick rate (15% slower than 0.2)
 const FORCE_ADVANCE_TICK := 600  # After this tick, attacker forced to advance
+const BATTLE_TIMER_TICKS := 1500  # ~2.5 minutes at 10 ticks/sec — all units forced to advance
 
 # Endurance system
 const ENDURANCE_MAX := 100.0
@@ -91,6 +92,7 @@ var terrain_grid_h: int = 60
 var _battle_hex_pos: Vector2i = Vector2i.ZERO
 var _campaign_terrain: Enums.TerrainType = Enums.TerrainType.PLAINS
 var _is_city_battle: bool = false
+var _defense_meta: Dictionary = {} # tower_positions, siege_positions from defensive buildings
 var spatial_grid: Dictionary = {}  # Vector2i -> Array[BattleFormationV3]
 
 # Track which pairs made first contact this tick (for charge bonus)
@@ -150,6 +152,15 @@ class BattleFormationV3:
 	var current_order: Enums.BattleOrder = Enums.BattleOrder.ADVANCE
 	var target_priority: Enums.TargetPriority = Enums.TargetPriority.CLOSEST
 	var stance: Enums.UnitStance = Enums.UnitStance.AGGRESSIVE
+
+	# Command queue
+	var command_queue: Array[Dictionary] = []  # [{command: QueueCommand, duration: int}]
+	var queue_index: int = 0
+	var queue_tick_start: int = 0
+	var queue_locked: bool = false
+	var focus_tag_filter: String = ""          # "", "mage", "cavalry", etc.
+	var fall_back_origin: Vector2 = Vector2.ZERO
+	var fall_back_retreating: bool = false
 
 	# Aura
 	var morale_aura: int = 0
@@ -270,6 +281,18 @@ func setup_terrain(campaign_terrain: Enums.TerrainType, hex_pos: Vector2i) -> vo
 	terrain_grid_h = ceili(FIELD_HEIGHT / terrain_cell_size)
 	var seed_val := hex_pos.x * 1000 + hex_pos.y
 	terrain_grid = BattleTerrainGen.generate(campaign_terrain, seed_val, terrain_grid_w, terrain_grid_h)
+	# Apply defensive building terrain if city battle
+	if _is_city_battle:
+		var city: CityState = GameManager.city_system.get_city_at_hex(hex_pos)
+		if city:
+			var total_defense := 0
+			for bid in city.buildings:
+				var bdata: BuildingData = DataManager.get_building(bid)
+				if bdata:
+					total_defense += bdata.defense_bonus
+			if total_defense > 0:
+				_defense_meta = BattleTerrainGen.apply_defensive_buildings(
+					terrain_grid, total_defense, terrain_grid_w, terrain_grid_h, seed_val)
 
 func get_terrain_at(pos: Vector2) -> Enums.BattleTerrain:
 	var cell := Vector2i(int(pos.x / terrain_cell_size), int(pos.y / terrain_cell_size))
@@ -1075,6 +1098,69 @@ func _resolve_cross_formation_overlap() -> void:
 						f2.entity_positions[b] -= push
 						pa += push
 
+# --- Command Queue Processing ---
+
+const QUEUE_COMMAND_MAP := {
+	Enums.QueueCommand.ADVANCE: [Enums.BattleOrder.ADVANCE, ""],
+	Enums.QueueCommand.HOLD: [Enums.BattleOrder.HOLD, ""],
+	Enums.QueueCommand.CHARGE: [Enums.BattleOrder.CHARGE, ""],
+	Enums.QueueCommand.FLANK_LEFT: [Enums.BattleOrder.FLANK_LEFT, ""],
+	Enums.QueueCommand.FLANK_RIGHT: [Enums.BattleOrder.FLANK_RIGHT, ""],
+	Enums.QueueCommand.RETREAT: [Enums.BattleOrder.RETREAT, ""],
+	Enums.QueueCommand.FALL_BACK: [Enums.BattleOrder.RETREAT, ""],  # Special handling below
+	Enums.QueueCommand.FOCUS_MAGE: [Enums.BattleOrder.ADVANCE, "mage"],
+	Enums.QueueCommand.FOCUS_RANGED: [Enums.BattleOrder.ADVANCE, "ranged"],
+	Enums.QueueCommand.FOCUS_MONSTER: [Enums.BattleOrder.ADVANCE, "monster"],
+	Enums.QueueCommand.FOCUS_CAVALRY: [Enums.BattleOrder.ADVANCE, "cavalry"],
+	Enums.QueueCommand.FOCUS_INFANTRY: [Enums.BattleOrder.ADVANCE, "infantry"],
+}
+
+func _advance_command_queues() -> void:
+	var all := _get_all_alive()
+	for f in all:
+		if not f.queue_locked or f.command_queue.is_empty():
+			continue
+		if f.queue_index >= f.command_queue.size():
+			# Queue exhausted — revert to advance/closest
+			f.current_order = Enums.BattleOrder.ADVANCE
+			f.target_priority = Enums.TargetPriority.CLOSEST
+			f.focus_tag_filter = ""
+			f.fall_back_retreating = false
+			continue
+
+		var slot: Dictionary = f.command_queue[f.queue_index]
+		var cmd: Enums.QueueCommand = slot.get("command", Enums.QueueCommand.ADVANCE)
+		var duration: int = slot.get("duration", 100)  # 0 = until end
+
+		# Check if current command duration expired (0 = infinite)
+		if duration > 0 and tick_count - f.queue_tick_start >= duration:
+			f.queue_index += 1
+			f.queue_tick_start = tick_count
+			f.fall_back_retreating = false
+			if f.queue_index >= f.command_queue.size():
+				f.current_order = Enums.BattleOrder.ADVANCE
+				f.target_priority = Enums.TargetPriority.CLOSEST
+				f.focus_tag_filter = ""
+				continue
+			slot = f.command_queue[f.queue_index]
+			cmd = slot.get("command", Enums.QueueCommand.ADVANCE)
+			duration = slot.get("duration", 100)
+
+		# Map command to order + focus filter
+		var mapping: Array = QUEUE_COMMAND_MAP.get(cmd, [Enums.BattleOrder.ADVANCE, ""])
+		f.current_order = mapping[0]
+		f.focus_tag_filter = mapping[1]
+
+		# FALL_BACK special: retreat until 80px from origin, then hold
+		if cmd == Enums.QueueCommand.FALL_BACK:
+			if not f.fall_back_retreating:
+				f.fall_back_origin = f.position
+				f.fall_back_retreating = true
+				f.current_order = Enums.BattleOrder.RETREAT
+			elif f.position.distance_to(f.fall_back_origin) >= 80.0:
+				f.current_order = Enums.BattleOrder.HOLD
+				f.fall_back_retreating = false
+
 # --- Tick Simulation ---
 
 func simulate_tick() -> Array[Dictionary]:
@@ -1082,6 +1168,9 @@ func simulate_tick() -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
 	_first_contact_pairs.clear()
 	_target_cache.clear()
+
+	# Advance command queues before any movement/combat
+	_advance_command_queues()
 
 	if _sorted_formations_dirty:
 		_sorted_formations_cache = _get_all_alive()
@@ -1113,6 +1202,14 @@ func simulate_tick() -> Array[Dictionary]:
 		for f in attacker_formations:
 			if not f.is_dead and not f.is_fled and not f.is_routing:
 				f.current_order = Enums.BattleOrder.ADVANCE
+
+	# Battle timer: force ALL non-routing formations to advance
+	if tick_count >= BATTLE_TIMER_TICKS:
+		for f in all:
+			if not f.is_dead and not f.is_fled and not f.is_routing:
+				f.current_order = Enums.BattleOrder.ADVANCE
+				f.target_priority = Enums.TargetPriority.CLOSEST
+				f.focus_tag_filter = ""
 
 	# Auto-advance ranged units that can no longer fire (out of ammo/mana)
 	for f in all:
@@ -1238,6 +1335,9 @@ func simulate_tick() -> Array[Dictionary]:
 
 	# Rebuild spatial grid after movement
 	_rebuild_spatial_grid()
+
+	# Defensive terrain damage effects (caltrops, mines, palings)
+	_apply_defensive_terrain_damage(all, actions)
 
 	# Phase 2: Melee Combat
 	var combat_pairs := _find_all_contact_pairs()
@@ -3034,6 +3134,8 @@ func _find_target(f: BattleFormationV3) -> BattleFormationV3:
 	var best: BattleFormationV3 = null
 	var best_score := 999999.0
 
+	var focus_filter: String = f.focus_tag_filter
+
 	# Use spatial grid nearby + expand if nothing found
 	var nearby := _get_nearby_formations(f.position)
 	var found_enemy := false
@@ -3060,6 +3162,9 @@ func _find_target(f: BattleFormationV3) -> BattleFormationV3:
 					score -= 1e12
 			_:
 				score = dist
+		# Focus tag filter: heavily prefer enemies matching the filter
+		if focus_filter != "" and _matches_focus_filter(e, focus_filter):
+			score -= 1e12
 		if score < best_score:
 			best_score = score
 			best = e
@@ -3089,9 +3194,148 @@ func _find_target(f: BattleFormationV3) -> BattleFormationV3:
 						score -= 1e12
 				_:
 					score = dist
+			if focus_filter != "" and _matches_focus_filter(e, focus_filter):
+				score -= 1e12
 			if score < best_score:
 				best_score = score
 				best = e
 
 	_target_cache[f.instance_id] = best
 	return best
+
+func _matches_focus_filter(e: BattleFormationV3, filter: String) -> bool:
+	if e.tags.has(filter):
+		return true
+	# "monster" filter also matches "beast"
+	if filter == "monster" and e.tags.has("beast"):
+		return true
+	return false
+
+# ── Defensive Buildings: Terrain Damage Effects ──────────────────────────
+
+var _mine_triggered: Dictionary = {} # Vector2i -> true (mines that already exploded)
+
+func _apply_defensive_terrain_damage(all: Array[BattleFormationV3], actions: Array[Dictionary]) -> void:
+	if _defense_meta.is_empty():
+		return
+	for f in all:
+		if f.is_dead or f.is_fled:
+			continue
+		var cell := Vector2i(int(f.position.x / terrain_cell_size), int(f.position.y / terrain_cell_size))
+		var terrain_type: Enums.BattleTerrain = terrain_grid.get(cell, Enums.BattleTerrain.OPEN)
+		# Skip flying units for ground-based traps
+		if f.tags.has("flying"):
+			continue
+		match terrain_type:
+			Enums.BattleTerrain.CALTROPS:
+				# Tick damage to moving attackers (side 0 = attacker)
+				if f.side == 0 and not f.in_melee_contact:
+					var dmg := f.take_damage(1)
+					if dmg > 0:
+						actions.append({"type": "hit", "id": f.instance_id, "damage": dmg, "source": "caltrops"})
+			Enums.BattleTerrain.MINE:
+				# One-time explosion on first attacker contact
+				if f.side == 0 and not _mine_triggered.has(cell):
+					_mine_triggered[cell] = true
+					var mine_dmg := int(float(f.max_hp) * 0.2)
+					var actual := f.take_damage(mine_dmg)
+					if actual > 0:
+						actions.append({"type": "hit", "id": f.instance_id, "damage": actual, "source": "mine"})
+					# Destroy mine after detonation
+					terrain_grid[cell] = Enums.BattleTerrain.OPEN
+			Enums.BattleTerrain.PALING:
+				# Extra impact damage on charging attackers
+				if f.side == 0 and f.momentum > 0.5:
+					var paling_dmg := int(float(f.max_hp) * 0.05)
+					var actual := f.take_damage(paling_dmg)
+					if actual > 0:
+						actions.append({"type": "hit", "id": f.instance_id, "damage": actual, "source": "paling"})
+
+# ── Defensive Buildings: Tower/Siege Formation Spawning ──────────────────
+
+func setup_city_defense_formations() -> void:
+	## Spawn tower and siege formations at positions from _defense_meta.
+	## Called after defender setup. Towers/siege are side 1 (defender).
+	if _defense_meta.is_empty():
+		return
+
+	var _next_id := 9000
+	# Arrow Towers
+	for tower_pos in _defense_meta.get("tower_positions", []):
+		var f := BattleFormationV3.new()
+		f.instance_id = StringName("tower_%d" % _next_id)
+		_next_id += 1
+		f.unit_data_id = &"arrow_tower"
+		f.display_name = "Arrow Tower"
+		f.faction_id = &"defense"
+		f.side = 1
+		f.tags = ["construct", "ranged", "stationary"]
+		f.attack = 40
+		f.defense = 30
+		f.melee_defense = 30
+		f.projectile_defense = 30
+		f.magic_defense = 15
+		f.speed = 0
+		f.attack_range = 4
+		f.total_entities = 1
+		f.entities_alive = 1
+		f.hp_per_entity = 800
+		f.front_entity_hp = 800
+		f.max_hp = 800
+		f.current_hp = 800
+		f.position = Vector2(tower_pos.x * terrain_cell_size, tower_pos.y * terrain_cell_size)
+		f.move_speed = 0.0
+		f.base_morale = 999
+		f.current_morale = 999.0
+		f.current_order = Enums.BattleOrder.HOLD
+		f.max_ammo = 200
+		f.current_ammo = 200
+		f.ranged_cooldown_max = 8
+		f.fires_volleys = true
+		f.cached_radius = 10.0
+		f.entity_positions = PackedVector2Array([f.position])
+		f.entity_target_positions = PackedVector2Array([f.position])
+		f.entity_local_offsets = PackedVector2Array([Vector2.ZERO])
+		f.max_endurance = 999.0
+		f.current_endurance = 999.0
+		defender_formations.append(f)
+
+	# Siege Weapons (Catapults)
+	for siege_pos in _defense_meta.get("siege_positions", []):
+		var f := BattleFormationV3.new()
+		f.instance_id = StringName("siege_%d" % _next_id)
+		_next_id += 1
+		f.unit_data_id = &"catapult"
+		f.display_name = "Catapult"
+		f.faction_id = &"defense"
+		f.side = 1
+		f.tags = ["construct", "ranged", "stationary"]
+		f.attack = 80
+		f.defense = 10
+		f.melee_defense = 10
+		f.projectile_defense = 10
+		f.magic_defense = 5
+		f.speed = 0
+		f.attack_range = 6
+		f.total_entities = 1
+		f.entities_alive = 1
+		f.hp_per_entity = 500
+		f.front_entity_hp = 500
+		f.max_hp = 500
+		f.current_hp = 500
+		f.position = Vector2(siege_pos.x * terrain_cell_size, siege_pos.y * terrain_cell_size)
+		f.move_speed = 0.0
+		f.base_morale = 999
+		f.current_morale = 999.0
+		f.current_order = Enums.BattleOrder.HOLD
+		f.max_ammo = 50
+		f.current_ammo = 50
+		f.ranged_cooldown_max = 20  # Slow fire rate
+		f.fires_volleys = true
+		f.cached_radius = 10.0
+		f.entity_positions = PackedVector2Array([f.position])
+		f.entity_target_positions = PackedVector2Array([f.position])
+		f.entity_local_offsets = PackedVector2Array([Vector2.ZERO])
+		f.max_endurance = 999.0
+		f.current_endurance = 999.0
+		defender_formations.append(f)

@@ -22,6 +22,10 @@ const TERRAIN_PROPS := {
 	Enums.BattleTerrain.ICE:     [0.8,  0, true],
 	Enums.BattleTerrain.CRYSTAL: [0.0,  0, false],
 	Enums.BattleTerrain.BRUSH:   [0.8,  1, true],
+	Enums.BattleTerrain.CALTROPS: [0.4, -1, true],
+	Enums.BattleTerrain.DITCH:   [0.2, -2, true],
+	Enums.BattleTerrain.PALING:  [0.7,  2, true],
+	Enums.BattleTerrain.MINE:    [1.0,  0, true],
 }
 
 static func get_speed_modifier(terrain: Enums.BattleTerrain) -> float:
@@ -173,3 +177,75 @@ static func _clear_deployment_zones(terrain: Dictionary,
 			var pos := Vector2i(x, y)
 			if terrain.has(pos) and not is_passable(terrain[pos]):
 				terrain[pos] = Enums.BattleTerrain.OPEN
+
+## Apply defensive building effects to terrain.
+## defense_bonus: total from city buildings. Defender is side 1 (top of map).
+## Returns metadata dict with tower_positions and siege_positions arrays.
+static func apply_defensive_buildings(terrain: Dictionary, defense_bonus: int,
+		grid_w: int, grid_h: int, seed_val: int) -> Dictionary:
+	var meta := {"tower_positions": [], "siege_positions": []}
+	if defense_bonus <= 0:
+		return meta
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_val + 7777
+
+	# Wall row: placed at defender zone edge (top ~25% boundary)
+	var wall_y := ceili(grid_h * 0.25)
+
+	# ── Tier 1 (defense 1-5): Wall segments across defender zone edge ──
+	var wall_length := mini(grid_w - 4, 4 + defense_bonus * 2)
+	var wall_start := (grid_w - wall_length) / 2
+	for x in range(wall_start, wall_start + wall_length):
+		terrain[Vector2i(x, wall_y)] = Enums.BattleTerrain.ROCK
+	# Leave gaps for units to pass through
+	var gap1 := wall_start + wall_length / 3
+	var gap2 := wall_start + 2 * wall_length / 3
+	terrain[Vector2i(gap1, wall_y)] = Enums.BattleTerrain.OPEN
+	terrain[Vector2i(gap2, wall_y)] = Enums.BattleTerrain.OPEN
+
+	# ── Tier 2 (defense 6-9): Larger walls + tower + caltrops ──
+	if defense_bonus >= 6:
+		# Extend walls to near-full width
+		for x in range(2, grid_w - 2):
+			if terrain.get(Vector2i(x, wall_y)) == Enums.BattleTerrain.OPEN and x != gap1 and x != gap2:
+				terrain[Vector2i(x, wall_y)] = Enums.BattleTerrain.ROCK
+		# Arrow tower position (center behind wall)
+		var tower_pos := Vector2(grid_w / 2.0, wall_y - 2)
+		meta["tower_positions"].append(tower_pos)
+		# Caltrops band in front of wall
+		var caltrop_y := wall_y + 1
+		for x in range(wall_start, wall_start + wall_length):
+			if rng.randf() < 0.6:
+				terrain[Vector2i(x, caltrop_y)] = Enums.BattleTerrain.CALTROPS
+
+	# ── Tier 3 (defense 10-12): Flanking towers + siege + ditches ──
+	if defense_bonus >= 10:
+		# Flanking towers on wall edges
+		meta["tower_positions"].append(Vector2(3, wall_y - 1))
+		meta["tower_positions"].append(Vector2(grid_w - 4, wall_y - 1))
+		# Siege weapon position (center, deep behind wall)
+		meta["siege_positions"].append(Vector2(grid_w / 2.0, wall_y - 4))
+		# Ditches in front of caltrops
+		var ditch_y := wall_y + 2
+		for x in range(wall_start + 2, wall_start + wall_length - 2):
+			if rng.randf() < 0.5:
+				terrain[Vector2i(x, ditch_y)] = Enums.BattleTerrain.DITCH
+
+	# ── Tier 4 (defense 13+): Full fortification ──
+	if defense_bonus >= 13:
+		# Palings near gaps to punish charges
+		terrain[Vector2i(gap1 - 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		terrain[Vector2i(gap1 + 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		terrain[Vector2i(gap2 - 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		terrain[Vector2i(gap2 + 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		# Mines scattered in attacker approach zone
+		var mine_y_start := wall_y + 3
+		var mine_y_end := mini(grid_h - ceili(grid_h * 0.25), wall_y + 6)
+		for y in range(mine_y_start, mine_y_end):
+			for x in range(4, grid_w - 4):
+				if rng.randf() < 0.12:
+					terrain[Vector2i(x, y)] = Enums.BattleTerrain.MINE
+		# Additional siege position
+		meta["siege_positions"].append(Vector2(grid_w / 2.0 - 5, wall_y - 3))
+
+	return meta

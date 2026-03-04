@@ -30,6 +30,7 @@ extends Resource
 @export var garrison_hp_ratio: float = 1.0 # 0.0 = destroyed, 1.0 = full; heals over time when not sieged
 @export var garrison_units: Array[Dictionary] = [] # Independent cities: persistent garrison [{unit_id, count}]
 @export var building_recruit_queues: Dictionary = {} # building_id -> Array[Dict] (per-building training queues)
+@export var is_mobile_camp: bool = false # Sunblessed: camp is mobile (moving with army, 80% income)
 
 const GROWTH_THRESHOLDS := [200, 400, 700, 1100] # pop needed for levels 2-5
 

@@ -12,6 +12,10 @@ const TERRAIN_COLORS := {
 	Enums.BattleTerrain.ICE:     Color(0.24, 0.30, 0.38, 1),
 	Enums.BattleTerrain.CRYSTAL: Color(0.26, 0.12, 0.32, 1),
 	Enums.BattleTerrain.BRUSH:   Color(0.16, 0.22, 0.12, 1),
+	Enums.BattleTerrain.CALTROPS: Color(0.35, 0.30, 0.20, 1),
+	Enums.BattleTerrain.DITCH:   Color(0.20, 0.16, 0.10, 1),
+	Enums.BattleTerrain.PALING:  Color(0.40, 0.32, 0.18, 1),
+	Enums.BattleTerrain.MINE:    Color(0.15, 0.14, 0.12, 1),
 }
 
 const COLOR_DEPLOY_TINT := Color(0.12, 0.15, 0.25, 1)
@@ -113,10 +117,27 @@ func _draw() -> void:
 	# 4. Draw entities for each formation
 	_draw_formations(sim)
 
-	# 5. Draw battlefield vignette (darkened edges)
+	# 5. Draw drag-selection rectangle
+	if battle_scene._drag_select_active:
+		var dr: Rect2 = battle_scene._drag_select_rect
+		draw_rect(dr, Color(0.95, 0.85, 0.3, 0.08))
+		draw_rect(dr, Color(0.95, 0.85, 0.3, 0.6), false, 1.5)
+
+	# 6. Draw terrain hover tooltip during setup
+	if battle_scene.current_phase == battle_scene.Phase.SETUP and battle_scene._terrain_hover_info.size() > 0:
+		var info: Dictionary = battle_scene._terrain_hover_info
+		var tip_pos: Vector2 = info.get("pos", Vector2.ZERO) + Vector2(15, -20)
+		var tip_text: String = info.get("text", "")
+		# Shadow then text
+		draw_string(ThemeDB.fallback_font, tip_pos + Vector2(1, 1), tip_text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0, 0, 0, 0.7))
+		draw_string(ThemeDB.fallback_font, tip_pos, tip_text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.85, 0.7, 0.9))
+
+	# 7. Draw battlefield vignette (darkened edges)
 	_draw_vignette()
 
-	# 6. Draw field border with corner markers
+	# 8. Draw field border with corner markers
 	var fw := BattleSimulatorV3.FIELD_WIDTH
 	var fh := BattleSimulatorV3.FIELD_HEIGHT
 	draw_rect(Rect2(0, 0, fw, fh), Color(0.55, 0.42, 0.2, 0.7), false, 2.5)
@@ -150,25 +171,48 @@ func _draw_deploy_zones(sim: BattleSimulatorV3) -> void:
 	var def_fd := DataManager.get_faction(battle_scene.defender_faction_id)
 	var atk_tint: Color = (atk_fd.color.darkened(0.7) if atk_fd else COLOR_DEPLOY_TINT)
 	var def_tint: Color = (def_fd.color.darkened(0.7) if def_fd else COLOR_ENEMY_TINT)
+	var fw := BattleSimulatorV3.FIELD_WIDTH
 	# Attacker deploy zone (bottom)
-	draw_rect(Rect2(0, BattleSimulatorV3.DEPLOY_BOTTOM_Y, BattleSimulatorV3.FIELD_WIDTH,
-		BattleSimulatorV3.FIELD_HEIGHT - BattleSimulatorV3.DEPLOY_BOTTOM_Y),
-		atk_tint * Color(1, 1, 1, 0.15))
+	var atk_rect := Rect2(0, BattleSimulatorV3.DEPLOY_BOTTOM_Y, fw,
+		BattleSimulatorV3.FIELD_HEIGHT - BattleSimulatorV3.DEPLOY_BOTTOM_Y)
+	draw_rect(atk_rect, atk_tint * Color(1, 1, 1, 0.28))
 	# Defender deploy zone (top)
-	draw_rect(Rect2(0, 0, BattleSimulatorV3.FIELD_WIDTH, BattleSimulatorV3.DEPLOY_TOP_Y),
-		def_tint * Color(1, 1, 1, 0.15))
+	var def_rect := Rect2(0, 0, fw, BattleSimulatorV3.DEPLOY_TOP_Y)
+	draw_rect(def_rect, def_tint * Color(1, 1, 1, 0.28))
+
+	# Dashed edge lines for deploy zone boundaries
+	var dash_len := 12.0
+	var gap_len := 8.0
+	var edge_color_atk := Color(atk_tint.r + 0.3, atk_tint.g + 0.3, atk_tint.b + 0.3, 0.45)
+	var edge_color_def := Color(def_tint.r + 0.3, def_tint.g + 0.3, def_tint.b + 0.3, 0.45)
+	# Attacker zone top edge (DEPLOY_BOTTOM_Y)
+	_draw_dashed_line(Vector2(0, BattleSimulatorV3.DEPLOY_BOTTOM_Y),
+		Vector2(fw, BattleSimulatorV3.DEPLOY_BOTTOM_Y), edge_color_atk, dash_len, gap_len, 1.5)
+	# Defender zone bottom edge (DEPLOY_TOP_Y)
+	_draw_dashed_line(Vector2(0, BattleSimulatorV3.DEPLOY_TOP_Y),
+		Vector2(fw, BattleSimulatorV3.DEPLOY_TOP_Y), edge_color_def, dash_len, gap_len, 1.5)
 
 	# Zone separator line
 	var mid_y := (BattleSimulatorV3.DEPLOY_TOP_Y + BattleSimulatorV3.DEPLOY_BOTTOM_Y) / 2.0
-	draw_line(Vector2(0, mid_y), Vector2(BattleSimulatorV3.FIELD_WIDTH, mid_y),
+	draw_line(Vector2(0, mid_y), Vector2(fw, mid_y),
 		Color(0.9, 0.82, 0.55, 0.15), 1.0)
+
+func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, dash: float, gap: float, width: float) -> void:
+	var dir := (to - from)
+	var total := dir.length()
+	dir = dir.normalized()
+	var pos := 0.0
+	while pos < total:
+		var seg_end := minf(pos + dash, total)
+		draw_line(from + dir * pos, from + dir * seg_end, color, width)
+		pos = seg_end + gap
 
 func _draw_formations(sim: BattleSimulatorV3) -> void:
 	var all_formations: Array[BattleSimulatorV3.BattleFormationV3] = []
 	all_formations.append_array(sim.attacker_formations)
 	all_formations.append_array(sim.defender_formations)
 
-	var selected: BattleSimulatorV3.BattleFormationV3 = battle_scene.selected_formation
+	var selected_arr: Array = battle_scene.selected_formations
 	var hovered: BattleSimulatorV3.BattleFormationV3 = battle_scene.hovered_formation
 
 	for f in all_formations:
@@ -185,7 +229,7 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 			base_color = base_color.lerp(Color(0.55, 0.25, 0.2), 0.55)
 			base_color.a = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008)
 
-		var is_selected: bool = f == selected
+		var is_selected: bool = f in selected_arr
 		var is_hovered: bool = f == hovered and not is_selected
 
 		# Draw entities at variable radius based on unit type

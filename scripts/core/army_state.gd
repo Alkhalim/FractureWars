@@ -14,6 +14,8 @@ extends Resource
 @export var battle_exhausted: bool = false # Cannot move or fight again this turn (stalemate)
 @export var is_camp: bool = false # Sunblessed: army has set up camp (can build)
 @export var camp_city_id: StringName = &"" # Sunblessed: city created by this camp
+@export var camp_saved_buildings: Array[StringName] = [] # Saved buildings from previous camp
+@export var camp_saved_build_queue: Array[Dictionary] = [] # Saved build queue from previous camp
 
 func get_region_id() -> StringName:
 	if GameManager.state and GameManager.state.hex_map:
@@ -45,6 +47,14 @@ func get_max_movement() -> float:
 		var mfs: FactionState = GameManager.state.faction_states.get(faction_id) if GameManager.state else null
 		if mfs and mfs.lunar_phase == 1:
 			base_mp += 0.5
+	# Sunblessed camp building movement bonus (Wanderer's Rest etc.)
+	if camp_city_id != &"" and GameManager.state:
+		var camp_city: CityState = GameManager.state.cities.get(camp_city_id)
+		if camp_city:
+			for bid in camp_city.buildings:
+				var bdata: BuildingData = DataManager.get_building(bid)
+				if bdata and bdata.special_effects.has("army_movement_bonus"):
+					base_mp += float(bdata.special_effects["army_movement_bonus"])
 	return base_mp * 1.2
 
 func get_commander_name() -> String:

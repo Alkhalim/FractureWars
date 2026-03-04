@@ -237,6 +237,11 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	# Apply region/faction-wide building effects
 	apply_region_effects(income, city)
 
+	# Mobile camp penalty: 80% income when Sunblessed camp is on the move
+	if city.is_mobile_camp:
+		for res_type in income:
+			income[res_type] = int(float(income[res_type]) * 0.8)
+
 	return income
 
 func apply_region_effects(income: Dictionary, city: CityState) -> void:

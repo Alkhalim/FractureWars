@@ -136,6 +136,7 @@ func _ready() -> void:
 	_create_commander_panel()
 	_create_faction_overview_panel()
 	_update_top_bar()
+	$TopBar.z_index = 5
 
 	# Make faction label clickable
 	faction_label.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -438,6 +439,7 @@ func _on_army_selected(army_id: StringName) -> void:
 				var camp_city_id := GameManager.setup_sunblessed_camp(sc_army_id)
 				if camp_city_id != &"":
 					EventBus.army_selected.emit(sc_army_id)
+					_show_city_panel(camp_city_id)
 				else:
 					AudioManager.play_sfx(&"error_buzz")
 			)
@@ -6774,7 +6776,7 @@ func _create_city_panel() -> void:
 	city_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	city_panel.anchor_left = 1.0
 	city_panel.anchor_right = 1.0
-	city_panel.anchor_top = 0.02
+	city_panel.anchor_top = 0.07
 	city_panel.anchor_bottom = 0.88
 	city_panel.offset_left = -380.0
 	city_panel.offset_right = -10.0

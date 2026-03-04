@@ -4249,6 +4249,47 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 	if fs.solar_faith >= 40:
 		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + mini(fs.solar_faith / 15, 5)
 
+	# Update mobile camp positions to follow their armies
+	for army: ArmyState in GameManager.get_faction_armies(fid):
+		if army.camp_city_id != &"" and not army.is_camp:
+			var camp_city: CityState = GameManager.state.cities.get(army.camp_city_id)
+			if camp_city and camp_city.is_mobile_camp:
+				camp_city.hex_pos = army.hex_pos
+				var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+				if tile:
+					camp_city.region_id = tile.region_id
+
+	# Solar Faith proximity: gain faith near developed foreign cities (diminishing)
+	var proximity_faith := 0
+	for army: ArmyState in GameManager.get_faction_armies(fid):
+		for city_id in GameManager.state.cities:
+			var city: CityState = GameManager.state.cities[city_id]
+			if city.faction_id == fid or city.faction_id == &"independent":
+				continue
+			if HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= 3:
+				proximity_faith += mini(city.level, 3)
+				break # Only one city per army counts
+	if proximity_faith > 0:
+		# Diminishing returns based on how long near cities
+		fs.solar_faith_proximity_turns += 1
+		var diminish := maxf(0.2, 1.0 - fs.solar_faith_proximity_turns * 0.1)
+		var faith_gain := maxi(1, int(float(proximity_faith) * diminish))
+		fs.solar_faith = mini(fs.solar_faith + faith_gain, 100)
+	else:
+		fs.solar_faith_proximity_turns = maxi(0, fs.solar_faith_proximity_turns - 1)
+
+	# Apply Wanderer's Rest movement bonus + solar_faith_income
+	for army: ArmyState in GameManager.get_faction_armies(fid):
+		if army.camp_city_id == &"":
+			continue
+		var camp_city: CityState = GameManager.state.cities.get(army.camp_city_id)
+		if camp_city == null:
+			continue
+		for bid in camp_city.buildings:
+			var bdata: BuildingData = DataManager.get_building(bid)
+			if bdata and bdata.special_effects.has("solar_faith_income"):
+				fs.solar_faith = mini(fs.solar_faith + int(bdata.special_effects["solar_faith_income"]), 100)
+
 # ── Sunblessed: Wisdom & Teaching ─────────────────────────
 # Wisdom grows near allied cities. Much stronger: tech, diplomacy, educator aura.
 # High wisdom unlocks: research cost reduction, ally tech sharing, cultural victory progress.

@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"griffin"
+display_name = "Griffin"
+description = "Majestic beasts raised in the Grand Aviary. Their golden wings carry blessed warriors into the heart of battle."
+faction_id = &"sunblessed"
+max_hp = 4500
+attack = 85
+melee_defense = 40
+projectile_defense = 25
+magic_defense = 18
+speed = 9
+attack_range = 1
+squad_size = 10
+hp_per_soldier = 450
+movement_points = 5.0
+upkeep_cost = {0: 8, 3: 3}
+recruit_cost = {0: 200, 1: 50, 3: 40}
+recruit_time = 3
+population_cost = 8
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast", "flying"])
+base_morale = 65
+captive_chance = 0.0

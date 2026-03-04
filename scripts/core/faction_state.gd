@@ -100,3 +100,6 @@ extends Resource
 
 # Ivoryscar: Relic expedition cooldown
 @export var relic_expedition_cooldown: int = 0
+
+# Sunblessed: Solar Faith proximity tracking
+@export var solar_faith_proximity_turns: int = 0
