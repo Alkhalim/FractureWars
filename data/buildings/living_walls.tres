@@ -17,3 +17,4 @@ defense_bonus = 8
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
 class_loyalty_bonus = {"peasants": 1}
+upkeep_cost = {1: 2, 5: 1}

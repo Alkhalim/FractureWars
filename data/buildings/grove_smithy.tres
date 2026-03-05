@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 upgrades_from = &"grove_ironworks"
 class_loyalty_bonus = {"artisans": 2}
+upkeep_cost = {0: 3, 5: 5}

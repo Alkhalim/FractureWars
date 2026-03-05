@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_industrial_might"
-display_name = "Industrial Might"
-description = "Unmatched industrial capacity."
+display_name = "Logistical Supremacy"
+description = "Unmatched logistical capacity across the frontier."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"cg_mass_production"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"cinderguard"
 tree_angle = 180.0
 tree_branch = &"industry"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

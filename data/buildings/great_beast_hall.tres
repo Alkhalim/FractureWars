@@ -16,3 +16,4 @@ unlocks_units = Array[StringName]([&"runebound_wyvern", &"dire_beast"])
 required_capital_level = 3
 upgrades_from = &"beast_pens"
 class_loyalty_bonus = {"peasants": -3, "nobles": 3}
+upkeep_cost = {0: 5, 1: 8}

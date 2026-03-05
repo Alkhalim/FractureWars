@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"ivoryscar"
 tree_angle = 245.0
 tree_branch = &"void_sight"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

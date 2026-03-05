@@ -17,3 +17,4 @@ required_capital_level = 3
 upgrades_from = &"stormrider_eyrie"
 class_loyalty_bonus = {"nobles": 4, "peasants": -3}
 special_effects = {"flying_unit_attack_bonus": 2}
+upkeep_cost = {0: 5, 1: 8}

@@ -21,3 +21,4 @@ required_terrain = -1
 class_loyalty_bonus = {}
 upgrades_from = &"crypt_court"
 requires_capital = false
+upkeep_cost = {1: 5, 5: 3}

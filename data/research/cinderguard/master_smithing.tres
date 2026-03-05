@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"master_smithing"
-display_name = "Master Smithing"
-description = "Master smiths craft arms and armor without equal."
+display_name = "Legion Armorsmiths"
+description = "Legion armorsmiths craft arms and armor without equal."
 tech_cost = 90
 research_time = 14
 prerequisites = Array[StringName]([&"superior_alloys"])

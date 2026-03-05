@@ -20,3 +20,4 @@ required_capital_level = 2
 class_loyalty_bonus = {"peasants": -3, "artisans": 4, "nobles": 2}
 upgrades_from = &"tavern"
 special_effects = {"recruit_cost_discount_pct": 15}
+upkeep_cost = {}

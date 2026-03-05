@@ -29,3 +29,4 @@ base_morale = 70
 fear_radius = 3
 armor_aura = 1
 captive_chance = 0.2
+vs_attack_bonuses = {"cavalry": 4}

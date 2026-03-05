@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_iron_walls"
-display_name = "Iron Walls"
-description = "Walls forged from solid iron."
+display_name = "Frontier Walls"
+description = "Walls built to hold the desert frontier."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"eternal_watch", &"cg_fire_moat"])
@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"cinderguard"
 tree_angle = 245.0
 tree_branch = &"garrison_duty"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

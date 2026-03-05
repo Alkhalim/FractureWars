@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"superior_alloys"
-display_name = "Superior Alloys"
-description = "Alloys tempered in volcanic heat surpass common steel."
+display_name = "Frontier Steel"
+description = "Steel tempered in desert heat surpasses common alloys."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([])

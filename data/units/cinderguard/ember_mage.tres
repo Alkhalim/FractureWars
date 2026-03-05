@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"ember_mage"
-display_name = "Ember Mage"
-description = "Fire sorcerers who channel the volcanic heat beneath the desert. Their flames consume all in their path."
+display_name = "Dragonwind Harbinger"
+description = "Frontier mystics who command the searing desert winds. They call down pillars of superheated air that strip flesh from bone."
 faction_id = &"cinderguard"
 max_hp = 2500
 attack = 75

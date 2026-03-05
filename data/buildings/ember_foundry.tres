@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"ember_foundry"
-display_name = "Ember Foundry II"
-description = "A roaring foundry where cinder ore is refined into the finest iron. The heat is unbearable to outsiders."
+display_name = "Frontier Armory II"
+description = "A well-stocked armory where cinder ore is refined into the finest iron. The heat of the desert forges is unbearable to outsiders."
 faction_id = &"cinderguard"
 category = &"economic"
 build_cost = {0: 189, 5: 39}
@@ -18,3 +18,4 @@ required_capital_level = 2
 upgrades_from = &"cinder_mine"
 class_loyalty_bonus = {"artisans": 2, "peasants": -3}
 special_effects = {"vigilance_drift": 2}
+upkeep_cost = {0: 3, 5: 5}

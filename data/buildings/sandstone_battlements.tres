@@ -19,3 +19,4 @@ required_capital_level = 2
 class_loyalty_bonus = {"peasants": 2}
 upgrades_from = &"sandstone_walls"
 special_effects = {"vigilance_drift": -2}
+upkeep_cost = {1: 3, 5: 2}

@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"forge_priest"
 display_name = "Ember Priest"
-description = "Frontier chaplains who bless weapons and armor mid-battle. Their chants of the Cinderguard creed strengthen steel and bolster resolve."
+description = "Frontier chaplains who kindle ember rites mid-battle. Their chants of the Cinderguard creed strengthen steel and bolster resolve."
 faction_id = &"cinderguard"
 max_hp = 2250
 attack = 30

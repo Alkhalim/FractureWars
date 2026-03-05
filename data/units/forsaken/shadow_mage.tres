@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"shadow_mage"
-display_name = "Shadow Mages"
-description = "Void-touched sorcerers who hurl bolts of condensed darkness. Their spells bypass physical defenses entirely, striking directly at the life force within."
+display_name = "Gorgefiend"
+description = "Bloated demons of insatiable hunger summoned from the abyss. They vomit streams of corrosive bile that dissolve armor and flesh alike."
 faction_id = &"forsaken"
 max_hp = 2200
 attack = 60
@@ -24,7 +24,7 @@ recruit_time = 3
 population_cost = 3
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["ranged", "mage"])
+tags = Array[String](["ranged", "mage", "monster"])
 spell_type = &"death_curse"
 base_morale = 45
 morale_aura = -2

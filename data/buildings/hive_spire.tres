@@ -18,3 +18,5 @@ unlocks_units = Array[StringName]([&"crystalback_raptor", &"shard_crawler", &"vo
 required_capital_level = 2
 upgrades_from = &"crystal_nursery"
 class_loyalty_bonus = {}
+special_effects = {"army_attack_bonus": 1}
+upkeep_cost = {1: 5, 5: 3}

@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"divine_radiance"
 display_name = "Divine Radiance"
-description = "All peoples feel the warmth of lunar radiance. Diplomatic influence shines across borders."
+description = "All peoples feel the glow of lunar radiance. Diplomatic influence shines across borders."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"pilgrim_network"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"moonspear"
 tree_angle = 240
 tree_branch = &"enlightenment"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

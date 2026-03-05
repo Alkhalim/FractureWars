@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_lich_lords"
-display_name = "Lich Lords"
-description = "Undead sorcerers of immense power."
+display_name = "Blood Patricians"
+description = "Crimson sorcerers of immense power."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"undying_legion"])
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"forsaken"
 tree_angle = 350.0
 tree_branch = &"necromancy"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"withering_touch"
 display_name = "Withering Touch"
-description = "Stone crumbles at their touch."
+description = "Blood-cursed hands cause stone to crumble at their touch."
 tech_cost = 90
 research_time = 14
 prerequisites = Array[StringName]([&"plague_seeds"])

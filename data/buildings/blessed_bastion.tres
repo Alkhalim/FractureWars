@@ -18,3 +18,5 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 class_loyalty_bonus = {"peasants": 2, "scholars": 1}
 upgrades_from = &"sacred_ward"
+special_effects = {"faith_stabilization": 1}
+upkeep_cost = {1: 3, 5: 2}

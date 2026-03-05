@@ -294,6 +294,19 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 			var label_text: String = category_labels.get(cat, cat.capitalize() + " Buildings")
 			result.append({label = label_text, weights = bw, multiplier = 1})
 
+	# Building special_effects: region_loyalty_bonus / morale_bonus
+	var loyalty_bonus_total := 0
+	for city_in_prov_2 in get_province_cities(region_id, faction_id):
+		for building_id_2 in city_in_prov_2.buildings:
+			var bld_2: BuildingData = DataManager.get_building(building_id_2)
+			if bld_2:
+				if bld_2.special_effects.has("region_loyalty_bonus"):
+					loyalty_bonus_total += int(bld_2.special_effects["region_loyalty_bonus"])
+				if bld_2.special_effects.has("morale_bonus"):
+					loyalty_bonus_total += int(bld_2.special_effects["morale_bonus"])
+	if loyalty_bonus_total != 0:
+		result.append({label = "Special Buildings", weights = {peasants = loyalty_bonus_total, artisans = loyalty_bonus_total, scholars = loyalty_bonus_total, nobles = loyalty_bonus_total, captives = 0}, multiplier = 1})
+
 	# High population
 	if province_pop >= 300:
 		result.append({label = "High Population", weights = W_HIGH_POP, multiplier = 1})

@@ -1874,7 +1874,7 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 				effects.append("+6 food, +4 gold, +1 diplomacy/turn")
 			elif fs.border_vigilance >= 75:
 				var iron := 8 if fs.border_vigilance >= 90 else 5
-				effects.append("War Forge: +%d iron/turn, -3 food" % iron)
+				effects.append("War Footing: +%d iron/turn, -3 food" % iron)
 				if fs.border_vigilance >= 85:
 					effects.append("-1 diplomacy/turn")
 			else:
@@ -3252,7 +3252,7 @@ const LEADER_DENY_LINES := {
 		["Dear ally — the watchfire dims with regret. We must decline.", "The Great Wall ECHOES with sorrow!", "If only the terms were different. We are truly sorry.", "The Warden-Commander hangs his head. Even friendship cannot move the border.", "The deepest embers of the garrison dim with grief at this refusal."],
 	],
 	&"forsaken": [
-		["The court DEVOURS your pathetic offer!", "Even the undead are insulted by this!", "The Countess would laugh if she still cared.", "We have endured ETERNITY and this is the worst moment.", "The shadows echo with contempt for your terms."],
+		["The court DEVOURS your pathetic offer!", "Even the immortals are insulted by this!", "The Countess would laugh if she still cared.", "We have endured ETERNITY and this is the worst moment.", "The shadows echo with contempt for your terms."],
 		["We have no need of your pittance.", "The darkness yawns at this offer.", "Even the court has standards. Declined.", "What remains of our patience evaporates. No.", "The dead stir with annoyance. Refused."],
 		["The night winds carry your offer away.", "Into the dark it goes. Forgotten.", "The court neither accepts nor cares.", "A cold refusal for a cold offer.", "The darkness absorbs this and gives nothing back."],
 		["A reluctant refusal. The darkness regrets.", "Almost — a flicker of interest in the shadows.", "The Countess pauses. But shakes her head.", "Close. Closer than most. But still no.", "The court almost warmed. Almost."],
@@ -3675,7 +3675,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	var their_tribute := GameManager.diplomacy_system.get_tributary_gold_amount(faction_id)
 	offers.append({id = "demand_tributary", label = "Demand Tributary (~%d gold/turn)" % their_tribute, needs_ratio = 1.3})
 	offers.append({id = "demand_resources", label = "Demand Resources", needs_ratio = 1.0})
-	offers.append({id = "demand_city", label = "Demand City", needs_ratio = 1.5})
+	offers.append({id = "demand_city", label = "Demand City", needs_ratio = 2.5})
 
 	var trade_res_entries := [
 		{name = "Gold", id = Enums.ResourceType.GOLD},
@@ -4180,7 +4180,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 					"offer_city":
 						tooltip_lines.append("Offer City: Always accepted (sweetens any deal)")
 					"demand_city":
-						tooltip_lines.append("Demand City: Requires overwhelming military dominance")
+						tooltip_lines.append("Demand City: Requires extreme military dominance (2.5x). Most factions will refuse unless desperate.")
 		likelihood_row.tooltip_text = "\n".join(tooltip_lines)
 		likelihood_row.mouse_filter = Control.MOUSE_FILTER_STOP
 		vbox.add_child(likelihood_row)
@@ -6795,11 +6795,16 @@ func _show_senate_dilemma_dialog(faction_id: StringName, dilemma: Dictionary) ->
 
 	var choice_a: Dictionary = dilemma.get("choice_a", {})
 	var choice_b: Dictionary = dilemma.get("choice_b", {})
+	var senate_fs: FactionState = GameManager.state.faction_states.get(faction_id)
 
 	var btn_a := Button.new()
 	btn_a.text = choice_a.get("label", "Choice A")
 	btn_a.tooltip_text = choice_a.get("tooltip", "")
 	btn_a.custom_minimum_size = Vector2(150, 30)
+	if not _can_afford_senate_choice(senate_fs, choice_a):
+		btn_a.disabled = true
+		btn_a.text += " [Can't Afford]"
+		btn_a.modulate = Color(0.5, 0.5, 0.5, 0.7)
 	btn_a.pressed.connect(func():
 		GameManager.policy_system.apply_senate_dilemma_choice(faction_id, dilemma, "a")
 		_senate_dilemma_dialog.queue_free()
@@ -6811,6 +6816,10 @@ func _show_senate_dilemma_dialog(faction_id: StringName, dilemma: Dictionary) ->
 	btn_b.text = choice_b.get("label", "Choice B")
 	btn_b.tooltip_text = choice_b.get("tooltip", "")
 	btn_b.custom_minimum_size = Vector2(150, 30)
+	if not _can_afford_senate_choice(senate_fs, choice_b):
+		btn_b.disabled = true
+		btn_b.text += " [Can't Afford]"
+		btn_b.modulate = Color(0.5, 0.5, 0.5, 0.7)
 	btn_b.pressed.connect(func():
 		GameManager.policy_system.apply_senate_dilemma_choice(faction_id, dilemma, "b")
 		_senate_dilemma_dialog.queue_free()
@@ -6819,6 +6828,16 @@ func _show_senate_dilemma_dialog(faction_id: StringName, dilemma: Dictionary) ->
 	btn_row.add_child(btn_b)
 
 	add_child(_senate_dilemma_dialog)
+
+func _can_afford_senate_choice(fs: FactionState, choice: Dictionary) -> bool:
+	if fs == null:
+		return true
+	var effects: Dictionary = choice.get("effects", {})
+	for res_type in effects:
+		if effects[res_type] < 0:
+			if fs.resources.get(res_type, 0) < absi(int(effects[res_type])):
+				return false
+	return true
 
 # ── Diplomacy / Treaty / Policy SFX handlers ────────────────
 
@@ -6872,12 +6891,29 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 
 	_add_separator(vbox)
 
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	for choice in choices:
 		var btn := Button.new()
 		btn.text = choice.get("label", "Choose")
 		btn.tooltip_text = choice.get("description", "")
 		btn.custom_minimum_size = Vector2(380, 36)
 		var effect: String = choice.get("effect", "")
+		# Disable button if player can't afford the cost
+		var cost: Dictionary = choice.get("cost", {})
+		var can_afford := true
+		if not cost.is_empty() and fs != null:
+			for res_type in cost:
+				if fs.resources.get(res_type, 0) < cost[res_type]:
+					can_afford = false
+					break
+		# Check if choice requires a shard crystal
+		if choice.get("requires_shard", false) and fs != null:
+			if fs.owned_shards.is_empty():
+				can_afford = false
+		if not can_afford:
+			btn.disabled = true
+			btn.text += "  [Can't Afford]"
+			btn.modulate = Color(0.5, 0.5, 0.5, 0.7)
 		btn.pressed.connect(func():
 			AudioManager.play_sfx(&"ui_click")
 			EventBus.dilemma_resolved.emit(faction_id, dilemma_type, effect)

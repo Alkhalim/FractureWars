@@ -18,3 +18,4 @@ recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([&"elite_legionaries"])
 required_capital_level = 3
 upgrades_from = &"shieldwall_grounds"
+upkeep_cost = {0: 5, 1: 8}

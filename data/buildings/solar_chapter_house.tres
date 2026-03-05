@@ -18,3 +18,4 @@ upgrades_from = &"pilgrim_training_grounds"
 unlocks_units = Array[StringName]([&"dawn_crusader", &"sunfire_lancer"])
 required_capital_level = 2
 class_loyalty_bonus = {"nobles": 4}
+upkeep_cost = {0: 3, 1: 5}

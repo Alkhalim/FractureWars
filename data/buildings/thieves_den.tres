@@ -17,3 +17,5 @@ upgrades_from = &"black_alley_market"
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
 class_loyalty_bonus = {"artisans": 2, "nobles": 2, "peasants": -2}
+special_effects = {"espionage_growth": 1}
+upkeep_cost = {1: 3, 5: 5}

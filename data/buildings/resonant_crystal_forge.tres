@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 upgrades_from = &"crystal_forge"
 class_loyalty_bonus = {}
+upkeep_cost = {0: 5, 4: 3}

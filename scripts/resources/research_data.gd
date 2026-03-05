@@ -15,3 +15,5 @@ extends Resource
 @export var tree_angle: float = 0.0       # Angle in degrees for radial placement (0-360)
 @export var tree_branch: StringName = &""  # Branch name for grouping
 @export var unlocks_units: Array[StringName] = [] # Unit IDs unlocked globally when researched
+@export var socket_realm: int = -1 # Realm of crystal that fits this socket (-1 = no socket)
+@export var socket_bonus: Dictionary = {} # Bonus effects when a crystal is socketed

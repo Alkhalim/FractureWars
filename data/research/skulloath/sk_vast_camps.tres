@@ -17,3 +17,5 @@ research_category = &"logistics"
 faction_id = &"skulloath"
 tree_angle = 95.0
 tree_branch = &"steppe_craft"
+socket_realm = 3
+socket_bonus = { "army_movement_bonus": 1, "supply_range": 2 }

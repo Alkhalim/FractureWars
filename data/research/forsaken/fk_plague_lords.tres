@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"fk_plague_lords"
 display_name = "Blood Lords"
-description = "Masters of blood magic and necromancy."
+description = "Masters of blood magic and crimson sorcery."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"miasma_cloud"])
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"forsaken"
 tree_angle = 115.0
 tree_branch = &"decay"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

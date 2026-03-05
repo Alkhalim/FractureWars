@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"cinderguard"
 tree_angle = 180
 tree_branch = &"flamecraft"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

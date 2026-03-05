@@ -16,3 +16,4 @@ population_growth_bonus = 0
 unlocks_units = Array[StringName]([&"bear_companion", &"glade_cavalry", &"thornback_guardian"])
 required_capital_level = 2
 class_loyalty_bonus = {"peasants": 1}
+upkeep_cost = {0: 3, 5: 5}

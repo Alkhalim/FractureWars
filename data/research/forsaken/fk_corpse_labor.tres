@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_corpse_labor"
-display_name = "Corpse Labor"
-description = "The dead toil endlessly."
+display_name = "Thrall Labor"
+description = "The thralls toil endlessly."
 tech_cost = 90
 research_time = 12
 prerequisites = Array[StringName]([&"fk_dark_harvest"])

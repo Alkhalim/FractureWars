@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"shardhorde"
 tree_angle = 310.0
 tree_branch = &"shard_ascension"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

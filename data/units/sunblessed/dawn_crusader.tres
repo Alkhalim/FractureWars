@@ -25,3 +25,4 @@ terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["infantry", "melee"])
 base_morale = 80
+vs_attack_bonuses = {"cavalry": 4}

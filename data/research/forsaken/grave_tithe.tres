@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"grave_tithe"
-display_name = "Grave Tithe"
-description = "The dead need no gold."
+display_name = "Crimson Tithe"
+description = "The blood-bound need no gold."
 tech_cost = 70
 research_time = 10
 prerequisites = Array[StringName]([&"death_whispers"])

@@ -16,3 +16,4 @@ population_growth_bonus = 0
 required_capital_level = 3
 upgrades_from = &"deeproot_foundry"
 class_loyalty_bonus = {"artisans": 4, "nobles": 2}
+upkeep_cost = {5: 8}

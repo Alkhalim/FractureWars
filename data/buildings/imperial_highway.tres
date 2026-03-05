@@ -18,3 +18,4 @@ recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 3
 upgrades_from = &"legionary_roads"
+upkeep_cost = {1: 5, 5: 8}

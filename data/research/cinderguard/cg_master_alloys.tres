@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_master_alloys"
-display_name = "Master Alloys"
-description = "Alloys harder than any known metal."
+display_name = "Elite Armaments"
+description = "Armaments forged harder than any known metal."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"industrial_revolution"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"cinderguard"
 tree_angle = 350.0
 tree_branch = &"forging"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

@@ -43,9 +43,9 @@ const MUSIC_FALLBACKS := {
 	"gladehost": "empire",       # Noble forest elves — classical/noble
 	"moonspear": "empire",       # Lunar elves — refined/celestial
 	"sunblessed": "empire",      # Holy knights — imperial/noble
-	"cinderguard": "empire",     # Forge-dwellers — marching/military
+	"cinderguard": "empire",     # Frontier legion — marching/military
 	"thunderswarm": "skulloath", # Storm barbarians — tribal/aggressive
-	"forsaken": "skulloath",     # Dark undead — harsh/aggressive
+	"forsaken": "skulloath",     # Vampire aristocrats — harsh/aggressive
 	"ivoryscar": "skulloath",    # Desert relic-seekers — exotic/harsh
 	"tainted_jade": "skulloath", # Jungle corruption — wild/primal
 	"shardhorde": "skulloath",   # Crystal swarm — chaotic/alien

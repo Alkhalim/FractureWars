@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_death_eternal"
-display_name = "Death Eternal"
-description = "Units regenerate HP on campaign. Necropolis converts food to captives."
+display_name = "Crimson Eternity"
+description = "Units regenerate HP on campaign. Catacomb metropolis converts food to captives."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"fk_lich_lords", &"fk_soul_harvest"])
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"forsaken"
 tree_angle = 0.0
 tree_branch = &"necromancy"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

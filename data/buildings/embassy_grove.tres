@@ -16,3 +16,4 @@ population_growth_bonus = 2
 required_capital_level = 2
 class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 2, "nobles": 3}
 special_effects = {"diplomacy_standing_bonus": 2}
+upkeep_cost = {1: 3, 5: 5}

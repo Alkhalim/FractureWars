@@ -4,9 +4,9 @@ extends RefCounted
 const BUILDING_INCOME_MULTIPLIER := 0.85
 
 const DEFAULT_BUILDING_UPKEEP := {
-	1: {0: 3},              # T1: 3 gold
-	2: {0: 6, 1: 2},        # T2: 6 gold, 2 iron
-	3: {0: 10, 1: 4},       # T3: 10 gold, 4 iron
+	1: {0: 2, 5: 1},        # T1: 2 gold, 1 wood
+	2: {1: 3, 5: 3},        # T2: 3 iron, 3 wood
+	3: {0: 5, 1: 5},        # T3: 5 gold, 5 iron
 }
 
 # Region/faction-wide building effects
@@ -452,6 +452,10 @@ func _process_upgrade(city: CityState) -> void:
 		city.level = mini(city.level + 1, 5)
 		# Grant settlement founding ability on capital level-up
 		if city.is_capital:
+			city.can_found_settlement = true
+		# Cinderguard: any city/settlement can found new settlements on level-up
+		var cg_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
+		if cg_parent == &"cinderguard" and city.level >= 2:
 			city.can_found_settlement = true
 
 func can_start_upgrade(city: CityState) -> bool:
@@ -1924,7 +1928,7 @@ func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, 
 			if fs.border_vigilance >= 30:
 				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + int(fs.border_vigilance * 0.06)
 		&"forsaken":
-			# Shadow Barracks: consume captives as thrall fuel (necromantic binding)
+			# Shadow Barracks: consume captives as thrall fuel (blood-binding)
 			if city and (city.buildings.has(&"wretched_pit") or city.buildings.has(&"necromancer_sanctum")):
 				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
 				if cap >= 3:

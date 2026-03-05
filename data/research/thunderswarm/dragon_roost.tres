@@ -17,3 +17,5 @@ research_category = &"logistics"
 faction_id = &"thunderswarm"
 tree_angle = 120
 tree_branch = &"mountain_hold"
+socket_realm = 3
+socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }

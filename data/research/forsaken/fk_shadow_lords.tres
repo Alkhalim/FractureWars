@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"forsaken"
 tree_angle = 235.0
 tree_branch = &"shadow_war"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

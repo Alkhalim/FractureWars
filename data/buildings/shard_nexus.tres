@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 upgrades_from = &"shard_conduit"
 class_loyalty_bonus = {}
+upkeep_cost = {4: 3, 5: 5}

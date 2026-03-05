@@ -27,4 +27,4 @@ realm_bonuses = {1: 0.2}
 tags = Array[String](["mage", "ranged"])
 spell_type = &"lunar_beam"
 base_morale = 55
-vs_attack_bonuses = {"construct": 4, "mage": 3}
+vs_attack_bonuses = {"construct": 4, "mage": 3, "monster": 3}

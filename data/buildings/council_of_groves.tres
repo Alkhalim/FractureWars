@@ -16,3 +16,5 @@ population_growth_bonus = 4
 required_capital_level = 3
 upgrades_from = &"embassy_grove"
 class_loyalty_bonus = {"peasants": 2, "artisans": 2, "scholars": 4, "nobles": 5}
+special_effects = {"diplomacy_standing_bonus": 2}
+upkeep_cost = {1: 5, 5: 8}

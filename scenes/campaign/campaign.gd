@@ -129,7 +129,7 @@ var _explored_tiles: Dictionary = {} # coord -> true (tiles that have been seen 
 var _trade_route_draw_node: Node2D = null
 var _trade_caravans: Array[Node2D] = []
 var _trade_route_data: Array[Dictionary] = [] # Cached route pixel paths for caravans
-var _trade_route_tooltip: Label = null
+var _trade_route_tooltip: PanelContainer = null
 
 @onready var hex_map_layer: Node2D = $HexMapLayer
 @onready var reachable_overlay: Node2D = $OverlayLayer/ReachableOverlay
@@ -3600,6 +3600,10 @@ func _on_building_completed(city_id: StringName, building_id: StringName) -> voi
 		var building: BuildingData = DataManager.get_building(building_id)
 		var bname: String = building.display_name if building else str(building_id)
 		_show_notification(bname + " completed in " + city.get_display_name())
+		# Update resource display immediately (new building affects income)
+		var hud: Control = $UILayer/HUD
+		if hud.has_method("_update_resource_display"):
+			hud._update_resource_display()
 	_update_city_glow_states()
 	_create_building_tile_markers()
 	_update_fog_of_war()
@@ -3609,6 +3613,10 @@ func _on_building_demolished(city_id: StringName, _building_id: StringName) -> v
 	if city and city.faction_id == GameManager.state.player_faction_id:
 		AudioManager.play_sfx(&"demolish")
 		_show_notification("Building demolished in " + city.get_display_name())
+		# Update resource display immediately (demolished building affects income)
+		var hud: Control = $UILayer/HUD
+		if hud.has_method("_update_resource_display"):
+			hud._update_resource_display()
 	_city_markers_dirty = true
 	_refresh_city_markers()
 
@@ -3962,8 +3970,8 @@ func _update_trade_route_hover(world_pos: Vector2) -> void:
 		var fb_data = DataManager.get_faction(fb)
 		var name_a: String = fa_data.display_name if fa_data else str(fa)
 		var name_b: String = fb_data.display_name if fb_data else str(fb)
-		var tip_text := "%s <-> %s" % [name_a, name_b]
-		# Show trade amounts from active treaty
+		var tip_text := "%s - %s" % [name_a, name_b]
+		# Show total traded resources (combined, not in/out)
 		var diplo: DiplomacySystem = GameManager.diplomacy_system
 		if diplo:
 			for tid in GameManager.state.diplomacy_state.treaties:
@@ -3974,7 +3982,10 @@ func _update_trade_route_hover(world_pos: Vector2) -> void:
 						var recv_res: int = t.terms.get("receive_resource", 0)
 						var give_amt: int = t.terms.get("give_amount", 0)
 						var recv_amt: int = t.terms.get("receive_amount", 0)
-						tip_text += "\n%d %s <-> %d %s" % [give_amt, _res_name(give_res), recv_amt, _res_name(recv_res)]
+						if give_res == recv_res:
+							tip_text += "\nTrading %d %s" % [give_amt + recv_amt, _res_name(give_res)]
+						else:
+							tip_text += "\nTrading %d %s, %d %s" % [give_amt, _res_name(give_res), recv_amt, _res_name(recv_res)]
 					elif t.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
 						var res_a: int = t.terms.get("resource_a", 0)
 						var res_b: int = t.terms.get("resource_b", 0)
@@ -3984,16 +3995,31 @@ func _update_trade_route_hover(world_pos: Vector2) -> void:
 						var inc_b := diplo.get_faction_resource_income(t.faction_b, res_b)
 						var amt_to_b := maxi(1, int(float(inc_a) * share_pct))
 						var amt_to_a := maxi(1, int(float(inc_b) * share_pct))
-						tip_text += "\n%d %s <-> %d %s" % [amt_to_b, _res_name(res_a), amt_to_a, _res_name(res_b)]
+						if res_a == res_b:
+							tip_text += "\nSharing %d %s" % [amt_to_b + amt_to_a, _res_name(res_a)]
+						else:
+							tip_text += "\nSharing %d %s, %d %s" % [amt_to_b, _res_name(res_a), amt_to_a, _res_name(res_b)]
 					break
 		if _trade_route_tooltip == null:
-			_trade_route_tooltip = Label.new()
-			_trade_route_tooltip.add_theme_font_size_override("font_size", 11)
-			_trade_route_tooltip.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
-			_trade_route_tooltip.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-			_trade_route_tooltip.add_theme_constant_override("outline_size", 3)
-			$UILayer.add_child(_trade_route_tooltip)
-		_trade_route_tooltip.text = tip_text
+			var panel := PanelContainer.new()
+			var style := StyleBoxFlat.new()
+			style.bg_color = Color(0.12, 0.11, 0.14, 0.88)
+			style.border_color = Color(0.45, 0.42, 0.35, 0.7)
+			style.set_border_width_all(1)
+			style.set_corner_radius_all(3)
+			style.content_margin_left = 6
+			style.content_margin_right = 6
+			style.content_margin_top = 3
+			style.content_margin_bottom = 3
+			panel.add_theme_stylebox_override("panel", style)
+			var lbl := Label.new()
+			lbl.add_theme_font_size_override("font_size", 11)
+			lbl.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+			panel.add_child(lbl)
+			panel.name = "TradeTooltipPanel"
+			$UILayer.add_child(panel)
+			_trade_route_tooltip = panel
+		_trade_route_tooltip.get_child(0).text = tip_text
 		_trade_route_tooltip.position = get_viewport().get_mouse_position() + Vector2(15, -30)
 		_trade_route_tooltip.visible = true
 	else:
@@ -4261,6 +4287,10 @@ func _handle_settlement_click(hex_coord: Vector2i) -> void:
 		_city_markers_dirty = true
 		_refresh_city_markers()
 		_show_notification("Settlement founded!")
+		# Update resource display immediately (new city affects income)
+		var hud: Control = $UILayer/HUD
+		if hud.has_method("_update_resource_display"):
+			hud._update_resource_display()
 
 # ── Building Tile Placement Mode ──────────────────────────────
 
@@ -4443,8 +4473,8 @@ func _clear_beast_terrain_overlay() -> void:
 
 # ── Minimap ──────────────────────────────────────────────────
 
-const MINIMAP_SIZE := Vector2(380, 240)
-const MINIMAP_MARGIN := Vector2(10, 10)
+const MINIMAP_SIZE := Vector2(360, 220)
+const MINIMAP_MARGIN := Vector2(16, 16)
 var _minimap_panel: PanelContainer
 var _minimap_image: TextureRect
 var _minimap_view_mode := 0  # 0=terrain, 1=political, 2=culture
@@ -4537,14 +4567,15 @@ func _create_minimap() -> void:
 	_minimap_panel.add_child(_minimap_image)
 	outer_vbox.add_child(_minimap_panel)
 
-	# Position in bottom-right of screen
+	# Position in bottom-right of screen with safe margins
 	outer_vbox.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	outer_vbox.anchor_left = 1.0
 	outer_vbox.anchor_top = 1.0
 	outer_vbox.anchor_right = 1.0
 	outer_vbox.anchor_bottom = 1.0
-	outer_vbox.offset_left = -MINIMAP_SIZE.x - MINIMAP_MARGIN.x - 12
-	outer_vbox.offset_top = -MINIMAP_SIZE.y - MINIMAP_MARGIN.y - 66
+	var total_btn_height := 54  # Two button rows (24+2+24+4)
+	outer_vbox.offset_left = -MINIMAP_SIZE.x - MINIMAP_MARGIN.x - 16
+	outer_vbox.offset_top = -MINIMAP_SIZE.y - MINIMAP_MARGIN.y - total_btn_height - 16
 	outer_vbox.offset_right = -MINIMAP_MARGIN.x
 	outer_vbox.offset_bottom = -MINIMAP_MARGIN.y
 

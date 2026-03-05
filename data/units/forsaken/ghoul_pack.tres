@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"ghoul_pack"
-display_name = "Ghoul Pack"
-description = "Packs of ravenous ghouls that overwhelm enemies by sheer numbers. Their claws drain the life from the living."
+display_name = "Scythe Abomination"
+description = "Clattering constructs of bone and iron, armed with whirling scythe-limbs. Built in the Crypt Court's workshops from the remains of the unworthy."
 faction_id = &"forsaken"
 max_hp = 2000
 attack = 45
@@ -24,6 +24,7 @@ recruit_time = 1
 population_cost = 8
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["beast", "melee", "fast", "swarm"])
+tags = Array[String](["construct", "melee", "fast", "swarm"])
 base_morale = 20
 captive_chance = 0.0
+vs_attack_bonuses = {"cavalry": 3}

@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"ivoryscar"
 tree_angle = 180.0
 tree_branch = &"tomb_lords"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

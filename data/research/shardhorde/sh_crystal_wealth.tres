@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"shardhorde"
 tree_angle = 185.0
 tree_branch = &"hive_network"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

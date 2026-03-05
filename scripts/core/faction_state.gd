@@ -56,6 +56,15 @@ extends Resource
 # High: aggressive patrol (+iron, +attack). Low: defensive posture (+defense, +pop)
 @export var border_vigilance: int = 50
 
+# Cinderguard unique: Scavenge stockpile (accumulated from dragon raids + scavenging)
+# Spent to erect border fortresses at settlements
+@export var scavenge_stockpile: int = 0
+# Fortress level per settlement city_id (0=none, 1=watchtower, 2=palisade, 3=border fort)
+@export var border_fortresses: Dictionary = {} # city_id -> int (0-3)
+# Dragon raid tracking
+@export var dragon_raid_cooldown: int = 0 # turns until next raid
+@export var dragon_raids_survived: int = 0 # total survived, unlocks bonuses
+
 # Forsaken unique: Espionage Network (grows from regions)
 # Reveals enemy armies, enables sabotage
 @export var espionage_network: int = 0
@@ -63,6 +72,10 @@ extends Resource
 # Ivoryscar unique: Relic Power (grows from shard_wastes control)
 # +commander item slots, stronger item effects
 @export var relic_power: int = 0
+# Ivoryscar unique: Black Pyramid restoration (0-100)
+# Fueled by relic_power. Milestones at 25/50/75/100 grant escalating bonuses.
+@export var pyramid_restoration: int = 0
+@export var pyramid_restored: bool = false
 
 # Sunblessed unique: Solar Faith (0-100)
 # High: +morale/healing. Drops on losses, rises on wins
@@ -88,6 +101,8 @@ extends Resource
 
 # Cinderguard: Player-directed forge shift queued from dilemmas
 @export var forge_shift_queued: int = 0 # -10 to +10 per dilemma choice
+# Cinderguard: Dragon raid target settlement (set when raid triggers)
+@export var dragon_raid_target: StringName = &""
 
 # Moonspear: Lunar ritual state
 @export var lunar_ritual_extended: int = 0 # extra turns on current phase
@@ -103,3 +118,7 @@ extends Resource
 
 # Sunblessed: Solar Faith proximity tracking
 @export var solar_faith_proximity_turns: int = 0
+
+# Shard crystal sockets in research techs
+# research_id -> realm (int) of socketed crystal
+@export var research_sockets: Dictionary = {}

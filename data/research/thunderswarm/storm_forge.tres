@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"thunderswarm"
 tree_angle = 140
 tree_branch = &"mountain_hold"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

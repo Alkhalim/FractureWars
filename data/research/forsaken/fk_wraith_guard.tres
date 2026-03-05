@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"fk_wraith_guard"
 display_name = "Wraith Guard"
-description = "Ghostly warriors that cannot be slain."
+description = "Blood-wraith warriors that cannot be slain."
 tech_cost = 90
 research_time = 12
 prerequisites = Array[StringName]([&"fk_soul_siphon"])

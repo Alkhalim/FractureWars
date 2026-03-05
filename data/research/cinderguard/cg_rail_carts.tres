@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_rail_carts"
-display_name = "Rail Carts"
-description = "Mine carts speed supply lines."
+display_name = "Supply Caravans"
+description = "Desert caravans speed supply lines across the frontier."
 tech_cost = 90
 research_time = 12
 prerequisites = Array[StringName]([&"cg_coal_mines"])

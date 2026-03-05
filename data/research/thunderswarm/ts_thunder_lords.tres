@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"thunderswarm"
 tree_angle = 15.0
 tree_branch = &"storm_mastery"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

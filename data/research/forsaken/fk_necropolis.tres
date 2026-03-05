@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_necropolis"
-display_name = "Necropolis"
-description = "Cities of the dead thrive."
+display_name = "Catacomb Metropolis"
+description = "Cities of the blood court thrive."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"fk_bone_trade", &"fk_corpse_labor"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"forsaken"
 tree_angle = 180.0
 tree_branch = &"blight"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

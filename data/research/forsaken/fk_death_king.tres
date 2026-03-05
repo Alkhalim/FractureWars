@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_death_king"
-display_name = "Death King"
-description = "The Death King rises."
+display_name = "Blood Sovereign"
+description = "The Blood Sovereign rises."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"fk_dark_pact", &"fk_soul_harvest"])
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"forsaken"
 tree_angle = 300.0
 tree_branch = &"death_throne"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

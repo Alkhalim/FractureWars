@@ -16,3 +16,4 @@ population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"jade_fang", &"jungle_stalker", &"jade_cavalry", &"venom_assassin", &"swamp_rider"])
 required_capital_level = 1
 class_loyalty_bonus = {"peasants": -3, "nobles": 2}
+upkeep_cost = {5: 2, 6: 3}

@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_blight_empire"
-display_name = "Blight Empire"
-description = "An empire of undeath."
+display_name = "Catacomb Empire"
+description = "An empire of blood and shadow."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"fk_necropolis"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"forsaken"
 tree_angle = 180.0
 tree_branch = &"blight"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

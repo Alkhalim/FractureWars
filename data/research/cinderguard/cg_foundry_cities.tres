@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_foundry_cities"
-display_name = "Foundry Cities"
-description = "Entire cities dedicated to metalwork."
+display_name = "Garrison Towns"
+description = "Entire towns dedicated to garrisoning the frontier."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"cg_blast_furnace", &"volcanic_glass"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"cinderguard"
 tree_angle = 175.0
 tree_branch = &"industry"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

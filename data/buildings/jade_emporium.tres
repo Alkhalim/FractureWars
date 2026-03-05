@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 upgrades_from = &"jade_market"
 class_loyalty_bonus = {"artisans": 2, "nobles": 2}
+upkeep_cost = {1: 3, 5: 5}

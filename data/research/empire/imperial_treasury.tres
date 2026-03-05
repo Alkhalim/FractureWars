@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"empire"
 tree_angle = 90.0
 tree_branch = &"commerce"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

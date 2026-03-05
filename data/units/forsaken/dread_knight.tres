@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"dread_knight"
-display_name = "Dread Knights"
-description = "Fallen warriors bound in cursed plate armor. They feel no pain and know no mercy, their hollow eyes glowing with malevolent purple light."
+display_name = "Hellblade"
+description = "Suits of enchanted armor animated by bound souls. No living being dwells within — only malice and an unquenchable hunger for destruction."
 faction_id = &"forsaken"
 max_hp = 8000
 attack = 75
@@ -24,7 +24,7 @@ recruit_time = 4
 population_cost = 10
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["infantry", "melee"])
+tags = Array[String](["construct", "melee"])
 base_morale = 70
 morale_aura = -3
 fear_radius = 3

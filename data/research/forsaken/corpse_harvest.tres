@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"corpse_harvest"
-display_name = "Corpse Harvest"
-description = "Every corpse is a resource."
+display_name = "Blood Tithe"
+description = "Every drop of blood is a resource."
 tech_cost = 90
 research_time = 14
 prerequisites = Array[StringName]([&"death_whispers"])

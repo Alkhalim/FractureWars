@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"void_berserker"
-display_name = "Void Berserker"
-description = "Warriors consumed by blood frenzy. Their sanity is gone, but their strength and speed are terrifying. Found lurking in the deepest sewers."
+display_name = "Catacomb Leech"
+description = "Eyeless predators that nest in the deepest sewers beneath Forsaken cities. Their barbed tongues drain blood with horrifying speed."
 faction_id = &"forsaken"
 max_hp = 7000
 attack = 110
@@ -24,8 +24,8 @@ recruit_time = 3
 population_cost = 12
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["infantry", "melee", "fast", "undead"])
+tags = Array[String](["beast", "melee", "fast", "undead"])
 base_morale = 50
 morale_aura = -3
 fear_radius = 3
-vs_attack_bonuses = {"infantry": 3}
+vs_attack_bonuses = {"monster": 3}

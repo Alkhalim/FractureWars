@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"iron_colossus"
-display_name = "Iron Colossus"
-description = "A towering construct of forged iron and volcanic stone. It crushes entire regiments beneath its feet."
+display_name = "Dune Scorpion"
+description = "A massive siege engine built from scorpion chitin and desert ironwood. Its barbed bolts punch through fortress walls."
 faction_id = &"cinderguard"
 max_hp = 3500
 attack = 130
@@ -28,3 +28,4 @@ realm_bonuses = {}
 tags = Array[String](["construct", "melee", "cinderguard"])
 base_morale = 115
 captive_chance = 0.0
+vs_attack_bonuses = {"monster": 4}

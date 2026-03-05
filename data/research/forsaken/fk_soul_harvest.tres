@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"fk_soul_harvest"
 display_name = "Soul Harvest"
-description = "Reap the souls of the fallen."
+description = "Reap the blood and souls of the fallen."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"fk_soul_storm"])
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"forsaken"
 tree_angle = 60.0
 tree_branch = &"soul_magic"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

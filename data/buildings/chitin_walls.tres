@@ -15,3 +15,4 @@ income_bonus = {}
 population_growth_bonus = 0
 defense_bonus = 6
 required_capital_level = 1
+upkeep_cost = {1: 2, 5: 1}

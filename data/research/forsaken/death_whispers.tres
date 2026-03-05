@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"death_whispers"
-display_name = "Death Whispers"
-description = "The dead speak to those who listen."
+display_name = "Blood Whispers"
+description = "The blood speaks to those who listen."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([])

@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"void_whisperers_den"
-display_name = "Necromancer's Sanctum II"
-description = "A hidden chamber in the underground where necromancers study the dark arts. They walk the edge between knowledge and madness."
+display_name = "Blood Sanctum II"
+description = "A hidden chamber in the underground where blood mages study the crimson arts. They walk the edge between knowledge and madness."
 faction_id = &"forsaken"
 category = &"cultural"
 build_cost = {0: 131, 5: 44}
@@ -18,3 +18,4 @@ unlocks_units = Array[StringName]([&"blood_shaman"])
 required_capital_level = 2
 class_loyalty_bonus = {"peasants": 1, "scholars": 3, "nobles": 1}
 special_effects = {"research_speed_bonus": 0.15}
+upkeep_cost = {0: 5, 5: 3}

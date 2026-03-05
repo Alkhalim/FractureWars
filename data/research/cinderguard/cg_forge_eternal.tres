@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_forge_eternal"
-display_name = "Forge Eternal"
-description = "A forge that never dims."
+display_name = "Eternal Vigil"
+description = "A vigil that never dims."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"cg_master_alloys", &"cg_volcanic_lord"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"cinderguard"
 tree_angle = 0.0
 tree_branch = &"forging"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 15, "income_iron_pct": 10 }

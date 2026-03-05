@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"thunderswarm"
 tree_angle = 300
 tree_branch = &"war_fury"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

@@ -18,3 +18,4 @@ required_capital_level = 3
 upgrades_from = &"druid_circle"
 class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 6, "nobles": 2}
 special_effects = {"research_speed_bonus": 0.25}
+upkeep_cost = {0: 8, 5: 5}

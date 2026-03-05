@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_dark_harvest"
-display_name = "Dark Harvest"
-description = "Blighted crops still feed the dead."
+display_name = "Shadow Harvest"
+description = "Shadow-touched crops still feed the blood court."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([])

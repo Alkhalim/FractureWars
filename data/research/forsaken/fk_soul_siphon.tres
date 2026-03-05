@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"fk_soul_siphon"
 display_name = "Soul Siphon"
-description = "Drain life force from enemies."
+description = "Drain blood and life force from enemies."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([&"death_whispers"])

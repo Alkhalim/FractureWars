@@ -52,8 +52,12 @@ const UPGRADE_TURNS := {
 
 func get_max_building_slots() -> int:
 	var base: int
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 	if is_capital:
 		base = 2 + level # capital: 3 at L1, 4 at L2, ... 7 at L5
+	elif is_settlement and parent_fid == &"cinderguard":
+		# Cinderguard settlements are fortified outposts with extra slots
+		base = 1 + level # 2 at L1, 3 at L2, ... 6 at L5 (vs normal 1-5)
 	else:
 		base = level # settlement: 1 at L1, 2 at L2, etc.
 	# Region completion bonus: +1 building slot
@@ -62,9 +66,13 @@ func get_max_building_slots() -> int:
 		if region_id in completed:
 			base += 1
 	# Research: capital building slots bonus
-	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 	var r_eff := GameManager.research_system.get_research_effects(parent_fid)
 	base += r_eff.get("capital_building_slots", 0)
+	# Cinderguard border fortress bonus slots
+	if is_settlement and parent_fid == &"cinderguard":
+		var fs: FactionState = GameManager.state.faction_states.get(faction_id) if GameManager.state else null
+		if fs and fs.border_fortresses.get(city_id, 0) >= 3:
+			base += 1 # Full border fort grants +1 extra slot
 	return base
 
 func get_available_building_slots() -> int:

@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"forsaken"
 tree_angle = 240
 tree_branch = &"shadow_war"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

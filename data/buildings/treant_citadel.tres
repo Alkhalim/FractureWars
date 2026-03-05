@@ -16,3 +16,4 @@ required_capital_level = 3
 required_terrain = 1
 upgrades_from = &"living_fortress"
 class_loyalty_bonus = {"peasants": 3, "artisans": 2}
+upkeep_cost = {1: 4, 5: 3}

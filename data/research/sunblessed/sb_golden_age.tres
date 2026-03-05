@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"sunblessed"
 tree_angle = 180.0
 tree_branch = &"sun_harvest"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

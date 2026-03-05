@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_forge_priests"
-display_name = "Forge Priests"
-description = "Holy smiths bless weapons in flame."
+display_name = "Ember Chaplains"
+description = "Ember chaplains bless weapons in sacred flame."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"master_smithing", &"cg_ember_scouts"])
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"cinderguard"
 tree_angle = 40.0
 tree_branch = &"forging"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

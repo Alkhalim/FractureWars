@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_void_army"
-display_name = "Void Army"
+display_name = "Night's Army"
 description = "All flanking damage tripled. Armies invisible on campaign map until adjacent."
 tech_cost = 250
 research_time = 26
@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"forsaken"
 tree_angle = 240.0
 tree_branch = &"shadow_war"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 4, "unit_defense_bonus": 2 }

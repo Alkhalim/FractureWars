@@ -18,3 +18,4 @@ upgrades_from = &"tomb_scholars_hall"
 required_capital_level = 3
 class_loyalty_bonus = {"scholars": 5, "nobles": 3}
 special_effects = {"research_speed_bonus": 0.25}
+upkeep_cost = {0: 8, 5: 5}

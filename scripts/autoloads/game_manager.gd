@@ -1729,11 +1729,16 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	if tile == null:
 		return &""
 
-	# Deduct founding cost
+	# Deduct founding cost (Cinderguard pays half — scrappy frontier builders)
 	var fs: FactionState = state.faction_states.get(faction_id)
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var is_cg := parent_fid == &"cinderguard"
 	if fs:
 		for res_type in CitySystem.SETTLEMENT_FOUNDING_COST:
-			fs.resources[res_type] = fs.resources.get(res_type, 0) - CitySystem.SETTLEMENT_FOUNDING_COST[res_type]
+			var cost: int = CitySystem.SETTLEMENT_FOUNDING_COST[res_type]
+			if is_cg:
+				cost = cost / 2
+			fs.resources[res_type] = fs.resources.get(res_type, 0) - cost
 
 	var city := CityState.new()
 	city.city_id = state.generate_id()
@@ -1741,7 +1746,7 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	city.faction_id = faction_id
 	city.hex_pos = hex_pos
 	city.level = 1
-	city.population = 50
+	city.population = 50 if not is_cg else 80
 	city.is_capital = false
 	city.is_settlement = true
 	city.original_faction_id = faction_id

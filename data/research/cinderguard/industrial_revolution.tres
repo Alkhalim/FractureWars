@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"industrial_revolution"
-display_name = "Industrial Revolution"
-description = "The furnaces of the Cinderguard reshape the world."
+display_name = "Frontier Expansion"
+description = "The garrisons of the Cinderguard expand across the wasteland."
 tech_cost = 130
 research_time = 18
 prerequisites = Array[StringName]([&"adamantine_forge", &"volcanic_glass"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"cinderguard"
 tree_angle = 30
 tree_branch = &"forging"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

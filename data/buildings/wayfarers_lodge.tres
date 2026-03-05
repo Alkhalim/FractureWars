@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 upgrades_from = &"wanderers_rest"
 class_loyalty_bonus = {"peasants": 4, "artisans": 2, "scholars": 3, "nobles": 3}
+upkeep_cost = {0: 3}

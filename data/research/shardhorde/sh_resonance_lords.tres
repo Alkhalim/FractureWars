@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"shardhorde"
 tree_angle = 235.0
 tree_branch = &"shard_communion"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

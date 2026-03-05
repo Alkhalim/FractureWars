@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"cg_war_forges"
-display_name = "War Forges"
-description = "Massive forges produce weapons endlessly."
+display_name = "War Depots"
+description = "Massive depots supply weapons to the frontier endlessly."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"cg_foundry_cities", &"cg_industrial_might"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"cinderguard"
 tree_angle = 185.0
 tree_branch = &"industry"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"cg_cinder_lords"
 display_name = "Cinder Lords"
-description = "Warriors of living flame."
+description = "Elite warriors of the ember wastes, hardened by desert flame."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"cg_flame_ward", &"cg_volcanic_lord"])
@@ -17,3 +17,5 @@ research_category = &"military"
 faction_id = &"cinderguard"
 tree_angle = 305.0
 tree_branch = &"eternal_flame"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

@@ -17,4 +17,6 @@ defense_bonus = 8
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
 class_loyalty_bonus = {"peasants": 2}
+special_effects = {"corruption_drift": -1}
 upgrades_from = &"steppe_watchtower"
+upkeep_cost = {1: 3, 5: 2}

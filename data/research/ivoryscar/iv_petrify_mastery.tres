@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"ivoryscar"
 tree_angle = 10.0
 tree_branch = &"petrification"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

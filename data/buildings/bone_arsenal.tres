@@ -16,3 +16,5 @@ unlocks_units = Array[StringName]([&"ancient_champion", &"bone_colossus", &"grea
 required_capital_level = 3
 upgrades_from = &"bone_stables"
 class_loyalty_bonus = {"nobles": 4, "peasants": -3}
+special_effects = {"relic_power_bonus": 2}
+upkeep_cost = {0: 5, 1: 8}

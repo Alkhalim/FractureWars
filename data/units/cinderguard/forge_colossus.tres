@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"forge_colossus"
-display_name = "Forge Colossus"
-description = "A massive iron automaton fueled by an eternal ember. Its presence heartens allies and its armor-reinforcing aura makes nearby troops nearly invulnerable."
+display_name = "Ironclad Sentinel"
+description = "A towering automaton powered by an eternal ember core. Its presence radiates protective heat that hardens nearby armor."
 faction_id = &"cinderguard"
 max_hp = 10000
 attack = 90

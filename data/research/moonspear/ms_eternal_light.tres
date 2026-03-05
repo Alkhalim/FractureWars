@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"ms_eternal_light"
 display_name = "Eternal Light"
-description = "Research speed tripled. The light of knowledge never fades."
+description = "Research speed tripled. The moonlight of knowledge never fades."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"ms_sacred_archives"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"moonspear"
 tree_angle = 240.0
 tree_branch = &"enlightenment"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 15, "income_iron_pct": 10 }

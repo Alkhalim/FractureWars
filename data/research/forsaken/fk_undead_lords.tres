@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_undead_lords"
-display_name = "Undead Lords"
-description = "Powerful undead command vast legions."
+display_name = "Catacomb Lords"
+description = "Powerful blood lords command vast legions."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"undying_legion", &"fk_death_trade"])
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"forsaken"
 tree_angle = 355.0
 tree_branch = &"necromancy"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

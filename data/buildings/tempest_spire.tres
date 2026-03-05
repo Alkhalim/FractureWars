@@ -18,3 +18,5 @@ unlocks_units = Array[StringName]([&"stormforged_champion", &"lightning_golem", 
 required_capital_level = 3
 upgrades_from = &"stormrider_eyrie"
 class_loyalty_bonus = {"nobles": 5}
+special_effects = {"storm_fury_generation": 2}
+upkeep_cost = {0: 5, 1: 8}

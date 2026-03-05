@@ -16,3 +16,4 @@ population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"bat_swarm", &"ghoul_pack"])
 required_capital_level = 1
 class_loyalty_bonus = {"peasants": -1}
+upkeep_cost = {1: 3, 5: 2}

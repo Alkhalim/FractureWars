@@ -16,3 +16,4 @@ population_growth_bonus = 5
 unlocks_units = Array[StringName]([&"crystal_swarmling", &"void_skirmisher", &"shard_stalker", &"crystal_archer", &"crystal_menders"])
 required_capital_level = 1
 class_loyalty_bonus = {}
+upkeep_cost = {1: 3, 5: 2}

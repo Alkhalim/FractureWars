@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = &"gh_avatar_verdant"
-display_name = "Avatar of Verdance"
+display_name = "Avatar of the Verdant"
 description = "The avatar of the verdant realm walks. All units become one with nature."
 tech_cost = 250
 research_time = 26
@@ -17,3 +17,5 @@ research_category = &"arcane"
 faction_id = &"gladehost"
 tree_angle = 300.0
 tree_branch = &"world_tree"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

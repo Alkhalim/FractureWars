@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_death_trade"
-display_name = "Death Trade"
-description = "The dead have their own economy."
+display_name = "Blood Trade"
+description = "The blood court has its own economy."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"fk_bone_trade", &"grave_tithe"])
@@ -17,3 +17,5 @@ research_category = &"economy"
 faction_id = &"forsaken"
 tree_angle = 345.0
 tree_branch = &"necromancy"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

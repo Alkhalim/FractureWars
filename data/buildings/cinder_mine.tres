@@ -6,7 +6,7 @@
 script = ExtResource("1")
 id = &"cinder_mine"
 display_name = "Cinder Mine I"
-description = "A mine sunk into volcanic rock. The cinder ore found here is the lifeblood of the forges."
+description = "A mine sunk into volcanic rock. The cinder ore found here is the lifeblood of the legion."
 faction_id = &"cinderguard"
 category = &"economic"
 build_cost = {0: 67, 5: 21}
@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 1
 required_terrain = 2
 class_loyalty_bonus = {"artisans": 1}
+upkeep_cost = {0: 2, 5: 3}

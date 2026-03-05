@@ -16,3 +16,4 @@ population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"scarab_swarm"])
 required_capital_level = 1
 class_loyalty_bonus = {"artisans": 1}
+upkeep_cost = {0: 2, 1: 3}

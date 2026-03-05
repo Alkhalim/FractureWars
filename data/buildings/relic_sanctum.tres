@@ -18,3 +18,4 @@ required_capital_level = 2
 upgrades_from = &"relic_shrine"
 class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 3, "nobles": 2}
 special_effects = {"commander_xp_bonus": 0.15, "research_speed_bonus": 0.15, "relic_power_bonus": 3}
+upkeep_cost = {0: 5, 5: 3}

@@ -392,6 +392,16 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.siege_bonus = r_eff.get("siege_bonus", 0)
 	f.adjacent_unit_damage_pct = r_eff.get("adjacent_unit_damage_pct", 0) / 100.0
 
+	# Building special_effects: flying_unit_attack_bonus
+	if f.tags.has("flying"):
+		for city_id in GameManager.state.cities:
+			var city: CityState = GameManager.state.cities[city_id]
+			if city.faction_id == ud.faction_id:
+				for bid in city.buildings:
+					var bld: BuildingData = DataManager.get_building(bid)
+					if bld and bld.special_effects.has("flying_unit_attack_bonus"):
+						f.attack += int(bld.special_effects["flying_unit_attack_bonus"])
+
 	# Faction mechanic combat bonuses — resolve parent faction for sub-factions
 	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(ud.faction_id, ud.faction_id)
 	var fs: FactionState = GameManager.state.faction_states.get(ud.faction_id)
@@ -558,8 +568,17 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			var cg_scaling: int = r_eff.get("vigilance_defense_scaling", 0)
 			if cg_scaling > 0 and fs.border_vigilance > 0:
 				f.defense += int(f.defense * float(cg_scaling) * float(fs.border_vigilance) / 1000.0)
-			# Storm wall city bonus (from Thunderswarm ability — reused for Cinderguard fortress defense)
-			# City defense handled in siege system
+			# Border fortress network bonus: +2% def per total fortress level across settlements
+			var cg_total_forts := 0
+			for cg_cid in fs.border_fortresses:
+				cg_total_forts += int(fs.border_fortresses[cg_cid])
+			if cg_total_forts > 0:
+				f.defense += int(f.defense * float(cg_total_forts) * 0.02)
+			# Dragon raid veterans: +morale per raids survived
+			if fs.dragon_raids_survived >= 5:
+				f.base_morale += 5
+			elif fs.dragon_raids_survived >= 3:
+				f.base_morale += 2
 
 		# ── Ivoryscar: Relic Power — stronger defense scaling ──
 		elif parent_fid == &"ivoryscar":
@@ -572,6 +591,19 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				f.defense += int(f.defense * 0.08)
 			elif fs.relic_power >= 10:
 				f.defense += int(f.defense * 0.05)
+			# Black Pyramid milestones: combat bonuses
+			if fs.pyramid_restored:
+				f.attack += int(f.attack * 0.15)
+				f.defense += int(f.defense * 0.15)
+				f.base_morale += 8
+			elif fs.pyramid_restoration >= 75:
+				f.attack += int(f.attack * 0.08)
+				f.base_morale += 3
+			elif fs.pyramid_restoration >= 50:
+				f.attack += int(f.attack * 0.04)
+			# Pyramid >= 25: +2 defense to all (applied in city system too)
+			if fs.pyramid_restoration >= 25:
+				f.defense += 2
 			# Desert/Wastes terrain: home advantage
 			if _campaign_terrain == Enums.TerrainType.DESERT or _campaign_terrain == Enums.TerrainType.SHARD_WASTES:
 				f.defense += 2

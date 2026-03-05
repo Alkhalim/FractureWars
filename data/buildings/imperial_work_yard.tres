@@ -18,3 +18,4 @@ recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
 upgrades_from = &"labor_camp"
+upkeep_cost = {0: 5}

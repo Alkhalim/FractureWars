@@ -17,3 +17,4 @@ defense_bonus = 10
 required_capital_level = 2
 required_terrain = 1
 class_loyalty_bonus = {"peasants": 2, "artisans": 1}
+upkeep_cost = {1: 3, 5: 2}

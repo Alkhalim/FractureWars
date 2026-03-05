@@ -41,6 +41,12 @@ func start_research(faction_id: StringName, research_id: StringName) -> bool:
 	# Already researching this one
 	if fs.current_research_id == research_id:
 		return false
+	# Check tech cost
+	var tech_available: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
+	if tech_available < data.tech_cost:
+		return false
+	# Deduct tech cost
+	fs.resources[Enums.ResourceType.TECHNOLOGY] = tech_available - data.tech_cost
 	# Pause current research (save progress)
 	if fs.current_research_id != &"" and fs.research_progress > 0:
 		fs.paused_research_progress[fs.current_research_id] = fs.research_progress
@@ -126,6 +132,10 @@ func get_research_effects(faction_id: StringName) -> Dictionary:
 				var bonus: Dictionary = data.shard_bonuses[realm]
 				for key in bonus:
 					combined[key] = combined.get(key, 0) + bonus[key]
+		# Socket bonuses (removable crystal embedded in completed tech)
+		if fs.research_sockets.has(research_id) and not data.socket_bonus.is_empty():
+			for key in data.socket_bonus:
+				combined[key] = combined.get(key, 0) + data.socket_bonus[key]
 	_effects_cache[faction_id] = combined
 	return combined
 
@@ -147,6 +157,106 @@ func _get_faction_research_speed_bonus(faction_id: StringName) -> float:
 func _invalidate_cache(faction_id: StringName) -> void:
 	_effects_cache.erase(faction_id)
 
+# ── Shard Crystal Sockets ──────────────────────────────────
+
+## Category -> required crystal realm mapping
+const CATEGORY_SOCKET_REALM := {
+	&"military": Enums.Realm.ELEMENTAL,
+	&"economy": Enums.Realm.MORTAL,
+	&"arcane": Enums.Realm.VOID,
+	&"logistics": Enums.Realm.NATURE,
+}
+
+func socket_shard(faction_id: StringName, research_id: StringName, shard_id: StringName) -> bool:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return false
+	var data: ResearchData = DataManager.research.get(research_id)
+	if data == null or data.socket_realm < 0:
+		return false
+	# Must be completed research
+	if not fs.completed_research.has(research_id):
+		return false
+	# Already has a crystal socketed
+	if fs.research_sockets.has(research_id):
+		return false
+	# Check shard exists and is owned
+	if not fs.owned_shards.has(shard_id):
+		return false
+	var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+	if shard == null:
+		return false
+	# Check realm matches
+	if shard.realm != data.socket_realm:
+		return false
+	# Socket the crystal
+	fs.owned_shards.erase(shard_id)
+	GameManager.state.active_shards.erase(shard_id)
+	fs.research_sockets[research_id] = int(shard.realm)
+	_invalidate_cache(faction_id)
+	return true
+
+func unsocket_shard(faction_id: StringName, research_id: StringName) -> bool:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null or not fs.research_sockets.has(research_id):
+		return false
+	var realm: int = fs.research_sockets[research_id]
+	fs.research_sockets.erase(research_id)
+	# Create a new shard and place it at the faction's capital
+	var new_shard := ShardInstance.new()
+	new_shard.shard_id = StringName("socket_return_%s_%d" % [research_id, GameManager.state.current_turn])
+	new_shard.realm = realm as Enums.Realm
+	new_shard.power_level = 1
+	new_shard.turns_remaining = -1
+	# Find capital hex position
+	var capital_pos := Vector2i.ZERO
+	if not fs.owned_cities.is_empty():
+		var city: CityState = GameManager.state.cities.get(fs.owned_cities[0])
+		if city:
+			capital_pos = city.hex_pos
+	new_shard.hex_pos = capital_pos
+	new_shard.claimed_by = faction_id
+	GameManager.state.active_shards[new_shard.shard_id] = new_shard
+	fs.owned_shards.append(new_shard.shard_id)
+	_invalidate_cache(faction_id)
+	return true
+
+func get_socketable_shards(faction_id: StringName, research_id: StringName) -> Array[StringName]:
+	var result: Array[StringName] = []
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return result
+	var data: ResearchData = DataManager.research.get(research_id)
+	if data == null or data.socket_realm < 0:
+		return result
+	for shard_id in fs.owned_shards:
+		var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+		if shard and shard.realm == data.socket_realm:
+			result.append(shard_id)
+	return result
+
+# ── AI Shard Socketing ─────────────────────────────────────
+
+func execute_ai_socketing(faction_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null or fs.owned_shards.is_empty():
+		return
+	# Try to socket crystals into completed techs with empty sockets
+	for research_id in fs.completed_research:
+		if fs.research_sockets.has(research_id):
+			continue
+		var data: ResearchData = DataManager.research.get(research_id)
+		if data == null or data.socket_realm < 0 or data.socket_bonus.is_empty():
+			continue
+		# Find a matching shard
+		for shard_id in fs.owned_shards:
+			var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+			if shard and shard.realm == data.socket_realm:
+				socket_shard(faction_id, research_id, shard_id)
+				break
+		if fs.owned_shards.is_empty():
+			break
+
 # ── AI Research ─────────────────────────────────────────────
 
 func execute_ai_research(faction_id: StringName) -> void:
@@ -155,6 +265,15 @@ func execute_ai_research(faction_id: StringName) -> void:
 		return
 	var available := get_available_research(faction_id)
 	if available.is_empty():
+		return
+
+	# Filter by affordability
+	var tech_available: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
+	var affordable: Array[ResearchData] = []
+	for data in available:
+		if data.tech_cost <= tech_available:
+			affordable.append(data)
+	if affordable.is_empty():
 		return
 
 	# Faction-specific category preferences (higher = more preferred)
@@ -176,9 +295,9 @@ func execute_ai_research(faction_id: StringName) -> void:
 	var weights: Dictionary = category_weights.get(parent_id, {&"military": 2, &"economy": 2, &"arcane": 1, &"logistics": 1})
 
 	# Score each research by preference weight * tier (lower tier = faster to complete)
-	var best: ResearchData = available[0]
+	var best: ResearchData = affordable[0]
 	var best_score := -999.0
-	for data in available:
+	for data in affordable:
 		var weight: float = float(weights.get(data.research_category, 1))
 		var tier_factor := maxf(1.0, float(6 - data.tier))  # Lower tier = higher priority
 		var score := weight * tier_factor

@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"forge_academy"
-display_name = "Forge Academy II"
-description = "An academy where the secrets of forge-craft are taught alongside scholarly pursuits. Knowledge is power."
+display_name = "Frontier Academy II"
+description = "An academy where frontier warfare and ember lore are taught alongside scholarly pursuits. Knowledge is power."
 faction_id = &"cinderguard"
 category = &"cultural"
 build_cost = {0: 171, 5: 55, 1: 11}
@@ -18,3 +18,4 @@ required_capital_level = 2
 upgrades_from = &"ember_shrine"
 class_loyalty_bonus = {"peasants": 1, "scholars": 3, "nobles": 1}
 special_effects = {"research_speed_bonus": 0.15}
+upkeep_cost = {0: 5, 5: 3}

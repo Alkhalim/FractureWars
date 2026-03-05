@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([&"relic_skirmisher", &"bone_archer"])
 required_capital_level = 2
 upgrades_from = &"relic_workshop"
 class_loyalty_bonus = {"artisans": 2}
+upkeep_cost = {0: 3, 1: 5}

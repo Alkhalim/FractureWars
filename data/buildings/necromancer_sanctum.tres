@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"necromancer_sanctum"
-display_name = "Necromancer Sanctum II"
-description = "A sanctum where dark rituals empower the undead legions. The chill alone keeps the uninvited away."
+display_name = "Blood Mage Sanctum II"
+description = "A sanctum where blood rituals empower the crimson legions. The chill alone keeps the uninvited away."
 faction_id = &"forsaken"
 category = &"military"
 build_cost = {0: 95, 1: 17, 5: 22}
@@ -18,3 +18,5 @@ upgrades_from = &"wretched_pit"
 unlocks_units = Array[StringName]([&"dusksworn", &"nightrider", &"cursed_archer"])
 required_capital_level = 2
 class_loyalty_bonus = {"peasants": -4, "nobles": 3}
+special_effects = {"espionage_growth": 1}
+upkeep_cost = {1: 5, 5: 3}

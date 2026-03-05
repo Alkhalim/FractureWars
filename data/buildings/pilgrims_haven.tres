@@ -17,3 +17,5 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 upgrades_from = &"pilgrims_rest"
 class_loyalty_bonus = {"peasants": 3, "artisans": 2, "scholars": 2, "nobles": 2}
+special_effects = {"lunar_phase_tech_bonus": 3}
+upkeep_cost = {0: 3}

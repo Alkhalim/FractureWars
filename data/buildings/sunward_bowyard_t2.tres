@@ -17,3 +17,4 @@ unlocks_units = Array[StringName]([&"light_crossbow", &"solar_cavalry_archer"])
 upgrades_from = &"sunward_bowyard"
 required_capital_level = 2
 class_loyalty_bonus = {"nobles": 2}
+upkeep_cost = {0: 3, 1: 5}

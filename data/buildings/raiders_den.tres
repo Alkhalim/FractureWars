@@ -16,3 +16,4 @@ population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"warband_raider", &"steppe_archers", &"steppe_rider", &"steppe_skirmishers"])
 required_capital_level = 1
 class_loyalty_bonus = {"peasants": -3, "nobles": 2}
+upkeep_cost = {0: 2, 1: 3}

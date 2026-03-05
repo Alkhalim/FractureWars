@@ -30,3 +30,4 @@ base_morale = 120
 morale_aura = 10
 fear_radius = 5
 captive_chance = 0.0
+vs_attack_bonuses = {"monster": 4}

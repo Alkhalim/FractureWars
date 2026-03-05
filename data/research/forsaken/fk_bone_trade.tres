@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = &"fk_bone_trade"
-display_name = "Bone Trade"
-description = "Trading in bones and relics."
+display_name = "Relic Trade"
+description = "Trading in blood relics and crimson artifacts."
 tech_cost = 90
 research_time = 12
 prerequisites = Array[StringName]([&"fk_dark_harvest"])

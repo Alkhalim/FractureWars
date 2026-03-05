@@ -22,3 +22,4 @@ class_loyalty_bonus = {}
 upgrades_from = &"scorpion_pit"
 requires_capital = false
 special_effects = {"garrison_strength_bonus": 0.2}
+upkeep_cost = {0: 3, 1: 5}

@@ -1123,12 +1123,28 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 			return {accepted = true}  # AI always accepts city gifts
 		"demand_city":
 			var ratio := get_strength_ratio(proposer, target)
-			if ratio < 1.5:
-				return {accepted = false}
+			# Require overwhelming military dominance (2.5x+)
+			if ratio < 2.5:
+				return {accepted = false, reason = "They scoff at your demand."}
 			var standing := get_standing(proposer, target)
 			var city_id: StringName = params.get("city_id", &"")
 			var city_val := get_city_value(city_id)
-			return {accepted = ((ratio - 1.5) * 30.0 - city_val * 0.5 + standing * 0.1) > 0}
+			# Never cede capitals
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city and city.is_capital:
+				return {accepted = false, reason = "They will never surrender their capital."}
+			# Check desperation: only consider if they have many cities or are at war
+			var target_fs: FactionState = GameManager.state.faction_states.get(target)
+			var num_cities: int = target_fs.owned_cities.size() if target_fs else 1
+			# Factions with few cities resist much more strongly
+			var scarcity_penalty := 40.0 if num_cities <= 2 else (20.0 if num_cities <= 4 else 0.0)
+			# Much harder formula: high base resistance, city value matters a lot
+			var score := (ratio - 2.5) * 20.0 - city_val * 2.0 + standing * 0.05 - 30.0 - scarcity_penalty
+			# Only accept if at war with the demander and losing badly
+			var at_war := GameManager.get_relation(proposer, target) == Enums.FactionRelation.WAR
+			if not at_war:
+				score -= 50.0  # Almost never cede outside of war
+			return {accepted = score > 0}
 	return {accepted = false}
 
 # ── AI Diplomacy Turn ───────────────────────────────────────
@@ -1443,14 +1459,22 @@ func offer_city(offerer: StringName, target: StringName, city_id: StringName) ->
 
 func demand_city(demander: StringName, target: StringName, city_id: StringName) -> Dictionary:
 	var ratio := get_strength_ratio(demander, target)
-	if ratio < 1.5:
+	if ratio < 2.5:
 		return {accepted = false, reason = "Insufficient military dominance"}
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null or city.faction_id != target:
 		return {accepted = false, reason = "Invalid city"}
+	if city.is_capital:
+		return {accepted = false, reason = "They will never surrender their capital"}
 	var standing := get_standing(demander, target)
 	var city_val := get_city_value(city_id)
-	var score := (ratio - 1.5) * 30.0 - city_val * 0.5 + standing * 0.1
+	var target_fs: FactionState = GameManager.state.faction_states.get(target)
+	var num_cities: int = target_fs.owned_cities.size() if target_fs else 1
+	var scarcity_penalty := 40.0 if num_cities <= 2 else (20.0 if num_cities <= 4 else 0.0)
+	var score := (ratio - 2.5) * 20.0 - city_val * 2.0 + standing * 0.05 - 30.0 - scarcity_penalty
+	var at_war := GameManager.get_relation(demander, target) == Enums.FactionRelation.WAR
+	if not at_war:
+		score -= 50.0
 	if score > 0:
 		if transfer_city(target, demander, city_id):
 			# Demanding hurts standing (transfer_city gave +15 from transferor, offset it)

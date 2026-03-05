@@ -18,3 +18,4 @@ recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([&"levy_conscripts", &"legionary", &"field_medic"])
 required_capital_level = 1
 class_loyalty_bonus = {"peasants": -4, "nobles": 2}
+upkeep_cost = {0: 2, 1: 3}
