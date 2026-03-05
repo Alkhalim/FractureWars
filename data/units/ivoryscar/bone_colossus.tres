@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bone_colossus"
+display_name = "Bone Colossus"
+description = "A towering construct assembled from the bones of ancient titans. Its very footsteps shake the earth."
+faction_id = &"ivoryscar"
+max_hp = 3250
+attack = 110
+melee_defense = 100
+projectile_defense = 70
+magic_defense = 50
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 8
+movement_points = 3.0
+upkeep_cost = {0: 15, 1: 6, 2: 3}
+recruit_cost = {0: 400, 1: 189, 2: 60}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee", "undead"])
+base_morale = 110
+captive_chance = 0.0

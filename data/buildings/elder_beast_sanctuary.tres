@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"elder_beast_sanctuary"
+display_name = "Elder Beast Sanctuary III"
+description = "A sacred grove where the eldest forest creatures dwell in ancient pact with the Gladehost. The bond between ranger and beast here transcends mortal understanding."
+faction_id = &"gladehost"
+category = &"military"
+build_cost = {0: 142, 1: 46, 5: 43}
+build_time = 4
+defense_bonus = 2
+unlocks_units = Array[StringName]([&"bear_companion", &"elder_treant", &"treant"])
+required_capital_level = 3
+upgrades_from = &"beastkeepers_glade"
+class_loyalty_bonus = {"peasants": 2, "nobles": 2}
+upkeep_cost = {0: 5, 5: 8}

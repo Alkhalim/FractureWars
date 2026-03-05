@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"verdant_growth"
+display_name = "Verdant Growth"
+description = "Life flourishes under the Gladehost's care."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"deep_roots"])
+effects = { "population_growth_pct": 30 }
+shard_bonuses = {}
+tier = 2
+research_category = &"economy"
+faction_id = &"gladehost"
+tree_angle = 0
+tree_branch = &"nature_bond"

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"irrigated_terraces"
+display_name = "Irrigated Terraces II"
+description = "Terraced fields with an intricate network of channels. The forge-masters' engineering feeds the people."
+faction_id = &"cinderguard"
+category = &"economic"
+build_cost = {0: 144, 5: 55}
+build_time = 3
+income_bonus = {3: 30}
+population_growth_bonus = 8
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"oasis_farm"
+class_loyalty_bonus = {"peasants": 3}
+upkeep_cost = {1: 5, 5: 3}

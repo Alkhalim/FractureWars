@@ -1,8 +1,8 @@
 extends Node2D
 
-const CELL_SIZE := 40
-const GRID_WIDTH := 20
-const GRID_HEIGHT := 16
+const CELL_SIZE := 32
+const GRID_WIDTH := 28
+const GRID_HEIGHT := 22
 
 # Terrain colors
 const TERRAIN_COLORS := {
@@ -305,7 +305,7 @@ func _auto_deploy_player_units(player_is_attacker: bool) -> void:
 			continue
 
 		var col: int = clampi(start_col + i * spacing, 2, GRID_WIDTH - 3)
-		var row: int = 12
+		var row: int = BattleSimulator.ATTACKER_DEPLOY_START + 2
 		var pos := Vector2i(col, row)
 
 		# Find a free, passable tile near the target position
@@ -1086,6 +1086,10 @@ func _on_continue() -> void:
 	_return_to_campaign()
 
 func _apply_battle_results() -> void:
+	# Get strength BEFORE stripping dead units
+	var atk_strength := attacker_army.get_total_strength()
+	var def_strength := defender_army.get_total_strength()
+
 	_update_army_survivors(attacker_army, simulator.get_surviving_units(0))
 	_update_army_survivors(defender_army, simulator.get_surviving_units(1))
 
@@ -1097,21 +1101,33 @@ func _apply_battle_results() -> void:
 	if not defender_alive:
 		GameManager.remove_army(defender_army.army_id)
 
+	# Remove surviving garrison armies (they regenerate on next attack)
+	if defender_alive and defender_army.is_garrison:
+		GameManager.remove_army(defender_army.army_id)
+		defender_alive = false
+
 	if attacker_alive and not defender_alive:
 		EventBus.battle_resolved.emit(attacker_faction_id, battle_hex_pos)
-		# Check if there's an enemy city at this hex → start/continue siege
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 		if city_at and city_at.faction_id != attacker_faction_id:
 			GameManager.city_system.start_siege(city_at.city_id, attacker_faction_id)
 		elif city_at and city_at.faction_id == attacker_faction_id and city_at.is_under_siege:
-			# Defender won the field but attacker was defending their own city
 			GameManager.city_system.break_siege(city_at.city_id)
 	elif defender_alive and not attacker_alive:
 		EventBus.battle_resolved.emit(defender_faction_id, battle_hex_pos)
-		# If defender's city was besieged, break the siege
 		var city_at := GameManager.city_system.get_city_at_hex(battle_hex_pos)
 		if city_at and city_at.faction_id == defender_faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
+
+	# Commander XP and item drops
+	if attacker_army.commander:
+		CommanderSystem.grant_battle_xp(attacker_army.commander, def_strength, attacker_alive)
+		if attacker_alive and not defender_alive:
+			CommanderSystem.apply_item_drop(attacker_army.commander, defender_faction_id)
+	if defender_army.commander:
+		CommanderSystem.grant_battle_xp(defender_army.commander, atk_strength, defender_alive)
+		if defender_alive and not attacker_alive:
+			CommanderSystem.apply_item_drop(defender_army.commander, attacker_faction_id)
 
 func _update_army_survivors(army: ArmyState, survivors: Array[BattleSimulator.BattleUnit]) -> void:
 	var surviving_ids: Dictionary = {}

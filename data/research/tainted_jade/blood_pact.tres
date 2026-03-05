@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"blood_pact"
+display_name = "Blood Pact"
+description = "A pact sealed in blood binds power beyond mortal limits."
+tech_cost = 130
+research_time = 18
+prerequisites = Array[StringName]([&"blood_magic", &"ritual_frenzy"])
+effects = { "shard_essence_pct": 25, "unit_attack_bonus": 2, "taint_per_turn": 3 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"tainted_jade"
+tree_angle = 260
+tree_branch = &"blood_rites"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

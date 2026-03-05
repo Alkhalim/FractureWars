@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"spirit_lodge"
+display_name = "Spirit Lodge II"
+description = "A grand lodge where the most powerful bonecallers gather to interpret the ancestors' will. Their chants ward off the Waif's corruption."
+faction_id = &"skulloath"
+category = &"cultural"
+build_cost = {0: 167, 5: 55, 2: 15}
+build_time = 3
+income_bonus = {2: 20}
+population_growth_bonus = 5
+unlocks_units = Array[StringName]([&"ancestor_spirit", &"grave_shaman"])
+required_capital_level = 2
+upgrades_from = &"ancestor_shrine"
+class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 3, "nobles": 1}
+special_effects = {"research_speed_bonus": 0.15}
+upkeep_cost = {0: 5, 5: 3}

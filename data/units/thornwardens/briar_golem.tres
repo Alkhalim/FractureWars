@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"briar_golem"
+display_name = "Briar Golem"
+description = "A massive construct of twisted vines and petrified wood, grown by the Thornwardens over decades. It crushes intruders beneath roots of iron-hard bark."
+faction_id = &"thornwardens"
+max_hp = 3250
+attack = 90
+melee_defense = 100
+projectile_defense = 70
+magic_defense = 40
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 3250
+tiles_per_entity = 6
+movement_points = 2.0
+upkeep_cost = {0: 8, 5: 4}
+recruit_cost = {0: 280, 5: 84}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {1: 0.2}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee", "junglestrider"])
+base_morale = 100
+captive_chance = 0.0

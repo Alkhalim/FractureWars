@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bread_and_circuses"
+display_name = "Bread & Circuses"
+description = "Public festivals and free food keep the masses happy at considerable expense."
+category = 2
+class_loyalty_effects = { "peasants": 5, "nobles": -3 }
+resource_effects = { 3: -10, 0: -5 }
+required_class_loyalty = {}
+mutually_exclusive = Array[StringName]([])
+cooldown_turns = 3
+faction_id = &"empire"

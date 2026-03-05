@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iv_void_crown"
+display_name = "Void Crown"
+description = "Vision covers entire map. Research speed +50%."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"iv_void_seers"])
+effects = { "vision_range_bonus": 5, "research_speed_bonus": 25, "shard_essence_pct": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"ivoryscar"
+tree_angle = 240.0
+tree_branch = &"void_sight"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"pale_ascension"
+display_name = "Pale Ascension"
+description = "The pale realm grants power to the corrupted."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"ancestor_call"])
+effects = { "corruption_per_turn": 5, "corruption_attack_scaling": 3 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"skulloath"
+tree_angle = 180
+tree_branch = &"ancestor_rites"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

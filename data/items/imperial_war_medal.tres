@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"imperial_war_medal"
+display_name = "Imperial War Medal"
+description = "A gilded medal bearing the Imperial crest, awarded for distinguished service in the legions."
+rarity = &"common"
+effects = {"army_defense_bonus": 1}
+source_factions = Array[StringName]([&"empire"])
+gift_tags = Array[StringName]([&"martial", &"elegant"])

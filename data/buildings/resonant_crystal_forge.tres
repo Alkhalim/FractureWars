@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"resonant_crystal_forge"
+display_name = "Resonant Chitin Forge II"
+description = "The forge organ pulses with deeper resonance now, its bio-furnace hot enough to fuse chitin with iron into layered composites. The horde's equipment grows stronger with each cycle of consumption and creation."
+faction_id = &"shardhorde"
+category = &"economic"
+build_cost = {0: 131, 3: 55}
+build_time = 3
+income_bonus = {1: 20, 5: 10}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"crystal_forge"
+class_loyalty_bonus = {}
+upkeep_cost = {0: 5, 4: 3}

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"feral_charge"
+display_name = "Feral Charge"
+description = "The charge of crystal beasts shatters formations."
+tech_cost = 70
+research_time = 10
+prerequisites = Array[StringName]([&"pack_hunting"])
+effects = { "charge_damage_pct": 20, "adjacent_unit_damage_pct": 5 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"shardhorde"
+tree_angle = 135
+tree_branch = &"swarm_tactics"

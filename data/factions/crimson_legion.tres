@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crimson_legion"
+display_name = "Crimson Legion"
+description = "A militant arm of the Empire stationed in Sunburst Valley. Their crimson banners are feared across the frontier."
+color = Color(0.6, 0.2, 0.2, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"sunburst_valley"])
+realm_affinity = 4
+shard_preferences = {}
+ai_personality = {"aggression": 0.6, "expansion": 0.4}

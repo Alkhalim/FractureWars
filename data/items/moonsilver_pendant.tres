@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moonsilver_pendant"
+display_name = "Moonsilver Pendant"
+description = "A pendant of refined moonsilver that glows faintly under starlight, channeling celestial energy."
+rarity = &"rare"
+effects = {"heal_per_turn": 10}
+source_factions = Array[StringName]([&"moonspear"])
+gift_tags = Array[StringName]([&"arcane", &"elegant", &"religious"])

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RegionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"southern_reach"
+display_name = "Southern Reach"
+terrain = 9
+realm_influence = 3
+realm_influence_strength = 0.5
+base_income = {0: 7, 3: 9, 5: 5}
+has_city_slot = true
+max_armies = 2
+strategic_value = 2

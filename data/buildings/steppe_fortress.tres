@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"steppe_fortress"
+display_name = "Steppe Fortress II"
+description = "A ring-fort of packed earth and ancestor stones, commanding the open plains. Skull-adorned palisades and hidden archer posts turn the grasslands into a killing field."
+faction_id = &"skulloath"
+category = &"defensive"
+build_cost = {0: 144, 5: 105}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 0
+defense_bonus = 8
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 2}
+special_effects = {"corruption_drift": -1}
+upgrades_from = &"steppe_watchtower"
+upkeep_cost = {1: 3, 5: 2}

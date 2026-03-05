@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tj_canopy_network"
+display_name = "Canopy Network"
+description = "Treetop pathways speed movement."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"jungle_camouflage", &"tj_poison_traps"])
+effects = { "movement_bonus": 2, "vision_range_bonus": 1 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"tainted_jade"
+tree_angle = 25.0
+tree_branch = &"serpent_lore"
+socket_realm = 3
+socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }

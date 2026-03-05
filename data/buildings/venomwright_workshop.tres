@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"venomwright_workshop"
+display_name = "Venomwright Workshop II"
+description = "Master poisoners distill the jungle's deadliest toxins into weapons of war. Every blade, every dart, every arrow — kissed with death."
+faction_id = &"tainted_jade"
+category = &"military"
+build_cost = {0: 137, 1: 22, 5: 28}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 0
+unlocks_units = Array[StringName]([&"serpent_guardian", &"coatl_shaman", &"plague_shaman", &"jungle_archer"])
+required_capital_level = 2
+upgrades_from = &"serpent_pit"
+class_loyalty_bonus = {"peasants": -4, "artisans": 2, "nobles": 3}
+upkeep_cost = {5: 3, 6: 5}

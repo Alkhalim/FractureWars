@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"hollow_throne"
+display_name = "Crimson Throne"
+description = "From the Crimson Throne, all is ruled."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"dread_presence", &"plague_seeds"])
+effects = { "building_cost_reduction_pct": 20, "espionage_per_turn": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"forsaken"
+tree_angle = 240
+tree_branch = &"shadow_war"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

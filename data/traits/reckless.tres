@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"reckless"
+display_name = "Reckless"
+description = "Charges headlong into battle with little regard for safety."
+is_positive = false
+effects = {"charge_damage_mult": 0.15, "army_defense_bonus": -1}
+excludes = Array[StringName]([&"cautious"])
+acquire_context = Array[StringName]([&"was_attacker", &"battle_lost"])
+acquire_threshold = 4
+lose_context = Array[StringName]([&"was_defender", &"battle_won"])
+lose_threshold = 10

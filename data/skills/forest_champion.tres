@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"forest_champion"
+display_name = "Forest Champion"
+description = "+3 attack and +3 defense in forests. +2 scouting range."
+category = &"combat"
+is_minor = false
+effects = {"terrain_forest_attack_bonus": 3, "terrain_forest_defense_bonus": 3, "scouting_bonus": 2}
+context_tags = Array[StringName]([&"terrain_forest", &"terrain_jungle"])

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moon_oracle"
+display_name = "Moon Oracle"
+description = "The oracle speaks with the moon's own voice, channeling lunar phase power into prophecy."
+tech_cost = 130
+research_time = 18
+prerequisites = Array[StringName]([&"lunar_blessing", &"celestial_insight"])
+effects = { "research_speed_bonus": 10, "shard_essence_pct": 10, "lunar_phase_bonus_pct": 10 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"moonspear"
+tree_angle = 30
+tree_branch = &"lunar_doctrine"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

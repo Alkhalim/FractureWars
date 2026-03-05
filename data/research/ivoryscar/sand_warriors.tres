@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sand_warriors"
+display_name = "Sand Warriors"
+description = "Warriors hardened by the scorching desert fear nothing."
+tech_cost = 35
+research_time = 6
+prerequisites = Array[StringName]([])
+effects = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }
+shard_bonuses = {}
+tier = 1
+research_category = &"military"
+faction_id = &"ivoryscar"
+tree_angle = 60
+tree_branch = &"relics"

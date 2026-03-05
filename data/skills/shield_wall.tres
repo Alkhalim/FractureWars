@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shield_wall"
+display_name = "Shield Wall"
+description = "Infantry gains +5 defense. All units gain +3 defense vs cavalry."
+category = &"combat"
+is_minor = false
+effects = {"infantry_defense_bonus": 5, "vs_cavalry_defense_bonus": 3}
+context_tags = Array[StringName]([&"faced_cavalry", &"was_defender"])

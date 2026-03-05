@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shard_nexus"
+display_name = "Feeding Nexus II"
+description = "The tendrils have thickened and branched into a sprawling root network, draining nutrients from the land with terrifying efficiency. The elderbeast gorges, and its swarm grows fat on the surplus."
+faction_id = &"shardhorde"
+category = &"economic"
+build_cost = {0: 108, 3: 40}
+build_time = 3
+income_bonus = {0: 15, 3: 10}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"shard_conduit"
+class_loyalty_bonus = {}
+upkeep_cost = {4: 3, 5: 5}

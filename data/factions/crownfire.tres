@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crownfire"
+display_name = "Crownfire"
+description = "Fire-wielding vanguard of the Cinderguard stationed at Ashenmark. Their incendiary tactics leave nothing but cinders."
+color = Color(0.9, 0.35, 0.1, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"ashenmark"])
+realm_affinity = 2
+shard_preferences = {}
+ai_personality = {"aggression": 0.6, "expansion": 0.4}

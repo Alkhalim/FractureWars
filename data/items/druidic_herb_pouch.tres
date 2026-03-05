@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"druidic_herb_pouch"
+display_name = "Druidic Herb Pouch"
+description = "A leather pouch filled with rare medicinal herbs from the deep groves of Sainkhu."
+rarity = &"common"
+effects = {"heal_per_turn": 6}
+source_factions = Array[StringName]([&"gladehost"])
+gift_tags = Array[StringName]([&"nature", &"scholarly"])

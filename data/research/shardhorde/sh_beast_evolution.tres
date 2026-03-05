@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_beast_evolution"
+display_name = "Beast Evolution"
+description = "Crystal beasts evolve rapidly."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"sh_beast_breeding", &"sh_war_beasts"])
+effects = { "unit_attack_bonus": 2, "unit_hp_bonus": 8 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"shardhorde"
+tree_angle = 65.0
+tree_branch = &"beast_mastery"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

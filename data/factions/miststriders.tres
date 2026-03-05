@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"miststriders"
+display_name = "Miststriders"
+description = "Elusive scouts and rangers of Orisyl who move unseen through the coastal mists. Masters of ambush and retreat."
+color = Color(0.5, 0.6, 0.55, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"orisyl"])
+realm_affinity = 3
+shard_preferences = {}
+ai_personality = {"aggression": 0.15, "expansion": 0.2}

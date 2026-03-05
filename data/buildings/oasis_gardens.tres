@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"oasis_gardens"
+display_name = "Oasis Gardens II"
+description = "Lush gardens built around ancient oases. The bones of the old world fertilize the new."
+faction_id = &"ivoryscar"
+category = &"economic"
+build_cost = {0: 135, 5: 55}
+build_time = 3
+income_bonus = {3: 30}
+population_growth_bonus = 8
+unlocks_units = Array[StringName]([])
+upgrades_from = &"dust_fields"
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 3}
+upkeep_cost = {1: 5, 5: 3}

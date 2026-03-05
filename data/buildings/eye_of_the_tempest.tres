@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"eye_of_the_tempest"
+display_name = "Eye of the Tempest III"
+description = "The sacred chamber at the storm's heart. Here, the greatest thundercallers commune with the tempest itself."
+faction_id = &"thunderswarm"
+category = &"cultural"
+build_cost = {0: 374, 5: 86, 1: 29}
+build_time = 4
+income_bonus = {2: 38}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([&"storm_shaman", &"storm_healer"])
+required_capital_level = 3
+upgrades_from = &"thundercallers_lodge"
+class_loyalty_bonus = {"scholars": 5, "nobles": 2}
+special_effects = {"research_speed_bonus": 0.25}
+upkeep_cost = {0: 8, 5: 5}

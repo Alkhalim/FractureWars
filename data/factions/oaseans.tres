@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"oaseans"
+display_name = "Oaseans"
+description = "Wandering healers and diplomats of the Sunblessed tradition. They establish oases of peace wherever they travel."
+color = Color(0.85, 0.7, 0.35, 1)
+is_playable = false
+starting_regions = Array[StringName]([])
+realm_affinity = 0
+shard_preferences = {}
+ai_personality = {"aggression": 0.05, "expansion": 0.15, "style": "nomadic"}
+gift_likes = Array[StringName]([&"scholarly", &"nature", &"elegant"])
+gift_dislikes = Array[StringName]([&"dark", &"primitive"])

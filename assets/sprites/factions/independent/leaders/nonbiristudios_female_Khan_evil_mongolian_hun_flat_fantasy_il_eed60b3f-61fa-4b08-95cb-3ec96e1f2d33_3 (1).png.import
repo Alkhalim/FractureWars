@@ -1,0 +1,34 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://p7gweet334yy"
+path="res://.godot/imported/nonbiristudios_female_Khan_evil_mongolian_hun_flat_fantasy_il_eed60b3f-61fa-4b08-95cb-3ec96e1f2d33_3 (1).png-2dfe9595010b00a3da073d15095ab7f1.ctex"
+metadata={
+"vram_texture": false
+}
+
+[deps]
+
+source_file="res://assets/sprites/factions/independent/leaders/nonbiristudios_female_Khan_evil_mongolian_hun_flat_fantasy_il_eed60b3f-61fa-4b08-95cb-3ec96e1f2d33_3 (1).png"
+dest_files=["res://.godot/imported/nonbiristudios_female_Khan_evil_mongolian_hun_flat_fantasy_il_eed60b3f-61fa-4b08-95cb-3ec96e1f2d33_3 (1).png-2dfe9595010b00a3da073d15095ab7f1.ctex"]
+
+[params]
+
+compress/mode=0
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=false
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1

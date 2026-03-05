@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sunward_bowyard"
+display_name = "Sunward Bowyard I"
+description = "An open-air range where archers train under the blazing sun. They learn to fire with divine precision."
+faction_id = &"sunblessed"
+category = &"military"
+build_cost = {0: 38, 1: 8, 5: 13}
+build_time = 2
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"sun_archer"])
+upgrades_from = &"pilgrim_training_grounds"
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": -1, "nobles": 1}
+upkeep_cost = {0: 2, 1: 3}

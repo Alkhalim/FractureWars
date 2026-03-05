@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"war_dojo"
+display_name = "War Dojo II"
+description = "A hall of discipline where blade dancers perfect their art. Every movement is practiced ten thousand times until body and blade are one."
+faction_id = &"gladehost"
+category = &"military"
+build_cost = {0: 137, 1: 28, 5: 28}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([&"blade_dancer", &"stag_rider", &"oakguard", &"sylvan_lancer"])
+required_capital_level = 2
+upgrades_from = &"ranger_outpost"
+class_loyalty_bonus = {"nobles": 4, "peasants": -3}
+upkeep_cost = {0: 3, 5: 5}

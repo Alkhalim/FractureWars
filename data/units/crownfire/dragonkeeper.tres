@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dragonkeeper"
+display_name = "Dragonkeeper"
+description = "Elite knights mounted on adolescent dragons. The most feared warriors of the Crownfire, nearly unstoppable in battle."
+faction_id = &"crownfire"
+max_hp = 8000
+attack = 100
+melee_defense = 50
+projectile_defense = 35
+magic_defense = 30
+speed = 7
+attack_range = 1
+squad_size = 5
+hp_per_soldier = 1600
+tiles_per_entity = 6
+movement_points = 4.5
+upkeep_cost = {0: 14, 1: 4, 3: 5}
+recruit_cost = {0: 300, 1: 95, 5: 63}
+recruit_time = 5
+population_cost = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast", "flying", "monster"])
+base_morale = 85
+morale_aura = -4
+fear_radius = 4
+captive_chance = 0.05

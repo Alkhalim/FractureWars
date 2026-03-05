@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"void_resonance_crystal"
+display_name = "Void Resonance Crystal"
+description = "A humming crystal harvested from the Baatar Expanse, attuned to shard energy frequencies."
+rarity = &"common"
+effects = {"army_attack_bonus": 1, "army_defense_bonus": 1}
+source_factions = Array[StringName]([&"shardhorde"])
+gift_tags = Array[StringName]([&"arcane", &"primitive"])

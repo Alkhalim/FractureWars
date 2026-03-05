@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"emp_field_medicine"
+display_name = "Field Medicine"
+description = "Surgeons tend the wounded on the field."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"stonework"])
+effects = { "unit_hp_bonus": 5 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"empire"
+tree_angle = 195.0
+tree_branch = &"engineering"

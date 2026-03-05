@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_crystal_god"
+display_name = "Crystal God"
+description = "Consuming a shard grants permanent stat bonuses. The Crystal God awakens."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sh_crystal_titan", &"sh_shard_god"])
+effects = { "shard_resonance_bonus": 25, "unit_attack_bonus": 5, "unit_defense_bonus": 5, "shard_harvest_bonus": 5 }
+shard_bonuses = { 0: {"unit_attack_bonus": 6}, 1: {"unit_defense_bonus": 6}, 2: {"unit_hp_bonus": 15}, 7: {"shard_harvest_bonus": 10} }
+tier = 5
+research_category = &"arcane"
+faction_id = &"shardhorde"
+tree_angle = 0.0
+tree_branch = &"crystal_evolution"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

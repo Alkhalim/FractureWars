@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"rebel_horseman"
+display_name = "Rebel Horsemen"
+description = "Bandits on stolen horses. They hit hard and ride fast, but their mounts are poorly cared for and their riders undisciplined."
+faction_id = &"rebels"
+max_hp = 2000
+attack = 50
+melee_defense = 15
+projectile_defense = 10
+magic_defense = 5
+speed = 8
+attack_range = 1
+squad_size = 15
+hp_per_soldier = 133
+tiles_per_entity = 2
+movement_points = 4.5
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 30
+captive_chance = 0.35

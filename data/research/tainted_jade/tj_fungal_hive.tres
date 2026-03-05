@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tj_fungal_hive"
+display_name = "Fungal Hive Mind"
+description = "A psychic network of fungal intelligence."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"tj_spore_scouts", &"tj_mycelium_web"])
+effects = { "research_speed_bonus": 15 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"tainted_jade"
+tree_angle = 180.0
+tree_branch = &"fungal_network"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

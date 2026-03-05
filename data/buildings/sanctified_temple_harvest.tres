@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sanctified_temple_harvest"
+display_name = "Sanctified Temple - God of Harvest III"
+description = "Dedicated to the God of Harvest. Priests bless the fields and granaries, ensuring bountiful yields and the love of the common folk."
+faction_id = &"empire"
+category = &"cultural"
+build_cost = {0: 463, 5: 86}
+build_time = 4
+income_bonus = {3: 10}
+population_growth_bonus = 18
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+class_loyalty_bonus = {"peasants": 4, "artisans": 1, "scholars": 2, "nobles": -2}
+upgrades_from = &"temple_of_the_pantheon"
+upkeep_cost = {0: 8, 5: 5}

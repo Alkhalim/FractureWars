@@ -5,11 +5,13 @@
 [resource]
 script = ExtResource("1")
 id = &"skulloath"
-display_name = "The Skulloath"
+display_name = "Skulloath"
 description = "A confederation of exiled peoples and fractured traditions, forged together under pressure, loss, and the dark promise of the Pale Waif."
 color = Color(0.35, 0.10, 0.10, 1)
-is_playable = false
-starting_regions = Array[StringName]([&"altaban_barrens", &"tsagan_badlands"])
+is_playable = true
+starting_regions = Array[StringName]([&"bataarbad"])
 realm_affinity = 1
 shard_preferences = {}
-ai_personality = {}
+ai_personality = {"aggression": 0.8, "expansion": 0.5}
+gift_likes = Array[StringName]([&"martial", &"dark", &"primitive"])
+gift_dislikes = Array[StringName]([&"scholarly", &"elegant"])

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"thunderswarm"
+display_name = "Thunderswarm"
+description = "Storm-riders of the Dragonspire Mountains, the Thunderswarm harness elemental fury and draconic might. Their war-drums echo across the peaks."
+color = Color(0.85, 0.7, 0.2, 1)
+is_playable = true
+starting_regions = Array[StringName]([&"dragonspire_mountains"])
+realm_affinity = 2
+shard_preferences = {}
+ai_personality = {"aggression": 0.6, "expansion": 0.5}
+gift_likes = Array[StringName]([&"martial", &"primitive", &"practical"])
+gift_dislikes = Array[StringName]([&"scholarly", &"luxury"])

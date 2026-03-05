@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"jade_cavalry"
+display_name = "Taint Runners"
+description = "Barefoot sprinters whose bodies have been warped by the Taint into something more than human. They lope through jungle and swamp at terrifying speed, closing on ranged units before a second volley can be loosed."
+faction_id = &"tainted_jade"
+max_hp = 3200
+attack = 60
+melee_defense = 15
+projectile_defense = 10
+magic_defense = 10
+speed = 9
+attack_range = 1
+squad_size = 30
+hp_per_soldier = 106
+movement_points = 5.0
+upkeep_cost = {0: 4, 3: 2}
+recruit_cost = {0: 100, 3: 60}
+recruit_time = 2
+population_cost = 6
+terrain_bonuses = {9: 0.2, 4: 0.15}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "fast"])
+base_morale = 40
+captive_chance = 0.25

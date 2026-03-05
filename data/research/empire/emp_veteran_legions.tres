@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"emp_veteran_legions"
+display_name = "Veteran Legions"
+description = "Seasoned soldiers fight harder and longer."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"imperial_supremacy_faction", &"legion_standards"])
+effects = { "unit_attack_bonus": 3, "unit_morale_bonus": 10, "charge_damage_pct": 10 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"empire"
+tree_angle = 350.0
+tree_branch = &"warfare"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

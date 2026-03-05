@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_soul_storm"
+display_name = "Soul Storm"
+description = "A crimson storm of tortured souls."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"fk_spirit_chains", &"fk_wraith_guard"])
+effects = { "unit_attack_bonus": 3, "unit_defense_bonus": 2, "enemy_morale_penalty": -5 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 60.0
+tree_branch = &"soul_magic"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

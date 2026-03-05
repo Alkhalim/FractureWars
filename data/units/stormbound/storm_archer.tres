@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"storm_archer"
+display_name = "Storm Archer"
+description = "Archers who channel wind magic to extend their range. Their lightning-touched arrows arc across the battlefield with unnatural speed."
+faction_id = &"stormbound"
+max_hp = 3900
+attack = 65
+melee_defense = 15
+projectile_defense = 15
+magic_defense = 15
+speed = 6
+attack_range = 5
+squad_size = 60
+hp_per_soldier = 65
+movement_points = 3.5
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 60, 1: 16}
+recruit_time = 2
+population_cost = 12
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["ranged", "fast"])
+base_morale = 50

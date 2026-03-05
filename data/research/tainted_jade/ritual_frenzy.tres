@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ritual_frenzy"
+display_name = "Ritual Frenzy"
+description = "Blood frenzy grants unholy strength in battle."
+tech_cost = 70
+research_time = 10
+prerequisites = Array[StringName]([&"sacrificial_altars"])
+effects = { "unit_attack_bonus": 2, "taint_per_turn": 2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"tainted_jade"
+tree_angle = 255
+tree_branch = &"blood_rites"

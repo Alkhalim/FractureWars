@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"swamp_runner"
+display_name = "Swamp Runner"
+description = "Riders on swift mangrove lizards who serve as scouts and flankers. They strike hard and vanish into the mist."
+faction_id = &"miststriders"
+max_hp = 3500
+attack = 65
+melee_defense = 25
+projectile_defense = 15
+magic_defense = 10
+speed = 8
+attack_range = 1
+squad_size = 20
+hp_per_soldier = 175
+tiles_per_entity = 2
+movement_points = 5.0
+upkeep_cost = {0: 5, 3: 2}
+recruit_cost = {0: 130, 1: 26, 5: 21}
+recruit_time = 3
+population_cost = 8
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 50

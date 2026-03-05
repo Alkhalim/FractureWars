@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ranger_outpost"
+display_name = "Ranger Outpost I"
+description = "A disciplined training ground where wardens and scouts learn the art of forest warfare — patience, precision, and knowing when to strike."
+faction_id = &"gladehost"
+category = &"military"
+build_cost = {0: 45, 1: 8, 5: 16}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"grove_warden", &"thornbow_scout", &"hawk_scout"])
+required_capital_level = 1
+class_loyalty_bonus = {"nobles": 2, "peasants": -2}
+upkeep_cost = {0: 2, 5: 3}

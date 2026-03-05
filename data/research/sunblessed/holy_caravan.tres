@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"holy_caravan"
+display_name = "Holy Caravan"
+description = "The holy caravan spreads the sun's word, building diplomatic ties along trade routes."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"pilgrim_zeal"])
+effects = { "army_movement_bonus": 1, "income_gold_pct": 10, "diplomacy_standing_bonus": 1 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"sunblessed"
+tree_angle = 120
+tree_branch = &"pilgrimage"
+socket_realm = 3
+socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }

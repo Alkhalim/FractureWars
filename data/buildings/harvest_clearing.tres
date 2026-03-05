@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"harvest_clearing"
+display_name = "Harvest Clearing I"
+description = "A carefully maintained clearing where crops grow under dappled sunlight. The druids bless the soil each planting season."
+faction_id = &"gladehost"
+category = &"economic"
+build_cost = {0: 52, 5: 32}
+build_time = 2
+income_bonus = {3: 14}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 2}
+upkeep_cost = {1: 3, 5: 2}

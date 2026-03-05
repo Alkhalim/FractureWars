@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"adobe_works"
+display_name = "Adobe Works II"
+description = "A sprawling workshop where mud brick and fired clay replace timber in all construction. The faithful build with earth and faith."
+faction_id = &"sunblessed"
+category = &"economic"
+build_cost = {0: 167, 1: 22}
+build_time = 3
+income_bonus = {1: 58, 5: 16}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([])
+upgrades_from = &"clay_kiln"
+required_capital_level = 2
+class_loyalty_bonus = {"artisans": 2}
+upkeep_cost = {0: 5}

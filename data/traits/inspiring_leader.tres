@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"inspiring_leader"
+display_name = "Inspiring Leader"
+description = "Rallies the troops with words that stir the soul."
+is_positive = true
+effects = {"morale_recovery_mult": 0.2}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"battle_won"])
+acquire_threshold = 6
+lose_context = Array[StringName]([&"battle_lost"])
+lose_threshold = 12

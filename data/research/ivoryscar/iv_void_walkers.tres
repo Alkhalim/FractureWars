@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iv_void_walkers"
+display_name = "Void Walkers"
+description = "Warriors who step through the void."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"all_seeing_eye", &"iv_sand_storms"])
+effects = { "unit_speed_bonus": 3, "flanking_damage_bonus": 15 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"ivoryscar"
+tree_angle = 245.0
+tree_branch = &"void_sight"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

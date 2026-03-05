@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"steppe_pastures"
+display_name = "Steppe Pastures II"
+description = "Vast organized grazing grounds with permanent corrals. The herds grow fat and the people grow strong."
+faction_id = &"skulloath"
+category = &"economic"
+build_cost = {0: 171}
+build_time = 3
+income_bonus = {3: 35, 5: 14}
+population_growth_bonus = 8
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"herders_camp"
+class_loyalty_bonus = {"peasants": 3, "nobles": -2}
+upkeep_cost = {0: 3, 1: 5}

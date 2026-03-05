@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"veteran"
+display_name = "Veteran"
+description = "A seasoned warrior who has seen more battles than most."
+is_positive = true
+effects = {"army_attack_bonus": 1, "army_defense_bonus": 1}
+excludes = Array[StringName]([&"green"])
+acquire_context = Array[StringName]([&"battle_won"])
+acquire_threshold = 7
+lose_context = Array[StringName]([])
+lose_threshold = 99

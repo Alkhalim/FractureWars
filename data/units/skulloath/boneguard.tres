@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"boneguard"
+display_name = "Boneguard"
+description = "Warriors clad in armor made from the bones of fallen enemies. They are slow but implacable, grinding down opposition through sheer endurance."
+faction_id = &"skulloath"
+max_hp = 8500
+attack = 55
+melee_defense = 50
+projectile_defense = 30
+magic_defense = 15
+speed = 4
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 106
+movement_points = 3
+upkeep_cost = {0: 6, 1: 2, 3: 4}
+recruit_cost = {0: 160, 1: 63, 3: 100}
+recruit_time = 4
+population_cost = 16
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 50
+captive_chance = 0.15

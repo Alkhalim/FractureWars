@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"war_horn"
+display_name = "War Horn"
+description = "A fearsome horn that rallies warriors to battle."
+rarity = &"common"
+effects = {"army_attack_bonus": 2}
+source_factions = Array[StringName]([&"skulloath"])
+gift_tags = Array[StringName]([&"martial", &"primitive"])

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sun_blessed_harvest"
+display_name = "Sun-Blessed Harvest"
+description = "Crops blessed by the sun yield bounty beyond measure."
+tech_cost = 70
+research_time = 10
+prerequisites = Array[StringName]([&"solar_prayer"])
+effects = { "income_food_pct": 20 }
+shard_bonuses = {}
+tier = 2
+research_category = &"economy"
+faction_id = &"sunblessed"
+tree_angle = 15
+tree_branch = &"solar_faith"

@@ -5,19 +5,12 @@
 [ext_resource type="Script" path="res://scenes/campaign/campaign_hud.gd" id="3"]
 
 [sub_resource type="StyleBoxFlat" id="dark_panel"]
-bg_color = Color(0.08, 0.07, 0.1, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
+bg_color = Color(0.06, 0.05, 0.08, 0.95)
 border_width_bottom = 2
-border_color = Color(0.55, 0.42, 0.2, 0.8)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-content_margin_left = 10.0
+border_color = Color(0.6, 0.48, 0.22, 0.85)
+content_margin_left = 14.0
 content_margin_top = 8.0
-content_margin_right = 10.0
+content_margin_right = 14.0
 content_margin_bottom = 8.0
 
 [node name="Campaign" type="Node2D"]
@@ -38,6 +31,8 @@ script = ExtResource("2")
 
 [node name="RegionBorders" type="Node2D" parent="OverlayLayer"]
 
+[node name="FogOverlay" type="Node2D" parent="OverlayLayer"]
+
 [node name="EntityLayer" type="Node2D" parent="."]
 
 [node name="CityMarkers" type="Node2D" parent="EntityLayer"]
@@ -45,6 +40,8 @@ script = ExtResource("2")
 [node name="ArmyMarkers" type="Node2D" parent="EntityLayer"]
 
 [node name="ShardMarkers" type="Node2D" parent="EntityLayer"]
+
+[node name="ElderbeastMarkers" type="Node2D" parent="EntityLayer"]
 
 [node name="RegionLabels" type="Node2D" parent="EntityLayer"]
 
@@ -65,7 +62,7 @@ layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 grow_horizontal = 2
-custom_minimum_size = Vector2(0, 44)
+custom_minimum_size = Vector2(0, 52)
 theme_override_styles/panel = SubResource("dark_panel")
 
 [node name="HBoxContainer" type="HBoxContainer" parent="UILayer/HUD/TopBar"]
@@ -110,7 +107,6 @@ offset_top = -200.0
 offset_right = 300.0
 offset_bottom = -10.0
 grow_vertical = 0
-theme_override_styles/panel = SubResource("dark_panel")
 
 [node name="VBox" type="VBoxContainer" parent="UILayer/HUD/RegionPanel"]
 layout_mode = 2
@@ -164,12 +160,11 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -20.0
-offset_top = -230.0
-offset_right = 520.0
+offset_left = -420.0
+offset_top = -320.0
+offset_right = 420.0
 grow_horizontal = 2
 grow_vertical = 0
-theme_override_styles/panel = SubResource("dark_panel")
 
 [node name="VBox" type="VBoxContainer" parent="UILayer/HUD/SelectedArmyPanel"]
 layout_mode = 2
@@ -197,6 +192,12 @@ theme_override_colors/font_color = Color(0.75, 0.72, 0.65, 1)
 theme_override_font_sizes/font_size = 13
 text = "Units:"
 
+[node name="CloseButton" type="Button" parent="UILayer/HUD/SelectedArmyPanel/VBox/HeaderRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(30, 30)
+theme_override_font_sizes/font_size = 14
+text = "X"
+
 [node name="Separator" type="HSeparator" parent="UILayer/HUD/SelectedArmyPanel/VBox"]
 layout_mode = 2
 theme_override_colors/separator_color = Color(0.55, 0.42, 0.2, 0.5)
@@ -210,7 +211,7 @@ horizontal_scroll_mode = 0
 [node name="UnitGrid" type="GridContainer" parent="UILayer/HUD/SelectedArmyPanel/VBox/UnitScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
-columns = 2
+columns = 3
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
 

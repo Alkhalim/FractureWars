@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sk_blood_oath"
+display_name = "Blood Oath"
+description = "Blood oaths bind warriors to the skull throne, corruption fueling their fury."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"terror_tactics", &"ancestor_call"])
+effects = { "unit_attack_bonus": 2, "unit_morale_bonus": 10, "corruption_per_turn": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"skulloath"
+tree_angle = 310.0
+tree_branch = &"skull_throne"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

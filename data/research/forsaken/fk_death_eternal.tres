@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_death_eternal"
+display_name = "Crimson Eternity"
+description = "Units regenerate HP on campaign. Catacomb metropolis converts food to captives."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"fk_lich_lords", &"fk_soul_harvest"])
+effects = { "unit_regen_pct": 5, "income_food_pct": 20, "recruitment_cost_reduction": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 0.0
+tree_branch = &"necromancy"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

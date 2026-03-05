@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"relic_scholar"
+display_name = "Relic Scholar"
+description = "Mages who channel power through ancient relics. Each artifact they wield holds centuries of stored energy."
+faction_id = &"ivoryscar"
+max_hp = 2250
+attack = 65
+melee_defense = 15
+projectile_defense = 10
+magic_defense = 5
+speed = 4
+attack_range = 4
+squad_size = 20
+hp_per_soldier = 110
+movement_points = 3.5
+upkeep_cost = {0: 4, 2: 1}
+recruit_cost = {0: 110, 1: 26, 2: 20}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged"])
+base_morale = 45

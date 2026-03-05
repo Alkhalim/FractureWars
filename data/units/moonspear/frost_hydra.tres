@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"frost_hydra"
+display_name = "Frost Hydra"
+description = "A multi-headed serpent born in the frozen lakes beneath the moon. Each head breathes icy mist that numbs flesh and shatters steel."
+faction_id = &"moonspear"
+max_hp = 9000
+attack = 95
+melee_defense = 45
+projectile_defense = 30
+magic_defense = 25
+speed = 4
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 10
+movement_points = 3
+upkeep_cost = {0: 12, 3: 5}
+recruit_cost = {0: 300, 1: 84, 5: 63}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {6: 0.2}
+realm_bonuses = {}
+tags = Array[String](["monster", "melee", "beast"])
+base_morale = 80
+morale_aura = -5
+fear_radius = 4
+captive_chance = 0

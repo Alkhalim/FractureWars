@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"thorn_knight"
+display_name = "Thorn Knight"
+description = "Warriors clad in living thorns."
+faction_id = &"thornwardens"
+max_hp = 6500
+attack = 50
+melee_defense = 45
+projectile_defense = 30
+magic_defense = 20
+speed = 4
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 80
+movement_points = 3.0
+upkeep_cost = {0: 3, 3: 2}
+recruit_cost = {0: 65, 1: 21}
+recruit_time = 2
+population_cost = 16
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "junglestrider"])
+base_morale = 65

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sk_mounted_archers"
+display_name = "Mounted Archers"
+description = "Mounted archers rain arrows from horseback with lethal accuracy."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"horseback_archery"])
+effects = { "unit_attack_bonus": 2, "unit_ranged_bonus": 3 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"skulloath"
+tree_angle = 30.0
+tree_branch = &"raiding"

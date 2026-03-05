@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"purification_shrine"
+display_name = "Purification Shrine III"
+description = "A towering jade obelisk thrumming with containment wards. The taint is not merely suppressed here — it is studied, unraveled, and turned against itself."
+faction_id = &"tainted_jade"
+category = &"cultural"
+build_cost = {0: 340, 1: 69, 5: 86}
+build_time = 4
+income_bonus = {2: 20}
+defense_bonus = 2
+required_capital_level = 3
+required_terrain = 7
+upgrades_from = &"taint_suppressor"
+class_loyalty_bonus = {"peasants": 2, "artisans": 2, "scholars": 5, "nobles": 2}
+special_effects = {"taint_generation": 2}
+upkeep_cost = {0: 8, 5: 5}

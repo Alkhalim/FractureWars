@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"root_altar"
+display_name = "Root Altar I"
+description = "A shrine where the elders study the old magic's scars — not to wield it, but to understand and contain what their ancestors unleashed."
+faction_id = &"tainted_jade"
+category = &"cultural"
+build_cost = {0: 62, 5: 32}
+build_time = 2
+income_bonus = {2: 8}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 2, "nobles": 1}
+special_effects = {"taint_generation": 1}
+upkeep_cost = {0: 3, 5: 2}

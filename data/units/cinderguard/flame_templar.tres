@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"flame_templar"
+display_name = "Emberblade"
+description = "Elite desert lancers wreathed in shimmering heat haze. Their charges leave scorched trails across the dunes."
+faction_id = &"cinderguard"
+max_hp = 6000
+attack = 110
+melee_defense = 60
+projectile_defense = 40
+magic_defense = 30
+speed = 8
+attack_range = 1
+squad_size = 15
+hp_per_soldier = 400
+tiles_per_entity = 2
+movement_points = 4.5
+upkeep_cost = {0: 14, 1: 4, 3: 5}
+recruit_cost = {0: 350, 1: 105, 5: 53}
+recruit_time = 4
+population_cost = 6
+terrain_bonuses = {3: 0.2}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast", "desertstrider", "cinderguard"])
+spell_type = &"fireball"
+base_morale = 85
+captive_chance = 0.1

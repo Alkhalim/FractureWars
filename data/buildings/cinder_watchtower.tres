@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cinder_watchtower"
+display_name = "Cinder Watchtower I"
+description = "A border outpost where wardens keep vigil over the wastelands. The garrison stands ready to defend the frontier."
+faction_id = &"cinderguard"
+category = &"military"
+build_cost = {0: 52, 1: 11, 5: 16}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"cinderguard_warden", &"cinder_militia"])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": -3, "nobles": 2}
+upkeep_cost = {0: 2, 1: 3}

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sentinel_hall"
+display_name = "Sentinel Hall I"
+description = "The training grounds of the Moonspear sentinels. Discipline is absolute — every warrior must earn their silver blade."
+faction_id = &"moonspear"
+category = &"military"
+build_cost = {0: 50, 1: 8, 5: 16}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([&"moonspear_sentinel", &"lunar_archer", &"frost_volunteer"])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": -3, "nobles": 2}
+upkeep_cost = {0: 2, 1: 3}

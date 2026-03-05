@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ms_prophet_visions"
+display_name = "Prophet Visions"
+description = "Prophets foresee enemy movements through lunar divination."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"moonlit_prayers"])
+effects = { "vision_range_bonus": 1, "lunar_phase_bonus_pct": 5 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"moonspear"
+tree_angle = 30.0
+tree_branch = &"lunar_doctrine"

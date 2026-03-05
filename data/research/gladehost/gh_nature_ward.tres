@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_nature_ward"
+display_name = "Nature Ward"
+description = "Forest magic protects all within."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"spirit_pact", &"gh_spirit_sight"])
+effects = { "unit_defense_bonus": 3, "defense_bonus": 4 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"gladehost"
+tree_angle = 200.0
+tree_branch = &"spirit_lore"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

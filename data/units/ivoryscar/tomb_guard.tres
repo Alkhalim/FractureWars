@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tomb_guard"
+display_name = "Tomb Guard"
+description = "Heavy warriors sworn to protect the ancient burial sites. Their bone-reinforced armor turns the heaviest blows."
+faction_id = &"ivoryscar"
+max_hp = 7000
+attack = 65
+melee_defense = 55
+projectile_defense = 35
+magic_defense = 25
+speed = 4
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 85
+movement_points = 3.5
+upkeep_cost = {0: 5, 1: 2, 3: 2}
+recruit_cost = {0: 130, 1: 42, 5: 21}
+recruit_time = 3
+population_cost = 16
+terrain_bonuses = {3: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "desertstrider", "undead"])
+base_morale = 70

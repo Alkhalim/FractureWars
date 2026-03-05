@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"elder_breeding_ground"
+display_name = "Apex Den"
+description = "A vast crystalline womb deep within the elderbeast where the mightiest creatures of the horde gestate. Elder Ceratops and Shard Wyrms emerge fully formed and ravenous."
+faction_id = &"shardhorde"
+category = &"military"
+build_cost = {0: 164, 1: 46, 3: 50, 4: 20}
+build_time = 4
+income_bonus = {4: 10}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([&"elder_ceratops", &"shard_wyrm", &"shard_colossus", &"shardback_behemoth"])
+required_capital_level = 3
+upgrades_from = &"hive_spire"
+class_loyalty_bonus = {}
+special_effects = {"army_attack_bonus": 2}
+upkeep_cost = {1: 8, 5: 5}

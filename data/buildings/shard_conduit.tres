@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shard_conduit"
+display_name = "Feeding Tendrils"
+description = "Fleshy tendrils extend from the elderbeast's underbelly, burrowing into organic terrain to drain nutrients. Amplifies food and gold yields from plains, forests, jungles, and swamps."
+faction_id = &"shardhorde"
+category = &"economic"
+build_cost = {0: 48, 3: 20}
+build_time = 2
+income_bonus = {0: 8, 3: 5}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {}
+upkeep_cost = {4: 2, 5: 3}

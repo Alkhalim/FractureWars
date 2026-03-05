@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sk_eternal_hunt"
+display_name = "Eternal Hunt"
+description = "The hunt never ends. Armies regenerate movement on kills."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sk_spirit_riders", &"sk_dread_riders"])
+effects = { "movement_bonus": 2, "loot_bonus_pct": 30, "army_movement_bonus": 1 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"skulloath"
+tree_angle = 180.0
+tree_branch = &"ancestor_rites"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

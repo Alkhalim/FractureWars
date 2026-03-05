@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"starweaver"
+display_name = "Starweaver"
+description = "Mages who draw power from constellations. Their astral bolts bypass physical armor entirely."
+faction_id = &"moonspear"
+max_hp = 2500
+attack = 70
+melee_defense = 15
+projectile_defense = 10
+magic_defense = 25
+speed = 4
+attack_range = 4
+squad_size = 25
+hp_per_soldier = 100
+movement_points = 3.5
+upkeep_cost = {0: 5, 2: 1}
+recruit_cost = {0: 120, 1: 26, 2: 20}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {1: 0.2}
+tags = Array[String](["mage", "ranged"])
+spell_type = &"lunar_beam"
+base_morale = 55
+vs_attack_bonuses = {"construct": 4, "mage": 3, "monster": 3}

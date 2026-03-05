@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"stormrider"
+display_name = "Stormrider"
+description = "Channels the fury of the storm into devastating charges. The higher the Storm Fury, the harder the impact."
+is_positive = true
+effects = {"charge_damage_mult": 0.15, "army_attack_bonus": 2, "army_speed_bonus": 1}
+excludes = Array[StringName]([&"cautious"])
+acquire_context = Array[StringName]([&"faction_thunderswarm", &"was_attacker", &"battle_won"])
+acquire_threshold = 4
+lose_context = Array[StringName]([&"battle_lost"])
+lose_threshold = 12

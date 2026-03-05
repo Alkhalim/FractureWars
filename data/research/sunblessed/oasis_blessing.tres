@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"oasis_blessing"
+display_name = "Oasis Blessing"
+description = "Where the Sunblessed rest, oases spring forth, deepening Wisdom of the sands."
+tech_cost = 130
+research_time = 18
+prerequisites = Array[StringName]([&"sun_blessed_harvest", &"pilgrim_zeal"])
+effects = { "income_food_pct": 15, "income_gold_pct": 10, "wisdom_per_turn": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"sunblessed"
+tree_angle = 75
+tree_branch = &"solar_faith"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

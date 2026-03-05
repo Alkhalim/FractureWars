@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_resonance_web"
+display_name = "Resonance Web"
+description = "A web of crystal resonance."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"resonance_field", &"shard_parasites"])
+effects = { "unit_attack_bonus": 2, "shard_harvest_bonus": 8, "shard_resonance_bonus": 8 }
+shard_bonuses = { 0: {"unit_attack_bonus": 3}, 3: {"unit_speed_bonus": 2} }
+tier = 3
+research_category = &"arcane"
+faction_id = &"shardhorde"
+tree_angle = 245.0
+tree_branch = &"shard_communion"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

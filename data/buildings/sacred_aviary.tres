@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sacred_aviary"
+display_name = "Sacred Aviary I"
+description = "Golden cages open to the sky where sacred hawks are raised and blessed. The birds choose their handlers."
+faction_id = &"sunblessed"
+category = &"military"
+build_cost = {0: 33, 3: 15, 5: 11}
+build_time = 2
+population_growth_bonus = 0
+unlocks_units = Array[StringName]([&"sacred_hawk"])
+upgrades_from = &"pilgrim_training_grounds"
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 1}
+upkeep_cost = {0: 2, 1: 3}

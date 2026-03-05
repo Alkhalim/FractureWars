@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"demon_caller"
+display_name = "Demon Caller"
+description = "Dark warlocks who tear open rifts to summon fiendish power. Their magic is volatile and devastating."
+faction_id = &"ashbound"
+max_hp = 2000
+attack = 80
+melee_defense = 10
+projectile_defense = 10
+magic_defense = 25
+speed = 4
+attack_range = 4
+squad_size = 20
+hp_per_soldier = 100
+movement_points = 3.0
+upkeep_cost = {0: 5, 2: 2, 3: 1}
+recruit_cost = {0: 90, 1: 16, 2: 25}
+recruit_time = 3
+population_cost = 4
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged"])
+spell_type = &"fireball"
+base_morale = 35

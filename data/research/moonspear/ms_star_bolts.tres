@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ms_star_bolts"
+display_name = "Star Bolts"
+description = "Celestial energy forms deadly projectiles that sear enemies with astral fire."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"ms_stargazing"])
+effects = { "unit_attack_bonus": 2, "fire_damage_pct": 5 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"moonspear"
+tree_angle = 55.0
+tree_branch = &"celestial_magic"

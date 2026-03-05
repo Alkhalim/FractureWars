@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"siege_mastery"
+display_name = "Siege Mastery"
+description = "No wall can withstand the Empire's engines."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"logistics_reform_emp"])
+effects = { "siege_bonus": 30 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"empire"
+tree_angle = 180.0
+tree_branch = &"engineering"
+socket_realm = 3
+socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }

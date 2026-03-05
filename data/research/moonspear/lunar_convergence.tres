@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"lunar_convergence"
+display_name = "Lunar Convergence"
+description = "Under the full moon, all forces unite as one."
+tech_cost = 130
+research_time = 18
+prerequisites = Array[StringName]([&"astral_navigation", &"crescent_shield"])
+effects = { "army_movement_bonus": 1, "unit_defense_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"moonspear"
+tree_angle = 80
+tree_branch = &"silver_arms"
+socket_realm = 3
+socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }

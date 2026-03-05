@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"venerated"
+display_name = "Venerated"
+description = "Ancient Sunblessed elders who carry the sacred flame. Their divine presence inspires devotion in all who witness them."
+color = Color(0.95, 0.85, 0.4, 1)
+is_playable = false
+starting_regions = Array[StringName]([])
+realm_affinity = 0
+shard_preferences = {}
+ai_personality = {"aggression": 0.12, "expansion": 0.2, "style": "nomadic"}
+gift_likes = Array[StringName]([&"religious", &"martial", &"elegant"])
+gift_dislikes = Array[StringName]([&"dark", &"arcane"])

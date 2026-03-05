@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_forest_sovereign"
+display_name = "Forest Sovereign"
+description = "Enemy armies in forests wither and die."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"gh_ambush_mastery", &"gh_living_fortress"])
+effects = { "unit_attack_bonus": 5, "unit_defense_bonus": 3, "attrition_reduction_pct": 50, "enemy_morale_penalty": -8 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"gladehost"
+tree_angle = 90.0
+tree_branch = &"wardenship"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 4, "unit_defense_bonus": 2 }

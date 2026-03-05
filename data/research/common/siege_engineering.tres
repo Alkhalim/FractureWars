@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"siege_engineering"
+display_name = "Siege Engineering"
+description = "Advanced siege techniques break the strongest walls."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"steel_tempering"])
+effects = { "siege_bonus": 15 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &""
+tree_angle = 0.0
+tree_branch = &""

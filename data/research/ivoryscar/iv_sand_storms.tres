@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iv_sand_storms"
+display_name = "Sand Storms"
+description = "Conjure devastating sand storms."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"void_lens", &"mirage_tactics"])
+effects = { "unit_attack_bonus": 2, "siege_bonus": 8 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"ivoryscar"
+tree_angle = 250.0
+tree_branch = &"void_sight"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

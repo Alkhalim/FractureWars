@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"salt_reavers"
+display_name = "Salt Reavers"
+description = "Brutal raiders of the Verdant Glade's mangrove coast who harvest salt and plunder from the swamps. They owe fealty to the Skulloath but follow their own savage code."
+color = Color(0.5, 0.2, 0.15, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"verdant_glade"])
+realm_affinity = 1
+shard_preferences = {}
+ai_personality = {"aggression": 0.75, "expansion": 0.45}
+gift_likes = Array[StringName]([&"martial", &"practical", &"luxury"])
+gift_dislikes = Array[StringName]([&"scholarly", &"religious"])

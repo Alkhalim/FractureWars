@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"eagles_perch"
+display_name = "Eagle's Perch II"
+description = "A fortified eyrie built atop the highest crags, offering unmatched vantage over every approach. Storm-hardened sentries and trained eagles ensure no army passes unseen."
+faction_id = &"thunderswarm"
+category = &"defensive"
+build_cost = {0: 144, 5: 94}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 0
+defense_bonus = 8
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 2, "nobles": 1}
+upgrades_from = &"mountain_watchtower"
+upkeep_cost = {1: 3, 5: 2}

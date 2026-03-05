@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_master_runes"
+display_name = "Master Runes"
+description = "The most powerful runes known."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"ts_thunder_weapons", &"ts_rune_armor"])
+effects = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"thunderswarm"
+tree_angle = 180.0
+tree_branch = &"iron_peak"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

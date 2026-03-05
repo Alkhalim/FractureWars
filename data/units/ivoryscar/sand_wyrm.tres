@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sand_wyrm"
+display_name = "Sand Wyrm"
+description = "Colossal burrowing predators of the deep desert. They erupt from the sand to devour entire formations."
+faction_id = &"ivoryscar"
+max_hp = 7000
+attack = 120
+melee_defense = 50
+projectile_defense = 35
+magic_defense = 25
+speed = 7
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 10
+movement_points = 4.0
+upkeep_cost = {0: 12, 1: 3, 3: 5}
+recruit_cost = {0: 300, 1: 84, 3: 50}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "beast", "melee", "fast"])
+base_morale = 75
+morale_aura = -4
+fear_radius = 5
+captive_chance = 0.0
+vs_attack_bonuses = {"cavalry": 4, "beast": 3}

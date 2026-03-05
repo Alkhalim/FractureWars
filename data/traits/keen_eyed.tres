@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"keen_eyed"
+display_name = "Keen-Eyed"
+description = "Nothing escapes this commander's watchful gaze."
+is_positive = true
+effects = {"scouting_bonus": 2}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"terrain_plains", &"terrain_desert"])
+acquire_threshold = 5
+lose_context = Array[StringName]([])
+lose_threshold = 15

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cinder_scouts"
+display_name = "Cinder Scouts"
+description = "Scouts trained in the ashen wastes see through smoke and dust."
+tech_cost = 35
+research_time = 6
+prerequisites = Array[StringName]([&"cg_coal_mines"])
+effects = { "vision_range_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"cinderguard"
+tree_angle = 60
+tree_branch = &"forging"

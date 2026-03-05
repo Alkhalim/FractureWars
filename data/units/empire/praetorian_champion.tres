@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"praetorian_champion"
+display_name = "Praetorian Guard"
+description = "The Emperor's own guard — veterans of a hundred campaigns. Their gilded armor and unwavering discipline make them the finest infantry in the known world."
+faction_id = &"empire"
+max_hp = 8500
+attack = 85
+melee_defense = 60
+projectile_defense = 35
+magic_defense = 25
+speed = 5
+attack_range = 1
+squad_size = 50
+hp_per_soldier = 170
+movement_points = 4
+upkeep_cost = {0: 10, 1: 3, 3: 4}
+recruit_cost = {0: 260, 1: 84, 3: 150}
+recruit_time = 4
+population_cost = 10
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 90
+morale_aura = 6
+fear_radius = 3
+captive_chance = 0.1

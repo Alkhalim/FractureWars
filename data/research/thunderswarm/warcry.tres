@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"warcry"
+display_name = "Warcry"
+description = "The warcry shakes the earth and the hearts of the foe."
+tech_cost = 70
+research_time = 10
+prerequisites = Array[StringName]([&"berserker_rage"])
+effects = { "enemy_morale_penalty": -8, "storm_fury_attack_scaling": 2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 255
+tree_branch = &"war_fury"

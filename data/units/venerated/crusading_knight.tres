@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crusading_knight"
+display_name = "Crusading Knight"
+description = "Holy warriors mounted on blessed warhorses. They charge with lances wreathed in sacred flame, breaking enemy lines with the righteous fury of their crusade."
+faction_id = &"venerated"
+max_hp = 5500
+attack = 70
+melee_defense = 35
+projectile_defense = 25
+magic_defense = 20
+speed = 7
+attack_range = 1
+squad_size = 30
+hp_per_soldier = 185
+movement_points = 4.5
+upkeep_cost = {0: 6, 3: 3}
+recruit_cost = {0: 100, 1: 26}
+recruit_time = 3
+population_cost = 6
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 75
+tiles_per_entity = 2

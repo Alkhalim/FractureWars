@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"rebel_warbeast"
+display_name = "Rebel Warbeast"
+description = "A half-starved beast goaded into fury by its handlers. Unpredictable and savage, it charges without regard for friend or foe."
+faction_id = &"rebels"
+max_hp = 5000
+attack = 75
+melee_defense = 30
+projectile_defense = 15
+magic_defense = 10
+speed = 6
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 6
+movement_points = 3.5
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "monster"])
+base_morale = 50
+morale_aura = -3
+fear_radius = 3
+captive_chance = 0

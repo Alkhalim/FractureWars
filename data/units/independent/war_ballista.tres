@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"war_ballista"
+display_name = "War Ballista"
+description = "A massive torsion siege engine crewed by engineers. Its iron-tipped bolts can punch through shields and shatter formations at extreme range."
+faction_id = &"independent"
+max_hp = 3000
+attack = 120
+melee_defense = 10
+projectile_defense = 10
+magic_defense = 5
+speed = 2
+attack_range = 4
+squad_size = 3
+hp_per_soldier = 1000
+tiles_per_entity = 4
+movement_points = 1.5
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 3
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["siege", "ranged"])
+base_morale = 60
+captive_chance = 0

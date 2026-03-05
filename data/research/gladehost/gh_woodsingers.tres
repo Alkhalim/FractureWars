@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_woodsingers"
+display_name = "Woodsingers"
+description = "Singers who shape living wood."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"verdant_growth", &"gh_root_bridges"])
+effects = { "defense_bonus": 5, "income_food_pct": 8 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"gladehost"
+tree_angle = 345.0
+tree_branch = &"nature_bond"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

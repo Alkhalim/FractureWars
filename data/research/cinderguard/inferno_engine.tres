@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"inferno_engine"
+display_name = "Inferno Engine"
+description = "The inferno engine reduces walls to slag in moments."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"magma_channeling", &"superior_alloys"])
+effects = { "fire_damage_pct": 15, "siege_bonus": 15 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"cinderguard"
+tree_angle = 120
+tree_branch = &"flamecraft"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

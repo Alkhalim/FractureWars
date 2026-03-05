@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"merchant_crossbow"
+display_name = "Merchant Crossbow"
+description = "Trade guild marksmen who defend caravans and warehouses. Their repeating crossbows are imported from distant lands."
+faction_id = &"aurentis_guard"
+max_hp = 4400
+attack = 55
+melee_defense = 20
+projectile_defense = 15
+magic_defense = 10
+speed = 4
+attack_range = 4
+squad_size = 70
+hp_per_soldier = 65
+movement_points = 3.0
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 55, 1: 16}
+recruit_time = 2
+population_cost = 14
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "ranged"])
+base_morale = 50

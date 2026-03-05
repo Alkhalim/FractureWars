@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shard_stalker"
+display_name = "Shard Stalker"
+description = "Hardened crystal warriors that stalk prey through the wastes."
+faction_id = &"shardhorde"
+max_hp = 8000
+attack = 50
+melee_defense = 25
+projectile_defense = 15
+magic_defense = 10
+speed = 6
+attack_range = 1
+squad_size = 40
+hp_per_soldier = 200
+movement_points = 2.5
+upkeep_cost = {0: 4, 3: 3}
+recruit_cost = {0: 50, 3: 30, 1: 21, 4: 3}
+recruit_time = 2
+population_cost = 8
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "swarm"])
+base_morale = 30
+captive_chance = 0.2

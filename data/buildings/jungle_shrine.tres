@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"jungle_shrine"
+display_name = "Jungle Shrine II"
+description = "A living temple where roots form pillars and vines weave walls. The shamans teach that the jungle is both prison and protector."
+faction_id = &"tainted_jade"
+category = &"cultural"
+build_cost = {0: 167, 5: 55}
+build_time = 3
+income_bonus = {2: 18}
+population_growth_bonus = 5
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"root_altar"
+class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 3, "nobles": 1}
+special_effects = {"research_speed_bonus": 0.15}
+upkeep_cost = {0: 5, 5: 3}

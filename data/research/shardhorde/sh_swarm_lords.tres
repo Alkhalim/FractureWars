@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_swarm_lords"
+display_name = "Swarm Lords"
+description = "Alpha beasts command vast swarms."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"unstoppable_swarm", &"elderbeast_evolution"])
+effects = { "unit_attack_bonus": 4, "unit_speed_bonus": 3, "adjacent_unit_damage_pct": 10, "max_army_size_bonus": 1 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"shardhorde"
+tree_angle = 115.0
+tree_branch = &"swarm_tactics"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

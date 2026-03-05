@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"desert_endurance"
+display_name = "Desert Endurance"
+description = "The sun-touched endure where others perish, gaining Wisdom through hardship."
+tech_cost = 70
+research_time = 10
+prerequisites = Array[StringName]([&"waystone_network"])
+effects = { "attrition_reduction_pct": 25, "wisdom_per_turn": 2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"sunblessed"
+tree_angle = 135
+tree_branch = &"pilgrimage"

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"paved_roads"
+display_name = "Paved Roads I"
+description = "Properly surfaced roads that improve movement throughout the province. Armies starting their turn here gain +1.0 movement."
+faction_id = &"empire"
+category = &"economic"
+build_cost = {0: 214, 1: 42, 5: 100}
+build_time = 2
+income_bonus = {0: 5}
+population_growth_bonus = 2
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+special_effects = {"army_movement_bonus": 1.0}
+upkeep_cost = {1: 2, 5: 3}

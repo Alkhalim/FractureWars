@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"war_elephant"
+display_name = "War Elephant"
+description = "Armored war elephants imported from distant provinces. Each carries a fighting platform and tramples infantry underfoot. A terrifying sight on any battlefield."
+faction_id = &"empire"
+max_hp = 9500
+attack = 105
+melee_defense = 55
+projectile_defense = 30
+magic_defense = 15
+speed = 4
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 10
+movement_points = 3
+upkeep_cost = {0: 12, 3: 6}
+recruit_cost = {0: 300, 1: 84, 3: 180}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "monster"])
+base_morale = 80
+morale_aura = -5
+fear_radius = 4
+captive_chance = 0

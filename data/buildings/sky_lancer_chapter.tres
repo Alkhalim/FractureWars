@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sky_lancer_chapter"
+display_name = "Sky Lancer Chapter III"
+description = "An elite cavalry chapter house. Trains the most skilled riders in the Empire."
+faction_id = &"empire"
+category = &"military"
+build_cost = {0: 436, 1: 115, 5: 98, 2: 15}
+build_time = 4
+income_bonus = {}
+population_growth_bonus = 0
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([&"imperial_sky_lancers", &"praetorian_champion"])
+required_capital_level = 3
+upgrades_from = &"dracarii_stables"
+upkeep_cost = {0: 5, 1: 8}

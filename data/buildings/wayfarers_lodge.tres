@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"wayfarers_lodge"
+display_name = "Wayfarer's Lodge II"
+description = "A grand lodge with warm hearths and sunlit courtyards, where travelers from every road find shelter and purpose. The Sunblessed's reputation for generosity draws settlers in droves."
+faction_id = &"sunblessed"
+category = &"cultural"
+build_cost = {0: 171, 1: 22, 5: 55}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 20
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"wanderers_rest"
+class_loyalty_bonus = {"peasants": 4, "artisans": 2, "scholars": 3, "nobles": 3}
+upkeep_cost = {0: 3}

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"salvage_foundry"
+display_name = "Salvage Foundry II"
+description = "A crude but effective foundry built from salvaged parts. The Forsaken make do with what they have."
+faction_id = &"forsaken"
+category = &"economic"
+build_cost = {0: 153, 5: 39}
+build_time = 3
+income_bonus = {1: 55}
+population_growth_bonus = 3
+upgrades_from = &"scrap_pit"
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+class_loyalty_bonus = {"artisans": 2}
+upkeep_cost = {0: 3, 5: 5}

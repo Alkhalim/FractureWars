@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moonspear_sentinel"
+display_name = "Moonspear Sentinel"
+description = "Sacred warriors of the Moonspear order. They fight with divine-blessed spears and unwavering discipline."
+faction_id = &"moonspear"
+max_hp = 5850
+attack = 45
+melee_defense = 36
+projectile_defense = 23
+magic_defense = 18
+speed = 4
+attack_range = 1
+squad_size = 100
+hp_per_soldier = 59
+movement_points = 3.5
+upkeep_cost = {0: 3, 3: 2}
+recruit_cost = {0: 60, 1: 16}
+recruit_time = 2
+population_cost = 20
+terrain_bonuses = {6: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "tundrawalker"])
+base_morale = 65
+vs_attack_bonuses = {"cavalry": 3}

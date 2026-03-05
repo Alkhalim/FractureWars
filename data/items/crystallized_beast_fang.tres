@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystallized_beast_fang"
+display_name = "Crystallized Beast Fang"
+description = "A massive fang from an elderbeast, encrusted with crystal growths from prolonged shard exposure."
+rarity = &"rare"
+effects = {"army_attack_bonus": 3, "enemy_army_morale_penalty": -1}
+source_factions = Array[StringName]([&"shardhorde"])
+gift_tags = Array[StringName]([&"primitive", &"arcane", &"dark"])

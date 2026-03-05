@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_death_king"
+display_name = "Blood Sovereign"
+description = "The Blood Sovereign rises."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"fk_dark_pact", &"fk_soul_harvest"])
+effects = { "unit_attack_bonus": 4, "unit_defense_bonus": 4, "unit_regen_pct": 4, "enemy_morale_penalty": -8 }
+shard_bonuses = {}
+tier = 4
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 300.0
+tree_branch = &"death_throne"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

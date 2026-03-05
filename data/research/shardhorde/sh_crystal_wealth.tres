@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_crystal_wealth"
+display_name = "Crystal Wealth"
+description = "Refined crystals command vast wealth."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"sh_crystal_fortress", &"sh_crystal_economy"])
+effects = { "income_gold_pct": 15, "shard_harvest_bonus": 12, "shard_essence_pct": 15 }
+shard_bonuses = {}
+tier = 4
+research_category = &"economy"
+faction_id = &"shardhorde"
+tree_angle = 185.0
+tree_branch = &"hive_network"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

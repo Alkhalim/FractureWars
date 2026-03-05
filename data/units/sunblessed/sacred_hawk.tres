@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sacred_hawk"
+display_name = "Sacred Hawk"
+description = "Divine raptors blessed by the sun priests. They dive from the heavens with talons wreathed in golden fire."
+faction_id = &"sunblessed"
+max_hp = 2500
+attack = 50
+melee_defense = 15
+projectile_defense = 10
+magic_defense = 5
+speed = 8
+attack_range = 3
+squad_size = 30
+hp_per_soldier = 85
+movement_points = 4.5
+upkeep_cost = {0: 3, 3: 2}
+recruit_cost = {0: 80, 3: 30}
+recruit_time = 2
+population_cost = 6
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["ranged", "fast", "flying"])
+base_morale = 55
+captive_chance = 0.0

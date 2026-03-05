@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cautious"
+display_name = "Cautious"
+description = "Prefers a measured approach over reckless charges."
+is_positive = true
+effects = {"army_defense_bonus": 1}
+excludes = Array[StringName]([&"aggressive_nature", &"reckless"])
+acquire_context = Array[StringName]([&"was_defender", &"battle_won"])
+acquire_threshold = 5
+lose_context = Array[StringName]([&"was_attacker", &"battle_lost"])
+lose_threshold = 12

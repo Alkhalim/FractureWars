@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"flame_sanctum"
+display_name = "Flame Sanctum III"
+description = "The sacred heart of Cinderguard learning. Here, ember lore and frontier knowledge merge into something greater."
+faction_id = &"cinderguard"
+category = &"cultural"
+build_cost = {0: 383, 5: 86, 1: 46}
+build_time = 4
+income_bonus = {2: 42}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([&"magma_crawler", &"cinder_drake"])
+required_capital_level = 3
+upgrades_from = &"forge_academy"
+class_loyalty_bonus = {"scholars": 5, "nobles": 2}
+special_effects = {"research_speed_bonus": 0.25}
+upkeep_cost = {0: 8, 5: 5}

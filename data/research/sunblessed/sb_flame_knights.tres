@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_flame_knights"
+display_name = "Flame Knights"
+description = "Knights wreathed in sacred fire, their Solar Faith fueling devastating flame attacks."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"cleansing_light", &"eternal_sun"])
+effects = { "unit_attack_bonus": 5, "unit_defense_bonus": 3, "fire_damage_pct": 15, "solar_faith_attack_scaling": 3 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"sunblessed"
+tree_angle = 235.0
+tree_branch = &"sacred_flame"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

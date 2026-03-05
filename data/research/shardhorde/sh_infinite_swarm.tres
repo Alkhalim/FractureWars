@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_infinite_swarm"
+display_name = "Infinite Swarm"
+description = "Max army size +3. Recruitment costs halved. The swarm overwhelms."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sh_swarm_lords"])
+effects = { "max_army_size_bonus": 3, "recruitment_cost_reduction": 30, "adjacent_unit_damage_pct": 15 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"shardhorde"
+tree_angle = 120.0
+tree_branch = &"swarm_tactics"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 4, "unit_defense_bonus": 2 }

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_sun_priests"
+display_name = "Sun Priests"
+description = "Holy priests channel Solar Faith into healing and divine fury on the battlefield."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"solar_ascension", &"oasis_blessing"])
+effects = { "unit_attack_bonus": 3, "unit_hp_bonus": 10, "solar_faith_per_turn": 3, "solar_faith_attack_scaling": 3 }
+shard_bonuses = {}
+tier = 4
+research_category = &"arcane"
+faction_id = &"sunblessed"
+tree_angle = 350.0
+tree_branch = &"solar_faith"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

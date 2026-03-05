@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"master_smithing"
+display_name = "Legion Armorsmiths"
+description = "Legion armorsmiths craft arms and armor without equal."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"superior_alloys"])
+effects = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"economy"
+faction_id = &"cinderguard"
+tree_angle = 0
+tree_branch = &"forging"

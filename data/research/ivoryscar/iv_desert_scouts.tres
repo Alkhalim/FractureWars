@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iv_desert_scouts"
+display_name = "Desert Scouts"
+description = "Scouts skilled in desert survival."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"desert_whispers"])
+effects = { "movement_bonus": 1, "vision_range_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"ivoryscar"
+tree_angle = 225.0
+tree_branch = &"void_sight"

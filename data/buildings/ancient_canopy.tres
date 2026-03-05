@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ancient_canopy"
+display_name = "Ancient Canopy II"
+description = "The upper canopy is cultivated as a second city — walkways, platforms, and growing-spaces woven between the ancient trees."
+faction_id = &"tainted_jade"
+category = &"economic"
+build_cost = {0: 207}
+build_time = 3
+income_bonus = {3: 20, 5: 21, 0: 10}
+population_growth_bonus = 7
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"hunting_ground"
+class_loyalty_bonus = {"peasants": 2, "artisans": 1}
+upkeep_cost = {1: 5}

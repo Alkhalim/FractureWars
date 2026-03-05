@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"valkarn_garrison"
+display_name = "Valkarn Garrison"
+description = "Mountain fortress defenders of Valkarn who hold the eastern passes for the Cinderguard. Their walls have never fallen."
+color = Color(0.7, 0.4, 0.2, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"valkarn"])
+realm_affinity = 2
+shard_preferences = {}
+ai_personality = {"aggression": 0.3, "expansion": 0.3}

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iron_pit"
+display_name = "Iron Mine I"
+description = "A mining operation extracting iron ore from mountain deposits."
+faction_id = &"empire"
+category = &"economic"
+build_cost = {0: 100, 5: 32}
+build_time = 2
+income_bonus = {1: 40}
+population_growth_bonus = 3
+defense_bonus = 0
+recruit_speed_bonus = 0
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+required_terrain = 2
+class_loyalty_bonus = {"peasants": -4, "artisans": 1}
+upkeep_cost = {0: 2, 5: 3}

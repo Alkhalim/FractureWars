@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_beast_breeding"
+display_name = "Beast Breeding"
+description = "Breed stronger crystal beasts."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"sh_beast_bond"])
+effects = { "unit_attack_bonus": 2, "unit_hp_bonus": 5 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"shardhorde"
+tree_angle = 55.0
+tree_branch = &"beast_mastery"

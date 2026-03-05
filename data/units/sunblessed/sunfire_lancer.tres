@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sunfire_lancer"
+display_name = "Sunfire Lancer"
+description = "Mounted knights whose lances burn with sacred fire. Their charge is a blinding wave of golden light."
+faction_id = &"sunblessed"
+max_hp = 5000
+attack = 90
+melee_defense = 45
+projectile_defense = 30
+magic_defense = 20
+speed = 8
+attack_range = 1
+squad_size = 20
+hp_per_soldier = 250
+tiles_per_entity = 2
+movement_points = 4.5
+upkeep_cost = {0: 7, 1: 2, 3: 3}
+recruit_cost = {0: 170, 1: 47, 5: 32}
+recruit_time = 3
+population_cost = 8
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 75

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ancient_woodworks"
+display_name = "Ancient Woodworks II"
+description = "Master artisans shape living wood into tools, weapons, and structures that grow stronger with age. Nothing is wasted; nothing is killed."
+faction_id = &"gladehost"
+category = &"economic"
+build_cost = {0: 158}
+build_time = 3
+income_bonus = {5: 42, 1: 8}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"rootwood_lodge"
+class_loyalty_bonus = {"artisans": 2, "peasants": 1}
+upkeep_cost = {0: 5}

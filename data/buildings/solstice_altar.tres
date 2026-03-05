@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"solstice_altar"
+display_name = "Solstice Altar II"
+description = "Twin altars facing the sunrise and sunset of the longest day. The crops blessed here never fail, and the people who tend them know peace."
+faction_id = &"gladehost"
+category = &"cultural"
+build_cost = {0: 171, 5: 55}
+build_time = 3
+income_bonus = {2: 8, 3: 25}
+population_growth_bonus = 9
+required_capital_level = 2
+upgrades_from = &"seasonal_shrine"
+class_loyalty_bonus = {"peasants": 4, "artisans": 2, "scholars": 1, "nobles": 1}
+special_effects = {"harmony_bonus": 2, "seasonal_multiplier": 0.15}
+upkeep_cost = {0: 5, 5: 3}

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ancestral_oak"
+display_name = "Ancestral Oak III"
+description = "The eldest tree in the grove — older than memory, wider than a hall. Its roots connect to every living thing in the forest. When the Oak speaks, the Gladehost listens."
+faction_id = &"gladehost"
+category = &"cultural"
+build_cost = {0: 395, 5: 121}
+build_time = 4
+income_bonus = {2: 48}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([&"root_sentinel"])
+required_capital_level = 3
+upgrades_from = &"druid_circle"
+class_loyalty_bonus = {"peasants": 2, "artisans": 1, "scholars": 6, "nobles": 2}
+special_effects = {"research_speed_bonus": 0.25}
+upkeep_cost = {0: 8, 5: 5}

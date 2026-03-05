@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"elderbeast_lv3"
+display_name = "Elderbeast"
+description = "An ancient elderbeast of terrifying power. Its crystal shell is nearly impenetrable, and its charge can shatter fortress walls. The apex of the Shardhorde."
+faction_id = &"shardhorde"
+max_hp = 30000
+attack = 350
+melee_defense = 250
+projectile_defense = 175
+magic_defense = 125
+speed = 4
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+movement_points = 2.0
+upkeep_cost = {3: 12, 4: 3}
+recruit_cost = {}
+recruit_time = 0
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "beast", "melee"])
+base_morale = 90
+tiles_per_entity = 12
+captive_chance = 0.0
+morale_aura = 12
+fear_radius = 6

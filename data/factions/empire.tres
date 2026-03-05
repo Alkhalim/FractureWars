@@ -5,11 +5,13 @@
 [resource]
 script = ExtResource("1")
 id = &"empire"
-display_name = "The Empire"
+display_name = "Empire"
 description = "The central force shaping the known world - through conquest, cultural inertia, economic reach, and arcane regulation. Its heart is Metropoleia."
 color = Color(0.25, 0.35, 0.58, 1)
 is_playable = true
-starting_regions = Array[StringName]([&"metropoleia"])
+starting_regions = Array[StringName]([&"eternal_plains"])
 realm_affinity = 4
 shard_preferences = {}
-ai_personality = {}
+ai_personality = {"aggression": 0.4, "expansion": 0.6}
+gift_likes = Array[StringName]([&"martial", &"luxury", &"elegant"])
+gift_dislikes = Array[StringName]([&"primitive", &"dark"])

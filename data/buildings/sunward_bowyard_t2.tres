@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sunward_bowyard_t2"
+display_name = "Sunward Bowyard II"
+description = "A grand archery compound where the finest marksmen hone their craft. Crossbow and cavalry archer training expands."
+faction_id = &"sunblessed"
+category = &"military"
+build_cost = {0: 75, 1: 20, 5: 25}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 0
+unlocks_units = Array[StringName]([&"light_crossbow", &"solar_cavalry_archer"])
+upgrades_from = &"sunward_bowyard"
+required_capital_level = 2
+class_loyalty_bonus = {"nobles": 2}
+upkeep_cost = {0: 3, 1: 5}

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"makeshift_barricades"
+display_name = "Makeshift Barricades I"
+description = "Crude barricades thrown together from rubble and scrap. They won't hold forever, but they don't need to."
+faction_id = &"forsaken"
+category = &"defensive"
+build_cost = {0: 48, 5: 32}
+build_time = 2
+income_bonus = {}
+population_growth_bonus = 0
+defense_bonus = 4
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 1}
+upkeep_cost = {1: 2, 5: 1}

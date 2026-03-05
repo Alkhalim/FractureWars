@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"desolation_sanctum"
+display_name = "Blood Court Sanctum III"
+description = "The deepest sanctum of the vampire aristocracy. Those who enter are changed — but the power they gain is undeniable."
+faction_id = &"forsaken"
+category = &"cultural"
+build_cost = {0: 272, 5: 63, 1: 23}
+build_time = 4
+income_bonus = {2: 32}
+population_growth_bonus = 6
+upgrades_from = &"void_whisperers_den"
+unlocks_units = Array[StringName]([&"void_prophet"])
+required_capital_level = 3
+class_loyalty_bonus = {"scholars": 5, "nobles": 2}
+special_effects = {"research_speed_bonus": 0.25}
+upkeep_cost = {0: 8, 5: 5}

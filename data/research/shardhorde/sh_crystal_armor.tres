@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_crystal_armor"
+display_name = "Living Crystal"
+description = "The crystal grows into wounds, mending flesh and hardening skin."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"crystal_carapace", &"sh_crystal_scouts"])
+effects = { "unit_regen_pct": 3, "unit_defense_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"shardhorde"
+tree_angle = 20.0
+tree_branch = &"crystal_evolution"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

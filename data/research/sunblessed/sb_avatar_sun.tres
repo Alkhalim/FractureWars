@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sb_avatar_sun"
+display_name = "Avatar of the Sun"
+description = "Solar Faith cannot drop below 80. All desert tiles produce extra gold."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"sb_sun_king", &"sb_purifying_fire"])
+effects = { "solar_faith_per_turn": 5, "solar_faith_attack_scaling": 5, "unit_attack_bonus": 5, "income_gold_pct": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"sunblessed"
+tree_angle = 300.0
+tree_branch = &"solar_throne"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

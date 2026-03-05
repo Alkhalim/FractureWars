@@ -10,3 +10,5 @@ extends Resource
 @export var realm_affinity: Enums.Realm
 @export var shard_preferences: Dictionary = {} # Realm -> weight float
 @export var ai_personality: Dictionary = {} # aggression, expansion, shard_hunger
+@export var gift_likes: Array[StringName] = []
+@export var gift_dislikes: Array[StringName] = []

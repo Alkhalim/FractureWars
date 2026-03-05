@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crimson_altar"
+display_name = "Crimson Altar II"
+description = "A blood-drenched stone platform where captives are consumed in greater numbers. The ritual has been refined — more life force is extracted per sacrifice, though the population suffers further for it."
+faction_id = &"skulloath"
+category = &"economic"
+build_cost = {0: 252, 1: 55, 6: 15}
+build_time = 3
+income_bonus = {0: 20, 1: 25}
+population_growth_bonus = -3
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"blood_altar"
+class_loyalty_bonus = {"peasants": -6, "scholars": -4, "nobles": 3}
+special_effects = {"corruption_drift": 1}
+upkeep_cost = {5: 5}

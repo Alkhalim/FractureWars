@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"molten_core_forge"
+display_name = "Cinderguard Arsenal III"
+description = "The ultimate expression of Cinderguard frontier industry. Arms and armor flow from its workshops like rivers, supplying the legion's endless campaigns."
+faction_id = &"cinderguard"
+category = &"economic"
+build_cost = {0: 327, 5: 63, 1: 35}
+build_time = 4
+income_bonus = {1: 45, 0: 15}
+population_growth_bonus = 1
+unlocks_units = Array[StringName]([])
+required_capital_level = 3
+upgrades_from = &"ember_foundry"
+class_loyalty_bonus = {"artisans": 4, "nobles": 2}
+upkeep_cost = {5: 8}

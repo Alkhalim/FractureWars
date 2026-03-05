@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"void_weaver"
+display_name = "Crystal Weavers"
+description = "Mystics who shape raw crystal into weapons and shields through harmonic resonance. Their crystalline constructs grow and shift during battle, adapting to threats."
+faction_id = &"shardhorde"
+max_hp = 1750
+attack = 80
+melee_defense = 20
+projectile_defense = 10
+magic_defense = 10
+speed = 5
+attack_range = 4
+squad_size = 8
+hp_per_soldier = 220
+movement_points = 2.5
+upkeep_cost = {0: 6, 2: 3}
+recruit_cost = {0: 150, 2: 50, 1: 32, 4: 10}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {1: 0.2}
+tags = Array[String](["mage", "ranged", "support"])
+spell_type = &"shard_pulse"
+base_morale = 60
+captive_chance = 0.0

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"emp_imperial_arcanum"
+display_name = "Imperial Arcanum"
+description = "The pinnacle of Imperial magical achievement."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"emp_arcane_dominion", &"emp_invincible_legion"])
+effects = { "unit_attack_bonus": 4, "unit_defense_bonus": 4, "research_speed_bonus": 15 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"empire"
+tree_angle = 60.0
+tree_branch = &"arcane"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ivoryscar_seeker"
+display_name = "Ivoryscar Seeker"
+description = "Relic-hunting warriors of the Ivoryscar who wield ancient bone weapons. Their knowledge of forgotten arts gives them an edge."
+faction_id = &"ivoryscar"
+max_hp = 5500
+attack = 55
+melee_defense = 30
+projectile_defense = 20
+magic_defense = 15
+speed = 5
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 65
+movement_points = 3.5
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 55, 1: 16}
+recruit_time = 2
+population_cost = 16
+terrain_bonuses = {3: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "desertstrider"])
+base_morale = 60

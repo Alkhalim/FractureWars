@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FactionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/faction_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"aurentis_guard"
+display_name = "Aurentis Guard"
+description = "Provincial garrison of Aurentis, loyal to the Empire but fiercely protective of their local autonomy."
+color = Color(0.35, 0.45, 0.65, 1)
+is_playable = false
+starting_regions = Array[StringName]([&"aurentis"])
+realm_affinity = 4
+shard_preferences = {}
+ai_personality = {"aggression": 0.3, "expansion": 0.3}

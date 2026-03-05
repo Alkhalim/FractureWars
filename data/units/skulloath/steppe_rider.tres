@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"steppe_rider"
+display_name = "Steppe Rider"
+description = "Light horsemen of the old clans. They ride hard and hit fast, herding enemies into kill zones before wheeling away. Every Skulloath warrior learns to ride before they learn to walk."
+faction_id = &"skulloath"
+max_hp = 3375
+attack = 50
+melee_defense = 18
+projectile_defense = 9
+magic_defense = 9
+speed = 9
+attack_range = 1
+squad_size = 25
+hp_per_soldier = 135
+movement_points = 5.0
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 55, 1: 16}
+recruit_time = 2
+population_cost = 8
+terrain_bonuses = {0: 0.10}
+realm_bonuses = {}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 40
+tiles_per_entity = 2
+captive_chance = 0.2

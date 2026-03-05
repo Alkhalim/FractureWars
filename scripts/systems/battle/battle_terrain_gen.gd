@@ -8,6 +8,9 @@ const GRID_HEIGHT := 16
 const DEPLOY_TOP_END := 5
 const DEPLOY_BOTTOM_START := 10
 
+# Default reference area for scaling cluster counts
+const _REF_AREA := 28.0 * 22.0
+
 # Terrain properties: [speed_modifier, defense_bonus, passable]
 const TERRAIN_PROPS := {
 	Enums.BattleTerrain.OPEN:    [1.0,  0, true],
@@ -19,6 +22,10 @@ const TERRAIN_PROPS := {
 	Enums.BattleTerrain.ICE:     [0.8,  0, true],
 	Enums.BattleTerrain.CRYSTAL: [0.0,  0, false],
 	Enums.BattleTerrain.BRUSH:   [0.8,  1, true],
+	Enums.BattleTerrain.CALTROPS: [0.4, -1, true],
+	Enums.BattleTerrain.DITCH:   [0.2, -2, true],
+	Enums.BattleTerrain.PALING:  [0.7,  2, true],
+	Enums.BattleTerrain.MINE:    [1.0,  0, true],
 }
 
 static func get_speed_modifier(terrain: Enums.BattleTerrain) -> float:
@@ -30,106 +37,215 @@ static func get_defense_bonus(terrain: Enums.BattleTerrain) -> int:
 static func is_passable(terrain: Enums.BattleTerrain) -> bool:
 	return TERRAIN_PROPS[terrain][2]
 
-static func generate(campaign_terrain: Enums.TerrainType, seed_value: int) -> Dictionary:
+static func generate(campaign_terrain: Enums.TerrainType, seed_value: int,
+		grid_w: int = 28, grid_h: int = 22) -> Dictionary:
 	var terrain: Dictionary = {} # Vector2i -> Enums.BattleTerrain
 
+	# Scale factor for cluster counts relative to default grid size
+	var scale := float(grid_w * grid_h) / _REF_AREA
+
 	# Fill with OPEN
-	for y in range(GRID_HEIGHT):
-		for x in range(GRID_WIDTH):
+	for y in range(grid_h):
+		for x in range(grid_w):
 			terrain[Vector2i(x, y)] = Enums.BattleTerrain.OPEN
 
 	# Scatter features based on campaign terrain
 	match campaign_terrain:
 		Enums.TerrainType.PLAINS:
-			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, 2, 3, 5, seed_value)
+			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, _scaled(2, scale), 3, 5, seed_value, grid_w, grid_h)
 		Enums.TerrainType.FOREST:
-			_scatter_clusters(terrain, Enums.BattleTerrain.FOREST, 4, 4, 8, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, 2, 2, 4, seed_value + 100)
+			_scatter_clusters(terrain, Enums.BattleTerrain.FOREST, _scaled(4, scale), 4, 8, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, _scaled(2, scale), 2, 4, seed_value + 100, grid_w, grid_h)
 		Enums.TerrainType.MOUNTAINS:
-			_scatter_clusters(terrain, Enums.BattleTerrain.ROCK, 3, 3, 6, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, 2, 2, 4, seed_value + 100)
+			_scatter_clusters(terrain, Enums.BattleTerrain.ROCK, _scaled(3, scale), 3, 6, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, _scaled(2, scale), 2, 4, seed_value + 100, grid_w, grid_h)
 		Enums.TerrainType.DESERT:
-			_scatter_clusters(terrain, Enums.BattleTerrain.SAND, 4, 5, 10, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.WATER, 1, 2, 4, seed_value + 100)
+			_scatter_clusters(terrain, Enums.BattleTerrain.SAND, _scaled(4, scale), 5, 10, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.WATER, _scaled(1, scale), 2, 4, seed_value + 100, grid_w, grid_h)
 		Enums.TerrainType.SWAMP:
-			_scatter_clusters(terrain, Enums.BattleTerrain.MUD, 4, 4, 8, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.WATER, 3, 3, 6, seed_value + 100)
+			_scatter_clusters(terrain, Enums.BattleTerrain.MUD, _scaled(4, scale), 4, 8, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.WATER, _scaled(3, scale), 3, 6, seed_value + 100, grid_w, grid_h)
 		Enums.TerrainType.TUNDRA:
-			_scatter_clusters(terrain, Enums.BattleTerrain.ICE, 3, 4, 7, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.ROCK, 2, 2, 4, seed_value + 100)
+			_scatter_clusters(terrain, Enums.BattleTerrain.ICE, _scaled(3, scale), 4, 7, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.ROCK, _scaled(2, scale), 2, 4, seed_value + 100, grid_w, grid_h)
 		Enums.TerrainType.JUNGLE:
-			_scatter_clusters(terrain, Enums.BattleTerrain.FOREST, 5, 5, 10, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.MUD, 2, 3, 5, seed_value + 100)
-			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, 3, 2, 4, seed_value + 200)
+			_scatter_clusters(terrain, Enums.BattleTerrain.FOREST, _scaled(5, scale), 5, 10, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.MUD, _scaled(2, scale), 3, 5, seed_value + 100, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, _scaled(3, scale), 2, 4, seed_value + 200, grid_w, grid_h)
 		Enums.TerrainType.SHARD_WASTES:
-			_scatter_clusters(terrain, Enums.BattleTerrain.CRYSTAL, 3, 3, 6, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, 2, 2, 4, seed_value + 100)
-		Enums.TerrainType.COAST:
-			_place_water_edge(terrain, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.SAND, 3, 4, 7, seed_value + 100)
+			_scatter_clusters(terrain, Enums.BattleTerrain.CRYSTAL, _scaled(3, scale), 3, 6, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.BRUSH, _scaled(2, scale), 2, 4, seed_value + 100, grid_w, grid_h)
+		Enums.TerrainType.WETLANDS:
+			_place_water_edge(terrain, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.SAND, _scaled(3, scale), 4, 7, seed_value + 100, grid_w, grid_h)
 		Enums.TerrainType.WATER:
-			_scatter_clusters(terrain, Enums.BattleTerrain.WATER, 5, 5, 10, seed_value)
-			_scatter_clusters(terrain, Enums.BattleTerrain.SAND, 2, 3, 5, seed_value + 100)
+			_scatter_clusters(terrain, Enums.BattleTerrain.WATER, _scaled(5, scale), 5, 10, seed_value, grid_w, grid_h)
+			_scatter_clusters(terrain, Enums.BattleTerrain.SAND, _scaled(2, scale), 3, 5, seed_value + 100, grid_w, grid_h)
 
 	# Ensure deployment zones are mostly open
-	_clear_deployment_zones(terrain)
+	_clear_deployment_zones(terrain, grid_w, grid_h)
 
 	return terrain
+
+static func _scaled(base_count: int, scale: float) -> int:
+	return maxi(1, roundi(base_count * scale))
 
 static func _hash_pos(x: int, y: int, seed_val: int) -> int:
 	var h := (x * 374761393 + y * 668265263 + seed_val * 1274126177) & 0x7FFFFFFF
 	h = ((h ^ (h >> 13)) * 1103515245 + 12345) & 0x7FFFFFFF
 	return h
 
+static func _noise_hash(x: float, y: float, seed_val: int) -> float:
+	# Simple value-noise-like hash returning 0.0 to 1.0
+	var ix: int = int(floorf(x))
+	var iy: int = int(floorf(y))
+	var fx: float = x - floorf(x)
+	var fy: float = y - floorf(y)
+	# Smooth interpolation
+	fx = fx * fx * (3.0 - 2.0 * fx)
+	fy = fy * fy * (3.0 - 2.0 * fy)
+	var a := float(_hash_pos(ix, iy, seed_val) & 0xFFFF) / 65535.0
+	var b := float(_hash_pos(ix + 1, iy, seed_val) & 0xFFFF) / 65535.0
+	var c := float(_hash_pos(ix, iy + 1, seed_val) & 0xFFFF) / 65535.0
+	var d := float(_hash_pos(ix + 1, iy + 1, seed_val) & 0xFFFF) / 65535.0
+	return lerpf(lerpf(a, b, fx), lerpf(c, d, fx), fy)
+
 static func _scatter_clusters(terrain: Dictionary, type: Enums.BattleTerrain,
-		cluster_count: int, min_size: int, max_size: int, seed_val: int) -> void:
+		cluster_count: int, min_size: int, max_size: int, seed_val: int,
+		grid_w: int = GRID_WIDTH, grid_h: int = GRID_HEIGHT) -> void:
 	for i in range(cluster_count):
 		var h := _hash_pos(i, seed_val, 0)
-		# Place clusters in the middle area (rows 3-12) to avoid deployment zones
-		var cx: int = 2 + (h % (GRID_WIDTH - 4))
-		var cy: int = 3 + ((h >> 8) % (GRID_HEIGHT - 6))
+		# Place clusters in the middle area to avoid deployment zones
+		var cx: int = 2 + (h % maxi(1, grid_w - 4))
+		var cy: int = 3 + ((h >> 8) % maxi(1, grid_h - 6))
 		var size: int = min_size + ((h >> 16) % (max_size - min_size + 1))
 
-		# Grow cluster from center
-		var placed: Array[Vector2i] = [Vector2i(cx, cy)]
-		terrain[Vector2i(cx, cy)] = type
+		# Blob radius derived from desired cell count: area = pi*r^2, so r = sqrt(size/pi)
+		var blob_radius: float = sqrt(float(size) / PI) + 0.5
+		# Noise seed unique per cluster
+		var noise_seed := seed_val * 31 + i * 137
 
-		for j in range(size - 1):
-			if placed.is_empty():
+		# Scan a bounding box around the center and use distance + noise falloff
+		var scan_r := ceili(blob_radius) + 2
+		var placed_count := 0
+		for dy in range(-scan_r, scan_r + 1):
+			for dx in range(-scan_r, scan_r + 1):
+				var px := cx + dx
+				var py := cy + dy
+				if px < 0 or px >= grid_w or py < 0 or py >= grid_h:
+					continue
+				if terrain[Vector2i(px, py)] != Enums.BattleTerrain.OPEN:
+					continue
+				# Distance from cluster center
+				var dist := sqrt(float(dx * dx + dy * dy))
+				# Noise-based distortion for organic shape
+				var noise_val := _noise_hash(float(px) * 0.7, float(py) * 0.7, noise_seed)
+				var threshold := blob_radius * (0.6 + noise_val * 0.8)
+				if dist <= threshold:
+					terrain[Vector2i(px, py)] = type
+					placed_count += 1
+					if placed_count >= size * 2:
+						break
+			if placed_count >= size * 2:
 				break
-			var base_idx := _hash_pos(i, j, seed_val + 50) % placed.size()
-			var base: Vector2i = placed[base_idx]
-			var dir := _hash_pos(i, j, seed_val + 77) % 4
-			var offsets: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
-			var new_pos: Vector2i = base + offsets[dir]
 
-			if new_pos.x >= 0 and new_pos.x < GRID_WIDTH and new_pos.y >= 0 and new_pos.y < GRID_HEIGHT:
-				if terrain[new_pos] == Enums.BattleTerrain.OPEN:
-					terrain[new_pos] = type
-					placed.append(new_pos)
-
-static func _place_water_edge(terrain: Dictionary, seed_val: int) -> void:
+static func _place_water_edge(terrain: Dictionary, seed_val: int,
+		grid_w: int = GRID_WIDTH, grid_h: int = GRID_HEIGHT) -> void:
 	# Place water along one edge (left side)
-	for y in range(GRID_HEIGHT):
+	for y in range(grid_h):
 		var width := 2 + (_hash_pos(y, seed_val, 33) % 3)
 		for x in range(width):
 			terrain[Vector2i(x, y)] = Enums.BattleTerrain.WATER
-		if width < GRID_WIDTH:
+		if width < grid_w:
 			terrain[Vector2i(width, y)] = Enums.BattleTerrain.SAND
 
-static func _clear_deployment_zones(terrain: Dictionary) -> void:
-	# Top deployment zone (rows 0 to DEPLOY_TOP_END-1): clear impassable
-	for y in range(DEPLOY_TOP_END):
-		for x in range(GRID_WIDTH):
+static func _clear_deployment_zones(terrain: Dictionary,
+		grid_w: int = GRID_WIDTH, grid_h: int = GRID_HEIGHT) -> void:
+	var deploy_top := ceili(grid_h * 0.25)
+	var deploy_bottom := grid_h - ceili(grid_h * 0.25)
+
+	# Top deployment zone: clear impassable
+	for y in range(deploy_top):
+		for x in range(grid_w):
 			var pos := Vector2i(x, y)
-			var t: Enums.BattleTerrain = terrain[pos]
-			if not is_passable(t):
+			if terrain.has(pos) and not is_passable(terrain[pos]):
 				terrain[pos] = Enums.BattleTerrain.OPEN
 
-	# Bottom deployment zone (rows DEPLOY_BOTTOM_START to GRID_HEIGHT-1): clear impassable
-	for y in range(DEPLOY_BOTTOM_START, GRID_HEIGHT):
-		for x in range(GRID_WIDTH):
+	# Bottom deployment zone: clear impassable
+	for y in range(deploy_bottom, grid_h):
+		for x in range(grid_w):
 			var pos := Vector2i(x, y)
-			var t: Enums.BattleTerrain = terrain[pos]
-			if not is_passable(t):
+			if terrain.has(pos) and not is_passable(terrain[pos]):
 				terrain[pos] = Enums.BattleTerrain.OPEN
+
+## Apply defensive building effects to terrain.
+## defense_bonus: total from city buildings. Defender is side 1 (top of map).
+## Returns metadata dict with tower_positions and siege_positions arrays.
+static func apply_defensive_buildings(terrain: Dictionary, defense_bonus: int,
+		grid_w: int, grid_h: int, seed_val: int) -> Dictionary:
+	var meta := {"tower_positions": [], "siege_positions": []}
+	if defense_bonus <= 0:
+		return meta
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_val + 7777
+
+	# Wall row: placed at defender zone edge (top ~25% boundary)
+	var wall_y := ceili(grid_h * 0.25)
+
+	# ── Tier 1 (defense 1-5): Wall segments across defender zone edge ──
+	var wall_length := mini(grid_w - 4, 4 + defense_bonus * 2)
+	var wall_start := (grid_w - wall_length) / 2
+	for x in range(wall_start, wall_start + wall_length):
+		terrain[Vector2i(x, wall_y)] = Enums.BattleTerrain.ROCK
+	# Leave gaps for units to pass through
+	var gap1 := wall_start + wall_length / 3
+	var gap2 := wall_start + 2 * wall_length / 3
+	terrain[Vector2i(gap1, wall_y)] = Enums.BattleTerrain.OPEN
+	terrain[Vector2i(gap2, wall_y)] = Enums.BattleTerrain.OPEN
+
+	# ── Tier 2 (defense 6-9): Larger walls + tower + caltrops ──
+	if defense_bonus >= 6:
+		# Extend walls to near-full width
+		for x in range(2, grid_w - 2):
+			if terrain.get(Vector2i(x, wall_y)) == Enums.BattleTerrain.OPEN and x != gap1 and x != gap2:
+				terrain[Vector2i(x, wall_y)] = Enums.BattleTerrain.ROCK
+		# Arrow tower position (center behind wall)
+		var tower_pos := Vector2(grid_w / 2.0, wall_y - 2)
+		meta["tower_positions"].append(tower_pos)
+		# Caltrops band in front of wall
+		var caltrop_y := wall_y + 1
+		for x in range(wall_start, wall_start + wall_length):
+			if rng.randf() < 0.6:
+				terrain[Vector2i(x, caltrop_y)] = Enums.BattleTerrain.CALTROPS
+
+	# ── Tier 3 (defense 10-12): Flanking towers + siege + ditches ──
+	if defense_bonus >= 10:
+		# Flanking towers on wall edges
+		meta["tower_positions"].append(Vector2(3, wall_y - 1))
+		meta["tower_positions"].append(Vector2(grid_w - 4, wall_y - 1))
+		# Siege weapon position (center, deep behind wall)
+		meta["siege_positions"].append(Vector2(grid_w / 2.0, wall_y - 4))
+		# Ditches in front of caltrops
+		var ditch_y := wall_y + 2
+		for x in range(wall_start + 2, wall_start + wall_length - 2):
+			if rng.randf() < 0.5:
+				terrain[Vector2i(x, ditch_y)] = Enums.BattleTerrain.DITCH
+
+	# ── Tier 4 (defense 13+): Full fortification ──
+	if defense_bonus >= 13:
+		# Palings near gaps to punish charges
+		terrain[Vector2i(gap1 - 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		terrain[Vector2i(gap1 + 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		terrain[Vector2i(gap2 - 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		terrain[Vector2i(gap2 + 1, wall_y + 1)] = Enums.BattleTerrain.PALING
+		# Mines scattered in attacker approach zone
+		var mine_y_start := wall_y + 3
+		var mine_y_end := mini(grid_h - ceili(grid_h * 0.25), wall_y + 6)
+		for y in range(mine_y_start, mine_y_end):
+			for x in range(4, grid_w - 4):
+				if rng.randf() < 0.12:
+					terrain[Vector2i(x, y)] = Enums.BattleTerrain.MINE
+		# Additional siege position
+		meta["siege_positions"].append(Vector2(grid_w / 2.0 - 5, wall_y - 3))
+
+	return meta

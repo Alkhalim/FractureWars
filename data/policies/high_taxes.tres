@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"high_taxes"
+display_name = "High Taxes"
+description = "Heavy taxation fills coffers but breeds resentment among the populace."
+category = 0
+class_loyalty_effects = { "peasants": -4, "artisans": -3, "nobles": 1 }
+resource_effects = { 0: 15 }
+required_class_loyalty = { "nobles": 20 }
+mutually_exclusive = Array[StringName]([&"low_taxes"])
+cooldown_turns = 3
+faction_id = &"empire"

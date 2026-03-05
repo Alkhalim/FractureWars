@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystal_network"
+display_name = "Crystal Network"
+description = "A network of crystal nodes spans the land, seeing all."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"resonance_field", &"shard_infusion"])
+effects = { "vision_range_bonus": 3, "shard_essence_pct": 15, "shard_resonance_bonus": 8 }
+shard_bonuses = { 0: {"unit_attack_bonus": 3}, 1: {"unit_defense_bonus": 3}, 7: {"shard_harvest_bonus": 5} }
+tier = 3
+research_category = &"arcane"
+faction_id = &"shardhorde"
+tree_angle = 240
+tree_branch = &"shard_communion"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

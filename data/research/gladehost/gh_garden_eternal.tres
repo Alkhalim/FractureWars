@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_garden_eternal"
+display_name = "Garden Eternal"
+description = "Cities heal fully each turn. Population growth doubled."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"gh_lifeblooms", &"gh_world_seed"])
+effects = { "population_growth_pct": 50, "income_food_pct": 30, "harmony_income_scaling": 5 }
+shard_bonuses = {}
+tier = 5
+research_category = &"economy"
+faction_id = &"gladehost"
+tree_angle = 270.0
+tree_branch = &"herbalism"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 15, "income_iron_pct": 10 }

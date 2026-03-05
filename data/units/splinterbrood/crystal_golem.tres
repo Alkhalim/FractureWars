@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystal_golem"
+display_name = "Crystal Golem"
+description = "A towering construct of fused crystal shards given terrible purpose. Nearly indestructible, it crushes formations beneath its massive crystalline fists."
+faction_id = &"splinterbrood"
+max_hp = 10000
+attack = 75
+melee_defense = 45
+projectile_defense = 40
+magic_defense = 15
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 10000
+movement_points = 2.0
+upkeep_cost = {0: 8, 3: 4}
+recruit_cost = {0: 180, 1: 42, 3: 30}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee", "monster"])
+base_morale = 80
+tiles_per_entity = 4
+captive_chance = 0.0
+morale_aura = -2
+fear_radius = 3

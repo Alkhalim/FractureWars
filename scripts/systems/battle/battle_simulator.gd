@@ -4,12 +4,12 @@ extends RefCounted
 signal tick_completed(actions: Array[Dictionary])
 signal battle_ended(winner_side: int) # 0 = attacker, 1 = defender
 
-const GRID_WIDTH := 20
-const GRID_HEIGHT := 16
-const ATTACKER_DEPLOY_START := 10  # Player deploys rows 10-15 (bottom)
-const ATTACKER_DEPLOY_END := 16
-const DEFENDER_DEPLOY_START := 0   # AI deploys rows 0-5 (top)
-const DEFENDER_DEPLOY_END := 6
+const GRID_WIDTH := 28
+const GRID_HEIGHT := 22
+const ATTACKER_DEPLOY_START := 14  # Player deploys rows 14-21 (bottom)
+const ATTACKER_DEPLOY_END := 22
+const DEFENDER_DEPLOY_START := 0   # AI deploys rows 0-7 (top)
+const DEFENDER_DEPLOY_END := 8
 
 var grid: Dictionary = {} # Vector2i -> BattleUnit (all occupied tiles)
 var battle_terrain: Dictionary = {} # Vector2i -> Enums.BattleTerrain
@@ -87,7 +87,7 @@ func setup_unit(unit_instance: UnitInstance, unit_data: UnitData, side: int, pos
 	bu.max_hp = unit_data.max_hp
 	bu.current_hp = unit_instance.current_hp
 	bu.attack = unit_data.attack
-	bu.defense = unit_data.defense
+	bu.defense = unit_data.melee_defense
 	bu.speed = unit_data.speed
 	bu.attack_range = unit_data.attack_range
 	bu.stance = stance

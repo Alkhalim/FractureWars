@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"celestial_sanctum"
+display_name = "Celestial Sanctum III"
+description = "The holiest site of Moonspear learning. Here the greatest mysteries of the cosmos are unraveled."
+faction_id = &"moonspear"
+category = &"cultural"
+build_cost = {0: 383, 5: 86, 1: 35}
+build_time = 4
+income_bonus = {2: 40}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([&"lunar_priestess", &"celestial_oracle"])
+required_capital_level = 3
+class_loyalty_bonus = {"scholars": 5, "nobles": 2}
+upgrades_from = &"lunar_observatory"
+special_effects = {"research_speed_bonus": 0.25}
+upkeep_cost = {0: 8, 5: 5}

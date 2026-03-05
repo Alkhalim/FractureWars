@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"storm_drummer"
+display_name = "Storm Drummer"
+description = "War drummers whose rhythmic thunder drives warriors into a battle frenzy. The beat is the heart of the Thunderswarm."
+faction_id = &"thunderswarm"
+max_hp = 2250
+attack = 30
+melee_defense = 35
+projectile_defense = 20
+magic_defense = 15
+speed = 5
+attack_range = 1
+squad_size = 20
+hp_per_soldier = 110
+movement_points = 3.5
+upkeep_cost = {0: 3, 3: 1}
+recruit_cost = {0: 90, 5: 32}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["support", "melee"])
+base_morale = 80
+morale_aura = 7
+fear_radius = 4

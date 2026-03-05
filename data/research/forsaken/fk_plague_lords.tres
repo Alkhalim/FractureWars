@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_plague_lords"
+display_name = "Blood Lords"
+description = "Masters of blood magic and crimson sorcery."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"miasma_cloud"])
+effects = { "unit_attack_bonus": 4, "siege_bonus": 15, "enemy_defense_penalty": -5, "poison_damage_pct": 10 }
+shard_bonuses = {}
+tier = 4
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 115.0
+tree_branch = &"decay"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

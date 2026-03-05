@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tj_mycelium_web"
+display_name = "Mycelium Web"
+description = "Underground networks connect settlements."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"tj_mushroom_farms"])
+effects = { "movement_bonus": 1, "supply_range_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"logistics"
+faction_id = &"tainted_jade"
+tree_angle = 190.0
+tree_branch = &"fungal_network"

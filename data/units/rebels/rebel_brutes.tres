@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"rebel_brutes"
+display_name = "Rebel Brutes"
+description = "Hulking thugs armed with clubs, chains, and stolen weapons. What they lack in finesse they make up in raw, terrifying violence."
+faction_id = &"rebels"
+max_hp = 5500
+attack = 60
+melee_defense = 25
+projectile_defense = 15
+magic_defense = 5
+speed = 4
+attack_range = 1
+squad_size = 20
+hp_per_soldier = 275
+movement_points = 3
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 4
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 45
+captive_chance = 0.3

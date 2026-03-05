@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ms_sacred_archives"
+display_name = "Sacred Archives"
+description = "Ancient wisdom accelerates all research."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"divine_radiance", &"tithe_of_light"])
+effects = { "research_speed_bonus": 20, "income_gold_pct": 10 }
+shard_bonuses = {}
+tier = 4
+research_category = &"economy"
+faction_id = &"moonspear"
+tree_angle = 235.0
+tree_branch = &"enlightenment"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

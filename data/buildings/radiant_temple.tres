@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"radiant_temple"
+display_name = "Radiant Temple II"
+description = "A temple of golden light where the sun's wisdom is studied and shared. Knowledge is a sacred duty."
+faction_id = &"sunblessed"
+category = &"cultural"
+build_cost = {0: 158, 5: 50}
+build_time = 3
+income_bonus = {2: 22}
+population_growth_bonus = 6
+upgrades_from = &"sunfire_altar"
+unlocks_units = Array[StringName]([&"sunfire_mage", &"radiant_priest"])
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 2, "scholars": 3, "nobles": 2}
+special_effects = {"research_speed_bonus": 0.15}
+upkeep_cost = {0: 5, 5: 3}

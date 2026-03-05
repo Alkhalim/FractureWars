@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"solar_citadel"
+display_name = "Solar Citadel III"
+description = "The grandest fortress of the Sunblessed faith. Its golden walls blaze with holy light that strengthens all within."
+faction_id = &"sunblessed"
+category = &"military"
+build_cost = {0: 221, 1: 57, 5: 43}
+build_time = 4
+population_growth_bonus = 2
+defense_bonus = 3
+unlocks_units = Array[StringName]([&"solar_champion", &"dawn_guardian"])
+required_capital_level = 3
+upgrades_from = &"solar_chapter_house"
+class_loyalty_bonus = {"nobles": 5}
+special_effects = {"faith_stabilization": 2, "army_attack_bonus": 2}
+upkeep_cost = {0: 5, 1: 8}

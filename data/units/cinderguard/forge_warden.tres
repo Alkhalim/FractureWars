@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"forge_warden"
+display_name = "Border Warden"
+description = "Heavy infantry in layered wasteland plate. They form impenetrable defensive walls along the frontier."
+faction_id = &"cinderguard"
+max_hp = 8000
+attack = 60
+melee_defense = 70
+projectile_defense = 45
+magic_defense = 35
+speed = 3
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 100
+movement_points = 3.0
+upkeep_cost = {0: 6, 1: 2, 3: 3}
+recruit_cost = {0: 160, 1: 53, 5: 26}
+recruit_time = 3
+population_cost = 16
+terrain_bonuses = {3: 0.2}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "desertstrider", "cinderguard"])
+base_morale = 75
+vs_attack_bonuses = {"cavalry": 4}

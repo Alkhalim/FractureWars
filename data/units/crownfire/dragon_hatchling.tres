@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dragon_hatchling"
+display_name = "Dragon Hatchling"
+description = "Young dragons raised from stolen eggs. Still small but deadly, they breathe gouts of flame across the battlefield."
+faction_id = &"crownfire"
+max_hp = 5000
+attack = 80
+melee_defense = 30
+projectile_defense = 20
+magic_defense = 25
+speed = 6
+attack_range = 3
+squad_size = 3
+hp_per_soldier = 1665
+tiles_per_entity = 4
+movement_points = 4.0
+upkeep_cost = {0: 8, 1: 2, 3: 3}
+recruit_cost = {0: 180, 1: 53, 5: 42}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "beast", "ranged", "flying"])
+base_morale = 65
+morale_aura = -2
+fear_radius = 3
+captive_chance = 0.0

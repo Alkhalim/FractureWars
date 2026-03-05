@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bear_companion"
+display_name = "Bear Companion"
+description = "Massive forest bears bonded to their keepers through years of trust. In battle they are unstoppable walls of fur and fury."
+faction_id = &"gladehost"
+max_hp = 4000
+attack = 90
+melee_defense = 60
+projectile_defense = 40
+magic_defense = 30
+speed = 4
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 4
+movement_points = 3.5
+upkeep_cost = {0: 5, 3: 4}
+recruit_cost = {0: 150, 3: 80}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {1: 0.15}
+realm_bonuses = {3: 0.1}
+tags = Array[String](["beast", "melee"])
+base_morale = 70
+morale_aura = -2
+fear_radius = 3
+captive_chance = 0.0

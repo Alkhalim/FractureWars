@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shadow_wyrm"
+display_name = "Shadow Wyrm"
+description = "A flying serpent born of concentrated dark magic. Its breath is a wave of soul-draining shadow."
+faction_id = &"forsaken"
+max_hp = 6000
+attack = 100
+melee_defense = 30
+projectile_defense = 20
+magic_defense = 15
+speed = 8
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 8
+movement_points = 4.0
+upkeep_cost = {0: 8, 1: 2, 3: 3}
+recruit_cost = {0: 180, 1: 53, 5: 32}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "melee", "fast", "flying"])
+base_morale = 65
+morale_aura = -4
+fear_radius = 4
+captive_chance = 0.0

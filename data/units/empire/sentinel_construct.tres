@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sentinel_construct"
+display_name = "Sentinel Construct"
+description = "A ferromantic war automaton. Immensely durable and immune to morale effects. Devastating against structures."
+faction_id = &"empire"
+max_hp = 2500
+attack = 120
+melee_defense = 100
+projectile_defense = 70
+magic_defense = 50
+speed = 2
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 2500
+tiles_per_entity = 4
+movement_points = 2.8
+upkeep_cost = {0: 15, 1: 6, 2: 4}
+recruit_cost = {0: 400, 1: 252, 2: 80}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["construct", "melee"])
+base_morale = 100
+captive_chance = 0.0

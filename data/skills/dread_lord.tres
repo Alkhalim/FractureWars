@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dread_lord"
+display_name = "Dread Lord"
+description = "Their very presence saps enemy morale and productivity."
+category = &"combat"
+is_minor = false
+effects = {"enemy_city_growth_penalty": -3, "enemy_army_morale_penalty": -2}
+context_tags = Array[StringName]([&"battle_won", &"was_attacker"])

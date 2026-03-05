@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_dire_companions"
+display_name = "Dire Companions"
+description = "Great forest beasts fight alongside warriors."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"gh_beast_tongue"])
+effects = { "unit_attack_bonus": 2, "unit_speed_bonus": 1 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"gladehost"
+tree_angle = 55.0
+tree_branch = &"beast_affinity"

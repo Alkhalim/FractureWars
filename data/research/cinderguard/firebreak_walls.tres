@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"firebreak_walls"
+display_name = "Firebreak Walls"
+description = "Walls of stone and flame that no siege can breach."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"garrison_doctrine"])
+effects = { "city_defense_pct": 15, "defense_bonus": 5, "vigilance_per_turn": 2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"cinderguard"
+tree_angle = 240
+tree_branch = &"garrison_duty"

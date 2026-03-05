@@ -5,11 +5,13 @@
 [resource]
 script = ExtResource("1")
 id = &"tainted_jade"
-display_name = "The Tainted Jade"
+display_name = "Tainted Jade"
 description = "From the depths of the Coatlanli Jungle, the Tainted Jade guard their territory with serpentine cunning. Intruders are met with swift and venomous reprisal."
 color = Color(0.30, 0.25, 0.38, 1)
-is_playable = false
-starting_regions = Array[StringName]([&"coatlanli_jungle"])
+is_playable = true
+starting_regions = Array[StringName]([&"coatlantli"])
 realm_affinity = 3
 shard_preferences = {}
-ai_personality = {}
+ai_personality = {"aggression": 0.5, "expansion": 0.5}
+gift_likes = Array[StringName]([&"nature", &"arcane", &"dark"])
+gift_dislikes = Array[StringName]([&"religious", &"luxury"])

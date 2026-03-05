@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"cinder_mine"
+display_name = "Cinder Mine I"
+description = "A mine sunk into volcanic rock. The cinder ore found here is the lifeblood of the legion."
+faction_id = &"cinderguard"
+category = &"economic"
+build_cost = {0: 67, 5: 21}
+build_time = 2
+income_bonus = {1: 35}
+population_growth_bonus = 2
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+required_terrain = 2
+class_loyalty_bonus = {"artisans": 1}
+upkeep_cost = {0: 2, 5: 3}

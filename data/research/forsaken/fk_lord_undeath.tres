@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_lord_undeath"
+display_name = "Lord of the Court"
+description = "Dead enemy units have 20% chance to join your army as thralls."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"fk_death_king", &"fk_void_army"])
+effects = { "unit_attack_bonus": 8, "unit_regen_pct": 5, "enemy_morale_penalty": -15 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 300.0
+tree_branch = &"death_throne"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

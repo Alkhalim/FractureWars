@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_blight_empire"
+display_name = "Catacomb Empire"
+description = "An empire of blood and shadow."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"fk_necropolis"])
+effects = { "income_gold_pct": 15, "recruitment_cost_reduction": 15, "upkeep_reduction_pct": 10 }
+shard_bonuses = {}
+tier = 4
+research_category = &"economy"
+faction_id = &"forsaken"
+tree_angle = 180.0
+tree_branch = &"blight"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

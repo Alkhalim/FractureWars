@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_void_army"
+display_name = "Night's Army"
+description = "All flanking damage tripled. Armies invisible on campaign map until adjacent."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"fk_shadow_lords", &"fk_darkness_falls"])
+effects = { "flanking_damage_bonus": 20, "espionage_per_turn": 3, "vision_range_bonus": 3 }
+shard_bonuses = {}
+tier = 5
+research_category = &"military"
+faction_id = &"forsaken"
+tree_angle = 240.0
+tree_branch = &"shadow_war"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 4, "unit_defense_bonus": 2 }

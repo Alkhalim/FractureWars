@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"gh_world_seed"
+display_name = "World Seed"
+description = "The seed of a new world tree awakens."
+tech_cost = 250
+research_time = 26
+prerequisites = Array[StringName]([&"gh_ancient_roots", &"gh_primal_communion"])
+effects = { "unit_attack_bonus": 5, "unit_defense_bonus": 5, "income_food_pct": 20 }
+shard_bonuses = {}
+tier = 5
+research_category = &"arcane"
+faction_id = &"gladehost"
+tree_angle = 0.0
+tree_branch = &"nature_bond"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 10, "shard_essence_pct": 10 }

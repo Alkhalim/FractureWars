@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"green"
+display_name = "Green"
+description = "Untested in combat — inexperience shows on the battlefield."
+is_positive = false
+effects = {"army_attack_bonus": -1, "army_defense_bonus": -1}
+excludes = Array[StringName]([&"veteran"])
+acquire_context = Array[StringName]([])
+acquire_threshold = 99
+lose_context = Array[StringName]([&"battle_won", &"battle_lost"])
+lose_threshold = 3

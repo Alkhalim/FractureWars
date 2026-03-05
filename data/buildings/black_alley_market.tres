@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"black_alley_market"
+display_name = "Black Alley Market I"
+description = "A shadowy market in the back alleys where anything can be bought — for the right price."
+faction_id = &"forsaken"
+category = &"economic"
+build_cost = {0: 62, 5: 26}
+build_time = 2
+income_bonus = {0: 18}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"artisans": 1, "nobles": 1}
+upkeep_cost = {1: 2, 5: 3}

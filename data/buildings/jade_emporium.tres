@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"jade_emporium"
+display_name = "Jade Emporium II"
+description = "A sprawling trade hall where rare jungle relics, venomous extracts, and carved jade fetch staggering prices. Merchants from distant lands risk the jungle's perils for what can be found here."
+faction_id = &"tainted_jade"
+category = &"economic"
+build_cost = {0: 167, 1: 22, 5: 55}
+build_time = 3
+income_bonus = {0: 40}
+population_growth_bonus = 6
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"jade_market"
+class_loyalty_bonus = {"artisans": 2, "nobles": 2}
+upkeep_cost = {1: 3, 5: 5}

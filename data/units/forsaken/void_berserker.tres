@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"void_berserker"
+display_name = "Catacomb Leech"
+description = "Eyeless predators that nest in the deepest sewers beneath Forsaken cities. Their barbed tongues drain blood with horrifying speed."
+faction_id = &"forsaken"
+max_hp = 7000
+attack = 110
+melee_defense = 30
+projectile_defense = 20
+magic_defense = 15
+speed = 7
+attack_range = 1
+squad_size = 60
+hp_per_soldier = 115
+movement_points = 3.5
+upkeep_cost = {0: 7, 1: 2, 3: 3}
+recruit_cost = {0: 160, 1: 53, 5: 21}
+recruit_time = 3
+population_cost = 12
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast", "undead"])
+base_morale = 50
+morale_aura = -3
+fear_radius = 3
+vs_attack_bonuses = {"monster": 3}

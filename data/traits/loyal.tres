@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"loyal"
+display_name = "Loyal"
+description = "Fiercely devoted — their soldiers would follow them into the abyss."
+is_positive = true
+effects = {"unit_morale_bonus": 3}
+excludes = Array[StringName]([&"treacherous"])
+acquire_context = Array[StringName]([])
+acquire_threshold = 99
+lose_context = Array[StringName]([])
+lose_threshold = 99

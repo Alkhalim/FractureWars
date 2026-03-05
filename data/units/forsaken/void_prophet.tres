@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"void_prophet"
+display_name = "Doomsinger Prophetess"
+description = "Ancient seers who chant blood prophecies from gilded balconies. Their voices carry the weight of centuries, bolstering the faithful and shattering the will of enemies."
+faction_id = &"forsaken"
+max_hp = 1500
+attack = 20
+melee_defense = 25
+projectile_defense = 15
+magic_defense = 10
+speed = 4
+attack_range = 2
+squad_size = 15
+hp_per_soldier = 100
+movement_points = 3.5
+upkeep_cost = {0: 4, 2: 1}
+recruit_cost = {0: 120, 5: 37, 2: 20}
+recruit_time = 3
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["support", "ranged", "undead"])
+base_morale = 75
+morale_aura = 6
+fear_radius = 4
+captive_chance = 0.0

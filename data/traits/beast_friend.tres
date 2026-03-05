@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"beast_friend"
+display_name = "Beast Friend"
+description = "Has a natural affinity with creatures of the wild."
+is_positive = true
+effects = {"beast_attack_bonus": 2}
+excludes = Array[StringName]([&"beast_fear"])
+acquire_context = Array[StringName]([&"used_beast"])
+acquire_threshold = 5
+lose_context = Array[StringName]([])
+lose_threshold = 15

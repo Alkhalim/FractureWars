@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"corpse_harvest"
+display_name = "Blood Tithe"
+description = "Every drop of blood is a resource."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"death_whispers"])
+effects = { "unit_regen_pct": 3, "shard_essence_pct": 10 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 0
+tree_branch = &"necromancy"

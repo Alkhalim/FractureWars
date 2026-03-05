@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tj_death_cloud"
+display_name = "Death Cloud"
+description = "A cloud of lethal poison engulfs the field."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"tj_venom_lord"])
+effects = { "poison_damage_pct": 10, "siege_bonus": 10, "enemy_defense_penalty": -3 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"tainted_jade"
+tree_angle = 60.0
+tree_branch = &"venom_mastery"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

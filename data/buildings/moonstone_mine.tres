@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"moonstone_mine"
+display_name = "Moonstone Mine II"
+description = "Deep tunnels follow veins of moonstone and iron ore. The lunar-blessed minerals glow faintly in the dark."
+faction_id = &"moonspear"
+category = &"economic"
+build_cost = {0: 180, 1: 28}
+build_time = 3
+income_bonus = {1: 62, 5: 14}
+population_growth_bonus = 3
+unlocks_units = Array[StringName]([])
+upgrades_from = &"ice_quarry"
+required_capital_level = 2
+class_loyalty_bonus = {"artisans": 2}
+upkeep_cost = {0: 5}

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="RegionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/region_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"eternal_plains"
+display_name = "Eternal Plains"
+terrain = 0
+realm_influence = 4
+realm_influence_strength = 0.8
+base_income = {0: 14, 3: 12, 1: 6, 5: 4}
+has_city_slot = true
+max_armies = 3
+strategic_value = 3

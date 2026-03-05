@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"wind_elemental"
+display_name = "Wind Elemental"
+description = "Living tempests bound by Stormbound sorcery. They hurl gale-force blasts that shred armor and scatter soldiers."
+faction_id = &"stormbound"
+max_hp = 2750
+attack = 75
+melee_defense = 25
+projectile_defense = 40
+magic_defense = 15
+speed = 7
+attack_range = 4
+squad_size = 1
+hp_per_soldier = 2750
+tiles_per_entity = 4
+movement_points = 4.0
+upkeep_cost = {0: 8, 2: 3}
+recruit_cost = {0: 220, 2: 40}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "ranged", "fast"])
+base_morale = 90
+captive_chance = 0.0

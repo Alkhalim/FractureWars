@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"steppe_mammoth"
+display_name = "Steppe Mammoth"
+description = "War mammoths tamed by the Skulloath clans. Clad in skull-plate armor, they charge through formations like an avalanche, crushing everything in their path."
+faction_id = &"skulloath"
+max_hp = 10000
+attack = 100
+melee_defense = 55
+projectile_defense = 35
+magic_defense = 15
+speed = 4
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+tiles_per_entity = 10
+movement_points = 3
+upkeep_cost = {0: 12, 3: 6}
+recruit_cost = {0: 320, 1: 105, 3: 180}
+recruit_time = 5
+population_cost = 0
+terrain_bonuses = {0: 0.15}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "monster"])
+base_morale = 75
+morale_aura = -5
+fear_radius = 4
+captive_chance = 0
+vs_attack_bonuses = {"monster": 4}

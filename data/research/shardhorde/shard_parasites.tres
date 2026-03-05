@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"shard_parasites"
+display_name = "Shard Parasites"
+description = "Parasitic crystals weaken the enemy from within."
+tech_cost = 70
+research_time = 10
+prerequisites = Array[StringName]([&"shard_communion"])
+effects = { "enemy_defense_penalty": 2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"shardhorde"
+tree_angle = 255
+tree_branch = &"shard_communion"

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"valkarn_defender"
+display_name = "Valkarn Defender"
+description = "Iron-plated fortress guards."
+faction_id = &"valkarn_garrison"
+max_hp = 7500
+attack = 40
+melee_defense = 55
+projectile_defense = 35
+magic_defense = 25
+speed = 3
+attack_range = 1
+squad_size = 100
+hp_per_soldier = 75
+movement_points = 2.5
+upkeep_cost = {0: 4, 1: 2, 3: 2}
+recruit_cost = {0: 70, 1: 26}
+recruit_time = 3
+population_cost = 20
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 70

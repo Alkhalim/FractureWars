@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"industrial_revolution"
+display_name = "Frontier Expansion"
+description = "The garrisons of the Cinderguard expand across the wasteland."
+tech_cost = 130
+research_time = 18
+prerequisites = Array[StringName]([&"adamantine_forge", &"volcanic_glass"])
+effects = { "income_gold_pct": 20, "income_iron_pct": 15, "building_cost_reduction_pct": 10 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"cinderguard"
+tree_angle = 30
+tree_branch = &"forging"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"horseman"
+display_name = "Born in the Saddle"
+description = "Practically raised on horseback — cavalry thrive under this commander."
+is_positive = true
+effects = {"cavalry_attack_bonus": 2, "cavalry_speed_bonus": 1}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"used_cavalry"])
+acquire_threshold = 5
+lose_context = Array[StringName]([])
+lose_threshold = 15

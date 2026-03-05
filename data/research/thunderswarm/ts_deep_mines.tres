@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_deep_mines"
+display_name = "Deep Mines"
+description = "Delve deeper for richer ore."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"storm_forge", &"dragon_roost"])
+effects = { "income_gold_pct": 15, "shard_harvest_bonus": 10 }
+shard_bonuses = {}
+tier = 4
+research_category = &"economy"
+faction_id = &"thunderswarm"
+tree_angle = 115.0
+tree_branch = &"mountain_hold"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 12, "income_iron_pct": 8 }

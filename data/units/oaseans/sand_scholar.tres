@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sand_scholar"
+display_name = "Sand Scholar"
+description = "Mystics who read truth in the shifting sands. They channel the desert's ancient power into scorching winds and blinding sandstorms that devastate enemy ranks."
+faction_id = &"oaseans"
+max_hp = 2250
+attack = 65
+melee_defense = 15
+projectile_defense = 10
+magic_defense = 30
+speed = 4
+attack_range = 4
+squad_size = 25
+hp_per_soldier = 90
+movement_points = 3.0
+upkeep_cost = {0: 4, 3: 2}
+recruit_cost = {0: 85, 1: 16, 3: 18}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {4: 0.2}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged", "desertstrider"])
+spell_type = &"sand_blast"
+base_morale = 60

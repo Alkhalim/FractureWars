@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"skull_banner"
+display_name = "Skull Banner"
+description = "The skull banner radiates dread power, feeding corruption with every conquest."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"terror_tactics", &"bone_rituals"])
+effects = { "loot_bonus_pct": 30, "enemy_morale_penalty": 5, "corruption_per_turn": 3 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"skulloath"
+tree_angle = 0
+tree_branch = &"raiding"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

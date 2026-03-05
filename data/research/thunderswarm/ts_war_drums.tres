@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_war_drums"
+display_name = "War Drums of Thunder"
+description = "Drums that shake the earth."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"warband_unity", &"avalanche_tactics"])
+effects = { "unit_morale_bonus": 10, "unit_attack_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 310.0
+tree_branch = &"wrath"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

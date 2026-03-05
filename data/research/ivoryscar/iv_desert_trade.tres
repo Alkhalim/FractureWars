@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iv_desert_trade"
+display_name = "Desert Trade Routes"
+description = "Profitable trade routes cross the desert."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"iv_oasis_control", &"sand_warriors"])
+effects = { "trade_income_bonus": 12, "income_gold_pct": 8 }
+shard_bonuses = {}
+tier = 3
+research_category = &"economy"
+faction_id = &"ivoryscar"
+tree_angle = 75.0
+tree_branch = &"desert_power"
+socket_realm = 4
+socket_bonus = { "income_gold_pct": 8, "income_iron_pct": 5 }

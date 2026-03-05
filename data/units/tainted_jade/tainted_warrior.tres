@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tainted_warrior"
+display_name = "Tainted Warriors"
+description = "Warriors whose bodies have been hardened by prolonged exposure to the Taint. Their jade-veined flesh turns blades and their strength is terrible."
+faction_id = &"tainted_jade"
+max_hp = 8000
+attack = 60
+melee_defense = 45
+projectile_defense = 25
+magic_defense = 20
+speed = 4
+attack_range = 1
+squad_size = 80
+hp_per_soldier = 100
+movement_points = 3.5
+upkeep_cost = {0: 6, 1: 2, 3: 4}
+recruit_cost = {0: 150, 1: 53, 3: 100}
+recruit_time = 3
+population_cost = 16
+terrain_bonuses = {9: 0.15}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee"])
+base_morale = 55
+captive_chance = 0.25
+vs_attack_bonuses = {"cavalry": 3}

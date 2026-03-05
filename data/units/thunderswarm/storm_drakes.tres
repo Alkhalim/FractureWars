@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"storm_drakes"
+display_name = "Storm Drakes"
+description = "A pack of juvenile storm dragons that hunt together. They breathe arcs of lightning and tear through formations with razor claws and crackling jaws."
+faction_id = &"thunderswarm"
+max_hp = 4500
+attack = 75
+melee_defense = 30
+projectile_defense = 20
+magic_defense = 15
+speed = 8
+attack_range = 1
+squad_size = 6
+hp_per_soldier = 750
+tiles_per_entity = 2
+movement_points = 5
+upkeep_cost = {0: 8, 3: 3}
+recruit_cost = {0: 200, 1: 53, 5: 42}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {2: 0.15}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast", "monster"])
+base_morale = 70
+morale_aura = -3
+fear_radius = 3
+captive_chance = 0
+vs_attack_bonuses = {"monster": 3}

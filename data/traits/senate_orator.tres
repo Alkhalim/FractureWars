@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"senate_orator"
+display_name = "Senate Orator"
+description = "A master of Imperial politics who keeps troops fed and coffers full through bureaucratic influence."
+is_positive = true
+effects = {"city_gold_bonus": 3, "unit_morale_bonus": 3, "upkeep_mult": -0.1}
+excludes = Array[StringName]([])
+acquire_context = Array[StringName]([&"faction_empire", &"city_captured"])
+acquire_threshold = 4
+lose_context = Array[StringName]([&"battle_lost"])
+lose_threshold = 15

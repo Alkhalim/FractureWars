@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"splinter_spitter"
+display_name = "Splinter Spitter"
+description = "Crystal beings that launch razor shards from their bodies at range. Each volley costs them part of themselves, but they regenerate rapidly from ambient shard energy."
+faction_id = &"splinterbrood"
+max_hp = 2500
+attack = 50
+melee_defense = 10
+projectile_defense = 10
+magic_defense = 10
+speed = 5
+attack_range = 3
+squad_size = 50
+hp_per_soldier = 50
+movement_points = 4.0
+upkeep_cost = {0: 2, 3: 1}
+recruit_cost = {0: 40, 3: 10}
+recruit_time = 2
+population_cost = 10
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["ranged", "swarm"])
+base_morale = 25
+captive_chance = 0.0

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"metropoleia_wine"
+display_name = "Metropoleia Vintage Wine"
+description = "A rare bottle from the imperial capital's finest vineyard, aged for decades."
+rarity = &"rare"
+effects = {"city_gold_bonus": 2}
+source_factions = Array[StringName]([&"empire"])
+gift_tags = Array[StringName]([&"luxury", &"elegant"])

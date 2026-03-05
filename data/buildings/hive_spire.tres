@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"hive_spire"
+display_name = "War Crest"
+description = "A jagged crown of crystal and bone rising from the elderbeast's spine. Breeds larger, fiercer warriors and accelerates mustering for battle."
+faction_id = &"shardhorde"
+category = &"military"
+build_cost = {0: 101, 1: 28, 3: 30, 4: 8}
+build_time = 3
+income_bonus = {4: 6}
+population_growth_bonus = 8
+recruit_speed_bonus = 1
+unlocks_units = Array[StringName]([&"crystalback_raptor", &"shard_crawler", &"void_weaver", &"crystal_cavalry", &"crystalwing_swoopers"])
+required_capital_level = 2
+upgrades_from = &"crystal_nursery"
+class_loyalty_bonus = {}
+special_effects = {"army_attack_bonus": 1}
+upkeep_cost = {1: 5, 5: 3}

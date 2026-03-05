@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"resonance_amplifier"
+display_name = "Shard Heart"
+description = "The elderbeast's core crystal evolves into a pulsing shard heart, flooding the horde with raw crystalline power. The pinnacle of shard extraction technology. Requires shard wastes nearby."
+faction_id = &"shardhorde"
+category = &"economic"
+build_cost = {0: 259, 1: 69, 3: 80, 4: 30}
+build_time = 4
+income_bonus = {4: 25, 2: 10}
+population_growth_bonus = 0
+required_capital_level = 3
+upgrades_from = &"resonance_core"
+special_effects = {"research_speed_bonus": 0.20}
+upkeep_cost = {0: 5, 1: 8}

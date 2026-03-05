@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"tj_plague_garden"
+display_name = "Plague Garden"
+description = "A garden of disease and death."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"living_city"])
+effects = { "siege_bonus": 15, "poison_damage_pct": 8, "adjacent_unit_damage_pct": 5 }
+shard_bonuses = {}
+tier = 4
+research_category = &"arcane"
+faction_id = &"tainted_jade"
+tree_angle = 115.0
+tree_branch = &"dark_botany"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 8, "shard_essence_pct": 8 }

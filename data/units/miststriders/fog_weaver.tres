@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fog_weaver"
+display_name = "Fog Weaver"
+description = "Secretive sorcerers who bend the mist itself into deadly tendrils. Enemies stumble blind while the fog tears at their flesh."
+faction_id = &"miststriders"
+max_hp = 2400
+attack = 70
+melee_defense = 15
+projectile_defense = 10
+magic_defense = 25
+speed = 5
+attack_range = 5
+squad_size = 25
+hp_per_soldier = 95
+movement_points = 3.5
+upkeep_cost = {0: 4, 2: 1, 3: 1}
+recruit_cost = {0: 110, 2: 15, 5: 11}
+recruit_time = 3
+population_cost = 5
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["mage", "ranged", "support"])
+spell_type = &"frost_bolt"
+base_morale = 45

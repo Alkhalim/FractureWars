@@ -3,16 +3,17 @@ extends RefCounted
 
 const REALM_NAMES := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
 const REALM_COLORS := [
-	Color(1.0, 0.9, 0.4),   # Divine - golden
-	Color(0.4, 0.1, 0.6),   # Void - purple
-	Color(0.9, 0.4, 0.1),   # Elemental - orange
-	Color(0.2, 0.8, 0.3),   # Nature - green
-	Color(0.7, 0.7, 0.8),   # Mortal - silver
+	Color(0.95, 0.85, 0.2),   # Divine - yellow
+	Color(0.5, 0.15, 0.7),    # Void - purple
+	Color(0.9, 0.5, 0.15),    # Elemental - orange
+	Color(0.2, 0.75, 0.3),    # Nature - green
+	Color(0.25, 0.5, 0.9),    # Mortal - blue
 ]
 
+var guardian_system: ShardGuardianSystem = ShardGuardianSystem.new()
 var turns_since_last_fall: int = 0
-var base_chance: float = 0.3
-var escalation: float = 0.05
+var base_chance: float = 0.65
+var escalation: float = 0.12
 
 func check_shardfall(current_turn: int) -> void:
 	turns_since_last_fall += 1
@@ -22,16 +23,29 @@ func check_shardfall(current_turn: int) -> void:
 		_trigger_shardfall()
 		return
 
-	# Random chance after that
+	# Guaranteed shardfall if drought lasts 6+ turns
+	if turns_since_last_fall >= 6:
+		_trigger_shardfall()
+		turns_since_last_fall = 0
+		return
+
+	# Scale number of shardfall attempts with map size
+	# Large maps (117x78 = ~9000 tiles) get 2-3 attempts per check
+	var tile_count := HexMapData.MAP_WIDTH * HexMapData.MAP_HEIGHT
+	var attempts := 1 + tile_count / 4000  # ~3 attempts on large map
+
 	var chance := base_chance + (turns_since_last_fall * escalation)
 	chance = min(chance, 0.9)
 
-	if randf() < chance:
-		_trigger_shardfall()
+	var triggered := false
+	for i in attempts:
+		if randf() < chance:
+			_trigger_shardfall()
+			triggered = true
+	if triggered:
+		turns_since_last_fall = 0
 
 func _trigger_shardfall() -> void:
-	turns_since_last_fall = 0
-
 	var realm := _pick_realm()
 	var hex_pos := _pick_hex_position()
 	if hex_pos == Vector2i(-1, -1):
@@ -45,6 +59,12 @@ func _trigger_shardfall() -> void:
 	shard.turns_remaining = 8
 
 	GameManager.state.active_shards[shard.shard_id] = shard
+
+	# Spawn guardian army to protect the shard
+	var army := guardian_system.spawn_guardian_army(shard)
+	if army:
+		shard.guardian_army_id = army.army_id
+		GameManager.state.armies[army.army_id] = army
 
 	EventBus.shardfall_occurred.emit(shard.shard_id, hex_pos, realm)
 
@@ -82,8 +102,8 @@ func _pick_hex_position() -> Vector2i:
 			continue
 
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		# Skip water and coast tiles
-		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.COAST:
+		# Skip impassable / unsuitable tiles
+		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.WETLANDS or tile.terrain == Enums.TerrainType.MOUNTAINS:
 			continue
 		candidates.append(coord)
 		if tile.owner_faction == &"":

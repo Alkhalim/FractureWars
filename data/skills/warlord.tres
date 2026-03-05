@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"warlord"
+display_name = "Warlord"
+description = "A born warrior who leads from the front."
+category = &"combat"
+is_minor = false
+effects = {"army_attack_bonus": 4, "army_speed_bonus": 2}
+context_tags = Array[StringName]([&"battle_won", &"was_attacker"])

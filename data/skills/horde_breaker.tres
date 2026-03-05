@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"horde_breaker"
+display_name = "Horde Breaker"
+description = "+5 defense and +3 attack against beasts and swarms."
+category = &"combat"
+is_minor = false
+effects = {"vs_beast_defense_bonus": 5, "vs_beast_attack_bonus": 3}
+context_tags = Array[StringName]([&"enemy_shardhorde", &"faced_beast"])

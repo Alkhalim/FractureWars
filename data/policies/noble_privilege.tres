@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="PolicyData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/policy_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"noble_privilege"
+display_name = "Noble Privilege"
+description = "Granting special rights to nobility strengthens their support but angers commoners."
+category = 2
+class_loyalty_effects = { "nobles": 6, "peasants": -3, "artisans": -2 }
+resource_effects = { 0: 5 }
+required_class_loyalty = {}
+mutually_exclusive = Array[StringName]([])
+cooldown_turns = 3
+faction_id = &"empire"

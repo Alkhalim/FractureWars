@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"highland_ranches"
+display_name = "Highland Ranches II"
+description = "Sprawling pastures along sheltered valleys where great herds are raised. The clans grow fat on the mountain's bounty."
+faction_id = &"thunderswarm"
+category = &"economic"
+build_cost = {0: 149}
+build_time = 3
+income_bonus = {3: 38, 0: 12}
+population_growth_bonus = 8
+unlocks_units = Array[StringName]([])
+upgrades_from = &"mountain_herds"
+required_capital_level = 2
+class_loyalty_bonus = {"peasants": 3}
+upkeep_cost = {1: 3, 5: 5}

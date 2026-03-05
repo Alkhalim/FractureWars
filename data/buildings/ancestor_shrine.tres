@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ancestor_shrine"
+display_name = "Ancestor Shrine I"
+description = "A circle of standing bones where shamans commune with the dead. The old spirits offer wisdom — and a counterweight to the Pale Waif's whispers."
+faction_id = &"skulloath"
+category = &"cultural"
+build_cost = {0: 62, 5: 32}
+build_time = 2
+income_bonus = {2: 8}
+population_growth_bonus = 4
+unlocks_units = Array[StringName]([])
+required_capital_level = 1
+class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 2, "nobles": 1}
+special_effects = {"corruption_drift": -2, "morale_bonus": 5}
+upkeep_cost = {0: 3, 5: 2}

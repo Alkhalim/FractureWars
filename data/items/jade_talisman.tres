@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderItem" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_item.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"jade_talisman"
+display_name = "Jade Talisman"
+description = "A healing talisman infused with serpent magic."
+rarity = &"common"
+effects = {"heal_per_turn": 8}
+source_factions = Array[StringName]([&"tainted_jade"])
+gift_tags = Array[StringName]([&"nature", &"arcane"])

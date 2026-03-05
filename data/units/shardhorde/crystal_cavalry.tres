@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystal_cavalry"
+display_name = "Crystal Cavalry"
+description = "Riders mounted on crystalline beasts that gallop across broken terrain without slowing. Their shard-laced charges leave trails of cutting fragments."
+faction_id = &"shardhorde"
+max_hp = 3000
+attack = 60
+melee_defense = 25
+projectile_defense = 15
+magic_defense = 10
+speed = 9
+attack_range = 1
+squad_size = 18
+hp_per_soldier = 166
+tiles_per_entity = 2
+movement_points = 5.5
+upkeep_cost = {0: 5, 3: 2, 4: 1}
+recruit_cost = {0: 120, 1: 42, 4: 15}
+recruit_time = 3
+population_cost = 4
+terrain_bonuses = {}
+realm_bonuses = {2: 0.15}
+tags = Array[String](["cavalry", "melee", "fast"])
+base_morale = 50
+captive_chance = 0.2

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_rune_armor"
+display_name = "Rune Armor"
+description = "Rune-inscribed armor deflects blows."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"ts_runic_forging"])
+effects = { "unit_defense_bonus": 2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"thunderswarm"
+tree_angle = 190.0
+tree_branch = &"iron_peak"

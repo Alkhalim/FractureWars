@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CommanderSkill" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_skill.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"quartermaster"
+display_name = "Quartermaster"
+description = "Expert in supply lines and fortifications."
+category = &"logistics"
+is_minor = false
+effects = {"recruit_speed_bonus": 2, "city_defense_bonus": 3}
+context_tags = Array[StringName]([&"in_city", &"was_defender"])

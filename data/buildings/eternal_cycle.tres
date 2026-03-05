@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"eternal_cycle"
+display_name = "Eternal Cycle III"
+description = "The great wheel of seasons made manifest in stone and living wood. Harvests here are legendary, and the land itself seems to breathe in time with the turning year."
+faction_id = &"gladehost"
+category = &"cultural"
+build_cost = {0: 353, 5: 109}
+build_time = 4
+income_bonus = {2: 12, 3: 42}
+population_growth_bonus = 12
+required_capital_level = 3
+upgrades_from = &"solstice_altar"
+class_loyalty_bonus = {"peasants": 5, "artisans": 2, "scholars": 2, "nobles": 2}
+special_effects = {"harmony_bonus": 5, "seasonal_multiplier": 0.2}
+upkeep_cost = {0: 8, 5: 5}

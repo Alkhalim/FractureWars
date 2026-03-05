@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"guardian_wolf"
+display_name = "Guardian Wolf"
+description = "A pack of shard-mutated wolves guarding a crystal shard."
+faction_id = &"shard_guardians"
+max_hp = 3000
+attack = 60
+melee_defense = 25
+projectile_defense = 15
+magic_defense = 10
+speed = 8
+attack_range = 1
+squad_size = 8
+hp_per_soldier = 375
+movement_points = 0.0
+upkeep_cost = {}
+recruit_cost = {}
+recruit_time = 1
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["beast", "melee", "fast"])
+base_morale = 85
+captive_chance = 0.0

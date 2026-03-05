@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"bone_rituals"
+display_name = "Bone Rituals"
+description = "Shamans read the future in cracked bones, their rituals mending flesh."
+tech_cost = 50
+research_time = 8
+prerequisites = Array[StringName]([&"horseback_archery"])
+effects = { "shard_essence_pct": 10, "unit_regen_pct": 3 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"skulloath"
+tree_angle = 180
+tree_branch = &"ancestor_rites"

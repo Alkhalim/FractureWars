@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"crystal_carapace"
+display_name = "Crystal Carapace"
+description = "Crystalline armor grows from flesh, harder than steel."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"shard_infusion"])
+effects = { "unit_defense_bonus": 3, "shard_resonance_bonus": 5 }
+shard_bonuses = { 0: {"unit_attack_bonus": 3}, 1: {"unit_defense_bonus": 3} }
+tier = 2
+research_category = &"arcane"
+faction_id = &"shardhorde"
+tree_angle = 0
+tree_branch = &"crystal_evolution"

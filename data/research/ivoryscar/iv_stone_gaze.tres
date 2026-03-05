@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"iv_stone_gaze"
+display_name = "Stone Gaze Mastery"
+description = "Perfect the art of petrification."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"ivory_curse", &"void_lens"])
+effects = { "unit_attack_bonus": 2, "unit_defense_bonus": 2, "stun_chance_pct": 8, "enemy_defense_penalty": -3 }
+shard_bonuses = {}
+tier = 3
+research_category = &"arcane"
+faction_id = &"ivoryscar"
+tree_angle = 310.0
+tree_branch = &"medusa_crown"
+socket_realm = 1
+socket_bonus = { "research_speed_bonus": 5, "shard_essence_pct": 5 }

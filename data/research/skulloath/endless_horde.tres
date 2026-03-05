@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"endless_horde"
+display_name = "Endless Horde"
+description = "The steppe births warriors without end."
+tech_cost = 150
+research_time = 22
+prerequisites = Array[StringName]([&"warg_breeding", &"caravan_routes"])
+effects = { "max_army_size_bonus": 2 }
+shard_bonuses = {}
+tier = 3
+research_category = &"logistics"
+faction_id = &"skulloath"
+tree_angle = 270
+tree_branch = &"horde_unity"
+socket_realm = 3
+socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }

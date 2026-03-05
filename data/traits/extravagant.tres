@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CommanderTrait" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/commander_trait.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"extravagant"
+display_name = "Extravagant"
+description = "Demands the finest luxuries — armies under this commander cost more to maintain."
+is_positive = false
+effects = {"upkeep_mult": 0.15}
+excludes = Array[StringName]([&"frugal"])
+acquire_context = Array[StringName]([&"in_city"])
+acquire_threshold = 7
+lose_context = Array[StringName]([&"battle_lost"])
+lose_threshold = 10

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ts_blood_frenzy"
+display_name = "Blood Frenzy"
+description = "Warriors enter an unstoppable frenzy, Storm Fury fueling devastating charges."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"stormborn", &"warcry"])
+effects = { "unit_attack_bonus": 5, "unit_speed_bonus": 2, "storm_fury_attack_scaling": 3, "charge_damage_pct": 15 }
+shard_bonuses = {}
+tier = 4
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 235.0
+tree_branch = &"war_fury"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

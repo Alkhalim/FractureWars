@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"oasis_guardian"
+display_name = "Oasis Guardian"
+description = "Elite defenders sworn to protect the sacred oases. Clad in sandstone plate and wielding tower shields, they form an unyielding wall against any threat to their people."
+faction_id = &"oaseans"
+max_hp = 6000
+attack = 65
+melee_defense = 45
+projectile_defense = 35
+magic_defense = 20
+speed = 3
+attack_range = 1
+squad_size = 50
+hp_per_soldier = 120
+movement_points = 3.0
+upkeep_cost = {0: 5, 3: 2}
+recruit_cost = {0: 80, 1: 21}
+recruit_time = 3
+population_cost = 10
+terrain_bonuses = {4: 0.15}
+realm_bonuses = {}
+tags = Array[String](["infantry", "melee", "desertstrider"])
+base_morale = 75
+fear_radius = 3
+healing_aura = 0.3
+armor_aura = 1

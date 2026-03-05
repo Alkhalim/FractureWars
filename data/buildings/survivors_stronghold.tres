@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"survivors_stronghold"
+display_name = "Survivor's Stronghold II"
+description = "A reinforced gathering hall surrounded by crude but effective walls. Refugees flock to its safety, and the Forsaken turn every desperate soul into a contributing member of the collective. Significantly boosts population growth and loyalty across the entire region."
+faction_id = &"forsaken"
+category = &"cultural"
+build_cost = {0: 131, 1: 22, 5: 50}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 16
+unlocks_units = Array[StringName]([])
+required_capital_level = 2
+upgrades_from = &"survivors_gathering"
+class_loyalty_bonus = {"peasants": 4, "artisans": 2, "scholars": 1, "nobles": 1}
+special_effects = {"region_population_growth_bonus": 5, "region_loyalty_bonus": 2}
+upkeep_cost = {0: 3}

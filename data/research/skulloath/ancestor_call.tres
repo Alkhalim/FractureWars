@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"ancestor_call"
+display_name = "Ancestor Call"
+description = "Ancestral spirits guide the living, holding corruption at bay."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"bone_rituals"])
+effects = { "unit_morale_bonus": 8, "corruption_per_turn": -2 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"skulloath"
+tree_angle = 180
+tree_branch = &"ancestor_rites"

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_rot_weapons"
+display_name = "Cursed Blades"
+description = "Blood-forged weapons that drain the life from their victims."
+tech_cost = 130
+research_time = 16
+prerequisites = Array[StringName]([&"blighted_earth", &"withering_touch"])
+effects = { "unit_attack_bonus": 3, "poison_damage_pct": 10 }
+shard_bonuses = {}
+tier = 3
+research_category = &"military"
+faction_id = &"forsaken"
+tree_angle = 105.0
+tree_branch = &"decay"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }

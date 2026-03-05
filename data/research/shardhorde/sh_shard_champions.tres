@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sh_shard_champions"
+display_name = "Shard Champions"
+description = "Elite warriors infused with shard power."
+tech_cost = 180
+research_time = 20
+prerequisites = Array[StringName]([&"sh_crystal_rage", &"sh_beast_lords"])
+effects = { "unit_attack_bonus": 5, "unit_defense_bonus": 3, "shard_resonance_bonus": 10 }
+shard_bonuses = { 0: {"unit_attack_bonus": 4}, 2: {"unit_hp_bonus": 8}, 3: {"charge_damage_pct": 10} }
+tier = 4
+research_category = &"military"
+faction_id = &"shardhorde"
+tree_angle = 305.0
+tree_branch = &"shard_ascension"
+socket_realm = 2
+socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }

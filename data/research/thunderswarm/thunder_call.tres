@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"thunder_call"
+display_name = "Thunder Call"
+description = "The roar of thunder empowers every arrow and bolt."
+tech_cost = 90
+research_time = 14
+prerequisites = Array[StringName]([&"lightning_strike"])
+effects = { "unit_ranged_bonus": 2, "storm_fury_per_turn": 3 }
+shard_bonuses = {}
+tier = 2
+research_category = &"military"
+faction_id = &"thunderswarm"
+tree_angle = 0
+tree_branch = &"storm_mastery"

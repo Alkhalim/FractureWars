@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ResearchData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/research_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"fk_spirit_chains"
+display_name = "Spirit Chains"
+description = "Bind spirits with chains of blood."
+tech_cost = 90
+research_time = 12
+prerequisites = Array[StringName]([&"fk_soul_siphon"])
+effects = { "unit_attack_bonus": 2, "stun_chance_pct": 5 }
+shard_bonuses = {}
+tier = 2
+research_category = &"arcane"
+faction_id = &"forsaken"
+tree_angle = 55.0
+tree_branch = &"soul_magic"
