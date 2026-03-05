@@ -121,6 +121,8 @@ var queue_panel: PanelContainer
 var _queue_slot_labels: Array[Label] = []
 var _queue_slot_x_buttons: Array[Button] = []
 var _queue_palette_buttons: Array[Button] = []
+var _queue_drag_command: int = -1  # Currently dragged QueueCommand (-1 = none)
+var _queue_drag_label: Label = null  # Floating label during drag
 var _player_power_initial: float = 0.0
 var _enemy_power_initial: float = 0.0
 
@@ -250,44 +252,6 @@ func _build_ui() -> void:
 	unit_list_container.add_theme_constant_override("separation", 3)
 	scroll.add_child(unit_list_container)
 
-	# Order buttons
-	var order_sep := HSeparator.new()
-	order_sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
-	order_vbox.add_child(order_sep)
-
-	var order_label := Label.new()
-	order_label.text = "SET ORDER"
-	order_label.add_theme_font_size_override("font_size", 12)
-	order_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
-	order_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	order_vbox.add_child(order_label)
-
-	var order_grid := GridContainer.new()
-	order_grid.columns = 2
-	order_grid.add_theme_constant_override("h_separation", 4)
-	order_grid.add_theme_constant_override("v_separation", 4)
-	order_vbox.add_child(order_grid)
-
-	var order_tooltips := {
-		Enums.BattleOrder.ADVANCE: "Move toward the nearest enemy",
-		Enums.BattleOrder.HOLD: "Stay in position, rotate to face enemy",
-		Enums.BattleOrder.FLANK_LEFT: "Move diagonally left to flank the enemy",
-		Enums.BattleOrder.FLANK_RIGHT: "Move diagonally right to flank the enemy",
-		Enums.BattleOrder.CHARGE: "Rush at double speed. Bonus damage on first contact",
-	}
-
-	for order_val in ORDER_NAMES:
-		if order_val == Enums.BattleOrder.RETREAT:
-			continue
-		var btn := Button.new()
-		btn.text = ORDER_NAMES[order_val]
-		btn.tooltip_text = order_tooltips.get(order_val, "")
-		btn.custom_minimum_size = Vector2(95, 28)
-		btn.add_theme_font_size_override("font_size", 11)
-		var captured_order: Enums.BattleOrder = order_val
-		btn.pressed.connect(_on_order_button_pressed.bind(captured_order))
-		order_grid.add_child(btn)
-
 	# Retreat All button — hidden during setup, visible during simulation
 	var retreat_btn := Button.new()
 	retreat_btn.name = "RetreatAllBtn"
@@ -374,15 +338,15 @@ func _build_ui() -> void:
 	# --- Command Queue Panel (Right Side, below strength meter) ---
 	queue_panel = _create_panel()
 	queue_panel.name = "QueuePanel"
-	queue_panel.anchor_left = 1
-	queue_panel.anchor_right = 1
+	queue_panel.anchor_left = 0
+	queue_panel.anchor_right = 0
 	queue_panel.anchor_top = 0
 	queue_panel.anchor_bottom = 0
-	queue_panel.offset_left = -320
-	queue_panel.offset_right = -4
+	queue_panel.offset_left = 4
+	queue_panel.offset_right = 320
 	queue_panel.offset_top = 96
 	queue_panel.offset_bottom = 360
-	queue_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	queue_panel.grow_horizontal = Control.GROW_DIRECTION_END
 
 	var queue_vbox := VBoxContainer.new()
 	queue_vbox.add_theme_constant_override("separation", 3)
@@ -457,6 +421,25 @@ func _build_ui() -> void:
 		pbtn.custom_minimum_size = Vector2(90, 24)
 		var captured_cmd: Enums.QueueCommand = cmd_val
 		pbtn.pressed.connect(_on_queue_palette_pressed.bind(captured_cmd))
+		# Drag-and-drop: start drag on mouse button press
+		pbtn.gui_input.connect(func(event: InputEvent) -> void:
+			if current_phase == Phase.SIMULATION:
+				return
+			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+				_queue_drag_command = captured_cmd
+				if _queue_drag_label == null:
+					_queue_drag_label = Label.new()
+					_queue_drag_label.add_theme_font_size_override("font_size", 11)
+					_queue_drag_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+					_queue_drag_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+					_queue_drag_label.add_theme_constant_override("outline_size", 2)
+					_queue_drag_label.z_index = 100
+					_queue_drag_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+					ui_layer.add_child(_queue_drag_label)
+				_queue_drag_label.text = QUEUE_COMMAND_NAMES.get(captured_cmd, "?")
+				_queue_drag_label.visible = true
+				_queue_drag_label.position = event.global_position + Vector2(10, -10)
+		)
 		palette_grid.add_child(pbtn)
 		_queue_palette_buttons.append(pbtn)
 
@@ -471,7 +454,7 @@ func _build_ui() -> void:
 	roster_panel.anchor_bottom = 1
 	roster_panel.offset_left = -320
 	roster_panel.offset_right = -4
-	roster_panel.offset_top = 366
+	roster_panel.offset_top = 96
 	roster_panel.offset_bottom = -4
 	roster_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 
@@ -766,6 +749,7 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 				if selected_formations.size() > 0:
 					_update_unit_info(selected_formations[0])
 				_populate_unit_list()
+				_update_queue_display()
 				renderer.queue_redraw()
 		)
 		group_box.add_child(header_hbox)
@@ -867,6 +851,7 @@ func _on_roster_row_input(event: InputEvent, f: BattleSimulatorV3.BattleFormatio
 				else:
 					unit_info_panel.visible = false
 				_populate_unit_list()
+				_update_queue_display()
 				renderer.queue_redraw()
 			else:
 				_on_formation_selected(f)
@@ -986,6 +971,38 @@ func _create_panel() -> PanelContainer:
 # --- Input ---
 
 func _input(event: InputEvent) -> void:
+	# Handle command queue drag-and-drop
+	if _queue_drag_command >= 0:
+		if event is InputEventMouseMotion:
+			if _queue_drag_label:
+				_queue_drag_label.position = event.global_position + Vector2(10, -10)
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			# Drop: check if over a queue slot
+			var dropped := false
+			for i in _queue_slot_labels.size():
+				var slot_rect := _queue_slot_labels[i].get_global_rect()
+				if slot_rect.has_point(event.global_position):
+					# Insert command at this slot position
+					var cmd: Enums.QueueCommand = _queue_drag_command as Enums.QueueCommand
+					for sf in selected_formations:
+						if sf.side != player_side or sf.is_dead or sf.is_fled:
+							continue
+						if i <= sf.command_queue.size() and sf.command_queue.size() < 6:
+							sf.command_queue.insert(i, {"command": cmd, "duration": 100})
+						elif i < sf.command_queue.size():
+							sf.command_queue[i] = {"command": cmd, "duration": 100}
+					_update_queue_display()
+					dropped = true
+					break
+			# If not dropped on a slot, append to end (same as click behavior)
+			if not dropped:
+				_on_queue_palette_pressed(_queue_drag_command as Enums.QueueCommand)
+			_queue_drag_command = -1
+			if _queue_drag_label:
+				_queue_drag_label.visible = false
+			get_viewport().set_input_as_handled()
+			return
+
 	# Handle all setup phase mouse input in _input to prevent UI panels from consuming clicks
 	if current_phase == Phase.SETUP:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -1126,6 +1143,7 @@ func _on_left_press(world_pos: Vector2, event: InputEvent = null) -> void:
 				else:
 					unit_info_panel.visible = false
 				_populate_unit_list()
+				_update_queue_display()
 				renderer.queue_redraw()
 			elif f in selected_formations and selected_formations.size() > 1:
 				# Clicked a formation already in multi-select — start group drag
@@ -1141,6 +1159,7 @@ func _on_left_press(world_pos: Vector2, event: InputEvent = null) -> void:
 				_drag_offset = f.position - world_pos
 				_update_unit_info(f)
 				_populate_unit_list()
+				_update_queue_display()
 				renderer.queue_redraw()
 		elif f:
 			# Clicked enemy formation — just select to view info
@@ -1149,6 +1168,7 @@ func _on_left_press(world_pos: Vector2, event: InputEvent = null) -> void:
 			selected_formations.append(f)
 			_update_unit_info(f)
 			_populate_unit_list()
+			_update_queue_display()
 			renderer.queue_redraw()
 		else:
 			if ctrl_held:
@@ -1175,6 +1195,7 @@ func _on_left_press(world_pos: Vector2, event: InputEvent = null) -> void:
 				selected_formations.append(f)
 				_update_unit_info(f)
 			_populate_unit_list()
+			_update_queue_display()
 			renderer.queue_redraw()
 		elif not f:
 			_deselect_formation()
@@ -1197,6 +1218,10 @@ func _on_left_release(world_pos: Vector2) -> void:
 			else:
 				unit_info_panel.visible = false
 			_populate_unit_list()
+			_update_queue_display()
+		else:
+			# Tiny drag = click on empty space — deselect
+			_deselect_formation()
 		renderer.queue_redraw()
 		return
 	if _group_drag_active:
@@ -1351,6 +1376,8 @@ func _deselect_formation() -> void:
 
 func _on_formation_selected(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	selected_formation = f
+	selected_formations.clear()
+	selected_formations.append(f)
 	_update_unit_info(f)
 	_populate_unit_list()
 	_update_queue_display()

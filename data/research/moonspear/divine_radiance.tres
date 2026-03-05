@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"divine_radiance"
 display_name = "Divine Radiance"
-description = "All peoples feel the warmth of lunar radiance."
+description = "All peoples feel the warmth of lunar radiance. Diplomatic influence shines across borders."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"pilgrim_network"])
-effects = { "standing_per_turn": 5 }
+effects = { "standing_per_turn": 2, "diplomacy_standing_bonus": 10 }
 shard_bonuses = {}
 tier = 3
 research_category = &"economy"

@@ -227,6 +227,16 @@ class BattleFormationV3:
 	# Debuffs applied by spells (each: {type: StringName, value: float, ticks: int})
 	var debuffs: Array[Dictionary] = []
 
+	# Research-driven combat bonuses
+	var flanking_damage_bonus: float = 0.0   # Extra multiplier on flanking damage
+	var charge_damage_bonus: float = 0.0     # Extra multiplier on charge damage
+	var fire_damage_bonus: float = 0.0       # Multiplier on fire/magic damage
+	var poison_damage_pct: float = 0.0       # Poison DoT as % of damage dealt
+	var stun_chance_pct: float = 0.0         # % chance to stun target per hit
+	var siege_bonus: int = 0                 # Flat bonus to siege damage
+	var ranged_attack_bonus: int = 0         # Flat bonus to ranged attack stat
+	var adjacent_unit_damage_pct: float = 0.0 # Bonus damage when friendly unit adjacent
+
 	# Debt penalty: faction has negative gold
 	var faction_in_debt: bool = false
 
@@ -372,6 +382,15 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	var r_eff := GameManager.research_system.get_research_effects(ud.faction_id)
 	f.attack = ud.attack + atk_bonus + r_eff.get("unit_attack_bonus", 0)
 	f.defense = ud.melee_defense + def_bonus + r_eff.get("unit_defense_bonus", 0)
+	# Additional research effect keys
+	f.ranged_attack_bonus = r_eff.get("unit_ranged_bonus", 0)
+	f.flanking_damage_bonus = r_eff.get("flanking_damage_bonus", 0) / 100.0
+	f.charge_damage_bonus = r_eff.get("charge_damage_pct", 0) / 100.0
+	f.fire_damage_bonus = r_eff.get("fire_damage_pct", 0) / 100.0
+	f.poison_damage_pct = r_eff.get("poison_damage_pct", 0) / 100.0
+	f.stun_chance_pct = r_eff.get("stun_chance_pct", 0) / 100.0
+	f.siege_bonus = r_eff.get("siege_bonus", 0)
+	f.adjacent_unit_damage_pct = r_eff.get("adjacent_unit_damage_pct", 0) / 100.0
 
 	# Faction mechanic combat bonuses — resolve parent faction for sub-factions
 	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(ud.faction_id, ud.faction_id)
@@ -396,12 +415,15 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			if fs.corruption >= 81:
 				f.attack += int(f.attack * 0.30)
 				f.base_morale -= 5 # Demonic units are feared but unstable
-				# Fear aura: enemy morale debuff (via base_morale applied to enemies handled elsewhere)
 			elif fs.corruption >= 61:
 				f.attack += int(f.attack * 0.18)
 			elif fs.corruption <= 20:
 				# Traditional Pure: less attack but more defense and morale
 				f.attack -= int(f.attack * 0.08)
+			# Research: corruption_attack_scaling (+X% attack per 10 corruption)
+			var sk_scaling: int = r_eff.get("corruption_attack_scaling", 0)
+			if sk_scaling > 0 and fs.corruption > 0:
+				f.attack += int(f.attack * float(sk_scaling) * float(fs.corruption) / 1000.0)
 				f.defense += int(f.defense * 0.10)
 				f.base_morale += 10
 
@@ -428,6 +450,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				# Anti-magic: enemy mages deal less damage (applied as defense vs magic)
 				if fs.taint_power >= 40:
 					f.vs_defense_bonuses["mage"] = f.vs_defense_bonuses.get("mage", 0) + 5
+			# Research: taint_attack_scaling (+X% attack per 10 taint)
+			var tj_scaling: int = r_eff.get("taint_attack_scaling", 0)
+			if tj_scaling > 0 and fs.taint_power > 0:
+				f.attack += int(f.attack * float(tj_scaling) * float(fs.taint_power) / 1000.0)
 
 		# ── Gladehost: Harmony + Season ──
 		elif parent_fid == &"gladehost":
@@ -448,23 +474,26 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				f.attack += int(f.attack * 0.08)
 			elif season == 3: # Winter: defense bonus (hardened)
 				f.defense += int(f.defense * 0.10)
+			# Research: harmony_income_scaling handled in turn_manager (not combat)
 
 		# ── Shardhorde: Resonance — much stronger per-realm ──
 		elif parent_fid == &"shardhorde":
+			# Research: shard_resonance_bonus amplifies all realm effects
+			var sh_res_amp: float = 1.0 + float(r_eff.get("shard_resonance_bonus", 0)) / 100.0
 			for realm_key in fs.shard_resonance:
 				match realm_key:
 					Enums.Realm.VOID:
-						f.attack += int(f.attack * 0.15)
+						f.attack += int(f.attack * 0.15 * sh_res_amp)
 					Enums.Realm.ELEMENTAL:
-						f.attack += int(f.attack * 0.10)
+						f.attack += int(f.attack * 0.10 * sh_res_amp)
 					Enums.Realm.DIVINE:
-						f.defense += int(f.defense * 0.10)
-						f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2)
+						f.defense += int(f.defense * 0.10 * sh_res_amp)
+						f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2 * sh_res_amp)
 					Enums.Realm.NATURE:
-						f.base_morale += 8
+						f.base_morale += int(8 * sh_res_amp)
 					Enums.Realm.MORTAL:
-						f.attack += int(f.attack * 0.05)
-						f.defense += int(f.defense * 0.05)
+						f.attack += int(f.attack * 0.05 * sh_res_amp)
+						f.defense += int(f.defense * 0.05 * sh_res_amp)
 			# Multi-resonance bonus: 3+ realms = massive power spike
 			if fs.shard_resonance.size() >= 3:
 				f.attack += int(f.attack * 0.10)
@@ -472,18 +501,20 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 
 		# ── Moonspear: Lunar Phase — much stronger effects ──
 		elif parent_fid == &"moonspear":
+			# Research: lunar_phase_bonus_pct amplifies all phase effects
+			var lunar_amp: float = 1.0 + float(r_eff.get("lunar_phase_bonus_pct", 0)) / 100.0
 			match fs.lunar_phase:
 				0: # New Moon: aggression, stealth
-					f.attack += int(f.attack * 0.15)
+					f.attack += int(f.attack * 0.15 * lunar_amp)
 					f.defense -= int(f.defense * 0.05)
 				1: # Waxing: speed bonus
 					f.speed += 1
 					f.move_speed = f.speed * BASE_MOVE_SPEED
 				2: # Full Moon: defense, morale
-					f.defense += int(f.defense * 0.15)
-					f.base_morale += 10
+					f.defense += int(f.defense * 0.15 * lunar_amp)
+					f.base_morale += int(10 * lunar_amp)
 				3: # Waning: healing during battle
-					f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.4)
+					f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.4 * lunar_amp)
 			# Ethereal soldiers (always)
 			f.ethereal_dodge_chance = 0.15
 			f.base_morale += 15
@@ -505,6 +536,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			if _campaign_terrain == Enums.TerrainType.MOUNTAINS:
 				f.attack += 3
 				f.defense += 2
+			# Research: storm_fury_attack_scaling (+X% attack per 10 fury)
+			var ts_scaling: int = r_eff.get("storm_fury_attack_scaling", 0)
+			if ts_scaling > 0 and fs.storm_fury > 0:
+				f.attack += int(f.attack * float(ts_scaling) * float(fs.storm_fury) / 1000.0)
 
 		# ── Cinderguard: Forge Mode — clear attack/defense trade-off ──
 		elif parent_fid == &"cinderguard":
@@ -519,6 +554,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				f.attack += int(f.attack * 0.15)
 			elif fs.border_vigilance >= 70:
 				f.attack += int(f.attack * 0.08)
+			# Research: vigilance_defense_scaling (+X% defense per 10 vigilance)
+			var cg_scaling: int = r_eff.get("vigilance_defense_scaling", 0)
+			if cg_scaling > 0 and fs.border_vigilance > 0:
+				f.defense += int(f.defense * float(cg_scaling) * float(fs.border_vigilance) / 1000.0)
 			# Storm wall city bonus (from Thunderswarm ability — reused for Cinderguard fortress defense)
 			# City defense handled in siege system
 
@@ -554,6 +593,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				f.base_morale -= 10
 			elif fs.solar_faith <= 39:
 				f.base_morale -= 5
+			# Research: solar_faith_attack_scaling (+X% attack per 10 faith)
+			var sb_scaling: int = r_eff.get("solar_faith_attack_scaling", 0)
+			if sb_scaling > 0 and fs.solar_faith > 0:
+				f.attack += int(f.attack * float(sb_scaling) * float(fs.solar_faith) / 1000.0)
 
 		# ── Forsaken: Espionage ambush bonus ──
 		elif parent_fid == &"forsaken":
@@ -692,12 +735,13 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.projectile_defense = maxi(0, ud.projectile_defense + net_def_delta)
 	f.magic_defense = maxi(0, ud.magic_defense + net_def_delta)
 
-	f.speed = ud.speed + spd_bonus
+	f.speed = ud.speed + spd_bonus + r_eff.get("unit_speed_bonus", 0)
 	if vet_bonus > 0.0:
 		f.speed += int(float(f.speed) * vet_bonus)
 	f.attack_range = ud.attack_range
-	f.max_hp = unit.current_hp
-	f.current_hp = unit.current_hp
+	var hp_bonus: int = r_eff.get("unit_hp_bonus", 0)
+	f.max_hp = unit.current_hp + hp_bonus
+	f.current_hp = unit.current_hp + hp_bonus
 	f.move_speed = f.speed * BASE_MOVE_SPEED
 
 	if ud.hp_per_soldier > 0 and ud.squad_size > 1:
@@ -719,6 +763,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	if fs and parent_fid == &"gladehost" and fs.harmony >= 70:
 		f.base_morale += 10
 	f.current_morale = float(f.base_morale)
+	# Research: HP regen as % of max HP per battle round
+	var regen_pct: float = r_eff.get("unit_regen_pct", 0) / 100.0
+	if regen_pct > 0.0:
+		f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, float(f.max_hp) * regen_pct / 60.0)  # Spread over ~60 ticks per round
 	f.morale_aura = ud.morale_aura
 	f.fear_radius = ud.fear_radius
 	f.fear_vs_tags = ud.fear_vs_tags.duplicate()
@@ -1161,6 +1209,29 @@ func _advance_command_queues() -> void:
 				f.current_order = Enums.BattleOrder.HOLD
 				f.fall_back_retreating = false
 
+# Apply research-driven enemy morale/defense penalties at battle start
+func _apply_research_enemy_penalties() -> void:
+	# Collect research effects for each side (use first formation's faction)
+	for side in [0, 1]:
+		var own_formations := attacker_formations if side == 0 else defender_formations
+		var enemy_formations := defender_formations if side == 0 else attacker_formations
+		if own_formations.is_empty():
+			continue
+		var faction_id: StringName = own_formations[0].faction_id
+		var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+		var r_eff := GameManager.research_system.get_research_effects(parent_fid)
+		var morale_pen: int = r_eff.get("enemy_morale_penalty", 0)
+		var defense_pen: int = r_eff.get("enemy_defense_penalty", 0)
+		if morale_pen != 0 or defense_pen != 0:
+			for ef in enemy_formations:
+				ef.base_morale += morale_pen  # Expected to be negative
+				ef.current_morale = float(ef.base_morale)
+				if defense_pen != 0:
+					ef.defense += defense_pen
+					ef.melee_defense += defense_pen
+					ef.projectile_defense += defense_pen
+					ef.magic_defense += defense_pen
+
 # --- Tick Simulation ---
 
 func simulate_tick() -> Array[Dictionary]:
@@ -1168,6 +1239,10 @@ func simulate_tick() -> Array[Dictionary]:
 	var actions: Array[Dictionary] = []
 	_first_contact_pairs.clear()
 	_target_cache.clear()
+
+	# First tick: apply research-based enemy penalties (morale/defense debuffs to opposing side)
+	if tick_count == 1:
+		_apply_research_enemy_penalties()
 
 	# Advance command queues before any movement/combat
 	_advance_command_queues()
@@ -1456,7 +1531,7 @@ func simulate_tick() -> Array[Dictionary]:
 		while i_db < f.debuffs.size():
 			var db: Dictionary = f.debuffs[i_db]
 			db.ticks -= 1
-			if db.type == &"dot":
+			if db.type == &"dot" or db.type == &"poison":
 				var dot_tick_dmg := maxi(1, int(db.value))
 				f.damage_dealt -= 0  # DoT doesn't count as attacker DPS
 				var killed := f.take_damage(dot_tick_dmg)
@@ -1465,6 +1540,9 @@ func simulate_tick() -> Array[Dictionary]:
 				if f.is_dead:
 					recent_deaths.append({"side": f.side, "position": f.position, "tick": tick_count})
 					break
+			elif db.type == &"stun":
+				# Stunned units cannot act this tick — skip movement and attacks
+				f.is_idle_this_tick = true
 			if db.ticks <= 0:
 				# Remove expired debuff and restore effects
 				if db.type == &"slow":
@@ -1920,6 +1998,13 @@ func _resolve_combat_pair(a: BattleFormationV3, b: BattleFormationV3) -> Array[D
 			b.current_morale -= result_ab.morale_damage
 			if b.total_entities > 1 and killed > 0:
 				b.current_morale -= killed * 3.0 * TICK_SCALE
+			# Research: poison DoT from melee hits
+			if a.poison_damage_pct > 0.0:
+				var poison_dmg := maxf(1.0, float(ab_dmg) * a.poison_damage_pct)
+				b.debuffs.append({"type": &"poison", "value": poison_dmg / 5.0, "ticks": 5})
+			# Research: stun chance from melee hits
+			if a.stun_chance_pct > 0.0 and randf() < a.stun_chance_pct:
+				b.debuffs.append({"type": &"stun", "value": 0.0, "ticks": 3})
 			actions.append({
 				"type": "melee_hit", "attacker": a.instance_id, "defender": b.instance_id,
 				"damage": ab_dmg, "killed": killed,
@@ -1942,6 +2027,13 @@ func _resolve_combat_pair(a: BattleFormationV3, b: BattleFormationV3) -> Array[D
 			a.current_morale -= result_ba.morale_damage
 			if a.total_entities > 1 and killed > 0:
 				a.current_morale -= killed * 3.0 * TICK_SCALE
+			# Research: poison DoT from melee hits
+			if b.poison_damage_pct > 0.0:
+				var poison_dmg := maxf(1.0, float(ba_dmg) * b.poison_damage_pct)
+				a.debuffs.append({"type": &"poison", "value": poison_dmg / 5.0, "ticks": 5})
+			# Research: stun chance from melee hits
+			if b.stun_chance_pct > 0.0 and randf() < b.stun_chance_pct:
+				a.debuffs.append({"type": &"stun", "value": 0.0, "ticks": 3})
 			actions.append({
 				"type": "melee_hit", "attacker": b.instance_id, "defender": a.instance_id,
 				"damage": ba_dmg, "killed": killed,
@@ -2031,6 +2123,9 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	# Formula: attack^2 / (attack + defense * 0.5)
 	# Uses melee_defense for melee combat
 	var atk_f := float(attacker.attack)
+	# Research: siege bonus adds attack vs constructs and in city battles
+	if attacker.siege_bonus > 0 and (defender.tags.has("construct") or defender.tags.has("stationary") or _is_city_battle):
+		atk_f += float(attacker.siege_bonus)
 	var def_f := float(defender.melee_defense + defender.armor_aura_bonus) * 0.5
 	# Apply "vs_X" bonuses — attacker gets bonus attack vs specific defender tags
 	for tag in defender.tags:
@@ -2094,8 +2189,23 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 
 	# Charge bonus on first contact (cavalry order)
 	if attacker.current_order == Enums.BattleOrder.CHARGE:
-		var charge_mult: float = CHARGE_DAMAGE_MULT + _side_cmd_bonuses[attacker.side].get("charge_damage_mult", 0.0)
+		var charge_mult: float = CHARGE_DAMAGE_MULT + _side_cmd_bonuses[attacker.side].get("charge_damage_mult", 0.0) + attacker.charge_damage_bonus
 		total_damage = int(total_damage * charge_mult)
+
+	# Research: flanking damage bonus (applies to flank + rear contact portion)
+	if attacker.flanking_damage_bonus > 0.0 and (flank_contact + rear_contact) > 0.01:
+		var flank_ratio := (flank_contact + rear_contact) / total_contact
+		total_damage += int(float(total_damage) * flank_ratio * attacker.flanking_damage_bonus)
+
+	# Research: adjacent unit bonus (bonus when friendly unit within support range)
+	if attacker.adjacent_unit_damage_pct > 0.0:
+		var allies := attacker_formations if attacker.side == 0 else defender_formations
+		for ally in allies:
+			if ally == attacker or ally.is_dead or ally.is_fled:
+				continue
+			if attacker.position.distance_to(ally.position) < 120.0:
+				total_damage += int(float(total_damage) * attacker.adjacent_unit_damage_pct)
+				break  # Only one adjacent bonus
 
 	# Impact bonus — first few ticks of each melee engagement (resets on disengage)
 	if not attacker.impact_applied and attacker.first_contact_tick >= 0:
@@ -2430,7 +2540,7 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 
 	# Percentage-based ranged defense: attack * 0.6 scaled by armor type
 	# Mages bypass physical armor (use magic_defense); archers use projectile_defense
-	var ranged_atk := float(f.attack) * 0.6
+	var ranged_atk := float(f.attack + f.ranged_attack_bonus) * 0.6
 	var target_def_stat: int = target.projectile_defense
 	if f.tags.has("mage"):
 		target_def_stat = target.magic_defense
@@ -2487,6 +2597,10 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 				proj_data["speed_var"] = randf_range(0.8, 1.3)
 			visual_projs.append(proj_data)
 
+	# Research: fire/magic damage bonus (applies to mage ranged attacks)
+	if f.fire_damage_bonus > 0.0 and f.tags.has("mage"):
+		total_damage += int(float(total_damage) * f.fire_damage_bonus)
+
 	# Debt penalty: 15% less damage when faction is in debt
 	if f.faction_in_debt:
 		total_damage = int(total_damage * 0.85)
@@ -2496,6 +2610,14 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 		var killed := target.take_damage(total_damage)
 		var morale_mult := _get_spell_morale_mult(f.spell_type) if f.tags.has("mage") else 1.0
 		target.current_morale -= 1.5 * morale_mult * (float(hit_count) / maxf(1.0, float(entity_limit)))
+
+		# Research: poison DoT — apply lingering damage as debuff
+		if f.poison_damage_pct > 0.0 and hit_count > 0:
+			var poison_dmg := maxf(1.0, float(total_damage) * f.poison_damage_pct)
+			target.debuffs.append({"type": &"poison", "value": poison_dmg / 5.0, "ticks": 5})
+		# Research: stun chance — chance to briefly pause target actions
+		if f.stun_chance_pct > 0.0 and randf() < f.stun_chance_pct:
+			target.debuffs.append({"type": &"stun", "value": 0.0, "ticks": 3})
 
 		actions.append({
 			"type": "ranged_hit", "attacker": f.instance_id, "defender": target.instance_id,

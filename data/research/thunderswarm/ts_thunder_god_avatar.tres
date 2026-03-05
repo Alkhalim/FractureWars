@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_thunder_god_avatar"
 display_name = "Thunder God Incarnate"
-description = "The Thunder God himself walks among mortals."
+description = "Storm Fury generation doubled. Spend 30 Storm Fury to instantly rout an army."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"ts_berserker_lords", &"ts_ragnarok"])
-effects = { "unit_attack_bonus": 8, "unit_speed_bonus": 4, "unit_morale_bonus": 25 }
+effects = { "storm_fury_per_turn": 5, "storm_fury_attack_scaling": 5, "unit_attack_bonus": 8, "enemy_morale_penalty": -10 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

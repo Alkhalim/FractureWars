@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ms_constellation_ward"
 display_name = "Constellation Ward"
-description = "Star patterns create protective barriers."
+description = "Star patterns create protective barriers that stun attackers."
 tech_cost = 90
 research_time = 12
 prerequisites = Array[StringName]([&"ms_stargazing"])
-effects = { "unit_defense_bonus": 2 }
+effects = { "unit_defense_bonus": 2, "stun_chance_pct": 3 }
 shard_bonuses = {}
 tier = 2
 research_category = &"arcane"

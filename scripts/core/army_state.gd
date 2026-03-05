@@ -57,6 +57,25 @@ func get_max_movement() -> float:
 					base_mp += float(bdata.special_effects["army_movement_bonus"])
 	return base_mp * 1.2
 
+func get_vision_range() -> int:
+	var base_vision := 3
+	var r_eff := GameManager.research_system.get_research_effects(faction_id)
+	base_vision += r_eff.get("vision_range_bonus", 0)
+	if commander:
+		var bonuses := CommanderSystem.get_commander_army_bonuses(commander)
+		base_vision += bonuses.get("vision_range_bonus", 0)
+	return base_vision
+
+func get_max_army_size() -> int:
+	var base_size := 8
+	var r_eff := GameManager.research_system.get_research_effects(faction_id)
+	base_size += r_eff.get("max_army_size_bonus", 0)
+	return base_size
+
+func get_attrition_reduction() -> float:
+	var r_eff := GameManager.research_system.get_research_effects(faction_id)
+	return float(r_eff.get("attrition_reduction_pct", 0)) / 100.0
+
 func get_commander_name() -> String:
 	if commander:
 		return commander.name

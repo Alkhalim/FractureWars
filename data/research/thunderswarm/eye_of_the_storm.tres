@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"eye_of_the_storm"
 display_name = "Eye of the Storm"
-description = "In the eye of the storm, the Thunderswarm are invincible."
+description = "Storm mastery grants fury with every passing turn."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"thunder_call", &"peak_fortresses"])
-effects = { "mountain_combat_pct": 25 }
+effects = { "unit_attack_bonus": 3, "storm_fury_per_turn": 2 }
 shard_bonuses = {}
 tier = 3
 research_category = &"military"

@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"iv_stone_god"
 display_name = "Stone God Awakened"
-description = "The Stone God awakens from eternal slumber."
+description = "All petrified enemies become Stone Warriors under your control."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"iv_medusa_avatar", &"iv_gorgon_queen"])
-effects = { "unit_attack_bonus": 7, "unit_defense_bonus": 7, "unit_morale_bonus": 25 }
+effects = { "stun_chance_pct": 15, "relic_power_per_turn": 3, "unit_attack_bonus": 5, "unit_defense_bonus": 5 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

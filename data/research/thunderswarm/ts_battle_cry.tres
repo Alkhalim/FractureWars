@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_battle_cry"
 display_name = "Battle Cry"
-description = "A terrifying war cry shakes morale."
+description = "A terrifying war cry shakes morale and drives berserker charges."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"warcry", &"warband_unity"])
-effects = { "unit_morale_bonus": 10, "unit_attack_bonus": 1 }
+effects = { "unit_morale_bonus": 10, "unit_attack_bonus": 1, "charge_damage_pct": 10 }
 shard_bonuses = {}
 tier = 3
 research_category = &"military"

@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"tj_blood_god"
 display_name = "Blood God Awakened"
-description = "The blood god stirs from ancient slumber."
+description = "Captives generate 3x resources. Sacrificing captives heals all units."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"tj_blood_frenzy", &"tj_serpent_apotheosis"])
-effects = { "unit_attack_bonus": 7, "unit_morale_bonus": 25 }
+effects = { "unit_attack_bonus": 8, "unit_regen_pct": 5, "loot_bonus_pct": 30 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

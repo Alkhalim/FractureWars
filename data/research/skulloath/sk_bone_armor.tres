@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_bone_armor"
 display_name = "Bone Armor"
-description = "Armor crafted from ancestor bones."
+description = "Armor crafted from ancestor bones shields against corruption's taint."
 tech_cost = 90
 research_time = 12
 prerequisites = Array[StringName]([&"bone_rituals"])
-effects = { "unit_defense_bonus": 2 }
+effects = { "unit_defense_bonus": 2, "corruption_per_turn": -2 }
 shard_bonuses = {}
 tier = 2
 research_category = &"arcane"

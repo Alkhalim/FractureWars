@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"cg_eternal_flame"
 display_name = "The Eternal Flame"
-description = "The fire that shall never be extinguished."
+description = "Border Vigilance cannot drop below 60. All buildings provide extra defense."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"cg_cinder_lords", &"cg_iron_citadel"])
-effects = { "unit_attack_bonus": 7, "unit_defense_bonus": 6, "unit_morale_bonus": 25 }
+effects = { "vigilance_per_turn": 5, "vigilance_defense_scaling": 5, "defense_bonus": 10, "income_all_pct": 15 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

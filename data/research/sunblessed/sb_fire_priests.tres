@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sb_fire_priests"
 display_name = "Fire Priests"
-description = "Priests who command sacred fire."
+description = "Priests who command sacred fire, channeling Solar Faith into devastating flames."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"righteous_fury", &"sun_warriors"])
-effects = { "unit_attack_bonus": 3 }
+effects = { "unit_attack_bonus": 3, "fire_damage_pct": 15, "solar_faith_per_turn": 2 }
 shard_bonuses = {}
 tier = 3
 research_category = &"arcane"

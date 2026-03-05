@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"solar_ascension"
 display_name = "Solar Ascension"
-description = "The Solar Archon channels the sun's full fury."
+description = "The Solar Archon channels the sun's full fury. Solar Faith empowers attacks."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"radiant_aura", &"sacred_flame"])
-effects = { "unit_attack_bonus": 4, "battle_heal_pct": 10 }
+effects = { "unit_attack_bonus": 4, "unit_regen_pct": 10, "solar_faith_attack_scaling": 2 }
 shard_bonuses = {}
 tier = 3
 research_category = &"arcane"

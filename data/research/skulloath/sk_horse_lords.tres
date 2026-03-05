@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_horse_lords"
 display_name = "Horse Lords"
-description = "Supreme mastery of mounted warfare."
+description = "Horse lords encircle and flank with devastating precision."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"sk_mounted_archers", &"steppe_ambush"])
-effects = { "unit_speed_bonus": 2, "unit_attack_bonus": 2 }
+effects = { "unit_speed_bonus": 2, "unit_attack_bonus": 2, "flanking_damage_bonus": 8 }
 shard_bonuses = {}
 tier = 3
 research_category = &"military"

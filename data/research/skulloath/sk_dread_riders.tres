@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_dread_riders"
 display_name = "Dread Riders"
-description = "The most feared cavalry in the known world."
+description = "Dread riders trample all resistance. Corruption fuels their savagery."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"sk_lightning_raids", &"sk_warg_lords"])
-effects = { "unit_attack_bonus": 6, "unit_speed_bonus": 4, "unit_morale_bonus": 15 }
+effects = { "unit_attack_bonus": 6, "charge_damage_pct": 25, "corruption_attack_scaling": 3, "corruption_per_turn": 3 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

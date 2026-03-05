@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"dawn_meditation"
 display_name = "Dawn Meditation"
-description = "Wisdom comes with the dawn to those who seek it."
+description = "Meditation at dawn deepens Wisdom and accelerates enlightenment."
 tech_cost = 35
 research_time = 6
 prerequisites = Array[StringName]([])
-effects = { "research_speed_pct": 10 }
+effects = { "research_speed_bonus": 10, "wisdom_per_turn": 2 }
 shard_bonuses = {}
 tier = 1
 research_category = &"economy"

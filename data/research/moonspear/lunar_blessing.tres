@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"lunar_blessing"
 display_name = "Lunar Blessing"
-description = "Moonlight mends wounds that mortal medicine cannot."
+description = "Moonlight mends wounds that mortal medicine cannot. The lunar cycle strengthens the healing."
 tech_cost = 70
 research_time = 10
 prerequisites = Array[StringName]([&"moonlit_prayers"])
-effects = { "battle_heal_pct": 15 }
+effects = { "unit_regen_pct": 15, "lunar_phase_bonus_pct": 5 }
 shard_bonuses = {}
 tier = 2
 research_category = &"arcane"

@@ -6,12 +6,12 @@
 script = ExtResource("1")
 id = &"divine_communion"
 display_name = "Divine Communion"
-description = "Spiritual enlightenment inspires greater loyalty among all classes."
+description = "Spiritual communion with shard energies deepens understanding and diplomacy."
 tech_cost = 90
 research_time = 14
 prerequisites = Array[StringName]([&"arcane_studies"])
-effects = { "loyalty_bonus": 5 }
-shard_bonuses = { 0: { "loyalty_bonus": 3 } }
+effects = { "shard_essence_pct": 10, "diplomacy_standing_bonus": 1 }
+shard_bonuses = { 0: { "shard_essence_pct": 10 } }
 tier = 2
 research_category = &"arcane"
 faction_id = &""

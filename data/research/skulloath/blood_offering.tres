@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"blood_offering"
 display_name = "Blood Offering"
-description = "Spilled blood empowers the warriors of the horde."
+description = "Spilled blood empowers the horde but feeds the corruption within."
 tech_cost = 70
 research_time = 10
 prerequisites = Array[StringName]([&"bone_rituals"])
-effects = { "battle_heal_pct": 10 }
+effects = { "unit_regen_pct": 5, "corruption_per_turn": 2 }
 shard_bonuses = {}
 tier = 2
 research_category = &"arcane"

@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"radiant_aura"
 display_name = "Radiant Aura"
-description = "Golden light suffuses the faithful, mending wounds."
+description = "Golden light suffuses the faithful, mending wounds and strengthening Solar Faith."
 tech_cost = 90
 research_time = 14
 prerequisites = Array[StringName]([&"solar_prayer"])
-effects = { "battle_heal_pct": 15 }
+effects = { "unit_regen_pct": 15, "solar_faith_per_turn": 2 }
 shard_bonuses = {}
 tier = 2
 research_category = &"arcane"

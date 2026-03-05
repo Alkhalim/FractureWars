@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"iv_void_crown"
 display_name = "Void Crown"
-description = "Crown of infinite sight."
+description = "Vision covers entire map. Research speed +50%."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"iv_void_seers"])
-effects = { "unit_attack_bonus": 5, "unit_defense_bonus": 4, "research_speed_bonus": 20 }
+effects = { "vision_range_bonus": 5, "research_speed_bonus": 25, "shard_essence_pct": 20 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

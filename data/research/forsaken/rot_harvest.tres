@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = &"rot_harvest"
-display_name = "Dark Harvest"
+display_name = "Blood Harvest"
 description = "Blood magic feeds unnatural growth."
 tech_cost = 70
 research_time = 10

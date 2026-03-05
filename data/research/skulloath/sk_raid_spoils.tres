@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_raid_spoils"
 display_name = "Raid Spoils"
-description = "Plunder enriches the horde."
+description = "Raided spoils fill the war coffers and fuel further conquest."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"terror_tactics", &"steppe_ambush"])
-effects = { "income_gold_pct": 12, "trade_income_bonus": 8 }
+effects = { "income_gold_pct": 12, "loot_bonus_pct": 15, "trade_income_bonus": 8 }
 shard_bonuses = {}
 tier = 3
 research_category = &"economy"

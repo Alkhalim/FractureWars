@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"divine_mandate"
 display_name = "Divine Mandate"
-description = "The moon herself ordains the faithful to lead."
+description = "The moon herself ordains the faithful to lead. Diplomatic influence grows under lunar authority."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"celestial_insight"])
-effects = { "diplomatic_victory_threshold": -1 }
+effects = { "diplomacy_standing_bonus": 10, "standing_per_turn": 2, "lunar_phase_bonus_pct": 10 }
 shard_bonuses = {}
 tier = 3
 research_category = &"arcane"

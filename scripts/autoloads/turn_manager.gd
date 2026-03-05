@@ -245,6 +245,9 @@ func _start_faction_turn() -> void:
 	# Yield after faction mechanics (can iterate many tiles)
 	await get_tree().process_frame
 
+	# Process research/building diplomacy standing bonuses
+	_apply_diplomacy_bonuses(faction_id)
+
 	# Heal armies in settlements/friendly territory
 	_heal_armies_in_settlements(faction_id)
 
@@ -1520,6 +1523,33 @@ func _is_in_undepleted_beast_range(hex_pos: Vector2i) -> bool:
 				return true
 	return false
 
+# ── Diplomacy Standing Bonuses (from research + buildings) ──
+func _apply_diplomacy_bonuses(faction_id: StringName) -> void:
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var r_eff := GameManager.research_system.get_research_effects(parent_fid)
+	var standing_per_turn: int = r_eff.get("standing_per_turn", 0)
+	var diplo_bonus: int = r_eff.get("diplomacy_standing_bonus", 0)
+	# Building special_effects: diplomacy_standing_bonus
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs:
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city:
+				for bid in city.buildings:
+					var bld := DataManager.get_building(bid)
+					if bld and bld.special_effects.has("diplomacy_standing_bonus"):
+						diplo_bonus += int(bld.special_effects["diplomacy_standing_bonus"])
+	var total_bonus := standing_per_turn + diplo_bonus
+	if total_bonus > 0 and GameManager.diplomacy_system:
+		for other_id in GameManager.state.faction_states:
+			if other_id == faction_id or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs: FactionState = GameManager.state.faction_states[other_id]
+			if other_fs.is_defeated:
+				continue
+			if GameManager.get_relation(faction_id, other_id) != Enums.FactionRelation.WAR:
+				GameManager.diplomacy_system.modify_standing(faction_id, other_id, total_bonus, "Diplomatic influence")
+
 # ── Terrain Attrition ───────────────────────────────────────
 
 func _apply_terrain_attrition(faction_id: StringName) -> void:
@@ -1541,10 +1571,14 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 		if GameManager.city_system.get_city_at_hex(army.hex_pos) != null:
 			continue
 
+		# Research: attrition reduction
+		var attrition_reduction := army.get_attrition_reduction()
+
 		match tile.terrain:
 			Enums.TerrainType.SHARD_WASTES:
 				# Light damage to all — void-aligned take less
 				var dmg_pct := 0.02 if is_void else 0.05
+				dmg_pct *= (1.0 - attrition_reduction)
 				for unit in army.units:
 					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
 					if ud == null:
@@ -1562,6 +1596,7 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 					dmg_pct = 0.01
 				elif is_nature:
 					dmg_pct = 0.05
+				dmg_pct *= (1.0 - attrition_reduction)
 				for unit in army.units:
 					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
 					if ud == null:
@@ -1587,7 +1622,8 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 						unit.current_hp = mini(unit.current_hp + heal, ud.max_hp)
 					else:
 						# Non-nature: light damage from hostile vegetation
-						var dmg := maxi(1, int(ud.max_hp * 0.02))
+						var dmg_pct := 0.02 * (1.0 - attrition_reduction)
+						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
 						unit.current_hp = maxi(1, unit.current_hp - dmg)
 
 			Enums.TerrainType.TUNDRA:
@@ -1597,6 +1633,7 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 					dmg_pct = 0.04
 				elif is_void:
 					dmg_pct = 0.01
+				dmg_pct *= (1.0 - attrition_reduction)
 				for unit in army.units:
 					var ud: UnitData = _unit_cache.get(unit.unit_data_id)
 					if ud == null:
@@ -1617,7 +1654,8 @@ func _apply_terrain_attrition(faction_id: StringName) -> void:
 							continue
 						_unit_cache[unit.unit_data_id] = ud
 					if not ud.tags.has("construct"):
-						var dmg := maxi(1, int(ud.max_hp * 0.03))
+						var dmg_pct := 0.03 * (1.0 - attrition_reduction)
+						var dmg := maxi(1, int(ud.max_hp * dmg_pct))
 						unit.current_hp = maxi(1, unit.current_hp - dmg)
 
 	# Remove dead units (HP <= 0 shouldn't happen since we floor at 1, but clean up 0-hp units)
@@ -3199,6 +3237,9 @@ func _process_skulloath_corruption(fs: FactionState) -> void:
 	var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
 	if captives >= 10:
 		drift += 1
+	# Research: corruption_per_turn modifies drift rate
+	var sk_r_eff := GameManager.research_system.get_research_effects(&"skulloath")
+	drift += sk_r_eff.get("corruption_per_turn", 0)
 	fs.corruption = clampi(fs.corruption + drift, 0, 100)
 
 	# ── Apply corruption effects to ALL cities (not just capital) ──
@@ -3301,6 +3342,9 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 		fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + processed * 5 * camp_mult
 		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + processed * 4 * camp_mult
 
+	# Research: taint_per_turn
+	var tj_r_eff := GameManager.research_system.get_research_effects(&"tainted_jade")
+	fs.taint_power += tj_r_eff.get("taint_per_turn", 0)
 	# Natural decay (reduced by jungle cities and taint buildings)
 	var jungle_cities := 0
 	for city_id in fs.owned_cities:
@@ -3472,6 +3516,14 @@ func _process_gladehost_seasons(fs: FactionState) -> void:
 			elif city.buildings.has(&"seasonal_shrine"):
 				shrine_bonus = maxi(shrine_bonus, 2)
 	fs.harmony = mini(fs.harmony + shrine_bonus, 100)
+	# Research: harmony_regen (+X harmony per turn)
+	var gh_r_eff := GameManager.research_system.get_research_effects(&"gladehost")
+	fs.harmony = mini(fs.harmony + gh_r_eff.get("harmony_regen", 0), 100)
+	# Research: harmony_income_scaling (+X% income per 10 harmony)
+	var harm_income_scale: int = gh_r_eff.get("harmony_income_scaling", 0)
+	if harm_income_scale > 0 and fs.harmony > 0:
+		var gold_bonus := int(float(harm_income_scale) * float(fs.harmony) / 100.0)
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + gold_bonus
 
 	var season := get_current_season()
 	var harmony_mult := float(fs.harmony) / 100.0 # 0.0 to 1.0 multiplier
@@ -3785,6 +3837,9 @@ func _process_thunderswarm_fury(fs: FactionState, fid: StringName = &"thunderswa
 		if city:
 			if city.buildings.has(&"storm_altar") or city.buildings.has(&"lightning_spire"):
 				fs.storm_fury = mini(fs.storm_fury + 2, 100)
+	# Research: storm_fury_per_turn (+X fury per turn)
+	var ts_r_eff := GameManager.research_system.get_research_effects(fid)
+	fs.storm_fury = mini(fs.storm_fury + ts_r_eff.get("storm_fury_per_turn", 0), 100)
 
 	# ── Passive fury effects (scaled by level) ──
 	if fs.storm_fury >= 30:
@@ -3890,6 +3945,9 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 			elif building_id in [&"stone_bastion", &"iron_wall", &"market", &"granary", &"temple"]:
 				drift -= 1
 
+	# Research: vigilance_per_turn
+	var cg_r_eff := GameManager.research_system.get_research_effects(&"cinderguard")
+	drift += cg_r_eff.get("vigilance_per_turn", 0)
 	# Apply player-queued shift (from dilemma choice)
 	drift += fs.forge_shift_queued
 	fs.forge_shift_queued = 0
@@ -4001,6 +4059,9 @@ func _process_forsaken_espionage(fs: FactionState) -> void:
 	# Network grows from territorial control
 	var region_count := fs.owned_regions.size()
 	var growth := region_count / 3
+	# Research: espionage_per_turn
+	var fk_r_eff := GameManager.research_system.get_research_effects(&"forsaken")
+	growth += fk_r_eff.get("espionage_per_turn", 0)
 	# Espionage buildings accelerate growth
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
@@ -4098,6 +4159,9 @@ func _process_ivoryscar_relics(fs: FactionState) -> void:
 	var shard_count := fs.owned_shards.size()
 	var target_power := wastes_count / 3 + shard_count * 5
 
+	# Research: relic_power_per_turn
+	var iv_r_eff := GameManager.research_system.get_research_effects(&"ivoryscar")
+	target_power += iv_r_eff.get("relic_power_per_turn", 0)
 	# Drift toward target (faster growth, slower decay)
 	if fs.relic_power < target_power:
 		fs.relic_power = mini(fs.relic_power + 3, 50)
@@ -4169,6 +4233,10 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 		fs.solar_faith -= 1
 	elif fs.solar_faith < 50:
 		fs.solar_faith += 1
+	# Research: solar_faith_per_turn and wisdom_per_turn
+	var sb_r_eff := GameManager.research_system.get_research_effects(fid)
+	fs.solar_faith = clampi(fs.solar_faith + sb_r_eff.get("solar_faith_per_turn", 0), 0, 100)
+	fs.wisdom = clampi(fs.wisdom + sb_r_eff.get("wisdom_per_turn", 0), 0, 200)
 
 	# Pilgrimage buildings slow faith decay
 	for city_id in fs.owned_cities:

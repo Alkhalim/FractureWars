@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_spirit_riders"
 display_name = "Spirit Riders"
-description = "Ghostly ancestors ride alongside the living."
+description = "Ghostly ancestors ride alongside the living, mending wounds and purging corruption."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"pale_ascension"])
-effects = { "unit_attack_bonus": 3, "unit_morale_bonus": 15 }
+effects = { "unit_attack_bonus": 3, "unit_morale_bonus": 15, "unit_regen_pct": 5, "corruption_per_turn": -2 }
 shard_bonuses = {}
 tier = 4
 research_category = &"arcane"

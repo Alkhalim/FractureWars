@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"emp_eternal_empire"
 display_name = "Eternal Empire"
-description = "The Empire shall endure forever."
+description = "All Imperial Authority effects doubled. The Empire's golden age begins."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"emp_imperial_law", &"emp_divine_mandate"])
-effects = { "income_gold_pct": 20, "unit_morale_bonus": 20, "upkeep_reduction": 15 }
+effects = { "income_all_pct": 25, "diplomacy_standing_bonus": 3, "capital_building_slots": 2 }
 shard_bonuses = {}
 tier = 5
 research_category = &"economy"

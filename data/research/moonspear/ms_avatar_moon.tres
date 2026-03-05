@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ms_avatar_moon"
 display_name = "Avatar of the Moon"
-description = "The Moon Goddess incarnates through the Moonspear."
+description = "During Full Moon, all units become invisible to enemies."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"ms_silver_dawn", &"ms_celestial_host"])
-effects = { "unit_attack_bonus": 7, "unit_defense_bonus": 6, "unit_morale_bonus": 25 }
+effects = { "unit_attack_bonus": 8, "enemy_morale_penalty": -15, "lunar_phase_bonus_pct": 25 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

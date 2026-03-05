@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"tj_serpent_apotheosis"
 display_name = "Serpent Apotheosis"
-description = "Become one with the Great Serpent."
+description = "The Great Serpent rises. All jungle impassable to enemies."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"tj_serpent_kings", &"tj_jade_avatar"])
-effects = { "unit_attack_bonus": 6, "unit_speed_bonus": 3, "unit_morale_bonus": 20 }
+effects = { "poison_damage_pct": 20, "unit_speed_bonus": 3, "flanking_damage_bonus": 15, "enemy_morale_penalty": -10 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

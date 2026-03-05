@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"fk_void_army"
 display_name = "Void Army"
-description = "An army that exists between worlds."
+description = "All flanking damage tripled. Armies invisible on campaign map until adjacent."
 tech_cost = 250
 research_time = 26
-prerequisites = Array[StringName]([&"fk_shadow_lords", &"fk_death_eternal"])
-effects = { "unit_attack_bonus": 6, "unit_speed_bonus": 3, "flanking_damage_bonus": 25 }
+prerequisites = Array[StringName]([&"fk_shadow_lords", &"fk_darkness_falls"])
+effects = { "flanking_damage_bonus": 20, "espionage_per_turn": 3, "vision_range_bonus": 3 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

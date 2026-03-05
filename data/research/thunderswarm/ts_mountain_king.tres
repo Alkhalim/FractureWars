@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_mountain_king"
 display_name = "Mountain King"
-description = "Absolute ruler of the peaks."
+description = "Mountain cities produce triple resources."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"ts_deep_mines"])
-effects = { "income_gold_pct": 20, "defense_bonus": 10 }
+effects = { "income_all_pct": 20, "defense_bonus": 10, "unit_defense_bonus": 5 }
 shard_bonuses = {}
 tier = 5
 research_category = &"economy"

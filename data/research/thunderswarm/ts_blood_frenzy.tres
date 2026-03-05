@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_blood_frenzy"
 display_name = "Blood Frenzy"
-description = "Warriors enter an unstoppable frenzy."
+description = "Warriors enter an unstoppable frenzy, Storm Fury fueling devastating charges."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"stormborn", &"warcry"])
-effects = { "unit_attack_bonus": 5, "unit_speed_bonus": 2 }
+effects = { "unit_attack_bonus": 5, "unit_speed_bonus": 2, "storm_fury_attack_scaling": 3, "charge_damage_pct": 15 }
 shard_bonuses = {}
 tier = 4
 research_category = &"military"

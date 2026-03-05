@@ -61,6 +61,10 @@ func get_max_building_slots() -> int:
 		var completed := GameManager.get_completed_regions(faction_id)
 		if region_id in completed:
 			base += 1
+	# Research: capital building slots bonus
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var r_eff := GameManager.research_system.get_research_effects(parent_fid)
+	base += r_eff.get("capital_building_slots", 0)
 	return base
 
 func get_available_building_slots() -> int:

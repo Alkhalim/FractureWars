@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_spirit_totems"
 display_name = "Spirit Totems"
-description = "Totems channel ancestral power."
+description = "Totems channel ancestral power, purging corruption."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"ancestor_call", &"sk_bone_armor"])
-effects = { "unit_morale_bonus": 10, "unit_defense_bonus": 2 }
+effects = { "unit_morale_bonus": 10, "unit_defense_bonus": 2, "corruption_per_turn": -3 }
 shard_bonuses = {}
 tier = 3
 research_category = &"arcane"

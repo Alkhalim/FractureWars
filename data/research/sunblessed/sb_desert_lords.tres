@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sb_desert_lords"
 display_name = "Desert Lords"
-description = "Mighty lords of the desert."
+description = "Mighty lords of the desert, wise diplomats who command respect across all realms."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"holy_caravan", &"sb_pilgrim_roads"])
-effects = { "unit_attack_bonus": 3, "movement_bonus": 1 }
+effects = { "unit_attack_bonus": 3, "movement_bonus": 1, "diplomacy_standing_bonus": 2, "wisdom_per_turn": 2 }
 shard_bonuses = {}
 tier = 4
 research_category = &"military"

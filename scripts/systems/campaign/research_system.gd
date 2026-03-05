@@ -139,6 +139,9 @@ func _get_faction_research_speed_bonus(faction_id: StringName) -> float:
 			var bld: BuildingData = DataManager.get_building(building_id)
 			if bld and bld.special_effects.has("research_speed_bonus"):
 				total += float(bld.special_effects["research_speed_bonus"])
+	# Research: research_speed_bonus from completed research (fractional accumulation)
+	var r_eff := get_research_effects(faction_id)
+	total += float(r_eff.get("research_speed_bonus", 0)) / 100.0
 	return total
 
 func _invalidate_cache(faction_id: StringName) -> void:

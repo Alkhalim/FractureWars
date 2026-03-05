@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_unstoppable_tide"
 display_name = "Unstoppable Tide"
-description = "A horde without end sweeps all before it."
+description = "The tide of warriors never ebbs. Clans rally faster than foes can recover."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"sk_great_muster", &"sk_steppe_empire"])
-effects = { "unit_attack_bonus": 5, "unit_speed_bonus": 3, "recruitment_cost_reduction": 20 }
+effects = { "max_army_size_bonus": 3, "recruitment_cost_reduction": 25, "recruit_speed_bonus": 3, "unit_morale_bonus": 15 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

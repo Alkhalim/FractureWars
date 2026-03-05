@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"iv_gorgon_queen"
 display_name = "Gorgon Queen"
-description = "The Gorgon Queen's gaze turns all to stone."
+description = "Stun chance +30%. Stunned enemies take double damage."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"iv_stone_army", &"iv_medusa_avatar"])
-effects = { "unit_attack_bonus": 6, "unit_defense_bonus": 6 }
+effects = { "stun_chance_pct": 20, "unit_attack_bonus": 8, "enemy_defense_penalty": -5 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"fk_death_eternal"
 display_name = "Death Eternal"
-description = "Death itself serves the Forsaken."
+description = "Units regenerate HP on campaign. Necropolis converts food to captives."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"fk_lich_lords", &"fk_soul_harvest"])
-effects = { "unit_attack_bonus": 6, "unit_defense_bonus": 5, "unit_hp_bonus": 20 }
+effects = { "unit_regen_pct": 5, "income_food_pct": 20, "recruitment_cost_reduction": 20 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

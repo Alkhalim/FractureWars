@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_ragnarok"
 display_name = "Ragnarok"
-description = "The final battle — all or nothing."
+description = "All units deal splash damage. Siege damage tripled."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"ts_blood_frenzy", &"ts_storm_god"])
-effects = { "unit_attack_bonus": 7, "unit_speed_bonus": 3, "unit_morale_bonus": 20 }
+effects = { "siege_bonus": 15, "unit_attack_bonus": 5, "adjacent_unit_damage_pct": 10 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

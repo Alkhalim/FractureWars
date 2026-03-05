@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"moonlit_prayers"
 display_name = "Moonlit Prayers"
-description = "Silver prayers rise to the moon and return as blessings."
+description = "Silver prayers rise to the moon and return as blessings, attuning the faithful to the lunar cycle."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([])
-effects = { "divine_shard_bonus_pct": 15 }
+effects = { "shard_essence_pct": 10, "lunar_phase_bonus_pct": 5 }
 shard_bonuses = {}
 tier = 1
 research_category = &"arcane"

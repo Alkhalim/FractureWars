@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"cg_coal_mines"
 display_name = "Coal Mines"
-description = "Deep coal mines fuel the forges."
+description = "Deep coal mines provide fuel and timber framing for the forges."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([])
-effects = { "income_gold_pct": 5 }
+effects = { "income_gold_pct": 5, "income_wood_pct": 5 }
 shard_bonuses = {}
 tier = 1
 research_category = &"economy"

@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"tj_jade_god"
 display_name = "Jade God Reborn"
-description = "The ancient Jade God walks the earth again."
+description = "Taint generates income. All poison damage tripled."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"tj_jade_avatar", &"tj_world_vine"])
-effects = { "unit_attack_bonus": 7, "unit_defense_bonus": 5, "unit_morale_bonus": 25 }
+effects = { "taint_per_turn": 5, "taint_attack_scaling": 5, "poison_damage_pct": 15, "income_gold_pct": 20 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

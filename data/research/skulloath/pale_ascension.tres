@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"pale_ascension"
 display_name = "Pale Ascension"
-description = "The pale realm opens its gates to the worthy."
+description = "The pale realm grants power to the corrupted."
 tech_cost = 150
 research_time = 22
 prerequisites = Array[StringName]([&"ancestor_call"])
-effects = { "void_influence_pct": 50 }
+effects = { "corruption_per_turn": 5, "corruption_attack_scaling": 3 }
 shard_bonuses = {}
 tier = 3
 research_category = &"arcane"

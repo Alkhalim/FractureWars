@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ms_moon_phases"
 display_name = "Moon Phase Mastery"
-description = "Each moon phase grants different power."
+description = "Mastery over the four lunar phases grants warriors power that waxes and wanes with the moon."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"celestial_insight", &"ms_prophet_visions"])
-effects = { "unit_attack_bonus": 2, "unit_defense_bonus": 2 }
+effects = { "unit_attack_bonus": 2, "unit_defense_bonus": 2, "lunar_phase_bonus_pct": 15 }
 shard_bonuses = {}
 tier = 3
 research_category = &"arcane"

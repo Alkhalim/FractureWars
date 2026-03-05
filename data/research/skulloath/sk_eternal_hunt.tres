@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_eternal_hunt"
 display_name = "Eternal Hunt"
-description = "The ancestors demand endless conquest."
+description = "The hunt never ends. Armies regenerate movement on kills."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"sk_spirit_riders", &"sk_dread_riders"])
-effects = { "unit_attack_bonus": 5, "unit_speed_bonus": 3, "unit_morale_bonus": 20 }
+effects = { "movement_bonus": 2, "loot_bonus_pct": 30, "army_movement_bonus": 1 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

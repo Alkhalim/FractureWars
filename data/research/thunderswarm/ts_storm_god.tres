@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_storm_god"
 display_name = "Storm God's Wrath"
-description = "Channel the full fury of the Storm God."
+description = "Channel the full fury of the Storm God. Storm Fury generation surges."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"ts_chain_lightning", &"ts_sky_fortress"])
-effects = { "unit_attack_bonus": 6, "siege_bonus": 20 }
+effects = { "unit_attack_bonus": 6, "siege_bonus": 20, "storm_fury_per_turn": 5, "storm_fury_attack_scaling": 3 }
 shard_bonuses = {}
 tier = 5
 research_category = &"arcane"

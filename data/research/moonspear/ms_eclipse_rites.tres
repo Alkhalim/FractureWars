@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ms_eclipse_rites"
 display_name = "Eclipse Rites"
-description = "Power drawn from sacred eclipses."
+description = "Sacred eclipse rituals amplify lunar phase transitions, granting immense power during celestial events."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"divine_mandate", &"moon_oracle"])
-effects = { "unit_attack_bonus": 4, "unit_morale_bonus": 15 }
+effects = { "unit_attack_bonus": 4, "unit_morale_bonus": 15, "lunar_phase_bonus_pct": 15 }
 shard_bonuses = {}
 tier = 4
 research_category = &"arcane"

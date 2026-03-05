@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_thunder_lords"
 display_name = "Thunder Lords"
-description = "The mightiest warriors command storms."
+description = "The mightiest warriors command storms, generating fury each turn."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"ts_storm_shields", &"ts_chain_lightning"])
-effects = { "unit_attack_bonus": 4, "unit_defense_bonus": 2 }
+effects = { "unit_attack_bonus": 4, "unit_defense_bonus": 2, "storm_fury_per_turn": 2 }
 shard_bonuses = {}
 tier = 4
 research_category = &"military"

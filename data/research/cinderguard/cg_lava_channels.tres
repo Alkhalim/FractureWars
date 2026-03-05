@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"cg_lava_channels"
 display_name = "Lava Channels"
-description = "Controlled lava flows power industry."
+description = "Lava channels smelt raw ore into usable iron at unmatched speed."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([])
-effects = { "income_gold_pct": 5 }
+effects = { "income_iron_pct": 10 }
 shard_bonuses = {}
 tier = 1
 research_category = &"arcane"

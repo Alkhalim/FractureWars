@@ -108,6 +108,17 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * (iron_pct + all_pct) / 100.0)
 	if wood_pct + all_pct != 0 and income.has(Enums.ResourceType.WOOD):
 		income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * (wood_pct + all_pct) / 100.0)
+	# Research: trade income bonus (flat gold per active trade treaty)
+	var trade_bonus: int = research_effects.get("trade_income_bonus", 0)
+	if trade_bonus > 0 and income.has(Enums.ResourceType.GOLD):
+		var trade_count := 0
+		if GameManager.diplomacy_system:
+			for tid in GameManager.state.diplomacy.treaties:
+				var treaty = GameManager.state.diplomacy.treaties[tid]
+				if treaty.treaty_type == Enums.TreatyType.TRADE_DEAL or treaty.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
+					if treaty.faction_a == faction_id or treaty.faction_b == faction_id:
+						trade_count += 1
+		income[Enums.ResourceType.GOLD] += trade_bonus * trade_count
 
 	# Apply senate majority income effects (Empire only — other factions have no senate)
 	if faction_id == &"empire":
@@ -148,6 +159,13 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		var val := GameManager.get_culture_bonus_value(faction_id, "shard_bonus")
 		if income.has(Enums.ResourceType.SHARD_ESSENCE):
 			income[Enums.ResourceType.SHARD_ESSENCE] += int(income[Enums.ResourceType.SHARD_ESSENCE] * val)
+	# Research: shard_essence_pct and shard_harvest_bonus
+	var shard_pct: int = research_effects.get("shard_essence_pct", 0)
+	var shard_flat: int = research_effects.get("shard_harvest_bonus", 0)
+	if shard_pct > 0 and income.has(Enums.ResourceType.SHARD_ESSENCE):
+		income[Enums.ResourceType.SHARD_ESSENCE] += int(income[Enums.ResourceType.SHARD_ESSENCE] * shard_pct / 100.0)
+	if shard_flat > 0:
+		income[Enums.ResourceType.SHARD_ESSENCE] = income.get(Enums.ResourceType.SHARD_ESSENCE, 0) + shard_flat
 
 	# Debt penalty: buildings produce 66% income when faction gold is negative
 	if fs.resources.get(Enums.ResourceType.GOLD, 0) < 0:
@@ -571,6 +589,15 @@ func _process_sieges(faction_id: StringName) -> void:
 		var siege_threshold := 4
 		if city.buildings.has(&"steppe_watchtower"):
 			siege_threshold = 5
+		# Research: defense_bonus and city_defense_pct increase siege threshold
+		var def_parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
+		var def_r_eff := GameManager.research_system.get_research_effects(def_parent_fid)
+		var research_def: int = def_r_eff.get("defense_bonus", 0)
+		var city_def_pct: int = def_r_eff.get("city_defense_pct", 0)
+		if research_def >= 5 or city_def_pct >= 15:
+			siege_threshold += 1
+		if research_def >= 10 or city_def_pct >= 30:
+			siege_threshold += 1
 		if city.siege_turns >= siege_threshold:
 			# Skulloath player gets a choice: capture, loot, or raze
 			if faction_id == &"skulloath" and faction_id == GameManager.state.player_faction_id:
@@ -647,10 +674,14 @@ func apply_siege_choice_loot(city_id: StringName) -> Dictionary:
 
 	# Loot amounts scale with city level and population
 	var loot_mult: float = 1.0 + city.level * 0.3
-	var gold_loot: int = int(60 * loot_mult)
-	var wood_loot: int = int(45 * loot_mult)
-	var iron_loot: int = int(25 * loot_mult)
-	var food_loot: int = int(35 * loot_mult)
+	# Research: loot_bonus_pct increases loot
+	var loot_parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(looter_id, looter_id)
+	var loot_r_eff := GameManager.research_system.get_research_effects(loot_parent_fid)
+	var loot_bonus: float = 1.0 + float(loot_r_eff.get("loot_bonus_pct", 0)) / 100.0
+	var gold_loot: int = int(60 * loot_mult * loot_bonus)
+	var wood_loot: int = int(45 * loot_mult * loot_bonus)
+	var iron_loot: int = int(25 * loot_mult * loot_bonus)
+	var food_loot: int = int(35 * loot_mult * loot_bonus)
 
 	fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + gold_loot
 	fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + wood_loot
@@ -1179,6 +1210,12 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 				break
 		if in_queue:
 			continue
+		# Skip if required research not completed
+		if building.requires_research != &"":
+			var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
+			var fstate: FactionState = GameManager.state.faction_states.get(parent_fid)
+			if fstate == null or not fstate.completed_research.has(building.requires_research):
+				continue
 		# Skip if city level too low
 		if city.level < building.required_capital_level:
 			continue
@@ -1254,6 +1291,13 @@ func start_building(city_id: StringName, building_id: StringName, tile_pos: Vect
 	var adjusted_cost := building.build_cost.duplicate()
 	if adjusted_cost.has(Enums.ResourceType.WOOD):
 		adjusted_cost[Enums.ResourceType.WOOD] = maxi(0, adjusted_cost[Enums.ResourceType.WOOD] - 10)
+	# Research: building cost reduction
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
+	var build_r_eff := GameManager.research_system.get_research_effects(parent_fid)
+	var build_cost_red: int = build_r_eff.get("building_cost_reduction_pct", 0)
+	if build_cost_red > 0:
+		for res_type in adjusted_cost:
+			adjusted_cost[res_type] = int(adjusted_cost[res_type] * (100 - build_cost_red) / 100.0)
 	if not _can_afford(fs, adjusted_cost):
 		return false
 	_deduct_cost(fs, adjusted_cost)
@@ -1287,6 +1331,10 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 		var bld := DataManager.get_building(bid)
 		if bld and bld.special_effects.has("recruit_cost_discount_pct"):
 			total_discount_pct += int(bld.special_effects["recruit_cost_discount_pct"])
+	# Research: recruitment cost reduction
+	var recruit_parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
+	var recruit_r_eff := GameManager.research_system.get_research_effects(recruit_parent_fid)
+	total_discount_pct += recruit_r_eff.get("recruitment_cost_reduction", 0)
 	if total_discount_pct > 0:
 		for res_type in adjusted_recruit:
 			adjusted_recruit[res_type] = int(adjusted_recruit[res_type] * (100 - total_discount_pct) / 100.0)
@@ -1309,6 +1357,8 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 		var b: BuildingData = DataManager.get_building(bid)
 		if b:
 			recruit_time -= b.recruit_speed_bonus
+	# Research: recruit speed bonus
+	recruit_time -= recruit_r_eff.get("recruit_speed_bonus", 0)
 	recruit_time = maxi(1, recruit_time)
 
 	# Determine which building unlocks this unit (for per-building queue)
@@ -1501,6 +1551,10 @@ func create_garrison_army(city: CityState) -> ArmyState:
 	army.has_moved = true # garrison doesn't move
 	army.is_garrison = true
 
+	# Research: garrison strength bonus (extra HP for garrison units)
+	var gar_parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
+	var gar_r_eff := GameManager.research_system.get_research_effects(gar_parent_fid)
+	var garrison_pct: float = float(gar_r_eff.get("garrison_strength_pct", 0)) / 100.0
 	for entry in garrison_def:
 		var uid: StringName = entry.unit_id
 		var unit_data := DataManager.get_unit(uid)
@@ -1509,6 +1563,8 @@ func create_garrison_army(city: CityState) -> ArmyState:
 		for i in entry.count:
 			var instance := UnitInstance.new()
 			instance.init_from_data(unit_data, GameManager.state.generate_id())
+			if garrison_pct > 0.0:
+				instance.current_hp += int(float(instance.current_hp) * garrison_pct)
 			army.units.append(instance)
 
 	# Independent cities: order units with melee on flanks, ranged in middle

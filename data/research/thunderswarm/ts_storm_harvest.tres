@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ts_storm_harvest"
 display_name = "Storm Harvest"
-description = "Harness lightning for power."
+description = "Harness lightning for power and trade in storm-charged goods."
 tech_cost = 180
 research_time = 20
 prerequisites = Array[StringName]([&"ts_deep_mines", &"ts_highland_trade"])
-effects = { "income_gold_pct": 15, "shard_harvest_bonus": 8 }
+effects = { "income_gold_pct": 15, "shard_harvest_bonus": 8, "trade_income_bonus": 10 }
 shard_bonuses = {}
 tier = 4
 research_category = &"economy"

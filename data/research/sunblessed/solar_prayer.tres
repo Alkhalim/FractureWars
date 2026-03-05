@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"solar_prayer"
 display_name = "Solar Prayer"
-description = "Prayers offered at dawn carry the sun's blessing."
+description = "Prayers offered at dawn strengthen Solar Faith across the realm."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([])
-effects = { "divine_shard_bonus_pct": 15 }
+effects = { "solar_faith_per_turn": 2 }
 shard_bonuses = {}
 tier = 1
 research_category = &"arcane"

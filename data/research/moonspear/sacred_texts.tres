@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sacred_texts"
 display_name = "Sacred Texts"
-description = "The sacred texts bring wisdom and unity to the faithful."
+description = "The sacred texts bring wisdom and unity to the faithful, strengthening city governance."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([&"astral_navigation"])
-effects = { "city_loyalty_bonus": 10 }
+effects = { "population_growth_pct": 10, "garrison_strength_pct": 10 }
 shard_bonuses = {}
 tier = 2
 research_category = &"economy"

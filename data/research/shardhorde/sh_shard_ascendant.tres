@@ -6,12 +6,12 @@
 script = ExtResource("1")
 id = &"sh_shard_ascendant"
 display_name = "Shard Ascendant"
-description = "Transcend mortal form through crystal power."
+description = "All shard realm bonuses tripled. Armies near shards gain massive attack."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"sh_shard_champions", &"sh_infinite_swarm"])
-effects = { "unit_attack_bonus": 7, "unit_defense_bonus": 5, "unit_morale_bonus": 25, "shard_harvest_bonus": 20 }
-shard_bonuses = {}
+effects = { "shard_resonance_bonus": 30, "shard_essence_pct": 30, "unit_attack_bonus": 5 }
+shard_bonuses = { 0: {"unit_attack_bonus": 8}, 1: {"unit_defense_bonus": 6}, 2: {"unit_hp_bonus": 12}, 3: {"unit_speed_bonus": 4}, 7: {"shard_essence_pct": 15} }
 tier = 5
 research_category = &"military"
 faction_id = &"shardhorde"

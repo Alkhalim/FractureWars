@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"bone_rituals"
 display_name = "Bone Rituals"
-description = "Shamans read the future in cracked bones and ash."
+description = "Shamans read the future in cracked bones, their rituals mending flesh."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([&"horseback_archery"])
-effects = { "shard_essence_pct": 10 }
+effects = { "shard_essence_pct": 10, "unit_regen_pct": 3 }
 shard_bonuses = {}
 tier = 2
 research_category = &"arcane"

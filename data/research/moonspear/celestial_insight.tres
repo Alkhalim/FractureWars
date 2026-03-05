@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"celestial_insight"
 display_name = "Celestial Insight"
-description = "The stars reveal patterns invisible to mortal eyes."
+description = "The stars reveal patterns invisible to mortal eyes, deepening understanding of the lunar cycle."
 tech_cost = 90
 research_time = 14
 prerequisites = Array[StringName]([&"moonlit_prayers"])
-effects = { "research_speed_pct": 25 }
+effects = { "research_speed_bonus": 15, "lunar_phase_bonus_pct": 10 }
 shard_bonuses = {}
 tier = 2
 research_category = &"arcane"

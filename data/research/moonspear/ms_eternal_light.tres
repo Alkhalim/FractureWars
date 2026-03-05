@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"ms_eternal_light"
 display_name = "Eternal Light"
-description = "The light of knowledge illuminates all."
+description = "Research speed tripled. The light of knowledge never fades."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"ms_sacred_archives"])
-effects = { "research_speed_bonus": 25, "income_gold_pct": 20 }
+effects = { "research_speed_bonus": 30, "income_all_pct": 15, "shard_essence_pct": 20 }
 shard_bonuses = {}
 tier = 5
 research_category = &"economy"

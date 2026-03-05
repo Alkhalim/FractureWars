@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"cg_iron_citadel"
 display_name = "Iron Citadel"
-description = "The ultimate defensive fortification."
+description = "Cities cannot be sieged in fewer than 8 turns. Garrison units fight at double effectiveness."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"cg_bastion_lords", &"cg_forge_eternal"])
-effects = { "defense_bonus": 15, "unit_defense_bonus": 5, "unit_morale_bonus": 20 }
+effects = { "garrison_strength_pct": 50, "city_defense_pct": 30, "unit_defense_bonus": 5 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

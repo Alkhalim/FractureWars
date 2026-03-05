@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sb_holy_land"
 display_name = "The Holy Land"
-description = "Claim the sacred lands of the sun."
+description = "Cities produce Solar Faith. Wisdom generates standing with all factions."
 tech_cost = 250
 research_time = 26
 prerequisites = Array[StringName]([&"sb_pilgrim_army"])
-effects = { "income_gold_pct": 20, "unit_morale_bonus": 20 }
+effects = { "solar_faith_per_turn": 3, "wisdom_per_turn": 3, "diplomacy_standing_bonus": 3 }
 shard_bonuses = {}
 tier = 5
 research_category = &"military"

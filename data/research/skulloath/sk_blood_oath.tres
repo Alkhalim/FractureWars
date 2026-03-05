@@ -6,11 +6,11 @@
 script = ExtResource("1")
 id = &"sk_blood_oath"
 display_name = "Blood Oath"
-description = "Warriors sworn to fight to the death."
+description = "Blood oaths bind warriors to the skull throne, corruption fueling their fury."
 tech_cost = 130
 research_time = 16
 prerequisites = Array[StringName]([&"terror_tactics", &"ancestor_call"])
-effects = { "unit_attack_bonus": 2, "unit_morale_bonus": 10 }
+effects = { "unit_attack_bonus": 2, "unit_morale_bonus": 10, "corruption_per_turn": 2 }
 shard_bonuses = {}
 tier = 3
 research_category = &"military"

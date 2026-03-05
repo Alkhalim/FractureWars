@@ -5458,6 +5458,8 @@ class _RadialTechTree extends Control:
 	var hud_ref: Control
 	var _node_positions: Dictionary = {} # research_id -> Vector2 (tree space)
 	var _node_data: Dictionary = {} # research_id -> ResearchData
+	var _branch_angles: Dictionary = {} # branch_name -> base_angle (radians)
+	var _unlock_nodes: Dictionary = {} # research_id -> true (nodes that unlock buildings/units)
 	var _hovered_id: StringName = &""
 	var _view_offset: Vector2 = Vector2.ZERO
 	var _dragging: bool = false
@@ -5469,10 +5471,14 @@ class _RadialTechTree extends Control:
 	var _hover_connected_set: Dictionary = {} # research_ids connected to hovered
 	var _positions_built: bool = false
 
-	const TIER_RADII := [0, 160, 280, 410, 540, 680]
-	const NODE_RADIUS := 22.0
+	const TIER_RADII := [0, 200, 360, 540, 740, 960]
+	const NODE_RADIUS := 26.0
 	const TREE_CENTER := Vector2(750, 750)
-	const UNIVERSAL_RING_RADIUS := 100.0
+	const UNIVERSAL_RING_RADIUS := 120.0
+	var _zoom: float = 1.0
+	const ZOOM_MIN := 0.4
+	const ZOOM_MAX := 2.0
+	const ZOOM_STEP := 0.1
 	const CAT_COLORS := {
 		&"military": Color(0.85, 0.35, 0.3),
 		&"economy": Color(0.35, 0.8, 0.35),
@@ -5491,14 +5497,16 @@ class _RadialTechTree extends Control:
 		queue_redraw()
 
 	func _to_screen(tree_pos: Vector2) -> Vector2:
-		return tree_pos - TREE_CENTER + size * 0.5 + _view_offset
+		return (tree_pos - TREE_CENTER) * _zoom + size * 0.5 + _view_offset
 
 	func _to_tree(screen_pos: Vector2) -> Vector2:
-		return screen_pos + TREE_CENTER - size * 0.5 - _view_offset
+		return (screen_pos - size * 0.5 - _view_offset) / _zoom + TREE_CENTER
 
 	func _calculate_positions() -> void:
 		_node_positions.clear()
 		_node_data.clear()
+		_branch_angles.clear()
+		_unlock_nodes.clear()
 
 		# Collect techs
 		var faction_techs: Array = []
@@ -5533,6 +5541,7 @@ class _RadialTechTree extends Control:
 			var branch_name = branch_names[bi]
 			var branch_techs: Array = branches[branch_name]
 			var base_angle: float = -PI / 2.0 + float(bi) * branch_spacing
+			_branch_angles[branch_name] = base_angle
 
 			# Group by effective tier: no-prerequisite techs go to tier 1, others use their tier
 			# Also build a depth map for techs based on prerequisite chains
@@ -5558,7 +5567,7 @@ class _RadialTechTree extends Control:
 				var tier_techs: Array = tiers[tier]
 				var radius: float = TIER_RADII[clampi(tier, 1, 5)]
 				var count := tier_techs.size()
-				var max_spread := branch_spacing * 0.45
+				var max_spread := branch_spacing * 0.70
 				var spacing := max_spread / maxf(count, 1)
 				var start_offset := -(count - 1) * spacing * 0.5
 
@@ -5574,14 +5583,26 @@ class _RadialTechTree extends Control:
 			var angle := TAU * float(ui) / maxf(uni_count, 1) - PI / 2.0
 			_node_positions[data.id] = TREE_CENTER + Vector2(cos(angle) * UNIVERSAL_RING_RADIUS, sin(angle) * UNIVERSAL_RING_RADIUS)
 
+		# Build unlock node set (techs that gate buildings or units)
+		for research_id in _node_data:
+			var data: ResearchData = _node_data[research_id]
+			if not data.unlocks_units.is_empty():
+				_unlock_nodes[research_id] = true
+				continue
+			for bid in DataManager.buildings:
+				var bld: BuildingData = DataManager.buildings[bid]
+				if bld.requires_research == research_id:
+					_unlock_nodes[research_id] = true
+					break
+
 		# Collision avoidance
 		_resolve_overlaps()
 		_positions_built = true
 
 	func _resolve_overlaps() -> void:
-		var min_dist := NODE_RADIUS * 3.0
+		var min_dist := NODE_RADIUS * 3.5
 		var ids: Array = _node_positions.keys()
-		for _pass in 8:
+		for _pass in 16:
 			var moved := false
 			for i in ids.size():
 				for j in range(i + 1, ids.size()):
@@ -5589,7 +5610,7 @@ class _RadialTechTree extends Control:
 					var pos_b: Vector2 = _node_positions[ids[j]]
 					var dist := pos_a.distance_to(pos_b)
 					if dist < min_dist and dist > 0.01:
-						var push := (pos_b - pos_a).normalized() * (min_dist - dist) * 0.5
+						var push := (pos_b - pos_a).normalized() * (min_dist - dist) * 0.75
 						_node_positions[ids[i]] = pos_a - push
 						_node_positions[ids[j]] = pos_b + push
 						moved = true
@@ -5632,6 +5653,59 @@ class _RadialTechTree extends Control:
 			"garrison_defense": return "Garrison defense: %s%d" % [sign, value]
 			"siege_bonus": return "Siege strength: %s%d" % [sign, value]
 			"upkeep_reduction": return "Upkeep %d%% lower" % value
+			"upkeep_reduction_pct": return "Upkeep %d%% lower" % value
+			# Phase 1A – Battle effects
+			"unit_ranged_bonus": return "All units: %s%d Ranged Attack" % [sign, value]
+			"unit_regen_pct": return "Units regenerate %d%% HP per battle round" % value
+			"flanking_damage_bonus": return "Flanking damage: %s%d%%" % [sign, value]
+			"charge_damage_pct": return "Charge damage: %s%d%%" % [sign, value]
+			"fire_damage_pct": return "Fire/magic damage: %s%d%%" % [sign, value]
+			"poison_damage_pct": return "Poison damage: %d%% per tick" % value
+			"stun_chance_pct": return "Stun chance: %d%%" % value
+			"adjacent_unit_damage_pct": return "Adjacent ally bonus: %s%d%% damage" % [sign, value]
+			"enemy_morale_penalty": return "Enemy morale: %d" % value
+			"enemy_defense_penalty": return "Enemy defense: %d" % value
+			# Phase 1B – City / economy effects
+			"trade_income_bonus": return "Trade income: %s%d gold per treaty" % [sign, value]
+			"building_cost_reduction_pct": return "Building costs: -%d%%" % value
+			"recruitment_cost_reduction": return "Recruit costs: -%d%%" % value
+			"recruit_speed_bonus": return "Recruitment %d turn(s) faster" % value
+			"garrison_strength_pct": return "Garrison strength: %s%d%%" % [sign, value]
+			"defense_bonus": return "City defense: %s%d" % [sign, value]
+			"city_defense_pct": return "City defense: %s%d%%" % [sign, value]
+			"shard_essence_pct": return "Shard essence income: %s%d%%" % [sign, value]
+			"shard_harvest_bonus": return "Shard harvest: %s%d per turn" % [sign, value]
+			"loot_bonus_pct": return "Post-battle loot: %s%d%%" % [sign, value]
+			"income_all_pct": return "All income: %s%d%%" % [sign, value]
+			"population_growth_pct": return "Population growth: %s%d%%" % [sign, value]
+			"capital_building_slots": return "Building slots: %s%d" % [sign, value]
+			# Phase 1C – Army effects
+			"vision_range_bonus": return "Vision range: %s%d tiles" % [sign, value]
+			"max_army_size_bonus": return "Max army size: %s%d" % [sign, value]
+			"attrition_reduction_pct": return "Attrition reduced by %d%%" % value
+			"supply_range_bonus": return "Supply range: %s%d tiles" % [sign, value]
+			"army_movement_bonus": return "Army movement: %s%d" % [sign, value]
+			# Phase 1D-F – Faction mechanic effects
+			"corruption_per_turn": return "Corruption: %s%d per turn" % [sign, value]
+			"corruption_attack_scaling": return "Attack: %s%d%% per 10 Corruption" % [sign, value]
+			"harmony_regen": return "Harmony: %s%d per turn" % [sign, value]
+			"harmony_income_scaling": return "Income: %s%d%% per 10 Harmony" % [sign, value]
+			"lunar_phase_bonus_pct": return "Lunar phase bonuses: %s%d%%" % [sign, value]
+			"solar_faith_per_turn": return "Solar Faith: %s%d per turn" % [sign, value]
+			"solar_faith_attack_scaling": return "Attack: %s%d%% per 10 Solar Faith" % [sign, value]
+			"wisdom_per_turn": return "Wisdom: %s%d per turn" % [sign, value]
+			"storm_fury_per_turn": return "Storm Fury: %s%d per turn" % [sign, value]
+			"storm_fury_attack_scaling": return "Attack: %s%d%% per 10 Storm Fury" % [sign, value]
+			"vigilance_per_turn": return "Border Vigilance: %s%d per turn" % [sign, value]
+			"vigilance_defense_scaling": return "Defense: %s%d%% per 10 Vigilance" % [sign, value]
+			"espionage_per_turn": return "Espionage Network: %s%d per turn" % [sign, value]
+			"relic_power_per_turn": return "Relic Power: %s%d per turn" % [sign, value]
+			"taint_per_turn": return "Taint Power: %s%d per turn" % [sign, value]
+			"taint_attack_scaling": return "Attack: %s%d%% per 10 Taint" % [sign, value]
+			"shard_resonance_bonus": return "Shard realm buffs: %s%d%%" % [sign, value]
+			# Diplomacy
+			"diplomacy_standing_bonus": return "Diplomacy standing: %s%d per turn" % [sign, value]
+			"research_speed_bonus": return "Research speed: %s%d%%" % [sign, value]
 		# Fallback: make the key readable
 		return "%s: %s%d" % [key.replace("_", " ").capitalize(), sign, value]
 
@@ -5654,6 +5728,15 @@ class _RadialTechTree extends Control:
 		draw_arc(center_screen, 32, 0, TAU, 24, Color(0.4, 0.38, 0.35), 1.5)
 		var faction_short: String = str(faction_id).substr(0, 3).to_upper()
 		_draw_outlined_string(font, center_screen - Vector2(12, -5), faction_short, HORIZONTAL_ALIGNMENT_CENTER, 24, 11, Color(0.8, 0.76, 0.65))
+
+		# Branch labels at outer edge of each branch
+		var label_radius: float = TIER_RADII[5] + 40
+		for branch_name in _branch_angles:
+			var angle: float = _branch_angles[branch_name]
+			var label_pos := TREE_CENTER + Vector2(cos(angle) * label_radius, sin(angle) * label_radius)
+			var label_screen := _to_screen(label_pos)
+			var label_text: String = str(branch_name).replace("_", " ").capitalize()
+			_draw_outlined_string(font, label_screen - Vector2(50, 0), label_text, HORIZONTAL_ALIGNMENT_CENTER, 100, 10, Color(0.55, 0.52, 0.48, 0.8))
 
 		# Universal ring label
 		_draw_outlined_string(font, _to_screen(TREE_CENTER + Vector2(-30, -(UNIVERSAL_RING_RADIUS + 20))), "Universal", HORIZONTAL_ALIGNMENT_CENTER, 60, 8, Color(0.45, 0.43, 0.4))
@@ -5762,6 +5845,14 @@ class _RadialTechTree extends Control:
 			# Category dot
 			draw_circle(pos + Vector2(0, -NODE_RADIUS - 5), 3.5, cat_color)
 
+			# Unlock glow for nodes that gate buildings/units
+			if _unlock_nodes.has(research_id) and not is_completed:
+				var glow_alpha := 0.3 + 0.2 * sin(_pulse_time * 2.5)
+				draw_arc(pos, NODE_RADIUS + 4, 0, TAU, 20, Color(0.9, 0.7, 0.2, glow_alpha), 2.0)
+				# Small star icon at top-right
+				var star_pos := pos + Vector2(NODE_RADIUS * 0.7, -NODE_RADIUS * 0.7)
+				draw_circle(star_pos, 4.0, Color(0.95, 0.8, 0.2, 0.85))
+
 			# Name label — split long names into 2 lines
 			var name_text := data.display_name
 			var name_y := pos.y + NODE_RADIUS + 13
@@ -5790,9 +5881,22 @@ class _RadialTechTree extends Control:
 		var font := ThemeDB.fallback_font
 		var cat_color: Color = CAT_COLORS.get(data.research_category, Color(0.5, 0.5, 0.5))
 
-		var eff_count := mini(data.effects.size(), 4)
-		var box_w := 260.0
-		var box_h := 58.0 + eff_count * 14.0
+		# Count content lines: all effects + unlocked buildings/units
+		var eff_count := data.effects.size()
+		var unlock_lines: Array[String] = []
+		# Find buildings unlocked by this research
+		for bid in DataManager.buildings:
+			var bld: BuildingData = DataManager.buildings[bid]
+			if bld.requires_research == data.id:
+				unlock_lines.append("Unlocks: %s" % bld.display_name)
+		# Units unlocked by this research
+		for uid in data.unlocks_units:
+			var ud := DataManager.get_unit(uid)
+			if ud:
+				unlock_lines.append("Unlocks: %s" % ud.display_name)
+		var total_lines := eff_count + unlock_lines.size()
+		var box_w := 280.0
+		var box_h := 58.0 + total_lines * 14.0
 		var box_pos := node_screen + Vector2(NODE_RADIUS + 12, -box_h * 0.5)
 		if box_pos.x + box_w > size.x - 8:
 			box_pos.x = node_screen.x - NODE_RADIUS - 12 - box_w
@@ -5816,18 +5920,19 @@ class _RadialTechTree extends Control:
 			status_text = "IN PROGRESS (%d/%d)" % [fs.research_progress, data.research_time]
 			status_color = Color(0.9, 0.8, 0.3)
 		else:
-			status_text = "%d turns" % data.research_time
+			status_text = "%d turns | %d Tech" % [data.research_time, data.tech_cost]
 			status_color = Color(0.6, 0.58, 0.5)
 		draw_string(font, Vector2(box_pos.x + 8, y), status_text, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, status_color)
 		y += 14
-		var ec := 0
+		# Show ALL effects (no cap)
 		for key in data.effects:
-			if ec >= 4:
-				break
 			var desc := _format_effect(key, data.effects[key])
 			draw_string(font, Vector2(box_pos.x + 8, y), desc, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, Color(0.4, 0.75, 0.35))
 			y += 14
-			ec += 1
+		# Show unlock lines in a distinct color
+		for line in unlock_lines:
+			draw_string(font, Vector2(box_pos.x + 8, y), line, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, Color(0.9, 0.7, 0.2))
+			y += 14
 
 	func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, width: float) -> void:
 		var dir := (to - from).normalized()
@@ -5934,6 +6039,23 @@ class _RadialTechTree extends Control:
 					_drag_start_offset = _view_offset
 				else:
 					_dragging = false
+			elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
+				# Zoom in toward mouse cursor
+				var mouse_tree := _to_tree(event.position)
+				_zoom = clampf(_zoom + ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+				# Adjust offset so mouse stays on the same tree position
+				var new_screen := (mouse_tree - TREE_CENTER) * _zoom + size * 0.5
+				_view_offset = event.position - new_screen
+				_positions_built = true  # Positions don't change, just zoom
+				queue_redraw()
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
+				# Zoom out from mouse cursor
+				var mouse_tree := _to_tree(event.position)
+				_zoom = clampf(_zoom - ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+				var new_screen := (mouse_tree - TREE_CENTER) * _zoom + size * 0.5
+				_view_offset = event.position - new_screen
+				_positions_built = true
+				queue_redraw()
 		elif event is InputEventMouseMotion:
 			if _dragging:
 				_view_offset = _drag_start_offset + (event.position - _drag_start_mouse)
@@ -5966,9 +6088,10 @@ class _RadialTechTree extends Control:
 			hud_ref._update_research_status_label()
 
 	func _get_node_at(screen_pos: Vector2) -> StringName:
+		var hit_radius := (NODE_RADIUS + 5) * _zoom
 		for research_id in _node_positions:
 			var node_screen := _to_screen(_node_positions[research_id])
-			if screen_pos.distance_to(node_screen) <= NODE_RADIUS + 5:
+			if screen_pos.distance_to(node_screen) <= hit_radius:
 				return research_id
 		return &""
 
@@ -7647,6 +7770,11 @@ func _on_building_hover(building_id: StringName) -> void:
 		text += "\n  +%d Recruit Speed" % building.recruit_speed_bonus
 		has_effects = true
 
+	# Special effects
+	for se_key in building.special_effects:
+		text += "\n  " + _format_building_special_effect(se_key, building.special_effects[se_key])
+		has_effects = true
+
 	# Units unlocked
 	if building.unlocks_units.size() > 0:
 		var unit_names: Array[String] = []
@@ -7855,6 +7983,8 @@ func _get_building_effects_summary(building: BuildingData) -> String:
 		parts.append("+%d Growth" % building.population_growth_bonus)
 	if building.defense_bonus > 0:
 		parts.append("+%d Def" % building.defense_bonus)
+	for se_key in building.special_effects:
+		parts.append(_format_building_special_effect(se_key, building.special_effects[se_key]))
 	if building.unlocks_units.size() > 0:
 		var names: Array[String] = []
 		for uid in building.unlocks_units:
@@ -7862,6 +7992,35 @@ func _get_building_effects_summary(building: BuildingData) -> String:
 			names.append(ud.display_name if ud else str(uid))
 		parts.append("Unlocks: " + ", ".join(names))
 	return ", ".join(parts)
+
+static func _format_building_special_effect(key: String, value) -> String:
+	match key:
+		"research_speed_bonus": return "+%d%% Research Speed" % [int(float(value) * 100)]
+		"army_movement_bonus": return "+%d Army Movement" % [int(value)]
+		"army_attack_bonus": return "+%d Army Attack" % [int(value)]
+		"corruption_drift": return "%s%d Corruption/turn" % ["+" if float(value) > 0 else "", int(value)]
+		"morale_bonus": return "+%d Morale" % [int(value)]
+		"harmony_bonus": return "+%d Harmony" % [int(value)]
+		"seasonal_multiplier": return "+%d%% Seasonal Bonus" % [int(float(value) * 100)]
+		"faith_stabilization": return "+%d Solar Faith Stability" % [int(value)]
+		"solar_faith_income": return "+%d Solar Faith/turn" % [int(value)]
+		"vigilance_drift": return "+%d Border Vigilance/turn" % [int(value)]
+		"storm_fury_generation": return "+%d Storm Fury/turn" % [int(value)]
+		"espionage_growth": return "+%d Espionage Network/turn" % [int(value)]
+		"relic_power_bonus": return "+%d Relic Power/turn" % [int(value)]
+		"taint_generation": return "+%d Taint Power/turn" % [int(value)]
+		"captive_conversion_rate": return "%d%% Captive Conversion" % [int(float(value) * 100)]
+		"imperial_authority_bonus": return "+%d Imperial Authority" % [int(value)]
+		"lunar_phase_tech_bonus": return "+%d Lunar Phase Tech Bonus" % [int(value)]
+		"recruit_cost_discount_pct": return "-%d%% Recruit Costs" % [int(value)]
+		"garrison_strength_bonus": return "+%d%% Garrison Strength" % [int(value)]
+		"commander_xp_bonus": return "+%d%% Commander XP" % [int(value)]
+		"diplomacy_standing_bonus": return "+%d Diplomacy Standing/turn" % [int(value)]
+		"region_population_growth_bonus": return "+%d Regional Growth" % [int(value)]
+		"region_loyalty_bonus": return "+%d Regional Loyalty" % [int(value)]
+		"flying_unit_attack_bonus": return "+%d Flying Unit Attack" % [int(value)]
+		"shard_resonance_bonus": return "+%d%% Shard Resonance" % [int(value)]
+	return "%s: %s" % [key.replace("_", " ").capitalize(), str(value)]
 
 func _on_building_label_clicked(event: InputEvent, building_id: StringName, city_id: StringName) -> void:
 	if event is InputEventMouseButton and event.pressed:
@@ -7990,6 +8149,13 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 		eff.add_theme_font_size_override("font_size", 12)
 		eff.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
 		vbox.add_child(eff)
+	# Special effects (faction mechanics, research speed, etc.)
+	for se_key in building.special_effects:
+		var se_label := Label.new()
+		se_label.text = "  " + _format_building_special_effect(se_key, building.special_effects[se_key])
+		se_label.add_theme_font_size_override("font_size", 12)
+		se_label.add_theme_color_override("font_color", Color(0.6, 0.7, 0.85))
+		vbox.add_child(se_label)
 	if building.unlocks_units.size() > 0:
 		var unlocks_header := Label.new()
 		unlocks_header.text = "  Unlocks:"
@@ -11447,6 +11613,15 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 		rec_label.add_theme_font_size_override("font_size", 13)
 		rec_label.add_theme_color_override("font_color", Color(0.6, 0.75, 0.55))
 		vbox.add_child(rec_label)
+
+	# Special effects
+	if not bd.special_effects.is_empty():
+		for se_key in bd.special_effects:
+			var se_label := Label.new()
+			se_label.text = _format_building_special_effect(se_key, bd.special_effects[se_key])
+			se_label.add_theme_font_size_override("font_size", 13)
+			se_label.add_theme_color_override("font_color", Color(0.6, 0.7, 0.85))
+			vbox.add_child(se_label)
 
 	# Required terrain
 	if bd.required_terrain >= 0:

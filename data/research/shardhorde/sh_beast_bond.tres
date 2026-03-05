@@ -5,12 +5,12 @@
 [resource]
 script = ExtResource("1")
 id = &"sh_beast_bond"
-display_name = "Beast Bond"
-description = "Bond with crystal beasts."
+display_name = "Crystalline Symbiosis"
+description = "Crystal shards fuse with beast flesh, granting resilience and resonance."
 tech_cost = 50
 research_time = 8
 prerequisites = Array[StringName]([&"pack_hunting"])
-effects = { "unit_attack_bonus": 1 }
+effects = { "shard_resonance_bonus": 5, "unit_hp_bonus": 5 }
 shard_bonuses = {}
 tier = 2
 research_category = &"military"
