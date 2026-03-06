@@ -60,9 +60,9 @@ jobs:
           DOTNET_ROOT: ${{ env.DOTNET_ROOT }} 
         run: |
           # Import the project first to generate .godot folder metadata
-          godot --headless --path "FractureWars" --editor --quit 
+          godot --headless --path "." --editor --quit 
           # Now run the actual export
-          godot --headless --path "FractureWars" --export-release "Web" "export/index.html"
+          godot --headless --path "." --export-release "Web" "export/index.html"
 
       - name: Patch for Cross-Origin Isolation (COI)
         run: |
