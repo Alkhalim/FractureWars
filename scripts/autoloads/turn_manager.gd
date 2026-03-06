@@ -165,7 +165,7 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 				var target_cid: StringName = StringName(choice_effect.substr(11))
 				var flv: int = fs.border_fortresses.get(target_cid, 0)
 				if flv < 3:
-					var cost_scrap := [10, 20, 35][mini(flv, 2)]
+					var cost_scrap = [10, 20, 35][mini(flv, 2)]
 					if fs.scavenge_stockpile >= cost_scrap:
 						fs.scavenge_stockpile -= cost_scrap
 						fs.border_fortresses[target_cid] = flv + 1
@@ -4202,7 +4202,7 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 		var target_city: CityState = GameManager.state.cities.get(target_id)
 		var fort_lv: int = fs.border_fortresses.get(target_id, 0)
 		var target_name := target_city.get_display_name() if target_city else str(target_id)
-		var fort_desc := ["undefended", "watchtower", "palisade", "border fort"][mini(fort_lv, 3)]
+		var fort_desc = ["undefended", "watchtower", "palisade", "border fort"][mini(fort_lv, 3)]
 
 		if faction_id == GameManager.state.player_faction_id:
 			var choices := [
@@ -4233,8 +4233,8 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 			for cid in settlement_ids:
 				var flv: int = fs.border_fortresses.get(cid, 0)
 				if flv < 3:
-					var cost_scrap := [10, 20, 35][mini(flv, 2)]
-					var next_name := ["Watchtower", "Palisade", "Border Fort"][mini(flv, 2)]
+					var cost_scrap = [10, 20, 35][mini(flv, 2)]
+					var next_name = ["Watchtower", "Palisade", "Border Fort"][mini(flv, 2)]
 					var city: CityState = GameManager.state.cities.get(cid)
 					var cname := city.get_display_name() if city else str(cid)
 					if fs.scavenge_stockpile >= cost_scrap:
@@ -4278,7 +4278,7 @@ func _ai_handle_frontier_orders(fs: FactionState, settlement_ids: Array[StringNa
 	for cid in settlement_ids:
 		var flv: int = fs.border_fortresses.get(cid, 0)
 		if flv < 3:
-			var cost_scrap := [10, 20, 35][mini(flv, 2)]
+			var cost_scrap = [10, 20, 35][mini(flv, 2)]
 			if fs.scavenge_stockpile >= cost_scrap:
 				fs.scavenge_stockpile -= cost_scrap
 				fs.border_fortresses[cid] = flv + 1
@@ -4482,7 +4482,7 @@ func _process_ivoryscar_relics(fs: FactionState) -> void:
 		restoration_gain += iv_r_eff.get("pyramid_restoration_per_turn", 0)
 		# Passive restoration consumes 1 shard essence per turn
 		if restoration_gain > 0:
-			var essence := fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0)
+			var essence = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0)
 			if essence >= 1:
 				fs.resources[Enums.ResourceType.SHARD_ESSENCE] = essence - 1
 				fs.pyramid_restoration = mini(fs.pyramid_restoration + restoration_gain, 100)
