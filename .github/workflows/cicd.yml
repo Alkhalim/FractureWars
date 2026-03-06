@@ -1,0 +1,67 @@
+name: "Web Build and Deploy"
+on: 
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  export_web:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.6.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot & Templates
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.6.1
+          include-templates: true
+
+      - name: Cache Godot Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/godot/export_templates/
+            ~/.config/godot/
+          key: ${{ runner.os }}-godot-4.6.1-templates
+          restore-keys: |
+            ${{ runner.os }}-godot-4.6.1-
+
+      - name: Create Export Directory
+        run: mkdir -p export
+
+      - name: Godot Web Export
+        run: |
+          godot --headless --path "." --export-release "Web" "export/index.html"
+
+      - name: Patch for Cross-Origin Isolation (COI)
+        run: |
+          # Copy the service worker from your tools folder to the export root
+          cp tool/coi-serviceworker.js export/coi-serviceworker.js
+          
+          # Inject the script tag into the <head> of index.html
+          # This uses 'sed' to insert the script right before the closing </head> tag
+          sed -i 's|</head>|<script src="coi-serviceworker.js"></script></head>|' export/index.html
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: export
+
+  deploy:
+    needs: export_web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
