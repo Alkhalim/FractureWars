@@ -38,14 +38,36 @@ jobs:
       - name: Create Export Directory
         run: mkdir -p export
 
-      - name: Godot Web Export
+      - name: Install System Dependencies
         run: |
-          godot --headless --path "." --export-release "Web" "export/index.html"
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Inspect File Structure
+        run: |
+          echo "Current Working Directory:"
+          pwd
+          echo "Listing Workspace Files:"
+          ls -R
+
+      - name: Godot Web Export
+        env:
+          DOTNET_ROOT: ${{ env.DOTNET_ROOT }} 
+        run: |
+          # Import the project first to generate .godot folder metadata
+          godot --headless --path "FractureWars" --editor --quit 
+          # Now run the actual export
+          godot --headless --path "FractureWars" --export-release "Web" "export/index.html"
 
       - name: Patch for Cross-Origin Isolation (COI)
         run: |
           # Copy the service worker from your tools folder to the export root
-          cp tool/coi-serviceworker.js export/coi-serviceworker.js
+          cp tools/coi-serviceworker.js export/coi-serviceworker.js
           
           # Inject the script tag into the <head> of index.html
           # This uses 'sed' to insert the script right before the closing </head> tag
