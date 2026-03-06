@@ -78,17 +78,32 @@ func _load_policies() -> void:
 	_load_resources_from_dir("res://data/policies/", policies)
 
 func _load_resources_from_dir(path: String, target: Dictionary) -> void:
+	# Ensure path ends with a slash
+	if not path.ends_with("/"):
+		path += "/"
+		
 	var dir := DirAccess.open(path)
 	if dir == null:
 		push_warning("Could not open directory: " + path)
 		return
+		
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
+	
 	while file_name != "":
-		if file_name.ends_with(".tres"):
-			var res = load(path + file_name)
-			if res and "id" in res:
-				target[res.id] = res
+		if not dir.current_is_dir():
+			# In exported builds, .tres becomes .tres.remap
+			# We strip the .remap or .import to get the original resource path
+			var clean_path := path + file_name.replace(".remap", "").replace(".import", "")
+			
+			# Check if the base file (after stripping) is a .tres
+			if clean_path.ends_with(".tres"):
+				var res = load(clean_path)
+				if res and "id" in res:
+					target[res.id] = res
+				else:
+					push_error("Failed to load resource or missing 'id': " + clean_path)
+					
 		file_name = dir.get_next()
 	dir.list_dir_end()
 
