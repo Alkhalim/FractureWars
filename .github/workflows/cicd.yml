@@ -25,23 +25,10 @@ jobs:
           version: 4.6.1
           include-templates: true
 
-      - name: Cache Godot Dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.local/share/godot/export_templates/
-            ~/.config/godot/
-          key: ${{ runner.os }}-godot-4.6.1-templates
-          restore-keys: |
-            ${{ runner.os }}-godot-4.6.1-
-
-      - name: Create Export Directory
-        run: mkdir -p export
-
       - name: Install System Dependencies
         run: |
           apt-get update
-          apt-get install -y libfontconfig1
+          apt-get install -y libfontconfig1 libicu-dev
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -54,6 +41,19 @@ jobs:
           pwd
           echo "Listing Workspace Files:"
           ls -R
+          
+      - name: Cache Godot Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/godot/export_templates/
+            ~/.config/godot/
+          key: ${{ runner.os }}-godot-4.6.1-templates
+          restore-keys: |
+            ${{ runner.os }}-godot-4.6.1-
+
+      - name: Create Export Directory
+        run: mkdir -p export
 
       - name: Godot Web Export
         env:
