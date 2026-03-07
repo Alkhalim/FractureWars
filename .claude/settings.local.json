@@ -65,7 +65,14 @@
       "Bash(cygpath:*)",
       "Bash(perl:*)",
       "Bash(/tmp/faction_buildings.txt:*)",
-      "Bash(/tmp/summary.txt:*)"
+      "Bash(/tmp/summary.txt:*)",
+      "Read(//c/Users/Lutz Görs/AppData/Local/Programs/**)",
+      "Read(//c/Program Files/**)",
+      "Read(//d//**)",
+      "Read(//c//**)",
+      "Read(//d/Dokumente/Gamedesign/Beyond/FractureWars/FractureWars/$LOCALAPPDATA/Programs/Godot/**)",
+      "Bash(powershell.exe:*)",
+      "Bash(\"G:/Programme/Godot/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64.exe\":*)"
     ]
   }
 }

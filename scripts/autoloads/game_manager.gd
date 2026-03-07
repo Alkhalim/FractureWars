@@ -8,6 +8,9 @@ var diplomacy_system: DiplomacySystem = DiplomacySystem.new()
 var research_system: ResearchSystem = ResearchSystem.new()
 var policy_system: PolicySystem = PolicySystem.new()
 
+# Explored tiles (persists across campaign scene reloads, e.g., after battles)
+var explored_tiles: Dictionary = {} # Vector2i -> true
+
 # Faction-indexed army cache — rebuilt via rebuild_faction_army_cache()
 var _faction_army_cache: Dictionary = {} # faction_id -> Array[ArmyState]
 var _faction_army_cache_valid: bool = false
@@ -696,12 +699,23 @@ func load_game(slot: int) -> void:
 static func has_save(slot: int) -> bool:
 	return ResourceLoader.exists("user://saves/save_%d.tres" % slot)
 
-func new_game(faction_id: StringName = &"empire") -> void:
+var is_demo_map := false
+
+func new_game(faction_id: StringName = &"empire", demo: bool = false) -> void:
+	is_demo_map = demo
+	explored_tiles.clear()
 	state = GameState.new()
 	state.player_faction_id = faction_id
 
 	# Generate hex map
-	state.hex_map = MapGenerator.generate_hex_map(DataManager.regions)
+	if demo:
+		HexMapData.MAP_WIDTH = MapGenerator.DEMO_WIDTH
+		HexMapData.MAP_HEIGHT = MapGenerator.DEMO_HEIGHT
+		state.hex_map = MapGenerator.generate_demo_hex_map(DataManager.regions)
+	else:
+		HexMapData.MAP_WIDTH = 117
+		HexMapData.MAP_HEIGHT = 78
+		state.hex_map = MapGenerator.generate_hex_map(DataManager.regions)
 	state.hex_map.build_region_cache()
 	movement_system = MovementSystem.new(state.hex_map)
 
@@ -712,7 +726,8 @@ func new_game(faction_id: StringName = &"empire") -> void:
 	_init_regions()
 	_init_cities()
 	_recompute_all_territory()
-	_init_elderbeasts()
+	if not demo:
+		_init_elderbeasts()
 	_init_armies()
 	_init_commander_pools()
 	_init_diplomacy()
@@ -721,7 +736,21 @@ func new_game(faction_id: StringName = &"empire") -> void:
 
 func _init_factions() -> void:
 	_commander_name_counters.clear()
+	# In demo mode, only init factions that have starting regions on the demo map
+	var demo_region_set: Dictionary = {}
+	if is_demo_map:
+		for rid in MapGenerator.DEMO_REGIONS:
+			demo_region_set[rid] = true
 	for faction_id in DataManager.factions:
+		if is_demo_map:
+			var fd: FactionData = DataManager.factions[faction_id]
+			var has_demo_region := false
+			for sr in fd.starting_regions:
+				if demo_region_set.has(sr):
+					has_demo_region = true
+					break
+			if not has_demo_region:
+				continue
 		var fs := FactionState.new()
 		fs.faction_data_id = faction_id
 		var is_minor := MINOR_FACTION_PARENTS.has(faction_id)
@@ -811,10 +840,13 @@ func _init_independent_faction() -> void:
 func _init_regions() -> void:
 	# Track starting region ownership (tile ownership set after cities via Voronoi)
 	for faction_id in DataManager.factions:
+		if not state.faction_states.has(faction_id):
+			continue
 		var faction_data: FactionData = DataManager.factions[faction_id]
 		var fs: FactionState = state.faction_states[faction_id]
 		for region_id in faction_data.starting_regions:
-			fs.owned_regions.append(region_id)
+			if not state.hex_map.get_region_tiles(region_id).is_empty():
+				fs.owned_regions.append(region_id)
 
 func _get_all_cities_array() -> Array:
 	var result: Array = []
@@ -868,6 +900,8 @@ func _init_armies() -> void:
 		var beast: ElderbeastState = state.elderbeasts[beast_id]
 		occupied_tiles[beast.hex_pos] = true
 	for faction_id in DataManager.factions:
+		if not state.faction_states.has(faction_id):
+			continue
 		if _is_shardhorde_type(faction_id):
 			continue # Shardhorde-type armies handled in _init_shardhorde_armies
 		if faction_id in NOMADIC_FACTIONS:
@@ -1014,11 +1048,16 @@ func _init_shardhorde_armies(_occupied_tiles: Dictionary = {}) -> void:
 		raider.commander_name = beast2.commander.name
 
 func _find_unoccupied_spawn(center: Vector2i, occupied_tiles: Dictionary) -> Vector2i:
-	if not occupied_tiles.has(center):
+	# Build set of city hexes to avoid spawning armies inside cities
+	var city_hexes: Dictionary = {}
+	for city_id in state.cities:
+		var city: CityState = state.cities[city_id]
+		city_hexes[city.hex_pos] = true
+	if not occupied_tiles.has(center) and not city_hexes.has(center):
 		var tile := state.hex_map.get_tile(center)
 		if tile and tile.terrain != Enums.TerrainType.WATER:
 			return center
-	# BFS outward to find nearest unoccupied, passable tile
+	# BFS outward to find nearest unoccupied, passable tile (not on a city)
 	var visited: Dictionary = {center: true}
 	var queue: Array[Vector2i] = [center]
 	while queue.size() > 0:
@@ -1030,7 +1069,7 @@ func _find_unoccupied_spawn(center: Vector2i, occupied_tiles: Dictionary) -> Vec
 				continue
 			visited[n] = true
 			var ntile := state.hex_map.get_tile(n)
-			if ntile and ntile.terrain != Enums.TerrainType.WATER and not occupied_tiles.has(n):
+			if ntile and ntile.terrain != Enums.TerrainType.WATER and not occupied_tiles.has(n) and not city_hexes.has(n):
 				return n
 			queue.append(n)
 	return center
@@ -1165,6 +1204,9 @@ func _init_cities() -> void:
 	}
 
 	for region_id in REGION_CITIES:
+		# Skip regions not present on the current map
+		if state.hex_map.get_region_tiles(region_id).is_empty():
+			continue
 		var slots: Array = REGION_CITIES[region_id]
 		var region_center := MapGenerator.get_region_center(region_id)
 

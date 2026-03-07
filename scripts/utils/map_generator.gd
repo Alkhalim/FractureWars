@@ -61,6 +61,66 @@ const ZONE_EAST := [&"skalvar", &"ashenmark", &"morvane", &"whispering_dunes"]
 const ZONE_SOUTH_WEST := [&"coatlantli", &"altaban", &"xotchi", &"southern_reach", &"orenthal"]
 const ZONE_SOUTH_EAST := [&"tsagan", &"torgalun_desert", &"weeping_barrows", &"qareth"]
 
+# Demo map: 6 regions from the center of the world (50x35 grid = ~1750 tiles)
+const DEMO_WIDTH := 50
+const DEMO_HEIGHT := 35
+const DEMO_REGIONS := [&"eternal_plains", &"sunburst_valley", &"valkarn", &"bataarbad", &"aurentis", &"sainkhu_groves"]
+const DEMO_SEEDS := {
+	&"eternal_plains":   Vector2i(14, 14),  # Empire
+	&"sunburst_valley":  Vector2i(20, 10),  # Crimson Legion
+	&"valkarn":           Vector2i(24, 15),  # Valkarn Garrison
+	&"bataarbad":         Vector2i(27, 19),  # Skulloath
+	&"aurentis":          Vector2i(10, 9),   # Aurentis Guard
+	&"sainkhu_groves":    Vector2i(8, 15),   # Gladehost
+}
+
+static var _active_seeds: Dictionary = {}
+
+static func generate_demo_hex_map(regions: Dictionary) -> HexMapData:
+	# Map dimensions must be set by caller before calling this
+	_active_seeds = DEMO_SEEDS
+
+	var map := HexMapData.new()
+	_init_tiles(map)
+
+	# Simple continent: single large blob centered on the map
+	for col in range(DEMO_WIDTH):
+		for row in range(DEMO_HEIGHT):
+			var cx := float(col) - DEMO_WIDTH * 0.5
+			var cy := float(row) - DEMO_HEIGHT * 0.5
+			var dx := cx / (DEMO_WIDTH * 0.42)
+			var dy := cy / (DEMO_HEIGHT * 0.42)
+			var d := dx * dx + dy * dy
+			var noise := float(_hash_coord(col, row) % 100) / 100.0 * 0.15
+			var edge_x := minf(float(col), float(DEMO_WIDTH - 1 - col)) / 6.0
+			var edge_y := minf(float(row), float(DEMO_HEIGHT - 1 - row)) / 6.0
+			var edge := clampf(minf(edge_x, edge_y), 0.0, 1.0)
+			var val := (1.0 - d) * lerpf(0.5, 1.0, edge) - noise
+			var tile := map.get_tile(Vector2i(col, row))
+			if tile:
+				if val > 0.12:
+					tile.terrain = Enums.TerrainType.PLAINS
+				elif val > 0.01:
+					tile.terrain = Enums.TerrainType.WETLANDS
+
+	# Filter regions to demo subset
+	var demo_regions: Dictionary = {}
+	for rid in DEMO_REGIONS:
+		if regions.has(rid):
+			demo_regions[rid] = regions[rid]
+	_assign_regions(map, demo_regions)
+	_assign_terrain(map)
+	_place_border_mountains(map)
+	_thin_mountains(map)
+	_fix_region_pockets(map)
+	_carve_rivers(map)
+	_create_wetland_bridges(map)
+	_assign_realm_influence(map, demo_regions)
+	_fix_terrain_pockets(map)
+
+	_active_seeds = {}
+	return map
+
 static func generate_hex_map(regions: Dictionary) -> HexMapData:
 	var map := HexMapData.new()
 
@@ -273,10 +333,11 @@ static func _assign_regions(map: HexMapData, regions: Dictionary) -> void:
 		var min_dist := 9999.0
 		var closest_region: StringName = &""
 
-		for region_id in REGION_SEEDS:
+		var seeds: Dictionary = _active_seeds if not _active_seeds.is_empty() else REGION_SEEDS
+		for region_id in seeds:
 			if not regions.has(region_id):
 				continue
-			var seed_pos: Vector2i = REGION_SEEDS[region_id]
+			var seed_pos: Vector2i = seeds[region_id]
 			var base_dist := float(HexHelper.hex_distance(coord, seed_pos))
 			# Noise perturbation for organic, irregular borders
 			var noise := float(_hash_coord(coord.x * 3 + seed_pos.x * 7, coord.y * 5 + seed_pos.y * 11) % 100) / 100.0 * 5.0 - 2.5
@@ -903,7 +964,7 @@ static func _remove_isolated_land(map: HexMapData) -> void:
 			land[coord] = true
 	if land.is_empty():
 		return
-	var start := Vector2i(59, 39)
+	var start := Vector2i(HexMapData.MAP_WIDTH / 2, HexMapData.MAP_HEIGHT / 2)
 	if not land.has(start):
 		for coord in land:
 			start = coord
@@ -925,4 +986,6 @@ static func _remove_isolated_land(map: HexMapData) -> void:
 			tile.region_id = &""
 
 static func get_region_center(region_id: StringName) -> Vector2i:
-	return REGION_SEEDS.get(region_id, Vector2i(59, 39))
+	if _active_seeds.is_empty():
+		return REGION_SEEDS.get(region_id, Vector2i(59, 39))
+	return _active_seeds.get(region_id, REGION_SEEDS.get(region_id, Vector2i(25, 18)))

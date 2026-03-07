@@ -1,8 +1,8 @@
 class_name HexMapData
 extends RefCounted
 
-const MAP_WIDTH := 117
-const MAP_HEIGHT := 78
+static var MAP_WIDTH := 117
+static var MAP_HEIGHT := 78
 
 var tiles: Dictionary = {} # Vector2i -> TileState
 var _region_tiles_cache: Dictionary = {} # region_id (StringName) -> Array[Vector2i]

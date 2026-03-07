@@ -8,6 +8,7 @@ var music_volume: float = 0.35
 var _sfx_players: Array[AudioStreamPlayer] = []
 var _music_player: AudioStreamPlayer
 var _current_music: StringName = &""
+var _music_tween: Tween = null  # Track active music tween to kill duplicates
 
 # Pre-generated audio streams
 var _sfx_cache: Dictionary = {} # sfx_name -> AudioStream
@@ -19,6 +20,11 @@ var _current_playlist_index: int = 0
 
 const SAMPLE_RATE := 22050
 const MAX_SFX_PLAYERS := 6
+
+static func _safe_linear_to_db(vol: float) -> float:
+	if vol <= 0.0:
+		return -80.0
+	return linear_to_db(vol)
 
 # Music file paths per faction and context
 const MUSIC_FILES := {
@@ -91,7 +97,7 @@ func set_sfx_volume(vol: float) -> void:
 
 func set_music_volume(vol: float) -> void:
 	music_volume = clampf(vol, 0.0, 1.0)
-	_music_player.volume_db = linear_to_db(music_volume)
+	_music_player.volume_db = _safe_linear_to_db(music_volume)
 	_save_settings()
 
 func play_sfx(sfx_name: StringName) -> void:
@@ -102,12 +108,12 @@ func play_sfx(sfx_name: StringName) -> void:
 	for player in _sfx_players:
 		if not player.playing:
 			player.stream = stream
-			player.volume_db = linear_to_db(sfx_volume)
+			player.volume_db = _safe_linear_to_db(sfx_volume)
 			player.play()
 			return
 	# All busy - use first one (interrupt oldest)
 	_sfx_players[0].stream = stream
-	_sfx_players[0].volume_db = linear_to_db(sfx_volume)
+	_sfx_players[0].volume_db = _safe_linear_to_db(sfx_volume)
 	_sfx_players[0].play()
 
 func play_music(track_name: StringName) -> void:
@@ -141,14 +147,25 @@ func play_faction_music(faction_id: StringName, context: StringName) -> void:
 	_crossfade_to(playlist[_current_playlist_index])
 
 func _crossfade_to(stream: AudioStream) -> void:
-	var tween := create_tween()
-	tween.tween_property(_music_player, "volume_db", -40.0, 2.0)
-	tween.tween_callback(func():
+	if _music_tween and _music_tween.is_valid():
+		_music_tween.kill()
+	_music_tween = create_tween()
+	if _music_player.playing and _music_player.volume_db > -20.0:
+		# Currently audible — quick crossfade out, then switch
+		_music_tween.tween_property(_music_player, "volume_db", -40.0, 0.8)
+		_music_tween.tween_callback(func():
+			_music_player.stream = stream
+			_music_player.volume_db = -40.0
+			_music_player.play()
+		)
+		_music_tween.tween_property(_music_player, "volume_db", _safe_linear_to_db(music_volume), 1.5)
+	else:
+		# Nothing playing or already faded — start immediately with fade-in
+		_music_player.stop()
 		_music_player.stream = stream
 		_music_player.volume_db = -40.0
 		_music_player.play()
-	)
-	tween.tween_property(_music_player, "volume_db", linear_to_db(music_volume), 1.5)
+		_music_tween.tween_property(_music_player, "volume_db", _safe_linear_to_db(music_volume), 1.5)
 
 func _on_music_finished() -> void:
 	# If playing a playlist, advance to next track
@@ -161,15 +178,17 @@ func _on_music_finished() -> void:
 		return
 	_current_playlist_index = (_current_playlist_index + 1) % playlist.size()
 	_music_player.stream = playlist[_current_playlist_index]
-	_music_player.volume_db = linear_to_db(music_volume)
+	_music_player.volume_db = _safe_linear_to_db(music_volume)
 	_music_player.play()
 
 func stop_music() -> void:
 	_current_music = &""
 	_current_playlist_key = ""
-	var tween := create_tween()
-	tween.tween_property(_music_player, "volume_db", -40.0, 2.0)
-	tween.tween_callback(_music_player.stop)
+	if _music_tween and _music_tween.is_valid():
+		_music_tween.kill()
+	_music_tween = create_tween()
+	_music_tween.tween_property(_music_player, "volume_db", -40.0, 2.0)
+	_music_tween.tween_callback(_music_player.stop)
 
 # ── Playlist Loading ────────────────────────────────────────────
 
@@ -566,9 +585,7 @@ func _gen_drone(freqs: Array, duration: float) -> AudioStreamWAV:
 		data[i * 2] = sample & 0xFF
 		data[i * 2 + 1] = (sample >> 8) & 0xFF
 	var wav := _make_wav(data, samples)
-	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	wav.loop_begin = 0
-	wav.loop_end = samples
+	# No loop — _on_music_finished handles replay to avoid Godot 4.6 infinite loop detection
 	return wav
 
 func _make_wav(data: PackedByteArray, sample_count: int) -> AudioStreamWAV:

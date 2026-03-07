@@ -166,6 +166,9 @@ func _apply_hostile_action_ripple(actor: StringName, target: StringName, magnitu
 # ── Player Actions ──────────────────────────────────────────
 
 func declare_war(attacker: StringName, target: StringName) -> void:
+	# Truce check — cannot declare war if peace was recently signed
+	if _get_cooldown(attacker, target, "truce") > 0:
+		return
 	# Check for non-aggression pact — must break it first
 	for treaty_id in GameManager.state.diplomacy_state.treaties:
 		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
@@ -197,6 +200,9 @@ func propose_peace(proposer: StringName, target: StringName, force_accept: bool 
 		modify_standing(proposer, target, 10, "Peace treaty signed")
 		_set_cooldown(proposer, target, "peace", 3)
 		_set_cooldown(target, proposer, "peace", 3)
+		# Truce: neither side can declare war for 5 turns after peace
+		_set_cooldown(proposer, target, "truce", 5)
+		_set_cooldown(target, proposer, "truce", 5)
 		var treaty := TreatyInstance.new()
 		treaty.treaty_id = GameManager.state.generate_id()
 		treaty.treaty_type = Enums.TreatyType.PEACE
@@ -439,6 +445,8 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 			GameManager.clear_relation_cache()
 			_set_cooldown(threatener, target, "peace", 3)
 			_set_cooldown(target, threatener, "peace", 3)
+			_set_cooldown(threatener, target, "truce", 5)
+			_set_cooldown(target, threatener, "truce", 5)
 			var treaty := TreatyInstance.new()
 			treaty.treaty_id = GameManager.state.generate_id()
 			treaty.treaty_type = Enums.TreatyType.PEACE

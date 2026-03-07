@@ -47,6 +47,31 @@ func _ready() -> void:
 	$VBoxContainer.add_child(options_button)
 	$VBoxContainer.move_child(options_button, $VBoxContainer.get_children().find(quit_button))
 
+	# Add Demo Map button (small map for testing)
+	var demo_button := Button.new()
+	demo_button.text = "Demo Map"
+	demo_button.custom_minimum_size = Vector2(0, 96)
+	demo_button.add_theme_font_size_override("font_size", 18)
+	demo_button.pressed.connect(_on_demo)
+	$VBoxContainer.add_child(demo_button)
+	$VBoxContainer.move_child(demo_button, $VBoxContainer.get_children().find(quit_button))
+
+	# Version label in bottom-right corner
+	var version_label := Label.new()
+	version_label.text = "v" + ProjectSettings.get_setting("application/config/version", "0.0.0")
+	version_label.add_theme_font_size_override("font_size", 12)
+	version_label.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45, 0.6))
+	version_label.layout_mode = 1
+	version_label.anchors_preset = Control.PRESET_BOTTOM_RIGHT
+	version_label.anchor_left = 1.0
+	version_label.anchor_top = 1.0
+	version_label.anchor_right = 1.0
+	version_label.anchor_bottom = 1.0
+	version_label.offset_left = -120.0
+	version_label.offset_top = -30.0
+	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(version_label)
+
 	AudioManager.play_music(&"music_menu")
 
 func _has_any_save() -> bool:
@@ -69,6 +94,11 @@ func _on_load_game() -> void:
 func _on_options() -> void:
 	AudioManager.play_sfx(&"ui_click")
 	AudioManager.create_options_panel(self)
+
+func _on_demo() -> void:
+	AudioManager.play_sfx(&"ui_click")
+	# Start a demo game with the Empire on a small map
+	GameManager.new_game(&"empire", true)
 
 func _on_quit() -> void:
 	get_tree().quit()
