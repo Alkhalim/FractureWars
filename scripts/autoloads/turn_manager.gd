@@ -275,18 +275,14 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 	AudioManager.play_sfx(&"scroll_open")
 
 func _ai_wait() -> void:
-	# Batched yielding: only yield every Nth call to reduce turn wait time
+	# Batched yielding: yield infrequently to keep UI responsive without slowing AI
 	_ai_wait_counter += 1
 	if skip_ai_turn:
-		if _ai_wait_counter % 8 == 0:
+		if _ai_wait_counter % 16 == 0:
 			await get_tree().process_frame
 		return
-	if ai_speed_multiplier >= 4.0:
-		if _ai_wait_counter % 4 == 0:
-			await get_tree().process_frame
-		return
-	# Normal/slow speed: yield every 2nd call
-	if _ai_wait_counter % 2 == 0:
+	# Yield every 8th call — enough for UI responsiveness, avoids per-frame overhead
+	if _ai_wait_counter % 8 == 0:
 		await get_tree().process_frame
 
 func start_game() -> void:

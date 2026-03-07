@@ -1162,12 +1162,28 @@ class _FogDrawNode extends Node2D:
 			for coord in tile_alphas:
 				if tile_alphas[coord] > 0.0:
 					fogged_tiles.append(coord)
+		# Viewport culling — only draw fog polys in/near the visible area
+		var cam := get_viewport().get_camera_2d()
+		var vis_rect: Rect2
+		if cam:
+			var vp_size := get_viewport_rect().size
+			var cam_zoom := cam.zoom.x
+			var margin := 120.0
+			var half_w := (vp_size.x / cam_zoom) / 2.0 + margin
+			var half_h := (vp_size.y / cam_zoom) / 2.0 + margin
+			vis_rect = Rect2(cam.position.x - half_w, cam.position.y - half_h, half_w * 2.0, half_h * 2.0)
+		else:
+			vis_rect = Rect2(-1e6, -1e6, 2e6, 2e6) # No camera — draw all
 		var fog_base := Color(0.03, 0.02, 0.05)
 		for coord in fogged_tiles:
 			var alpha: float = tile_alphas[coord]
 			if alpha <= 0.0:
 				continue
-			draw_colored_polygon(tile_polys[coord], Color(fog_base.r, fog_base.g, fog_base.b, alpha))
+			var poly: PackedVector2Array = tile_polys[coord]
+			# Quick AABB check using first vertex (hex center ± radius)
+			if not vis_rect.has_point(poly[0]):
+				continue
+			draw_colored_polygon(poly, Color(fog_base.r, fog_base.g, fog_base.b, alpha))
 
 class _ElevationDrawNode extends Node2D:
 	var cliff_polys: Array = []
@@ -2842,6 +2858,15 @@ var _fog_update_pending := false  # Deferred fog update during animated movement
 func _on_army_moved(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i) -> void:
 	var army: ArmyState = GameManager.state.armies.get(army_id)
 	var is_player_army := army and army.faction_id == GameManager.state.player_faction_id
+
+	# During AI turns, skip all heavy visual updates — they'll be rebuilt on player turn start
+	if not TurnManager.is_player_turn and not is_player_army:
+		# Just snap marker position silently
+		var marker: Node2D = _army_markers.get(army_id)
+		if marker:
+			marker.position = _hex_to_pixel(to_hex)
+		return
+
 	var from_visible := _is_tile_visible(from_hex)
 	var to_visible := _is_tile_visible(to_hex)
 	var move_visible := is_player_army or from_visible or to_visible
@@ -2857,7 +2882,7 @@ func _on_army_moved(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i) -
 		if marker:
 			if is_player_army or to_visible:
 				var target_pos := _hex_to_pixel(to_hex)
-				var tween := create_tween()
+				var tween := marker.create_tween()
 				tween.tween_property(marker, "position", target_pos, 0.08)
 			else:
 				# Snap position silently (marker is hidden by fog anyway)
@@ -2888,6 +2913,10 @@ func _on_army_destroyed(army_id: StringName, _faction_id: StringName) -> void:
 		_army_markers.erase(army_id)
 
 func _on_region_ownership_changed(_region_id: StringName, _old: StringName, _new: StringName) -> void:
+	# Defer heavy visual work during AI turns — will be rebuilt on player turn start
+	if not TurnManager.is_player_turn:
+		_minimap_terrain_dirty = true
+		return
 	_update_political_overlay()
 	_refresh_faction_borders()
 	_fog_dirty = true
@@ -3736,11 +3765,15 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 		_flash_turn_transition()
 		AudioManager.play_sfx(&"turn_chime")
 		_show_notification("Your turn - Turn " + str(GameManager.state.current_turn))
-		# Full marker refresh only on player turn
+		# Full marker refresh only on player turn (catches all deferred AI-turn changes)
 		_city_markers_dirty = true
 		_refresh_city_markers()
+		_create_building_tile_markers()
+		_update_city_glow_states()
 		_minimap_terrain_dirty = true
-		# Full visual refresh only on player turn (army markers, fog, minimap)
+		# Full visual refresh only on player turn (army markers, fog, minimap, territory)
+		_update_political_overlay()
+		_refresh_faction_borders()
 		_create_army_markers()
 		_create_elderbeast_markers()
 		_fog_dirty = true
@@ -3862,10 +3895,12 @@ func _on_city_captured(city_id: StringName, _old_owner: StringName, new_owner: S
 	if new_owner == GameManager.state.player_faction_id:
 		AudioManager.play_sfx(&"victory")
 	_city_markers_dirty = true
-	_refresh_city_markers()
-	_update_political_overlay()
-	_refresh_faction_borders()
 	_minimap_terrain_dirty = true
+	# Defer heavy visual work during AI turns
+	if TurnManager.is_player_turn:
+		_refresh_city_markers()
+		_update_political_overlay()
+		_refresh_faction_borders()
 
 func _on_siege_started(city_id: StringName, faction_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
@@ -3876,7 +3911,8 @@ func _on_siege_started(city_id: StringName, faction_id: StringName) -> void:
 			var fname: String = faction.display_name if faction else str(faction_id)
 			_show_notification(fname + " is besieging " + city.get_display_name() + "!")
 	_city_markers_dirty = true
-	_refresh_city_markers()
+	if TurnManager.is_player_turn:
+		_refresh_city_markers()
 
 func _on_siege_broken(city_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
@@ -3885,7 +3921,8 @@ func _on_siege_broken(city_id: StringName) -> void:
 			AudioManager.play_sfx(&"battle_hit")
 			_show_notification("Siege of " + city.get_display_name() + " broken!")
 	_city_markers_dirty = true
-	_refresh_city_markers()
+	if TurnManager.is_player_turn:
+		_refresh_city_markers()
 
 func _on_building_completed(city_id: StringName, building_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
@@ -3894,25 +3931,26 @@ func _on_building_completed(city_id: StringName, building_id: StringName) -> voi
 		var building: BuildingData = DataManager.get_building(building_id)
 		var bname: String = building.display_name if building else str(building_id)
 		_show_notification(bname + " completed in " + city.get_display_name())
-		# Update resource display immediately (new building affects income)
 		var hud: Control = $UILayer/HUD
 		if hud.has_method("_update_resource_display"):
 			hud._update_resource_display()
-	_update_city_glow_states()
-	_create_building_tile_markers()
-	_fog_dirty = true
+	# Defer heavy visual work during AI turns
+	if TurnManager.is_player_turn:
+		_update_city_glow_states()
+		_create_building_tile_markers()
+		_fog_dirty = true
 
 func _on_building_demolished(city_id: StringName, _building_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city and city.faction_id == GameManager.state.player_faction_id:
 		AudioManager.play_sfx(&"demolish")
 		_show_notification("Building demolished in " + city.get_display_name())
-		# Update resource display immediately (demolished building affects income)
 		var hud: Control = $UILayer/HUD
 		if hud.has_method("_update_resource_display"):
 			hud._update_resource_display()
 	_city_markers_dirty = true
-	_refresh_city_markers()
+	if TurnManager.is_player_turn:
+		_refresh_city_markers()
 
 func _on_battle_resolved_sfx(_winner_faction: StringName, hex_pos: Vector2i) -> void:
 	if _is_tile_visible(hex_pos):
@@ -4332,6 +4370,7 @@ func _rebuild_visible_tile_cache() -> void:
 	if hex_map == null:
 		return
 	var player_id := GameManager.state.player_faction_id
+	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
 
 	# Cache allied factions
 	var allied_factions: Dictionary = {}
@@ -4342,7 +4381,7 @@ func _rebuild_visible_tile_cache() -> void:
 		if rel == Enums.FactionRelation.FRIENDLY or rel == Enums.FactionRelation.ALLIED:
 			allied_factions[faction_id] = true
 
-	# Fast pass: mark all player-owned and ally-owned tiles visible
+	# Mark all player-owned and ally-owned tiles visible
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
 		if tile.owner_faction == player_id:
@@ -4350,7 +4389,7 @@ func _rebuild_visible_tile_cache() -> void:
 		elif tile.owner_faction != &"" and allied_factions.has(tile.owner_faction):
 			_visible_tile_cache[coord] = true
 
-	# BFS from player cities (radius 2) — O(cities * radius^2) instead of O(tiles * cities)
+	# BFS from player cities (radius 2) — O(cities * radius^2)
 	const SETTLEMENT_LOS_BONUS := 2
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
@@ -4487,26 +4526,24 @@ func _update_fog_of_war() -> void:
 
 func _update_encountered_factions(player_id: StringName) -> void:
 	var enc := GameManager.state.encountered_factions
-	# Check visible tiles for faction ownership
-	var hex_map := GameManager.state.hex_map
-	if hex_map:
-		for coord in _visible_tile_cache:
-			if not _visible_tile_cache[coord]:
-				continue
-			var tile: HexMapData.TileState = hex_map.tiles.get(coord)
-			if tile and tile.owner_faction != &"" and tile.owner_faction != player_id:
-				enc[tile.owner_faction] = true
-	# Check visible cities
+	# Skip if all playable factions already encountered
+	if enc.size() >= GameManager.state.faction_states.size() - 1:
+		return
+	# Check visible cities (cheap — small list, high hit rate)
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
 		if city.faction_id == player_id or city.faction_id == &"" or city.faction_id == &"independent":
 			continue
+		if enc.has(city.faction_id):
+			continue
 		if _visible_tile_cache.get(city.hex_pos, false) or GameManager.explored_tiles.has(city.hex_pos):
 			enc[city.faction_id] = true
-	# Check visible armies
+	# Check visible armies (only for un-encountered factions)
 	for army_id in GameManager.state.armies:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		if army.faction_id == player_id or army.faction_id == &"":
+			continue
+		if enc.has(army.faction_id):
 			continue
 		if _visible_tile_cache.get(army.hex_pos, false):
 			enc[army.faction_id] = true
