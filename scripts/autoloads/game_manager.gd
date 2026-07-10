@@ -1629,8 +1629,13 @@ func _get_set_relation(a: StringName, b: StringName) -> int:
 # join, settlement/camp founding, and new_game/load_game.
 var _completion_cache: Dictionary = {} # faction_id -> {regions: Array, cultures: Array}
 
+# Bumped whenever city ownership/region membership can change — consumers
+# (e.g., LoyaltySystem's province index) compare against it for staleness.
+var city_topology_epoch: int = 0
+
 func invalidate_completion_cache() -> void:
 	_completion_cache.clear()
+	city_topology_epoch += 1
 
 func get_completed_regions(faction_id: StringName) -> Array[StringName]:
 	var entry: Dictionary = _completion_cache.get_or_add(faction_id, {})

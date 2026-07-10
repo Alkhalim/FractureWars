@@ -1659,6 +1659,7 @@ var _city_hex_index_dirty := true
 func invalidate_city_hex_index() -> void:
 	_city_hex_index_dirty = true
 	_settlement_sphere_dirty = true
+	GameManager.city_topology_epoch += 1
 
 func get_city_at_hex(hex_pos: Vector2i) -> CityState:
 	var cities: Dictionary = GameManager.state.cities

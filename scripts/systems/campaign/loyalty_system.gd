@@ -3,12 +3,33 @@ extends RefCounted
 
 # ── Province Helpers ─────────────────────────────────────────
 
+# Province index: one pass over all cities serves every (region, faction)
+# query until city topology changes (ownership epoch or city count). Callers
+# receive SHARED arrays and must not mutate them (all current callers only
+# iterate). Insertion order matches the old per-call scan (cities dict order).
+static var _province_index: Dictionary = {} # "region|faction" -> Array[CityState]
+static var _province_index_epoch: int = -1
+static var _province_index_city_count: int = -1
+
 static func get_province_cities(region_id: StringName, faction_id: StringName) -> Array[CityState]:
-	var result: Array[CityState] = []
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		if city.region_id == region_id and city.faction_id == faction_id:
-			result.append(city)
+	var cities: Dictionary = GameManager.state.cities
+	if _province_index_epoch != GameManager.city_topology_epoch \
+			or _province_index_city_count != cities.size():
+		_province_index.clear()
+		for city_id in cities:
+			var city: CityState = cities[city_id]
+			var key := "%s|%s" % [city.region_id, city.faction_id]
+			if _province_index.has(key):
+				_province_index[key].append(city)
+			else:
+				var arr: Array[CityState] = [city]
+				_province_index[key] = arr
+		_province_index_epoch = GameManager.city_topology_epoch
+		_province_index_city_count = cities.size()
+	var result: Variant = _province_index.get("%s|%s" % [region_id, faction_id])
+	if result == null:
+		var empty: Array[CityState] = []
+		return empty
 	return result
 
 static func get_province_population(region_id: StringName, faction_id: StringName) -> int:
