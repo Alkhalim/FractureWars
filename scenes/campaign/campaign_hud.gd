@@ -5504,6 +5504,11 @@ class _RadialTechTree extends Control:
 	var _pulse_time: float = 0.0
 	var _hover_connected_set: Dictionary = {} # research_ids connected to hovered
 	var _positions_built: bool = false
+	# Cached researched-glow path — _find_researched_path only changes when
+	# current research or the completed set changes, not per frame.
+	var _glow_edges_cache: Dictionary = {}
+	var _glow_cache_research_id: StringName = &"__unset__"
+	var _glow_cache_completed_count: int = -1
 
 	const TIER_RADII := [0, 200, 360, 540, 740, 960]
 	const NODE_RADIUS := 26.0
@@ -5535,6 +5540,19 @@ class _RadialTechTree extends Control:
 
 	func _to_tree(screen_pos: Vector2) -> Vector2:
 		return (screen_pos - size * 0.5 - _view_offset) / _zoom + TREE_CENTER
+
+	static func _segment_fully_outside(a: Vector2, b: Vector2, r: Rect2) -> bool:
+		# True only when the segment provably cannot intersect r
+		# (both endpoints beyond the same side).
+		if a.x < r.position.x and b.x < r.position.x:
+			return true
+		if a.x > r.end.x and b.x > r.end.x:
+			return true
+		if a.y < r.position.y and b.y < r.position.y:
+			return true
+		if a.y > r.end.y and b.y > r.end.y:
+			return true
+		return false
 
 	func _calculate_positions() -> void:
 		_node_positions.clear()
@@ -5753,6 +5771,11 @@ class _RadialTechTree extends Control:
 			return
 		var current_tech: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
 
+		# Off-screen culling: parent tree_clip has clip_contents = true, so
+		# skipping fully-clipped nodes/edges changes no pixels. Grown to cover
+		# node circle + unlock glow + name labels (all within 86 px of center).
+		var cull_rect := Rect2(Vector2.ZERO, size).grow(NODE_RADIUS + 60.0)
+
 		# Tier guide circles
 		for tier in [1, 2, 3, 4, 5]:
 			draw_arc(center_screen, TIER_RADII[tier], 0, TAU, 64, Color(0.18, 0.17, 0.2, 0.25), 1.0)
@@ -5775,12 +5798,18 @@ class _RadialTechTree extends Control:
 		# Universal ring label
 		_draw_outlined_string(font, _to_screen(TREE_CENTER + Vector2(-30, -(UNIVERSAL_RING_RADIUS + 20))), "Universal", HORIZONTAL_ALIGNMENT_CENTER, 60, 8, Color(0.45, 0.43, 0.4))
 
-		# Build glow path (completed chain to current research)
-		var glow_edges: Dictionary = {}
-		if fs.current_research_id != &"":
-			var path := _find_researched_path(fs)
-			for i in range(path.size() - 1):
-				glow_edges[str(path[i]) + "->" + str(path[i + 1])] = true
+		# Build glow path (completed chain to current research) — cached across
+		# frames, invalidated when research state changes
+		if fs.current_research_id != _glow_cache_research_id \
+				or fs.completed_research.size() != _glow_cache_completed_count:
+			_glow_cache_research_id = fs.current_research_id
+			_glow_cache_completed_count = fs.completed_research.size()
+			_glow_edges_cache.clear()
+			if fs.current_research_id != &"":
+				var path := _find_researched_path(fs)
+				for i in range(path.size() - 1):
+					_glow_edges_cache[str(path[i]) + "->" + str(path[i + 1])] = true
+		var glow_edges: Dictionary = _glow_edges_cache
 
 		# Build hover path (shortest path from completed to hovered)
 		var hover_edges: Dictionary = {}
@@ -5797,6 +5826,8 @@ class _RadialTechTree extends Control:
 				if not _node_positions.has(prereq):
 					continue
 				var from_screen := _to_screen(_node_positions[prereq])
+				if _segment_fully_outside(from_screen, to_screen, cull_rect):
+					continue
 
 				var edge_key: String = str(prereq) + "->" + str(research_id)
 				var is_glow: bool = glow_edges.has(edge_key)
@@ -5835,6 +5866,8 @@ class _RadialTechTree extends Control:
 		for research_id in _node_data:
 			var data: ResearchData = _node_data[research_id]
 			var pos := _to_screen(_node_positions.get(research_id, Vector2.ZERO))
+			if not cull_rect.has_point(pos):
+				continue
 			var cat_color: Color = CAT_COLORS.get(data.research_category, Color(0.5, 0.5, 0.5))
 
 			var is_completed: bool = fs.completed_research.has(research_id)
