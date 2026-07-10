@@ -418,14 +418,13 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 	if mil_tags.monster > 0:
 		result.append({label = "Monster Presence (x%d)" % mil_tags.monster, weights = W_MONSTER_PRESENCE, multiplier = mil_tags.monster})
 
-	# Commander presence — friendly commanders boost loyalty
+	# Commander presence — friendly commanders boost loyalty. Uses the cached
+	# faction army list (non-garrison) instead of scanning all armies; the
+	# result booleans are order-independent, so iteration order is irrelevant.
 	var commander_in_city := false
 	var commander_nearby := false
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.commander == null or army.faction_id != faction_id:
-			continue
-		if army.is_garrison:
+	for army: ArmyState in GameManager.get_faction_armies(faction_id):
+		if army.commander == null:
 			continue
 		# Check if commander has negative loyalty aura (skip if so)
 		var cmd_bonuses := CommanderSystem.get_commander_army_bonuses(army.commander)
