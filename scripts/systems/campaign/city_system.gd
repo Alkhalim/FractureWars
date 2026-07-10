@@ -1625,12 +1625,26 @@ func break_siege(city_id: StringName) -> void:
 	city.siege_turns = 0
 	EventBus.siege_broken.emit(city_id)
 
+# Hex -> city index. Insertions are caught by the size check; hex_pos moves
+# (Sunblessed camps) and wholesale state replacement (new_game/load_game) must
+# call invalidate_city_hex_index() explicitly.
+var _city_hex_index: Dictionary = {} # Vector2i -> CityState
+var _city_hex_index_dirty := true
+
+func invalidate_city_hex_index() -> void:
+	_city_hex_index_dirty = true
+
 func get_city_at_hex(hex_pos: Vector2i) -> CityState:
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		if city.hex_pos == hex_pos:
-			return city
-	return null
+	var cities: Dictionary = GameManager.state.cities
+	if _city_hex_index_dirty or _city_hex_index.size() != cities.size():
+		_city_hex_index.clear()
+		for city_id in cities:
+			var city: CityState = cities[city_id]
+			# Preserve old first-match-in-insertion-order semantics on collision
+			if not _city_hex_index.has(city.hex_pos):
+				_city_hex_index[city.hex_pos] = city
+		_city_hex_index_dirty = false
+	return _city_hex_index.get(hex_pos)
 
 # ── Settlement founding ───────────────────────────────────────
 

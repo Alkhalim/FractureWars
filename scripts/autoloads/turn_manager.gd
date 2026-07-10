@@ -4669,6 +4669,7 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 			var camp_city: CityState = GameManager.state.cities.get(army.camp_city_id)
 			if camp_city and camp_city.is_mobile_camp:
 				camp_city.hex_pos = army.hex_pos
+				GameManager.city_system.invalidate_city_hex_index()
 				var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 				if tile:
 					camp_city.region_id = tile.region_id

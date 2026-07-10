@@ -692,6 +692,7 @@ func load_game(slot: int) -> void:
 	TurnManager.deserialize_state(state.turn_manager_state)
 	state.turn_manager_state = {}
 	movement_system = MovementSystem.new(state.hex_map)
+	city_system.invalidate_city_hex_index()
 	current_phase = Enums.GamePhase.CAMPAIGN
 	_commander_name_counters.clear()
 	transition_to_scene("res://scenes/campaign/campaign.tscn")
@@ -718,6 +719,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false) -> void:
 		state.hex_map = MapGenerator.generate_hex_map(DataManager.regions)
 	state.hex_map.build_region_cache()
 	movement_system = MovementSystem.new(state.hex_map)
+	city_system.invalidate_city_hex_index()
 
 	_init_factions()
 	_init_rebels_faction()
@@ -1828,6 +1830,7 @@ func setup_sunblessed_camp(army_id: StringName) -> StringName:
 		var city: CityState = state.cities[army.camp_city_id]
 		city.is_mobile_camp = false
 		city.hex_pos = army.hex_pos
+		city_system.invalidate_city_hex_index()
 		city.region_id = tile.region_id if tile else &""
 		army.is_camp = true
 		army.movement_remaining = 0.0
