@@ -5418,10 +5418,19 @@ func _toggle_research_panel() -> void:
 		tw.tween_property(_research_panel, "scale", Vector2.ONE, 0.2).set_ease(Tween.EASE_OUT)
 		tw.tween_property(_research_panel, "modulate:a", 1.0, 0.2)
 
+var _research_tree_clip: Control = null       # Persistent tech-tree clip container
+var _research_tree: _RadialTechTree = null    # Persistent tree control (keeps pan/zoom + layout)
+
 func _refresh_research_panel() -> void:
 	var margin: MarginContainer = _research_panel.get_child(0)
 	var vbox: VBoxContainer = margin.get_node("ResearchVBox")
+	# Rebuild header/footer rows but keep the tech-tree control: its layout
+	# depends only on static data, and recreating it reset the user's pan/zoom
+	# and re-ran the 16-pass O(n^2) overlap resolver on every refresh.
 	for child in vbox.get_children():
+		if child == _research_tree_clip:
+			continue
+		vbox.remove_child(child)
 		child.queue_free()
 
 	var player_id := GameManager.state.player_faction_id
@@ -5470,20 +5479,26 @@ func _refresh_research_panel() -> void:
 		_research_panel.visible = false
 		_restore_game_panels_from_overlay(), Vector2(32, 32)))
 	vbox.add_child(header)
+	vbox.move_child(header, 0)
 
-	# Draggable tech tree (fills remaining space)
-	var tree_clip := Control.new()
-	tree_clip.clip_contents = true
-	tree_clip.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tree_clip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.add_child(tree_clip)
-
-	var tree_control := _RadialTechTree.new()
-	tree_control.set_anchors_preset(Control.PRESET_FULL_RECT)
-	tree_control.faction_id = parent_faction_id
-	tree_control.player_faction_id = player_id
-	tree_control.hud_ref = self
-	tree_clip.add_child(tree_control)
+	# Draggable tech tree (fills remaining space) — created once, reused on
+	# every subsequent refresh (preserves pan/zoom and the computed layout;
+	# node/edge state is read live from FactionState in _draw each frame)
+	if _research_tree_clip == null or not is_instance_valid(_research_tree_clip):
+		_research_tree_clip = Control.new()
+		_research_tree_clip.clip_contents = true
+		_research_tree_clip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_research_tree_clip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vbox.add_child(_research_tree_clip)
+		_research_tree = _RadialTechTree.new()
+		_research_tree.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_research_tree.faction_id = parent_faction_id
+		_research_tree.player_faction_id = player_id
+		_research_tree.hud_ref = self
+		_research_tree_clip.add_child(_research_tree)
+	else:
+		_research_tree.queue_redraw()
+	vbox.move_child(_research_tree_clip, 1)
 
 	# Footer: current research progress + cancel + shard invest
 	if fs.current_research_id != &"":
