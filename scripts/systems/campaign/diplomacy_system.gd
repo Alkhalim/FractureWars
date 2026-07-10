@@ -107,7 +107,16 @@ func _calculate_war_exhaustion(faction_id: StringName) -> float:
 
 # ── Strength Comparison ─────────────────────────────────────
 
+# Strength memo, active only within one execute_ai_diplomacy tick (armies and
+# unit HP cannot change during a tick; battles happen outside it). Player-path
+# calls outside ticks always compute fresh. Cleared additionally on
+# declare_war as a conservative guard against indirect effects.
+var _strength_cache: Dictionary = {} # faction_id -> int
+var _strength_cache_active := false
+
 func _calculate_faction_strength(faction_id: StringName) -> int:
+	if _strength_cache_active and _strength_cache.has(faction_id):
+		return _strength_cache[faction_id]
 	var strength := 0
 	for army: ArmyState in GameManager.get_faction_armies(faction_id):
 		for unit in army.units:
@@ -123,6 +132,8 @@ func _calculate_faction_strength(faction_id: StringName) -> int:
 						upkeep_bonus += ud.upkeep_cost[res_type]
 					var upkeep_factor := 1.0 + upkeep_bonus * 0.1  # +10% per 1 upkeep point
 					strength += int(base * hp_factor * hp_ratio * upkeep_factor)
+	if _strength_cache_active:
+		_strength_cache[faction_id] = strength
 	return strength
 
 func get_strength_ratio(faction_a: StringName, faction_b: StringName) -> float:
@@ -182,6 +193,7 @@ func declare_war(attacker: StringName, target: StringName) -> void:
 	GameManager.state.diplomacy[key_ab] = Enums.FactionRelation.WAR
 	GameManager.state.diplomacy[key_ba] = Enums.FactionRelation.WAR
 	GameManager.clear_relation_cache()
+	_strength_cache.clear() # conservative: war declaration may cascade effects
 	_cancel_treaties_between(attacker, target)
 	modify_standing(attacker, target, -30, "Declared war")
 	_apply_hostile_action_ripple(attacker, target, 5)
@@ -1170,6 +1182,15 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 # ── AI Diplomacy Turn ───────────────────────────────────────
 
 func execute_ai_diplomacy(faction_id: StringName) -> void:
+	# Strength memo is active only for the duration of this tick (armies/HP
+	# cannot change inside it); the wrapper guarantees deactivation on every
+	# return path of the inner body.
+	_strength_cache.clear()
+	_strength_cache_active = true
+	_execute_ai_diplomacy_inner(faction_id)
+	_strength_cache_active = false
+
+func _execute_ai_diplomacy_inner(faction_id: StringName) -> void:
 	# Splinterbrood never initiates diplomacy
 	if faction_id == &"splinterbrood":
 		return
