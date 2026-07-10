@@ -210,6 +210,7 @@ func propose_peace(proposer: StringName, target: StringName, force_accept: bool 
 		treaty.faction_b = target
 		treaty.turns_remaining = -1
 		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		invalidate_free_passage_cache()
 		_apply_friendly_action_ripple(proposer, target, 3)
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_PEACE, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.PEACE, proposer, target)
@@ -238,6 +239,7 @@ func propose_alliance(proposer: StringName, target: StringName, force_accept: bo
 		treaty.faction_b = target
 		treaty.turns_remaining = -1
 		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		invalidate_free_passage_cache()
 		_apply_friendly_action_ripple(proposer, target, 5)
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_ALLIANCE, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.ALLIANCE, proposer, target)
@@ -286,6 +288,7 @@ func propose_trade(proposer: StringName, target: StringName, give_res: int, give
 			receive_amount = recv_amt,
 		}
 		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		invalidate_free_passage_cache()
 		_apply_friendly_action_ripple(proposer, target, 3)
 		_mark_traded(proposer, target)
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.OFFER_TRADE, proposer, target)
@@ -454,6 +457,7 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 			treaty.faction_b = target
 			treaty.turns_remaining = -1
 			GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+			invalidate_free_passage_cache()
 			EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.PEACE, threatener, target)
 			return {accepted = true, reason = "Intimidated, they agree to peace."}
 		"alliance":
@@ -469,6 +473,7 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 			treaty.faction_b = target
 			treaty.turns_remaining = -1
 			GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+			invalidate_free_passage_cache()
 			EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.ALLIANCE, threatener, target)
 			return {accepted = true, reason = "Under pressure, they accept the alliance."}
 		"trade":
@@ -490,6 +495,7 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 				receive_amount = recv_amt,
 			}
 			GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+			invalidate_free_passage_cache()
 			EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.TRADE_DEAL, threatener, target)
 			return {accepted = true, reason = "Coerced, they accept the trade deal."}
 
@@ -566,6 +572,7 @@ func propose_trade_relations(proposer: StringName, target: StringName, force_acc
 			turns_active = 0,
 		}
 		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		invalidate_free_passage_cache()
 		_apply_friendly_action_ripple(proposer, target, 3)
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.OFFER_TRADE, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.TRADE_RELATIONS, proposer, target)
@@ -646,6 +653,7 @@ func process_treaties(faction_id: StringName) -> void:
 	# Expire finished treaties
 	for treaty_id in to_expire:
 		GameManager.state.diplomacy_state.treaties.erase(treaty_id)
+		invalidate_free_passage_cache()
 		EventBus.treaty_expired.emit(treaty_id)
 	# Decrement cooldowns for this faction
 	var keys_to_remove: Array = []
@@ -738,6 +746,7 @@ func propose_non_aggression(proposer: StringName, target: StringName, force_acce
 		treaty.faction_b = target
 		treaty.turns_remaining = 15  # 15 turns duration
 		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		invalidate_free_passage_cache()
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_NON_AGGRESSION, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.NON_AGGRESSION_PACT, proposer, target)
 		return {accepted = true, reason = "Non-aggression pact accepted"}
@@ -761,6 +770,7 @@ func demand_tributary(demander: StringName, target: StringName) -> Dictionary:
 		treaty.turns_remaining = -1  # permanent until broken
 		treaty.terms = {tribute_pct = 0.15}  # 15% of gold income
 		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		invalidate_free_passage_cache()
 		# Tributary prevents war
 		var key_ab := StringName(str(demander) + ":" + str(target))
 		var key_ba := StringName(str(target) + ":" + str(demander))
@@ -784,6 +794,7 @@ func offer_tributary(offerer: StringName, target: StringName) -> Dictionary:
 	treaty.turns_remaining = -1
 	treaty.terms = {tribute_pct = 0.15}
 	GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+	invalidate_free_passage_cache()
 	var key_ab := StringName(str(offerer) + ":" + str(target))
 	var key_ba := StringName(str(target) + ":" + str(offerer))
 	if GameManager.state.diplomacy.get(key_ab, Enums.FactionRelation.NEUTRAL) == Enums.FactionRelation.WAR:
@@ -819,6 +830,7 @@ func break_treaty(breaker: StringName, treaty_id: StringName) -> void:
 			continue
 		modify_standing(breaker, fid, standing_penalty / 3, "Reputation: broke a treaty")
 	GameManager.state.diplomacy_state.treaties.erase(treaty_id)
+	invalidate_free_passage_cache()
 	EventBus.diplomacy_action.emit(Enums.DiplomacyAction.BREAK_TREATY, breaker, other)
 
 func _treaty_type_name(treaty_type: int) -> String:
@@ -1313,6 +1325,7 @@ func _cancel_treaties_between(faction_a: StringName, faction_b: StringName) -> v
 			to_remove.append(treaty_id)
 	for treaty_id in to_remove:
 		GameManager.state.diplomacy_state.treaties.erase(treaty_id)
+		invalidate_free_passage_cache()
 		EventBus.treaty_expired.emit(treaty_id)
 
 func get_treaties_for_faction(faction_id: StringName) -> Array[TreatyInstance]:
@@ -1339,6 +1352,15 @@ func get_treaties_between(faction_a: StringName, faction_b: StringName) -> Array
 
 # ── Free Passage ───────────────────────────────────────────
 
+# Canonical faction-pair set of active FREE_PASSAGE treaties. Rebuilt lazily
+# when dirty; invalidated on every treaty insert/erase and on new_game/load.
+# The alliance shortcut stays live (get_relation is already cached upstream).
+var _free_passage_pairs: Dictionary = {} # "a|b" (sorted) -> true
+var _free_passage_dirty := true
+
+func invalidate_free_passage_cache() -> void:
+	_free_passage_dirty = true
+
 func has_free_passage(faction_a: StringName, faction_b: StringName) -> bool:
 	if faction_a == faction_b:
 		return true
@@ -1346,14 +1368,17 @@ func has_free_passage(faction_a: StringName, faction_b: StringName) -> bool:
 	var relation := GameManager.get_relation(faction_a, faction_b)
 	if relation == Enums.FactionRelation.ALLIED:
 		return true
-	# Check for active FREE_PASSAGE treaty
-	for treaty_id in GameManager.state.diplomacy_state.treaties:
-		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
-		if t.treaty_type == Enums.TreatyType.FREE_PASSAGE:
-			if (t.faction_a == faction_a and t.faction_b == faction_b) or \
-			   (t.faction_a == faction_b and t.faction_b == faction_a):
-				return true
-	return false
+	# Check for active FREE_PASSAGE treaty (cached pair set)
+	if _free_passage_dirty:
+		_free_passage_pairs.clear()
+		for treaty_id in GameManager.state.diplomacy_state.treaties:
+			var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+			if t.treaty_type == Enums.TreatyType.FREE_PASSAGE:
+				var tkey := "%s|%s" % [t.faction_a, t.faction_b] if t.faction_a < t.faction_b else "%s|%s" % [t.faction_b, t.faction_a]
+				_free_passage_pairs[tkey] = true
+		_free_passage_dirty = false
+	var key := "%s|%s" % [faction_a, faction_b] if faction_a < faction_b else "%s|%s" % [faction_b, faction_a]
+	return _free_passage_pairs.has(key)
 
 func propose_free_passage(proposer: StringName, target: StringName, force_accept: bool = false) -> Dictionary:
 	var relation := GameManager.get_relation(proposer, target)
@@ -1388,6 +1413,7 @@ func propose_free_passage(proposer: StringName, target: StringName, force_accept
 		treaty.faction_b = target
 		treaty.turns_remaining = 15
 		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		invalidate_free_passage_cache()
 		EventBus.diplomacy_action.emit(Enums.DiplomacyAction.PROPOSE_FREE_PASSAGE, proposer, target)
 		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.FREE_PASSAGE, proposer, target)
 		return {accepted = true, reason = "Free passage accepted"}

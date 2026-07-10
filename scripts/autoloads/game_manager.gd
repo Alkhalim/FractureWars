@@ -695,6 +695,7 @@ func load_game(slot: int) -> void:
 	city_system.invalidate_city_hex_index()
 	invalidate_completion_cache()
 	city_system.invalidate_region_effects_cache()
+	diplomacy_system.invalidate_free_passage_cache()
 	current_phase = Enums.GamePhase.CAMPAIGN
 	_commander_name_counters.clear()
 	transition_to_scene("res://scenes/campaign/campaign.tscn")
@@ -724,6 +725,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false) -> void:
 	city_system.invalidate_city_hex_index()
 	invalidate_completion_cache()
 	city_system.invalidate_region_effects_cache()
+	diplomacy_system.invalidate_free_passage_cache()
 
 	_init_factions()
 	_init_rebels_faction()
