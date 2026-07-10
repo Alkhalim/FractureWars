@@ -1063,6 +1063,12 @@ func _build_gladehost_patrol(faction_id: StringName) -> Array:
 
 func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 	var armies := GameManager.get_faction_armies(faction_id)
+	# Hoisted intruder scan (faction-relative, loop-invariant). Revalidated
+	# whenever a battle changed the army set or the intruder hex emptied —
+	# the only ways the per-army result could differ (enemies don't move and
+	# regions only change via battles during our turn).
+	var jade_intruder := _find_nearest_intruder(faction_id, 3)
+	var jade_intruder_army_count := GameManager.state.armies.size()
 	var army_count := 0
 	for army in armies:
 		army_count += 1
@@ -1084,7 +1090,11 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 			continue
 
 		# Actively seek to conquer
-		var intruder := _find_nearest_intruder(faction_id, 3)
+		if GameManager.state.armies.size() != jade_intruder_army_count \
+				or (jade_intruder != Vector2i(-1, -1) and GameManager.get_enemies_at_tile(jade_intruder, faction_id).is_empty()):
+			jade_intruder = _find_nearest_intruder(faction_id, 3)
+			jade_intruder_army_count = GameManager.state.armies.size()
+		var intruder := jade_intruder
 		if intruder != Vector2i(-1, -1):
 			_ai_move_army_safe(army, intruder, faction_id)
 			if not GameManager.state.armies.has(army.army_id):
