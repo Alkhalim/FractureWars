@@ -367,8 +367,25 @@ func _create_overview_sprite() -> void:
 	var img_w: int = HexMapData.MAP_WIDTH * px_per_tile + px_per_tile
 	var img_h: int = HexMapData.MAP_HEIGHT * px_per_tile + px_per_tile
 	var img := Image.create(img_w, img_h, false, Image.FORMAT_RGB8)
-	img.fill(Color(0.06, 0.05, 0.04))  # Dark background
+	_fill_overview_image(img)
 
+	_overview_sprite = Sprite2D.new()
+	_overview_sprite.centered = false
+	_overview_sprite.texture = ImageTexture.create_from_image(img)
+	# Scale sprite so it aligns with the hex map world coordinates
+	_overview_sprite.scale = Vector2(HEX_H_SPACING / float(px_per_tile), HEX_V_SPACING / float(px_per_tile))
+	_overview_sprite.visible = false
+	hex_map_layer.add_child(_overview_sprite)
+
+func _fill_overview_image(img: Image) -> void:
+	## Shared pixel fill for the overview sprite (create + in-place refresh).
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return
+	var px_per_tile := 3
+	var img_w := img.get_width()
+	var img_h := img.get_height()
+	img.fill(Color(0.06, 0.05, 0.04))  # Dark background
 	for coord in hex_map.tiles:
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
 		var color: Color = TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
@@ -385,23 +402,24 @@ func _create_overview_sprite() -> void:
 				if px + dx < img_w and py + dy < img_h:
 					img.set_pixel(px + dx, py + dy, color)
 
-	_overview_sprite = Sprite2D.new()
-	_overview_sprite.centered = false
-	_overview_sprite.texture = ImageTexture.create_from_image(img)
-	# Scale sprite so it aligns with the hex map world coordinates
-	_overview_sprite.scale = Vector2(HEX_H_SPACING / float(px_per_tile), HEX_V_SPACING / float(px_per_tile))
-	_overview_sprite.visible = false
-	hex_map_layer.add_child(_overview_sprite)
-
 func _update_overview_colors() -> void:
-	## Rebuilds overview sprite when political overlay changes.
+	## Refreshes overview sprite pixels in place when political overlay changes
+	## (previously freed and recreated the sprite + a new ImageTexture).
 	if _overview_sprite == null:
 		return
-	_overview_sprite.queue_free()
-	_overview_sprite = null
-	_create_overview_sprite()
-	if _overview_visible:
-		_overview_sprite.visible = true
+	var tex := _overview_sprite.texture as ImageTexture
+	if tex == null:
+		# Fallback: recreate from scratch (previous behavior)
+		_overview_sprite.queue_free()
+		_overview_sprite = null
+		_create_overview_sprite()
+		if _overview_visible:
+			_overview_sprite.visible = true
+		return
+	var img := Image.create(tex.get_width(), tex.get_height(), false, Image.FORMAT_RGB8)
+	_fill_overview_image(img)
+	tex.update(img)
+	_overview_sprite.visible = _overview_visible
 
 func _update_lod() -> void:
 	if camera == null or _overview_sprite == null or _bake_frames_remaining >= 0:
@@ -488,6 +506,21 @@ func _rebake_hex_map() -> void:
 	for chunk_key: Vector2i in _hex_chunks:
 		_hex_chunks[chunk_key].queue_redraw()
 	_bake_frames_remaining = 3
+
+var _rebake_queued := false
+
+func _request_rebake() -> void:
+	## Coalesces multiple rebake requests in one frame into a single rebake.
+	## _rebake_hex_map re-renders the whole map SubViewport and does a GPU
+	## readback in _finish_bake — never do that more than once per frame.
+	if _rebake_queued:
+		return
+	_rebake_queued = true
+	call_deferred("_run_queued_rebake")
+
+func _run_queued_rebake() -> void:
+	_rebake_queued = false
+	_rebake_hex_map()
 
 # ── Rendering ─────────────────────────────────────────────────
 
@@ -600,6 +633,9 @@ func _render_hex_map() -> void:
 		var color: Color = Color.WHITE if tex else base_color
 		if not chunk_entries.has(chunk_key):
 			chunk_entries[chunk_key] = []
+		# Direct coord -> chunk entry index (used by _update_political_overlay
+		# instead of scanning ~100 entries per tile comparing polygon centers)
+		_hex_tile_chunk_data[coord] = {chunk_key = chunk_key, entry_idx = chunk_entries[chunk_key].size()}
 		chunk_entries[chunk_key].append([world_poly, color, tex, scaled_uv if tex else null])
 
 		# Collect water polygons for animation overlay
@@ -1303,98 +1339,60 @@ func _update_political_overlay() -> void:
 	if hex_map == null:
 		return
 
-	# Recolor chunk tile entries based on view mode, then redraw affected chunks
+	# Recolor chunk tile entries via the coord -> entry index map built at
+	# chunk creation. Track which chunks actually changed color so unchanged
+	# chunks are not redrawn and a no-op update skips the overview rebuild
+	# and the full map rebake entirely.
 	var dirty_chunks: Dictionary = {}
-	for chunk_key: Vector2i in _hex_chunks:
-		var chunk: _HexChunkNode = _hex_chunks[chunk_key]
-		for entry in chunk.tile_entries:
-			# entry = [world_poly, color, tex, uv]
-			# We can't easily map back to tile data from the polygon alone,
-			# so just use the base color approach: textured tiles get tint, untextured get terrain color
-			var has_tex: bool = entry[2] != null
-			if _minimap_view_mode == 0:
-				# Terrain view — restore original colors
-				entry[1] = Color.WHITE if has_tex else entry[1]
-			# For political/culture views, we'd need coord→tile mapping
-			# Since this is only used on manual toggle, accept the simpler approach
-		dirty_chunks[chunk_key] = true
+	for coord in hex_map.tiles:
+		var lookup: Dictionary = _hex_tile_chunk_data.get(coord, {})
+		if lookup.is_empty():
+			continue
+		var chunk: _HexChunkNode = _hex_chunks.get(lookup.chunk_key)
+		if chunk == null:
+			continue
+		var entry: Array = chunk.tile_entries[lookup.entry_idx]
+		var tile: HexMapData.TileState = hex_map.tiles[coord]
+		var has_tex: bool = entry[2] != null
+		var new_color: Color = entry[1]
+		if _minimap_view_mode == 1:
+			if tile.owner_faction != &"" and tile.owner_faction != &"independent":
+				var fd: FactionData = DataManager.get_faction(tile.owner_faction)
+				if fd:
+					var pc: Color = fd.color
+					pc.s = minf(pc.s * 1.4, 1.0)
+					new_color = pc.lightened(0.15)
+				else:
+					new_color = Color(0.35, 0.33, 0.3) if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
+			else:
+				new_color = Color(0.35, 0.33, 0.3) if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
+		elif _minimap_view_mode == 2:
+			var cul_id: StringName = GameManager.REGION_CULTURE.get(tile.region_id, &"")
+			if cul_id != &"":
+				var cc: Color = CULTURE_COLORS.get(cul_id, Color(0.5, 0.5, 0.5))
+				cc.s = minf(cc.s * 1.3, 1.0)
+				new_color = cc.lightened(0.1)
+			else:
+				new_color = Color(0.35, 0.33, 0.3) if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
+		else:
+			# Terrain view: restore original colors (with faction tint)
+			var base_color: Color = Color.WHITE if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
+			if tile.owner_faction != &"" and tile.owner_faction != &"independent":
+				var fd2: FactionData = DataManager.get_faction(tile.owner_faction)
+				if fd2:
+					base_color = base_color.lerp(fd2.color, 0.12)
+			new_color = base_color
+		if new_color != entry[1]:
+			entry[1] = new_color
+			dirty_chunks[lookup.chunk_key] = true
 
-	# For political and culture views, rebuild colors using hex_map tile data
-	if _minimap_view_mode != 0:
-		# We need to re-iterate tiles to get faction/culture info
-		# Build a lookup from world polygon center → chunk entry for recoloring
-		for coord in hex_map.tiles:
-			var tile: HexMapData.TileState = hex_map.tiles[coord]
-			var chunk_key := Vector2i(coord.x / HEX_CHUNK_SIZE, coord.y / HEX_CHUNK_SIZE)
-			var chunk: _HexChunkNode = _hex_chunks.get(chunk_key)
-			if chunk == null:
-				continue
-			var pixel_pos := _hex_to_pixel(coord)
-			var elevation: float = _hex_elevations.get(coord, 0.0)
-			var target_x := pixel_pos.x
-			var target_y := pixel_pos.y - elevation
-			# Find matching entry by first vertex proximity
-			for entry in chunk.tile_entries:
-				var poly: PackedVector2Array = entry[0]
-				if poly.size() < 1:
-					continue
-				# Check if this entry's polygon center matches this tile
-				var cx := (poly[0].x + poly[3].x) * 0.5
-				var cy := (poly[0].y + poly[3].y) * 0.5
-				if absf(cx - target_x) < 2.0 and absf(cy - target_y) < 2.0:
-					var has_tex: bool = entry[2] != null
-					if _minimap_view_mode == 1:
-						if tile.owner_faction != &"" and tile.owner_faction != &"independent":
-							var fd: FactionData = DataManager.get_faction(tile.owner_faction)
-							if fd:
-								var pc: Color = fd.color
-								pc.s = minf(pc.s * 1.4, 1.0)
-								entry[1] = pc.lightened(0.15)
-							else:
-								entry[1] = Color(0.35, 0.33, 0.3) if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
-						else:
-							entry[1] = Color(0.35, 0.33, 0.3) if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
-					elif _minimap_view_mode == 2:
-						var cul_id: StringName = GameManager.REGION_CULTURE.get(tile.region_id, &"")
-						if cul_id != &"":
-							var cc: Color = CULTURE_COLORS.get(cul_id, Color(0.5, 0.5, 0.5))
-							cc.s = minf(cc.s * 1.3, 1.0)
-							entry[1] = cc.lightened(0.1)
-						else:
-							entry[1] = Color(0.35, 0.33, 0.3) if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY).darkened(0.3)
-					break
-	else:
-		# Terrain view: restore original colors
-		for coord in hex_map.tiles:
-			var tile: HexMapData.TileState = hex_map.tiles[coord]
-			var chunk_key := Vector2i(coord.x / HEX_CHUNK_SIZE, coord.y / HEX_CHUNK_SIZE)
-			var chunk: _HexChunkNode = _hex_chunks.get(chunk_key)
-			if chunk == null:
-				continue
-			var pixel_pos := _hex_to_pixel(coord)
-			var elevation: float = _hex_elevations.get(coord, 0.0)
-			var target_x := pixel_pos.x
-			var target_y := pixel_pos.y - elevation
-			for entry in chunk.tile_entries:
-				var poly: PackedVector2Array = entry[0]
-				if poly.size() < 1:
-					continue
-				var cx := (poly[0].x + poly[3].x) * 0.5
-				var cy := (poly[0].y + poly[3].y) * 0.5
-				if absf(cx - target_x) < 2.0 and absf(cy - target_y) < 2.0:
-					var has_tex: bool = entry[2] != null
-					var base_color: Color = Color.WHITE if has_tex else TERRAIN_COLORS.get(tile.terrain, Color.GRAY)
-					if tile.owner_faction != &"" and tile.owner_faction != &"independent":
-						var fd: FactionData = DataManager.get_faction(tile.owner_faction)
-						if fd:
-							base_color = base_color.lerp(fd.color, 0.12)
-					entry[1] = base_color
-					break
+	if dirty_chunks.is_empty():
+		return # Nothing changed — skip chunk redraws, overview rebuild, and rebake
 
-	for chunk_key: Vector2i in _hex_chunks:
+	for chunk_key: Vector2i in dirty_chunks:
 		_hex_chunks[chunk_key].queue_redraw()
 	_update_overview_colors()
-	_rebake_hex_map()
+	_request_rebake()
 
 # ── Army markers ──────────────────────────────────────────────
 

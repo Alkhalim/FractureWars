@@ -5316,8 +5316,12 @@ func _spawn_research_toast(research_name: String) -> void:
 	tween.tween_property(panel, "modulate:a", 0.0, 0.5)
 	tween.tween_callback(panel.queue_free)
 
+var _research_status_label: Label = null # Cached TopBar label lookup
+
 func _update_research_status_label() -> void:
-	var lbl := get_node_or_null("TopBar/HBoxContainer/ResearchStatusLabel")
+	if _research_status_label == null or not is_instance_valid(_research_status_label):
+		_research_status_label = get_node_or_null("TopBar/HBoxContainer/ResearchStatusLabel") as Label
+	var lbl := _research_status_label
 	if lbl == null:
 		return
 	var fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
