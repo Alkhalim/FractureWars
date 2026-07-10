@@ -137,7 +137,10 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 
 		var current_g: float = g_score.get(current, INF)
 
-		for neighbor in HexHelper.get_neighbors(current):
+		# Allocation-free neighbor iteration (same order as HexHelper.get_neighbors)
+		var dirs: Array = HexHelper.DIRECTIONS_EVEN if (current.x & 1) == 0 else HexHelper.DIRECTIONS_ODD
+		for d: Vector2i in dirs:
+			var neighbor: Vector2i = current + d
 			if closed.has(neighbor):
 				continue
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
@@ -182,11 +185,18 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 				came_from[neighbor] = current
 				g_score[neighbor] = tentative_g
 				var f := tentative_g + float(HexHelper.hex_distance(neighbor, to))
-				# Binary insert: keep sorted descending by f (largest first)
-				var idx := open_heap.size()
-				while idx > 0 and open_heap[idx - 1][0] < f:
-					idx -= 1
-				open_heap.insert(idx, [f, neighbor])
+				# Binary insert: keep sorted descending by f (largest first).
+				# Finds the first index with value < f — identical position to
+				# the old back-to-front linear scan (inserts after equal keys).
+				var lo := 0
+				var hi := open_heap.size()
+				while lo < hi:
+					var mid := (lo + hi) >> 1
+					if open_heap[mid][0] < f:
+						hi = mid
+					else:
+						lo = mid + 1
+				open_heap.insert(lo, [f, neighbor])
 				in_open[neighbor] = true
 
 	_path_cache[cache_key] = []
@@ -215,7 +225,10 @@ func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: Str
 		if remaining < result.get(current, -1.0):
 			continue # Already found a better path
 
-		for neighbor in HexHelper.get_neighbors(current):
+		# Allocation-free neighbor iteration (same order as HexHelper.get_neighbors)
+		var dirs: Array = HexHelper.DIRECTIONS_EVEN if (current.x & 1) == 0 else HexHelper.DIRECTIONS_ODD
+		for d: Vector2i in dirs:
+			var neighbor: Vector2i = current + d
 			if not HexHelper.is_valid(neighbor, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				continue
 			var ntile := hex_map.get_tile(neighbor)
@@ -253,11 +266,18 @@ func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: Str
 						blocked_by_city = true
 				# Enemy tiles are reachable (for battle) but don't expand through them
 				if not blocked_by_city and not _has_enemy_at(neighbor, faction_id, excluded_army_id) and not _has_enemy_beast_at(neighbor, faction_id):
-					# Binary insert: sorted ascending by remaining MP
-					var idx := open_heap.size()
-					while idx > 0 and open_heap[idx - 1][0] > new_remaining:
-						idx -= 1
-					open_heap.insert(idx, [new_remaining, neighbor])
+					# Binary insert: sorted ascending by remaining MP.
+					# First index with value > new_remaining — identical
+					# position to the old back-to-front linear scan.
+					var lo := 0
+					var hi := open_heap.size()
+					while lo < hi:
+						var mid := (lo + hi) >> 1
+						if open_heap[mid][0] > new_remaining:
+							hi = mid
+						else:
+							lo = mid + 1
+					open_heap.insert(lo, [new_remaining, neighbor])
 
 	result.erase(from) # Don't include starting tile
 	_reachable_cache[cache_key] = result
