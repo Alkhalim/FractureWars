@@ -39,10 +39,58 @@ func refresh_caches() -> void:
 			var current_max: int = _region_city_level_cache.get(key, 0)
 			if city.level > current_max:
 				_region_city_level_cache[key] = city.level
+	_indexed_army_count = GameManager.state.armies.size()
 	_cache_valid = true
 
+# Number of armies indexed in _army_positions. If state.armies grew or shrank
+# without a position update (army created/destroyed at an unhooked site), the
+# count mismatch makes positions_fresh() false and forces a rebuild.
+var _indexed_army_count: int = 0
+
+func positions_fresh() -> bool:
+	return _cache_valid and _indexed_army_count == GameManager.state.armies.size()
+
+func invalidate_positions() -> void:
+	_cache_valid = false
+
+func update_army_position(army: ArmyState, from: Vector2i, to: Vector2i) -> void:
+	## Incremental position update for one movement step. Army positions affect
+	## pathfinding blocking, so cached paths/reachable sets become stale.
+	if not positions_fresh():
+		return
+	_path_cache.clear()
+	_reachable_cache.clear()
+	var bucket: Array = _army_positions.get(from, [])
+	bucket.erase(army)
+	if bucket.is_empty():
+		_army_positions.erase(from)
+	if _army_positions.has(to):
+		_army_positions[to].append(army)
+	else:
+		_army_positions[to] = [army]
+
+func update_beast_position(from: Vector2i, to: Vector2i, faction_id: StringName) -> void:
+	if not positions_fresh():
+		return
+	_path_cache.clear()
+	_reachable_cache.clear()
+	_beast_positions.erase(from)
+	_beast_positions[to] = faction_id
+
+func remove_army_position(army: ArmyState) -> void:
+	## Call BEFORE erasing the army from state.armies (keeps counts in sync).
+	if not positions_fresh():
+		return
+	_path_cache.clear()
+	_reachable_cache.clear()
+	var bucket: Array = _army_positions.get(army.hex_pos, [])
+	bucket.erase(army)
+	if bucket.is_empty():
+		_army_positions.erase(army.hex_pos)
+	_indexed_army_count -= 1
+
 func _ensure_cache() -> void:
-	if not _cache_valid:
+	if not positions_fresh():
 		refresh_caches()
 
 func _is_tile_blocked(coord: Vector2i, faction_id: StringName, _excluded_army_id: StringName) -> bool:

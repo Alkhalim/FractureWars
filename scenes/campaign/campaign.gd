@@ -3320,6 +3320,7 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 				var retreat_hex := _find_retreat_hex(attacker_army, hex_pos)
 				if retreat_hex != Vector2i(-1, -1):
 					attacker_army.hex_pos = retreat_hex
+					GameManager.movement_system.invalidate_positions()
 				attacker_army.movement_remaining = 0.0
 				attacker_army.battle_exhausted = true
 				garrison_retreat = true
@@ -3356,6 +3357,7 @@ func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_
 	# Handle siege consequences (same as manual battle)
 	if atk_alive and not def_alive and not garrison_retreat:
 		attacker_army.hex_pos = hex_pos
+		GameManager.movement_system.invalidate_positions()
 		attacker_army.battle_exhausted = true
 		attacker_army.movement_remaining = 0.0
 		EventBus.battle_resolved.emit(attacker_army.faction_id, hex_pos)
@@ -3565,6 +3567,7 @@ func _execute_retreat(attacker_id: StringName, defender_id: StringName, hex_pos:
 	var retreat_hex := _find_retreat_hex(player_army, enemy_army.hex_pos)
 	if retreat_hex != Vector2i(-1, -1):
 		player_army.hex_pos = retreat_hex
+		GameManager.movement_system.invalidate_positions()
 
 	# Remove army if no survivors
 	if surviving_units.is_empty():
@@ -3739,11 +3742,13 @@ func _separate_armies_stalemate(attacker: ArmyState, defender: ArmyState) -> voi
 	var retreat_hex := _find_retreat_hex(attacker, battle_hex)
 	if retreat_hex != Vector2i(-1, -1):
 		attacker.hex_pos = retreat_hex
+		GameManager.movement_system.invalidate_positions()
 	else:
 		# No valid retreat tile — push defender instead as fallback
 		var def_retreat := _find_retreat_hex(defender, attacker.hex_pos)
 		if def_retreat != Vector2i(-1, -1):
 			defender.hex_pos = def_retreat
+			GameManager.movement_system.invalidate_positions()
 
 func _flash_turn_transition() -> void:
 	var fade := ColorRect.new()

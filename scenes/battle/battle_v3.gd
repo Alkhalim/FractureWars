@@ -2380,6 +2380,7 @@ func _apply_battle_results() -> void:
 				garrison_city.garrison_defeated_turn = GameManager.state.current_turn
 				garrison_city.garrison_hp_ratio = 0.0
 			attacker_army.hex_pos = battle_hex_pos
+			GameManager.movement_system.invalidate_positions()
 			attacker_army.movement_remaining = 0.0
 			attacker_army.battle_exhausted = true
 		elif attacker_alive:
@@ -2387,6 +2388,7 @@ func _apply_battle_results() -> void:
 			var retreat_hex := _find_garrison_retreat_hex(attacker_army, battle_hex_pos)
 			if retreat_hex != Vector2i(-1, -1):
 				attacker_army.hex_pos = retreat_hex
+				GameManager.movement_system.invalidate_positions()
 			attacker_army.movement_remaining = 0.0
 			attacker_army.battle_exhausted = true
 			garrison_retreat = true
@@ -2678,11 +2680,13 @@ func _separate_armies_after_stalemate() -> void:
 	var retreat_hex := _find_garrison_retreat_hex(attacker_army, defender_army.hex_pos)
 	if retreat_hex != Vector2i(-1, -1):
 		attacker_army.hex_pos = retreat_hex
+		GameManager.movement_system.invalidate_positions()
 	else:
 		# No valid retreat for attacker — push defender instead as fallback
 		var def_retreat := _find_garrison_retreat_hex(defender_army, attacker_army.hex_pos)
 		if def_retreat != Vector2i(-1, -1):
 			defender_army.hex_pos = def_retreat
+			GameManager.movement_system.invalidate_positions()
 
 func _apply_elderbeast_battle_results() -> void:
 	# Sync elderbeast HP from battle formations and handle survival mechanic

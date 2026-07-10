@@ -1692,7 +1692,7 @@ func get_faction_elderbeasts(faction_id: StringName) -> Array[ElderbeastState]:
 
 func get_army_at_tile(coord: Vector2i) -> ArmyState:
 	# Use movement system position cache when valid
-	if movement_system and movement_system._cache_valid:
+	if movement_system and movement_system.positions_fresh():
 		var armies: Array = movement_system._army_positions.get(coord, [])
 		if armies.size() > 0:
 			return armies[0]
@@ -1705,7 +1705,7 @@ func get_army_at_tile(coord: Vector2i) -> ArmyState:
 
 func get_armies_at_tile(coord: Vector2i) -> Array[ArmyState]:
 	# Use movement system position cache when valid
-	if movement_system and movement_system._cache_valid:
+	if movement_system and movement_system.positions_fresh():
 		var cached: Array = movement_system._army_positions.get(coord, [])
 		var result: Array[ArmyState] = []
 		for a: ArmyState in cached:
@@ -1964,8 +1964,10 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 	var army: ArmyState = state.armies.get(army_id)
 	if army == null or path.is_empty():
 		return
-	# Invalidate movement cache since positions will change
-	movement_system._cache_valid = false
+	# Keep the position cache fresh and update it incrementally per step
+	# (previously invalidated wholesale, forcing O(all armies) fallbacks for
+	# every per-step lookup below).
+	movement_system._ensure_cache()
 	# Injured elderbeast prevents army movement
 	if army.elderbeast_id != &"":
 		var beast: ElderbeastState = state.elderbeasts.get(army.elderbeast_id)
@@ -1986,6 +1988,7 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 
 		var from_pos := army.hex_pos
 		army.hex_pos = tile_coord
+		movement_system.update_army_position(army, from_pos, tile_coord)
 		army.movement_remaining -= cost
 		army.has_moved = true
 		# Sync elderbeast position with army
@@ -1994,6 +1997,7 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 			if beast:
 				var old_beast_pos := beast.hex_pos
 				beast.hex_pos = tile_coord
+				movement_system.update_beast_position(old_beast_pos, tile_coord, beast.faction_id)
 				EventBus.elderbeast_moved.emit(beast.beast_id, old_beast_pos, tile_coord)
 		EventBus.army_moved.emit(army_id, from_pos, tile_coord)
 
@@ -2049,9 +2053,8 @@ func _check_siege_departure(army: ArmyState) -> void:
 		return
 	# Check if any OTHER friendly army remains at this hex
 	var other_present := false
-	for aid in state.armies:
-		var a: ArmyState = state.armies[aid]
-		if a.army_id != army.army_id and a.hex_pos == army.hex_pos and a.faction_id == army.faction_id:
+	for a: ArmyState in get_armies_at_tile(army.hex_pos):
+		if a.army_id != army.army_id and a.faction_id == army.faction_id:
 			other_present = true
 			break
 	if not other_present:
@@ -2059,9 +2062,8 @@ func _check_siege_departure(army: ArmyState) -> void:
 
 func _try_claim_shard(hex_pos: Vector2i, faction_id: StringName) -> void:
 	# Block claiming if shard guardian army still alive at this hex
-	for army_id in state.armies:
-		var army: ArmyState = state.armies[army_id]
-		if army.faction_id == &"shard_guardians" and army.hex_pos == hex_pos:
+	for army: ArmyState in get_armies_at_tile(hex_pos):
+		if army.faction_id == &"shard_guardians":
 			return
 	for shard_id in state.active_shards:
 		var shard: ShardInstance = state.active_shards[shard_id]
@@ -2086,6 +2088,7 @@ func remove_army(army_id: StringName) -> void:
 				fs.commander_pool.append(army.commander)
 			army.commander = null
 		EventBus.army_destroyed.emit(army_id, army.faction_id)
+		movement_system.remove_army_position(army)
 		state.armies.erase(army_id)
 		_faction_army_cache_valid = false
 
