@@ -649,11 +649,25 @@ var _commander_name_counters: Dictionary = {} # faction_id -> int
 
 # ── Save / Load ─────────────────────────────────────────────
 
+static func _save_path(slot: int) -> String:
+	# Binary .res serializes/parses far faster than text .tres and is the
+	# preferred format; _resolve_save_path falls back to legacy .tres saves.
+	return "user://saves/save_%d.res" % slot
+
+static func _resolve_save_path(slot: int) -> String:
+	var res_path := _save_path(slot)
+	if ResourceLoader.exists(res_path):
+		return res_path
+	var tres_path := "user://saves/save_%d.tres" % slot
+	if ResourceLoader.exists(tres_path):
+		return tres_path
+	return ""
+
 func save_game(slot: int) -> void:
 	state.serialize_hex_map()
 	state.turn_manager_state = TurnManager.serialize_state()
 	DirAccess.make_dir_recursive_absolute("user://saves")
-	ResourceSaver.save(state, "user://saves/save_%d.tres" % slot)
+	ResourceSaver.save(state, _save_path(slot))
 	# Store metadata alongside save for load menu display
 	var meta := ConfigFile.new()
 	var faction_data := DataManager.get_faction(state.player_faction_id)
@@ -681,8 +695,8 @@ static func get_save_metadata(slot: int) -> Dictionary:
 	}
 
 func load_game(slot: int) -> void:
-	var path := "user://saves/save_%d.tres" % slot
-	if not ResourceLoader.exists(path):
+	var path := _resolve_save_path(slot)
+	if path == "":
 		return
 	state = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GameState
 	if state == null:
@@ -701,7 +715,7 @@ func load_game(slot: int) -> void:
 	transition_to_scene("res://scenes/campaign/campaign.tscn")
 
 static func has_save(slot: int) -> bool:
-	return ResourceLoader.exists("user://saves/save_%d.tres" % slot)
+	return _resolve_save_path(slot) != ""
 
 var is_demo_map := false
 
