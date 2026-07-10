@@ -217,7 +217,10 @@ func _ready() -> void:
 	if hud.has_signal("building_tile_selection_requested"):
 		hud.building_tile_selection_requested.connect(_on_building_tile_selection_requested)
 	if hud.has_signal("building_queued"):
-		hud.building_queued.connect(func(): _create_building_tile_markers(); _fog_dirty = true)
+		hud.building_queued.connect(func():
+			_invalidate_city_action_cache()
+			_create_building_tile_markers()
+			_fog_dirty = true)
 
 	# Position camera on player's capital, fallback to map center
 	var _cam_target := Vector2(HexMapData.MAP_WIDTH * HEX_H_SPACING * 0.5, HexMapData.MAP_HEIGHT * HEX_V_SPACING * 0.5)
@@ -2143,6 +2146,7 @@ func _refresh_city_markers() -> void:
 	if not _city_markers_dirty:
 		return
 	_city_markers_dirty = false
+	_invalidate_city_action_cache()
 	_create_city_markers()
 	_create_building_tile_markers()
 	_update_city_glow_states()
@@ -2184,11 +2188,20 @@ func _update_city_glow_states() -> void:
 				constructing = not city.recruit_queue.is_empty()
 			hammer_node.visible = constructing
 
+var _city_action_cache: Dictionary = {} # city_id -> bool; cleared on building/turn events
+
 func _city_has_available_action(city: CityState) -> bool:
 	if not city.build_queue.is_empty():
 		return false
+	if _city_action_cache.has(city.city_id):
+		return _city_action_cache[city.city_id]
 	var available := GameManager.city_system.get_available_buildings(city)
-	return available.size() > 0
+	var result := available.size() > 0
+	_city_action_cache[city.city_id] = result
+	return result
+
+func _invalidate_city_action_cache() -> void:
+	_city_action_cache.clear()
 
 func _add_build_glow(marker: Node2D) -> void:
 	var glow := Polygon2D.new()
@@ -3895,6 +3908,7 @@ func _recreate_shard_markers() -> void:
 			_create_shard_marker(shard_id, shard.hex_pos, shard.realm)
 
 func _on_city_captured(city_id: StringName, _old_owner: StringName, new_owner: StringName) -> void:
+	_invalidate_city_action_cache()
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city:
 		if _is_tile_visible(city.hex_pos):
@@ -3934,6 +3948,7 @@ func _on_siege_broken(city_id: StringName) -> void:
 		_refresh_city_markers()
 
 func _on_building_completed(city_id: StringName, building_id: StringName) -> void:
+	_invalidate_city_action_cache()
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city and city.faction_id == GameManager.state.player_faction_id:
 		AudioManager.play_sfx(&"build_complete")
@@ -3950,6 +3965,7 @@ func _on_building_completed(city_id: StringName, building_id: StringName) -> voi
 		_fog_dirty = true
 
 func _on_building_demolished(city_id: StringName, _building_id: StringName) -> void:
+	_invalidate_city_action_cache()
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city and city.faction_id == GameManager.state.player_faction_id:
 		AudioManager.play_sfx(&"demolish")
