@@ -847,20 +847,24 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 			continue
 
 		var capital_pos := city.hex_pos
-		# Sort by distance and only evaluate closest 20
-		valid_tiles.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-			return HexHelper.hex_distance(a, capital_pos) < HexHelper.hex_distance(b, capital_pos))
-		var eval_count := mini(valid_tiles.size(), 20)
+		# Sort by distance and only evaluate closest 20. Distances precomputed
+		# once per tile instead of per comparison — the comparator sees the
+		# same boolean outcomes, so the ordering is identical.
+		var keyed: Array = []
+		for t in valid_tiles:
+			keyed.append([HexHelper.hex_distance(t, capital_pos), t])
+		keyed.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+		var eval_count := mini(keyed.size(), 20)
 
 		var best_tile := Vector2i(-1, -1)
 		var best_score := -999
 		for i in eval_count:
-			var tile_pos: Vector2i = valid_tiles[i]
+			var tile_pos: Vector2i = keyed[i][1]
 			var income := GameManager.city_system.calculate_settlement_income_preview(tile_pos)
 			var income_score := 0
 			for res_type in income:
 				income_score += income[res_type]
-			var dist_penalty := HexHelper.hex_distance(capital_pos, tile_pos) * 2
+			var dist_penalty: int = keyed[i][0] * 2
 			var total_score := income_score - dist_penalty
 			if total_score > best_score:
 				best_score = total_score

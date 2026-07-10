@@ -1658,6 +1658,7 @@ var _city_hex_index_dirty := true
 
 func invalidate_city_hex_index() -> void:
 	_city_hex_index_dirty = true
+	_settlement_sphere_dirty = true
 
 func get_city_at_hex(hex_pos: Vector2i) -> CityState:
 	var cities: Dictionary = GameManager.state.cities
@@ -1692,22 +1693,37 @@ const SETTLEMENT_FOUNDING_COST := {
 
 const SETTLEMENT_SPHERE_RADIUS := 3
 
+# Union of all city sphere hexes (hex_distance <= SETTLEMENT_SPHERE_RADIUS).
+# Depends only on city positions — shares the hex-index invalidation triggers
+# (size check + invalidate_city_hex_index sets the dirty flag).
+var _settlement_sphere_set: Dictionary = {}
+var _settlement_sphere_dirty := true
+var _settlement_sphere_city_count := -1
+
 func is_in_settlement_sphere(hex_pos: Vector2i) -> bool:
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		if HexHelper.hex_distance(hex_pos, city.hex_pos) <= SETTLEMENT_SPHERE_RADIUS:
-			return true
-	return false
+	var cities: Dictionary = GameManager.state.cities
+	if _settlement_sphere_dirty or _settlement_sphere_city_count != cities.size():
+		_settlement_sphere_set.clear()
+		for city_id in cities:
+			var city: CityState = cities[city_id]
+			for dx in range(-SETTLEMENT_SPHERE_RADIUS - 1, SETTLEMENT_SPHERE_RADIUS + 2):
+				for dy in range(-SETTLEMENT_SPHERE_RADIUS - 1, SETTLEMENT_SPHERE_RADIUS + 2):
+					var h := Vector2i(city.hex_pos.x + dx, city.hex_pos.y + dy)
+					if HexHelper.hex_distance(h, city.hex_pos) <= SETTLEMENT_SPHERE_RADIUS:
+						_settlement_sphere_set[h] = true
+		_settlement_sphere_city_count = cities.size()
+		_settlement_sphere_dirty = false
+	return _settlement_sphere_set.has(hex_pos)
 
 func get_valid_settlement_tiles(faction_id: StringName, region_id: StringName, city_id: StringName = &"") -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
 		return result
-	for coord in hex_map.tiles:
+	# Region tile cache holds tiles in the same map-dict insertion order the
+	# old full-map scan visited them, so result order is unchanged.
+	for coord in hex_map.get_region_tiles(region_id):
 		var tile: HexMapData.TileState = hex_map.tiles[coord]
-		if tile.region_id != region_id:
-			continue
 		if tile.owner_faction != faction_id:
 			continue
 		if tile.terrain == Enums.TerrainType.WATER:
