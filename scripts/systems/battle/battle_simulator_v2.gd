@@ -48,6 +48,7 @@ class BattleFormation:
 	var anchor_pos: Vector2i
 	var facing: Vector2i = Vector2i(0, -1)  # Default: facing up
 	var occupied_tiles: Array[Vector2i] = []
+	var max_anchor_span: int = 0 # max manhattan distance of any occupied tile from anchor (set in _build_formation)
 
 	# Morale
 	var base_morale: int = 50
@@ -313,6 +314,12 @@ func _build_formation(f: BattleFormation) -> void:
 		if _in_bounds(pos) and not grid.has(pos) and _is_passable(pos):
 			f.occupied_tiles.append(pos)
 			grid[pos] = f
+	# Track the formation's spatial extent for distance-scan pruning
+	f.max_anchor_span = 0
+	for tile in f.occupied_tiles:
+		var span := _grid_distance(tile, f.anchor_pos)
+		if span > f.max_anchor_span:
+			f.max_anchor_span = span
 
 func _layout_rectangle(tile_count: int, perp: Vector2i, depth_dir: Vector2i) -> Array[Vector2i]:
 	var offsets: Array[Vector2i] = []
@@ -836,10 +843,20 @@ func _find_free_adjacent(pos: Vector2i) -> Vector2i:
 func _grid_distance(a: Vector2i, b: Vector2i) -> int:
 	return absi(a.x - b.x) + absi(a.y - b.y)
 
+const _CONTACT_OFFSETS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+
 func _formation_distance(a: BattleFormation, b: BattleFormation) -> int:
-	# Minimum distance between any tiles of the two formations
+	# Minimum distance between any tiles of the two formations. The inner scan
+	# is pruned via the triangle inequality: every tile of b lies within
+	# b.max_anchor_span of b's anchor, so |ta - b.anchor| - span is a lower
+	# bound for ta's best possible distance — skipped when it cannot beat the
+	# current minimum. Result is exact.
 	var min_dist := 99999
+	var b_anchor := b.anchor_pos
+	var b_span := b.max_anchor_span
 	for ta in a.occupied_tiles:
+		if _grid_distance(ta, b_anchor) - b_span >= min_dist:
+			continue
 		for tb in b.occupied_tiles:
 			var d := _grid_distance(ta, tb)
 			if d < min_dist:
@@ -847,9 +864,12 @@ func _formation_distance(a: BattleFormation, b: BattleFormation) -> int:
 	return min_dist
 
 func _is_in_melee_contact(f: BattleFormation) -> bool:
+	# Inline neighbor offsets (no per-tile Array allocation). NOTE: caching
+	# this per tick is NOT safe — movement (phase 1) and ranged kills
+	# (phase 3) change the grid between calls within a single tick.
 	for tile in f.occupied_tiles:
-		for n in _get_neighbors(tile):
-			var other: BattleFormation = grid.get(n)
+		for off in _CONTACT_OFFSETS:
+			var other: BattleFormation = grid.get(tile + off)
 			if other != null and other.side != f.side and not other.is_dead and not other.is_fled:
 				return true
 	return false
