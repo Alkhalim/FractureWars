@@ -48,7 +48,7 @@ Why hover reuse is display-identical: the projection is refreshed by `_update_re
 
 **Steps**
 
-- [ ] 1.1 In `scenes/campaign/campaign_hud.gd`, add new members directly after line 95 (`var _ai_offer_dialog: PanelContainer`):
+- [x] 1.1 In `scenes/campaign/campaign_hud.gd`, add new members directly after line 95 (`var _ai_offer_dialog: PanelContainer`):
 
 ```gdscript
 # ── Income projection memo (rebuilt once per _calculate_projected_income) ──
@@ -60,7 +60,7 @@ var _income_memo_valid := false
 var _income_breakdown_cache: Dictionary = {} # res_type -> breakdown Dictionary (last projection update)
 ```
 
-- [ ] 1.2 Replace `_calculate_projected_income` (lines 1295-1305) — old:
+- [x] 1.2 Replace `_calculate_projected_income` (lines 1295-1305) — old:
 
 ```gdscript
 func _calculate_projected_income() -> Dictionary:
@@ -145,7 +145,7 @@ func _rebuild_income_memo() -> void:
 	_income_memo_valid = true
 ```
 
-- [ ] 1.3 In `_calculate_income_breakdown` (1307-1604), replace **only** the header + steps 1–3 and the upkeep step; every other step stays byte-identical. New full function (steps 4, 5, 6, 6b, elderbeast, food consumption, captive consumption, plunder, and the final `breakdown.net` line are verbatim copies of the current code — copy them from the existing function, do not retype):
+- [x] 1.3 In `_calculate_income_breakdown` (1307-1604), replace **only** the header + steps 1–3 and the upkeep step; every other step stays byte-identical. New full function (steps 4, 5, 6, 6b, elderbeast, food consumption, captive consumption, plunder, and the final `breakdown.net` line are verbatim copies of the current code — copy them from the existing function, do not retype):
 
 ```gdscript
 func _calculate_income_breakdown(res_type: int) -> Dictionary:
@@ -262,7 +262,7 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 
 (The old army-upkeep loop, lines 1500-1522, is deleted and replaced by the memo read above. `food_consumption` and `captive_consumption` are still declared/computed by the verbatim-kept blocks, so the final `net` line compiles unchanged.)
 
-- [ ] 1.4 In `_on_resource_hover_entered` (1645-1649), replace the recompute — old:
+- [x] 1.4 In `_on_resource_hover_entered` (1645-1649), replace the recompute — old:
 
 ```gdscript
 	var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
@@ -282,7 +282,7 @@ new:
 		breakdown = _calculate_income_breakdown(res_type)
 ```
 
-- [ ] 1.5 Create `tests/test_income_breakdown_equivalence.gd` (complete file):
+- [x] 1.5 Create `tests/test_income_breakdown_equivalence.gd` (complete file):
 
 ```gdscript
 extends SceneTree
@@ -359,7 +359,7 @@ func _reference_breakdown(res_type: int) -> Dictionary:
 
 The implementer MUST paste the pre-edit function body (copy it from `git show HEAD:scenes/campaign/campaign_hud.gd` before making the Task 1 edit, or from the diff) — that is the whole point of the reference. Dictionary `==` in Godot 4 compares keys/values recursively, and Array `==` is element-wise, so `expected != actual` is a deep comparison; modifier ordering differences will be caught.
 
-- [ ] 1.6 Run the test:
+- [x] 1.6 Run the test:
 
 ```powershell
 & "G:\Programme\Godot\Godot_v4.4-stable_win64.exe\Godot_v4.4-stable_win64_console.exe" --headless --path . -s tests/test_income_breakdown_equivalence.gd 2>&1 | Select-String "EQUIVALENCE|MISMATCH"
@@ -367,9 +367,9 @@ The implementer MUST paste the pre-edit function body (copy it from `git show HE
 
 Expected output: exactly one line `EQUIVALENCE TEST PASSED`, no `MISMATCH` lines. (If autoload globals fail to resolve in `-s` mode — they resolved for `tests/probe_autoloads.gd` via `root.get_node`, and globals are expected to work — IMPLEMENTER MUST VERIFY and, if needed, fetch autoloads via `root.get_node("/root/GameManager")` into local variables at the top of `_run`.)
 
-- [ ] 1.7 Parse check (command in Global Constraints) → no output.
-- [ ] 1.8 Manual smoke: launch (`& "<godot>" --path .`), start a new Empire game, hover each resource in the top bar → tooltip shows city lines, class bonus, upkeep lines, `Net:` matching the `+N`/`-N` label below the amount. End turn once → labels update.
-- [ ] 1.9 Commit:
+- [x] 1.7 Parse check (command in Global Constraints) → no output.
+- [x] 1.8 Manual smoke: launch (`& "<godot>" --path .`), start a new Empire game, hover each resource in the top bar → tooltip shows city lines, class bonus, upkeep lines, `Net:` matching the `+N`/`-N` label below the amount. End turn once → labels update.
+- [x] 1.9 Commit:
 
 ```powershell
 git add scenes/campaign/campaign_hud.gd tests/test_income_breakdown_equivalence.gd
@@ -391,7 +391,7 @@ git commit -m "perf(hud): single-pass income projection memo + cached hover brea
 
 **Steps**
 
-- [ ] 2.1 Populate the coord→entry map at chunk build time. In `_render_hex_map`, old (lines 598-602):
+- [x] 2.1 Populate the coord→entry map at chunk build time. In `_render_hex_map`, old (lines 598-602):
 
 ```gdscript
 		# All tiles go into chunk batched _draw()
@@ -414,7 +414,7 @@ new:
 		chunk_entries[chunk_key].append([world_poly, color, tex, scaled_uv if tex else null])
 ```
 
-- [ ] 2.2 Replace the whole of `_update_political_overlay` (1300-1396) with:
+- [x] 2.2 Replace the whole of `_update_political_overlay` (1300-1396) with:
 
 ```gdscript
 func _update_political_overlay() -> void:
@@ -480,7 +480,7 @@ func _update_political_overlay() -> void:
 
 Color-formula equivalence with the old code: mode 1 / mode 2 branches are copied verbatim from old lines 1345-1363; mode 0 reproduces old lines 1384-1390 (the old first loop's `entry[1] = Color.WHITE if has_tex` at 1316 was always overwritten by the second mode-0 loop for every tile, since every entry corresponds to exactly one tile). The old proximity match (`absf(cx - target_x) < 2.0`) mapped each tile to its own entry — the index map is the exact same mapping without the scan.
 
-- [ ] 2.3 Extract the overview pixel fill and update in place. Replace `_create_overview_sprite` (358-393) and `_update_overview_colors` (395-403) with:
+- [x] 2.3 Extract the overview pixel fill and update in place. Replace `_create_overview_sprite` (358-393) and `_update_overview_colors` (395-403) with:
 
 ```gdscript
 func _create_overview_sprite() -> void:
@@ -551,7 +551,7 @@ func _update_overview_colors() -> void:
 
 (`ImageTexture.update()` requires same size/format — guaranteed: same map, same `FORMAT_RGB8`. End-state visibility equals `_overview_visible`, exactly as the old recreate path produced.)
 
-- [ ] 2.4 Add the rebake debounce. After `_rebake_hex_map` (482-489), add:
+- [x] 2.4 Add the rebake debounce. After `_rebake_hex_map` (482-489), add:
 
 ```gdscript
 var _rebake_queued := false
@@ -572,9 +572,9 @@ func _run_queued_rebake() -> void:
 
 `_rebake_hex_map` keeps its existing guards (`_hex_map_viewport == null or not _hex_map_baked` → no-op, which also covers the `_ready` call at line 176 that happens before the first bake, same as today). `_update_political_overlay` is `_rebake_hex_map`'s only caller (verified), so all rebakes now flow through the debounce plus the no-change early-out.
 
-- [ ] 2.5 Parse check → no output.
-- [ ] 2.6 Manual smoke: launch, new game. (a) Map renders with faction tint on owned tiles as before. (b) Open minimap (M), click "Political" → map recolors to bright faction colors; click "Culture" → culture colors; click "Terrain" → original look. (c) Move a player army several hexes inside your own territory → no visible change or hitch (previously each confirmed move re-baked the map even when nothing changed). (d) Capture a neutral tile/region → tint updates as before.
-- [ ] 2.7 Commit:
+- [x] 2.5 Parse check → no output.
+- [x] 2.6 Manual smoke: launch, new game. (a) Map renders with faction tint on owned tiles as before. (b) Open minimap (M), click "Political" → map recolors to bright faction colors; click "Culture" → culture colors; click "Terrain" → original look. (c) Move a player army several hexes inside your own territory → no visible change or hitch (previously each confirmed move re-baked the map even when nothing changed). (d) Capture a neutral tile/region → tint updates as before.
+- [x] 2.7 Commit:
 
 ```powershell
 git add scenes/campaign/campaign.gd
@@ -594,7 +594,7 @@ Correctness argument (verified by reading): the income breakdown counts elderbea
 
 **Steps**
 
-- [ ] 3.1 Replace `_on_elderbeast_moved` (1019-1026) — old:
+- [x] 3.1 Replace `_on_elderbeast_moved` (1019-1026) — old:
 
 ```gdscript
 func _on_elderbeast_moved(beast_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
@@ -635,9 +635,9 @@ func _run_queued_resource_display_update() -> void:
 	_update_resource_display()
 ```
 
-- [ ] 3.2 Parse check → no output.
-- [ ] 3.3 Manual smoke: launch a faction with elderbeasts (e.g., default map, non-demo). Move your own elderbeast → income labels update. End turn and watch AI turns → no per-hex stutter from AI beast movement; resource labels at the start of your next turn are correct (turn start always refreshes, line 965).
-- [ ] 3.4 Commit:
+- [x] 3.2 Parse check → no output.
+- [x] 3.3 Manual smoke: launch a faction with elderbeasts (e.g., default map, non-demo). Move your own elderbeast → income labels update. End turn and watch AI turns → no per-hex stutter from AI beast movement; resource labels at the start of your next turn are correct (turn start always refreshes, line 965).
+- [x] 3.4 Commit:
 
 ```powershell
 git add scenes/campaign/campaign_hud.gd
@@ -657,7 +657,7 @@ Decision (from reading `_on_army_selected` 319-486): updating only the movement 
 
 **Steps**
 
-- [ ] 4.1 Replace `_on_army_moved` (1011-1017) — old:
+- [x] 4.1 Replace `_on_army_moved` (1011-1017) — old:
 
 ```gdscript
 func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
@@ -698,9 +698,9 @@ func _run_queued_army_panel_refresh() -> void:
 
 (If the army is deselected before the deferred call runs, `_on_army_deselected` has already hidden the panel and the refresh is skipped — same end state as before.)
 
-- [ ] 4.2 Parse check → no output.
-- [ ] 4.3 Manual smoke: select a player army, right-click a destination 5+ hexes away → panel shows correct Movement `x.x / y.y` after the move, unit cards intact, Merge/Split/Disband buttons present exactly as before; no flicker during movement.
-- [ ] 4.4 Commit:
+- [x] 4.2 Parse check → no output.
+- [x] 4.3 Manual smoke: select a player army, right-click a destination 5+ hexes away → panel shows correct Movement `x.x / y.y` after the move, unit cards intact, Merge/Split/Disband buttons present exactly as before; no flicker during movement.
+- [x] 4.4 Commit:
 
 ```powershell
 git add scenes/campaign/campaign_hud.gd
@@ -720,7 +720,7 @@ Pixel-identity argument: the parent `tree_clip` has `clip_contents = true` (line
 
 **Steps**
 
-- [ ] 5.1 Add members after line 5472 (`var _positions_built: bool = false`):
+- [x] 5.1 Add members after line 5472 (`var _positions_built: bool = false`):
 
 ```gdscript
 	# Cached researched-glow path — _find_researched_path only changes when
@@ -730,7 +730,7 @@ Pixel-identity argument: the parent `tree_clip` has `clip_contents = true` (line
 	var _glow_cache_completed_count: int = -1
 ```
 
-- [ ] 5.2 Add the segment-cull helper after `_to_tree` (line 5503):
+- [x] 5.2 Add the segment-cull helper after `_to_tree` (line 5503):
 
 ```gdscript
 	static func _segment_fully_outside(a: Vector2, b: Vector2, r: Rect2) -> bool:
@@ -747,7 +747,7 @@ Pixel-identity argument: the parent `tree_clip` has `clip_contents = true` (line
 		return false
 ```
 
-- [ ] 5.3 In `_draw` (5712-5876), make three surgical edits:
+- [x] 5.3 In `_draw` (5712-5876), make three surgical edits:
 
 (a) Replace the glow-path build (old lines 5744-5749):
 
@@ -802,9 +802,9 @@ with:
 
 (The hover tooltip block at 5874-5876 stays untouched; a hovered node is under the cursor and therefore inside the rect.)
 
-- [ ] 5.4 Parse check → no output.
-- [ ] 5.5 Manual smoke: open Research. (a) Pulsing gold path from completed chain to current research still animates. (b) Start a research → glow path updates immediately. (c) Pan the tree far to one side and zoom in — off-screen branches disappear/reappear at the edges with no popping inside the visible area; labels at the very edge are not cut off early. (d) Hover a node → cyan hover path + tooltip unchanged.
-- [ ] 5.6 Commit:
+- [x] 5.4 Parse check → no output.
+- [x] 5.5 Manual smoke: open Research. (a) Pulsing gold path from completed chain to current research still animates. (b) Start a research → glow path updates immediately. (c) Pan the tree far to one side and zoom in — off-screen branches disappear/reappear at the edges with no popping inside the visible area; labels at the very edge are not cut off early. (d) Hover a node → cyan hover path + tooltip unchanged.
+- [x] 5.6 Commit:
 
 ```powershell
 git add scenes/campaign/campaign_hud.gd
@@ -824,7 +824,7 @@ Verified: camera movement changes only the viewport indicator rectangle. `_updat
 
 **Steps**
 
-- [ ] 6.1 In `_minimap_move_camera`, replace the last line (5192) — old:
+- [x] 6.1 In `_minimap_move_camera`, replace the last line (5192) — old:
 
 ```gdscript
 	camera.position = Vector2(ratio_x * map_pixel_w, ratio_y * map_pixel_h)
@@ -842,9 +842,9 @@ new:
 	_update_minimap_viewport_only()
 ```
 
-- [ ] 6.2 Parse check → no output.
-- [ ] 6.3 Manual smoke: open minimap (M), click-drag across it → camera follows smoothly, white viewport rectangle tracks the drag, army dots/fog unchanged during the drag and still refresh within ~0.5 s after content changes (e.g., end turn).
-- [ ] 6.4 Commit:
+- [x] 6.2 Parse check → no output.
+- [x] 6.3 Manual smoke: open minimap (M), click-drag across it → camera follows smoothly, white viewport rectangle tracks the drag, army dots/fog unchanged during the drag and still refresh within ~0.5 s after content changes (e.g., end turn).
+- [x] 6.4 Commit:
 
 ```powershell
 git add scenes/campaign/campaign.gd
@@ -864,7 +864,7 @@ Verified: player turn start already calls `_create_army_markers()` unconditional
 
 **Steps**
 
-- [ ] 7.1 Replace `_on_unit_recruited` (3959-3966) — old:
+- [x] 7.1 Replace `_on_unit_recruited` (3959-3966) — old:
 
 ```gdscript
 func _on_unit_recruited(city_id: StringName, unit_data_id: StringName, _army_id: StringName) -> void:
@@ -895,9 +895,9 @@ func _on_unit_recruited(city_id: StringName, unit_data_id: StringName, _army_id:
 	_create_army_markers()
 ```
 
-- [ ] 7.2 Parse check → no output.
-- [ ] 7.3 Manual smoke: recruit a unit in a player city → marker/garrison state updates immediately as before. End turn, let several AI turns pass → no per-recruit hitching; at your next turn start all AI armies (incl. newly recruited garrisons, mostly fog-hidden anyway) have markers.
-- [ ] 7.4 Commit:
+- [x] 7.2 Parse check → no output.
+- [x] 7.3 Manual smoke: recruit a unit in a player city → marker/garrison state updates immediately as before. End turn, let several AI turns pass → no per-recruit hitching; at your next turn start all AI armies (incl. newly recruited garrisons, mostly fog-hidden anyway) have markers.
+- [x] 7.4 Commit:
 
 ```powershell
 git add scenes/campaign/campaign.gd
@@ -917,13 +917,13 @@ Verified: `_show_settlement_preview` positions the panel from the **hex** center
 
 **Steps**
 
-- [ ] 8.1 Add member after line 103 (`var _settlement_preview_panel: PanelContainer = null`):
+- [x] 8.1 Add member after line 103 (`var _settlement_preview_panel: PanelContainer = null`):
 
 ```gdscript
 var _last_settlement_preview_hex := Vector2i(-9999, -9999)  # Gate preview rebuilds to hex changes
 ```
 
-- [ ] 8.2 In `_unhandled_input`, replace the settlement mouse-motion block (2295-2301) — old:
+- [x] 8.2 In `_unhandled_input`, replace the settlement mouse-motion block (2295-2301) — old:
 
 ```gdscript
 		if event is InputEventMouseMotion:
@@ -952,21 +952,21 @@ new:
 		return
 ```
 
-- [ ] 8.3 In `_on_settlement_placement_requested`, after line 4561 (`_settlement_placement_mode = true`), add:
+- [x] 8.3 In `_on_settlement_placement_requested`, after line 4561 (`_settlement_placement_mode = true`), add:
 
 ```gdscript
 	_last_settlement_preview_hex = Vector2i(-9999, -9999)
 ```
 
-- [ ] 8.4 In `_cancel_settlement_placement`, after line 4604 (`_settlement_placement_mode = false`), add:
+- [x] 8.4 In `_cancel_settlement_placement`, after line 4604 (`_settlement_placement_mode = false`), add:
 
 ```gdscript
 	_last_settlement_preview_hex = Vector2i(-9999, -9999)
 ```
 
-- [ ] 8.5 Parse check → no output.
-- [ ] 8.6 Manual smoke: open your capital's city panel, start "Found Settlement". Sweep the mouse over green tiles → preview panel appears/updates per hex exactly as before (terrain name, +income lines, total), disappears over invalid tiles; wiggling the mouse inside one hex causes no flicker. Right-click cancels; re-entering placement mode shows previews again.
-- [ ] 8.7 Commit:
+- [x] 8.5 Parse check → no output.
+- [x] 8.6 Manual smoke: open your capital's city panel, start "Found Settlement". Sweep the mouse over green tiles → preview panel appears/updates per hex exactly as before (terrain name, +income lines, total), disappears over invalid tiles; wiggling the mouse inside one hex causes no flicker. Right-click cancels; re-entering placement mode shows previews again.
+- [x] 8.7 Commit:
 
 ```powershell
 git add scenes/campaign/campaign.gd
@@ -986,7 +986,7 @@ Verified: the 246-iteration loop mutates nothing (it only reads `city`/`DataMana
 
 **Steps**
 
-- [ ] 9.1 In `get_available_buildings`, insert immediately before the loop (before line 1187 `var result: Array[BuildingData] = []`):
+- [x] 9.1 In `get_available_buildings`, insert immediately before the loop (before line 1187 `var result: Array[BuildingData] = []`):
 
 ```gdscript
 	# Loop invariants hoisted out of the 246-building scan: the loop mutates
@@ -995,7 +995,7 @@ Verified: the 246-iteration loop mutates nothing (it only reads `city`/`DataMana
 	var valid_tiles_by_terrain: Dictionary = {}  # required_terrain (int) -> Array[Vector2i]
 ```
 
-- [ ] 9.2 Replace the valid-tile check (old lines 1229-1231):
+- [x] 9.2 Replace the valid-tile check (old lines 1229-1231):
 
 ```gdscript
 		# Skip if no valid adjacent tile available
@@ -1020,7 +1020,7 @@ with:
 			continue
 ```
 
-- [ ] 9.3 Replace the slot check (old line 1234):
+- [x] 9.3 Replace the slot check (old line 1234):
 
 ```gdscript
 			if city.get_available_building_slots() <= 0 and not include_slot_blocked:
@@ -1032,9 +1032,9 @@ with:
 			if available_slots <= 0 and not include_slot_blocked:
 ```
 
-- [ ] 9.4 Parse check → no output.
-- [ ] 9.5 Manual smoke: open a player city panel → the buildable-buildings list is unchanged (compare a few entries before/after this task, including at least one upgrade and one terrain-restricted building); queue a building → it disappears from the list; a full-slot city offers only upgrades.
-- [ ] 9.6 Commit:
+- [x] 9.4 Parse check → no output.
+- [x] 9.5 Manual smoke: open a player city panel → the buildable-buildings list is unchanged (compare a few entries before/after this task, including at least one upgrade and one terrain-restricted building); queue a building → it disappears from the list; a full-slot city offers only upgrades.
+- [x] 9.6 Commit:
 
 ```powershell
 git add scripts/systems/campaign/city_system.gd
@@ -1054,14 +1054,14 @@ Verified: the radial layout (`_calculate_positions` + `_resolve_overlaps`) depen
 
 **Steps**
 
-- [ ] 10.1 Add members after line 84 (`var _research_panel: PanelContainer`):
+- [x] 10.1 Add members after line 84 (`var _research_panel: PanelContainer`):
 
 ```gdscript
 var _research_tree_clip: Control = null       # Persistent tech-tree clip container
 var _research_tree: _RadialTechTree = null    # Persistent tree control (keeps pan/zoom + layout)
 ```
 
-- [ ] 10.2 Add to `_RadialTechTree` (after `_ready`, line 5491):
+- [x] 10.2 Add to `_RadialTechTree` (after `_ready`, line 5491):
 
 ```gdscript
 		func refresh_state() -> void:
@@ -1071,7 +1071,7 @@ var _research_tree: _RadialTechTree = null    # Persistent tree control (keeps p
 			queue_redraw()
 ```
 
-- [ ] 10.3 In `_refresh_research_panel`, make three edits:
+- [x] 10.3 In `_refresh_research_panel`, make three edits:
 
 (a) Replace the child-clearing loop (old 5330-5333):
 
@@ -1145,9 +1145,9 @@ with:
 
 (The footer rows built after this point are appended after the tree, i.e., indices 2+, matching the original header → tree → footer order.)
 
-- [ ] 10.4 Parse check → no output.
-- [ ] 10.5 Manual smoke: open Research, pan/zoom somewhere, click a researchable node to start research → panel refreshes (header/footer update, node turns pulsing) and the view does NOT recenter. Close and reopen, end a turn with the panel open → progress numbers update, view preserved, footer Cancel/Invest rows correct.
-- [ ] 10.6 Commit:
+- [x] 10.4 Parse check → no output.
+- [x] 10.5 Manual smoke: open Research, pan/zoom somewhere, click a researchable node to start research → panel refreshes (header/footer update, node turns pulsing) and the view does NOT recenter. Close and reopen, end a turn with the panel open → progress numbers update, view preserved, footer Cancel/Invest rows correct.
+- [x] 10.6 Commit:
 
 ```powershell
 git add scenes/campaign/campaign_hud.gd
@@ -1167,13 +1167,13 @@ Invalidation set = exactly the events that can change the boolean *and* currentl
 
 **Steps**
 
-- [ ] 11.1 Add member after line 66 (`var _city_markers_dirty := true ...`):
+- [x] 11.1 Add member after line 66 (`var _city_markers_dirty := true ...`):
 
 ```gdscript
 var _city_action_cache: Dictionary = {}  # city_id -> bool (get_available_buildings > 0); cleared on building/turn events
 ```
 
-- [ ] 11.2 Replace `_city_has_available_action` (2188-2192) — old:
+- [x] 11.2 Replace `_city_has_available_action` (2188-2192) — old:
 
 ```gdscript
 func _city_has_available_action(city: CityState) -> bool:
@@ -1200,14 +1200,14 @@ func _invalidate_city_action_cache() -> void:
 	_city_action_cache.clear()
 ```
 
-- [ ] 11.3 In `_refresh_city_markers` (2143-2150), after `_city_markers_dirty = false` (line 2146), add:
+- [x] 11.3 In `_refresh_city_markers` (2143-2150), after `_city_markers_dirty = false` (line 2146), add:
 
 ```gdscript
 	_invalidate_city_action_cache()
 ```
 
-- [ ] 11.4 Add `_invalidate_city_action_cache()` as the **first line** of `_on_building_completed` (3927), `_on_building_demolished` (3943), and `_on_city_captured` (3888) bodies.
-- [ ] 11.5 In the `building_queued` lambda (line 219) — old:
+- [x] 11.4 Add `_invalidate_city_action_cache()` as the **first line** of `_on_building_completed` (3927), `_on_building_demolished` (3943), and `_on_city_captured` (3888) bodies.
+- [x] 11.5 In the `building_queued` lambda (line 219) — old:
 
 ```gdscript
 		hud.building_queued.connect(func(): _create_building_tile_markers(); _fog_dirty = true)
@@ -1222,9 +1222,9 @@ new:
 			_fog_dirty = true)
 ```
 
-- [ ] 11.6 Parse check → no output.
-- [ ] 11.7 Manual smoke: player cities with buildable options show the green build glow at turn start; queue a building → glow disappears (queue non-empty); when it completes → glow returns/updates; capture a city → its glow state appears next refresh, same as before.
-- [ ] 11.8 Commit:
+- [x] 11.6 Parse check → no output.
+- [x] 11.7 Manual smoke: player cities with buildable options show the green build glow at turn start; queue a building → glow disappears (queue non-empty); when it completes → glow returns/updates; capture a city → its glow state appears next refresh, same as before.
+- [x] 11.8 Commit:
 
 ```powershell
 git add scenes/campaign/campaign.gd
@@ -1242,13 +1242,13 @@ git commit -m "perf(map): cache city available-action flag with event-based inva
 
 **Steps**
 
-- [ ] 12.1 Add member next to the Task 10 members:
+- [x] 12.1 Add member next to the Task 10 members:
 
 ```gdscript
 var _research_status_label: Label = null  # Cached "TopBar/.../ResearchStatusLabel" lookup
 ```
 
-- [ ] 12.2 Replace `_update_research_status_label` (5289-5299) — old:
+- [x] 12.2 Replace `_update_research_status_label` (5289-5299) — old:
 
 ```gdscript
 func _update_research_status_label() -> void:
@@ -1275,8 +1275,8 @@ func _update_research_status_label() -> void:
 	lbl.text = ""
 ```
 
-- [ ] 12.3 Parse check → no output. Manual smoke: start a research → top-bar label shows `Name (x/y)`; completes → clears.
-- [ ] 12.4 Commit:
+- [x] 12.3 Parse check → no output. Manual smoke: start a research → top-bar label shows `Name (x/y)`; completes → clears.
+- [x] 12.4 Commit:
 
 ```powershell
 git add scenes/campaign/campaign_hud.gd
@@ -1294,7 +1294,7 @@ git commit -m "perf(hud): cache research status label node lookup"
 
 **Steps**
 
-- [ ] 13.1 Add helper after `_update_minimap_viewport_only` (5147):
+- [x] 13.1 Add helper after `_update_minimap_viewport_only` (5147):
 
 ```gdscript
 func _set_minimap_texture(img: Image) -> void:
@@ -1308,7 +1308,7 @@ func _set_minimap_texture(img: Image) -> void:
 		_minimap_image.texture = ImageTexture.create_from_image(img)
 ```
 
-- [ ] 13.2 Replace line 5134 and line 5147 — both currently:
+- [x] 13.2 Replace line 5134 and line 5147 — both currently:
 
 ```gdscript
 	_minimap_image.texture = ImageTexture.create_from_image(img)
@@ -1320,8 +1320,8 @@ with:
 	_set_minimap_texture(img)
 ```
 
-- [ ] 13.3 Parse check → no output. Manual smoke: open minimap → renders; end turns / drag → dots, fog and viewport rect all keep updating.
-- [ ] 13.4 Commit:
+- [x] 13.3 Parse check → no output. Manual smoke: open minimap → renders; end turns / drag → dots, fog and viewport rect all keep updating.
+- [x] 13.4 Commit:
 
 ```powershell
 git add scenes/campaign/campaign.gd
@@ -1339,13 +1339,13 @@ git commit -m "perf(map): update minimap ImageTexture in place instead of recrea
 
 **Steps**
 
-- [ ] 14.1 Add member after line 16 (`var _zoom_focus_screen := Vector2.ZERO`):
+- [x] 14.1 Add member after line 16 (`var _zoom_focus_screen := Vector2.ZERO`):
 
 ```gdscript
 var _hud_cache: Control = null  # Cached ../UILayer/HUD lookup (resolved lazily, revalidated if freed)
 ```
 
-- [ ] 14.2 Replace `_is_mouse_over_ui` (115-126) — old:
+- [x] 14.2 Replace `_is_mouse_over_ui` (115-126) — old:
 
 ```gdscript
 func _is_mouse_over_ui() -> bool:
@@ -1374,8 +1374,8 @@ func _is_mouse_over_ui() -> bool:
 	return false
 ```
 
-- [ ] 14.3 Parse check → no output. Manual smoke: mouse-wheel over the map zooms; wheel over an open panel (city panel/minimap) does not zoom the camera; middle/right-drag panning works; return from a battle scene (campaign reloads) still works (lazy revalidation handles the new HUD instance).
-- [ ] 14.4 Commit:
+- [x] 14.3 Parse check → no output. Manual smoke: mouse-wheel over the map zooms; wheel over an open panel (city panel/minimap) does not zoom the camera; middle/right-drag panning works; return from a battle scene (campaign reloads) still works (lazy revalidation handles the new HUD instance).
+- [x] 14.4 Commit:
 
 ```powershell
 git add scenes/campaign/campaign_camera.gd
