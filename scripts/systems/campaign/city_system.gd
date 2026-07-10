@@ -640,6 +640,7 @@ func _capture_city(city: CityState) -> void:
 	# Change region ownership
 	GameManager.change_region_owner(city.region_id, new_owner)
 
+	GameManager.invalidate_completion_cache()
 	EventBus.city_captured.emit(city.city_id, old_owner, new_owner)
 
 	# If old owner lost their capital, promote their largest remaining city
@@ -1053,6 +1054,7 @@ func _independent_city_joins(city: CityState, faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs:
 		fs.owned_cities.append(city.city_id)
+	GameManager.invalidate_completion_cache()
 	EventBus.city_joined.emit(city.city_id, faction_id)
 
 # ── Terrain helpers ───────────────────────────────────────────

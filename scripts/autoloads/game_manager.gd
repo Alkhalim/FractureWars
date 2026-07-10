@@ -693,6 +693,7 @@ func load_game(slot: int) -> void:
 	state.turn_manager_state = {}
 	movement_system = MovementSystem.new(state.hex_map)
 	city_system.invalidate_city_hex_index()
+	invalidate_completion_cache()
 	current_phase = Enums.GamePhase.CAMPAIGN
 	_commander_name_counters.clear()
 	transition_to_scene("res://scenes/campaign/campaign.tscn")
@@ -720,6 +721,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false) -> void:
 	state.hex_map.build_region_cache()
 	movement_system = MovementSystem.new(state.hex_map)
 	city_system.invalidate_city_hex_index()
+	invalidate_completion_cache()
 
 	_init_factions()
 	_init_rebels_faction()
@@ -1604,20 +1606,40 @@ func _get_set_relation(a: StringName, b: StringName) -> int:
 	return -1
 
 # ── Region & Culture Completion ──────────────────────────────
+# Cached per faction; recomputed from a single pass over cities. Invalidated at
+# every city-ownership mutation: capture, diplomatic transfer, independent
+# join, settlement/camp founding, and new_game/load_game.
+var _completion_cache: Dictionary = {} # faction_id -> {regions: Array, cultures: Array}
+
+func invalidate_completion_cache() -> void:
+	_completion_cache.clear()
+
 func get_completed_regions(faction_id: StringName) -> Array[StringName]:
+	var entry: Dictionary = _completion_cache.get_or_add(faction_id, {})
+	if entry.has("regions"):
+		return entry["regions"]
+	# One pass over cities: which factions hold cities in each region
+	var region_factions: Dictionary = {} # region_id -> {faction_id: true}
+	for city_id in state.cities:
+		var city: CityState = state.cities[city_id]
+		region_factions.get_or_add(city.region_id, {})[city.faction_id] = true
 	var result: Array[StringName] = []
 	for region_id in REGION_CITIES:
+		var facs: Dictionary = region_factions.get(region_id, {})
 		var all_owned := true
-		for city_id in state.cities:
-			var city: CityState = state.cities[city_id]
-			if city.region_id == region_id and city.faction_id != faction_id:
+		for f in facs:
+			if f != faction_id:
 				all_owned = false
 				break
 		if all_owned:
 			result.append(region_id)
+	entry["regions"] = result
 	return result
 
 func get_completed_cultures(faction_id: StringName) -> Array[StringName]:
+	var entry: Dictionary = _completion_cache.get_or_add(faction_id, {})
+	if entry.has("cultures"):
+		return entry["cultures"]
 	var completed_regions := get_completed_regions(faction_id)
 	var result: Array[StringName] = []
 	for culture_id in CULTURE_REGIONS:
@@ -1629,6 +1651,7 @@ func get_completed_cultures(faction_id: StringName) -> Array[StringName]:
 				break
 		if all_complete:
 			result.append(culture_id)
+	entry["cultures"] = result
 	return result
 
 func has_culture_bonus(faction_id: StringName, bonus_type: String) -> bool:
@@ -1800,6 +1823,7 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	}
 	city.turns_since_capture = -1
 	state.cities[city.city_id] = city
+	invalidate_completion_cache()
 
 	if fs:
 		fs.owned_cities.append(city.city_id)
@@ -1853,6 +1877,7 @@ func setup_sunblessed_camp(army_id: StringName) -> StringName:
 	}
 	city.turns_since_capture = -1
 	state.cities[city.city_id] = city
+	invalidate_completion_cache()
 	var fs: FactionState = state.faction_states.get(army.faction_id)
 	if fs:
 		fs.owned_cities.append(city.city_id)

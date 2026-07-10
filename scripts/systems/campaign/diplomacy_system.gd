@@ -1439,6 +1439,7 @@ func transfer_city(from_faction: StringName, to_faction: StringName, city_id: St
 	# Standing boost for city gift
 	modify_standing(from_faction, to_faction, 15, "City transferred")
 
+	GameManager.invalidate_completion_cache()
 	EventBus.city_captured.emit(city_id, from_faction, to_faction)
 
 	# If old owner lost their capital, promote largest remaining city
