@@ -662,6 +662,7 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null:
 		return
+	var recruit_census: Dictionary = {} # computed once on first recruiting city
 
 	# Per-faction building priorities — using each faction's own buildings
 	var faction_build_priorities := {
@@ -713,11 +714,15 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		if city.upgrade_turns_remaining <= 0 and GameManager.city_system.can_start_upgrade(city):
 			GameManager.city_system.start_upgrade(city_id)
 
-		# Recruit units with threat-aware composition
+		# Recruit units with threat-aware composition. The faction-wide census
+		# is loop-invariant (recruits only enter the queue), so compute it once
+		# on first need instead of per city.
 		if city.recruit_queue.is_empty() and GameManager.city_system.get_province_population(city) > 120:
-			_ai_recruit_with_composition(city, faction_id)
+			if recruit_census.is_empty():
+				recruit_census = _compute_ai_recruit_census(faction_id)
+			_ai_recruit_with_composition(city, faction_id, recruit_census)
 
-func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> void:
+func _compute_ai_recruit_census(faction_id: StringName) -> Dictionary:
 	# Count existing army composition (cache unit data lookups)
 	var tag_counts := {"infantry": 0, "ranged": 0, "cavalry": 0, "mage": 0}
 	var total_units := 0
@@ -746,6 +751,13 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName) -> vo
 		for enemy_army: ArmyState in GameManager.get_faction_armies(other_id):
 			enemy_units += enemy_army.units.size()
 		max_enemy_units = maxi(max_enemy_units, enemy_units)
+
+	return {tag_counts = tag_counts, total_units = total_units, max_enemy_units = max_enemy_units}
+
+func _ai_recruit_with_composition(city: CityState, faction_id: StringName, census: Dictionary) -> void:
+	var tag_counts: Dictionary = census.tag_counts
+	var total_units: int = census.total_units
+	var max_enemy_units: int = census.max_enemy_units
 
 	var turn_bonus := mini(GameManager.state.current_turn / 10, 4)
 	var recruit_threshold := maxi(8 + turn_bonus, max_enemy_units + 4)
