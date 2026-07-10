@@ -271,6 +271,8 @@ var _region_effects_cache: Dictionary = {} # parent_faction_id -> Array[Dictiona
 
 func invalidate_region_effects_cache() -> void:
 	_region_effects_cache.clear()
+	# Building/ownership changes also shift incomes and trade routes
+	GameManager.city_topology_epoch += 1
 
 func _get_region_effect_entries(parent_fid: StringName) -> Array:
 	if _region_effects_cache.has(parent_fid):

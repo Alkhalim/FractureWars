@@ -515,38 +515,47 @@ func threaten(threatener: StringName, target: StringName, last_offer: Dictionary
 
 # ── Trade Relations ────────────────────────────────────────
 
-func get_top_produced_resource(faction_id: StringName) -> int:
-	# Returns the ResourceType the faction produces the most (based on city income totals)
-	# Excludes CAPTIVES and SHARD_ESSENCE as they are special
-	var totals: Dictionary = {} # ResourceType -> int
+# Per-faction income totals (all resource types from one pass over the
+# faction's non-sieged cities). Both trade queries below derive from it.
+# Valid within one (turn, faction-turn, topology-epoch) window — identical
+# filters to the old per-call scans.
+var _faction_income_totals: Dictionary = {} # faction_id -> {res_type: int}
+var _income_totals_stamp: Array = [-1, -1, -1]
+
+func _get_faction_income_totals(faction_id: StringName) -> Dictionary:
+	var stamp := [GameManager.state.current_turn, TurnManager.current_faction_index, GameManager.city_topology_epoch]
+	if stamp != _income_totals_stamp:
+		_faction_income_totals.clear()
+		_income_totals_stamp = stamp
+	if _faction_income_totals.has(faction_id):
+		return _faction_income_totals[faction_id]
+	var totals: Dictionary = {}
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
-		if city.faction_id != faction_id:
-			continue
-		if city.is_under_siege:
+		if city.faction_id != faction_id or city.is_under_siege:
 			continue
 		var income := GameManager.city_system.calculate_city_income(city)
 		for res_type in income:
-			if res_type == Enums.ResourceType.CAPTIVES or res_type == Enums.ResourceType.SHARD_ESSENCE:
-				continue
 			totals[res_type] = totals.get(res_type, 0) + income[res_type]
+	_faction_income_totals[faction_id] = totals
+	return totals
+
+func get_top_produced_resource(faction_id: StringName) -> int:
+	# Returns the ResourceType the faction produces the most (based on city income totals)
+	# Excludes CAPTIVES and SHARD_ESSENCE as they are special
+	var totals := _get_faction_income_totals(faction_id)
 	var best_type: int = Enums.ResourceType.GOLD
 	var best_amount: int = 0
 	for res_type in totals:
+		if res_type == Enums.ResourceType.CAPTIVES or res_type == Enums.ResourceType.SHARD_ESSENCE:
+			continue
 		if totals[res_type] > best_amount:
 			best_amount = totals[res_type]
 			best_type = res_type
 	return best_type
 
 func get_faction_resource_income(faction_id: StringName, res_type: int) -> int:
-	var total := 0
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		if city.faction_id != faction_id or city.is_under_siege:
-			continue
-		var income := GameManager.city_system.calculate_city_income(city)
-		total += income.get(res_type, 0)
-	return total
+	return _get_faction_income_totals(faction_id).get(res_type, 0)
 
 func get_tributary_gold_amount(tributary_id: StringName, tribute_pct: float = 0.15) -> int:
 	var gold_income := get_faction_resource_income(tributary_id, Enums.ResourceType.GOLD)
@@ -1545,12 +1554,12 @@ func demand_city(demander: StringName, target: StringName, city_id: StringName) 
 func _check_trade_interception(treaty: TreatyInstance, total_value: int) -> float:
 	## Checks if hostile armies block a trade route. Returns theft fraction (0.0 or 0.25).
 	## Intercepting faction gains gold equal to 25% of total trade value.
-	var routes := get_active_trade_routes()
-	var route_info: Dictionary = {}
-	for r in routes:
-		if r.treaty_id == treaty.treaty_id:
-			route_info = r
-			break
+	# Old code implicitly returned 0.0 for non-trade treaty types (the route
+	# list only contained trade treaties) — keep that exact behavior.
+	if treaty.treaty_type != Enums.TreatyType.TRADE_DEAL and treaty.treaty_type != Enums.TreatyType.TRADE_RELATIONS:
+		return 0.0
+	# Compute only this treaty's route instead of all routes for all treaties.
+	var route_info := _compute_trade_route(treaty)
 	if route_info.is_empty():
 		return 0.0
 	var hex_path := get_trade_route_hex_path(route_info.city_a_hex, route_info.city_b_hex)
@@ -1568,6 +1577,48 @@ func _check_trade_interception(treaty: TreatyInstance, total_value: int) -> floa
 
 # ── Trade Route Visualization ─────────────────────────────────
 
+# Route endpoints per treaty, valid while city topology is unchanged (epoch
+# from GameManager, bumped on ownership/founding/camp-move/building events).
+# Stale entries for removed treaties are never queried (callers iterate live
+# treaties only).
+var _trade_route_cache: Dictionary = {} # treaty_id -> route Dictionary (or empty)
+var _trade_route_cache_epoch: int = -1
+
+func _compute_trade_route(treaty: TreatyInstance) -> Dictionary:
+	## Closest city pair between the two treaty factions (cached per treaty).
+	if _trade_route_cache_epoch != GameManager.city_topology_epoch:
+		_trade_route_cache.clear()
+		_trade_route_cache_epoch = GameManager.city_topology_epoch
+	if _trade_route_cache.has(treaty.treaty_id):
+		return _trade_route_cache[treaty.treaty_id]
+	var best_dist := 999999
+	var best_a := Vector2i(-1, -1)
+	var best_b := Vector2i(-1, -1)
+	for city_id_a in GameManager.state.cities:
+		var ca: CityState = GameManager.state.cities[city_id_a]
+		if ca.faction_id != treaty.faction_a:
+			continue
+		for city_id_b in GameManager.state.cities:
+			var cb: CityState = GameManager.state.cities[city_id_b]
+			if cb.faction_id != treaty.faction_b:
+				continue
+			var dist := HexHelper.hex_distance(ca.hex_pos, cb.hex_pos)
+			if dist < best_dist:
+				best_dist = dist
+				best_a = ca.hex_pos
+				best_b = cb.hex_pos
+	var route: Dictionary = {}
+	if best_a != Vector2i(-1, -1) and best_b != Vector2i(-1, -1):
+		route = {
+			faction_a = treaty.faction_a,
+			faction_b = treaty.faction_b,
+			city_a_hex = best_a,
+			city_b_hex = best_b,
+			treaty_id = treaty.treaty_id,
+		}
+	_trade_route_cache[treaty.treaty_id] = route
+	return route
+
 func get_active_trade_routes() -> Array[Dictionary]:
 	## Returns active trade routes with closest city pairs for visualization.
 	var routes: Array[Dictionary] = []
@@ -1575,31 +1626,9 @@ func get_active_trade_routes() -> Array[Dictionary]:
 		var treaty: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
 		if treaty.treaty_type != Enums.TreatyType.TRADE_DEAL and treaty.treaty_type != Enums.TreatyType.TRADE_RELATIONS:
 			continue
-		# Find closest city pair between the two factions
-		var best_dist := 999999
-		var best_a := Vector2i(-1, -1)
-		var best_b := Vector2i(-1, -1)
-		for city_id_a in GameManager.state.cities:
-			var ca: CityState = GameManager.state.cities[city_id_a]
-			if ca.faction_id != treaty.faction_a:
-				continue
-			for city_id_b in GameManager.state.cities:
-				var cb: CityState = GameManager.state.cities[city_id_b]
-				if cb.faction_id != treaty.faction_b:
-					continue
-				var dist := HexHelper.hex_distance(ca.hex_pos, cb.hex_pos)
-				if dist < best_dist:
-					best_dist = dist
-					best_a = ca.hex_pos
-					best_b = cb.hex_pos
-		if best_a != Vector2i(-1, -1) and best_b != Vector2i(-1, -1):
-			routes.append({
-				faction_a = treaty.faction_a,
-				faction_b = treaty.faction_b,
-				city_a_hex = best_a,
-				city_b_hex = best_b,
-				treaty_id = treaty.treaty_id,
-			})
+		var route := _compute_trade_route(treaty)
+		if not route.is_empty():
+			routes.append(route)
 	return routes
 
 static func get_trade_route_hex_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
