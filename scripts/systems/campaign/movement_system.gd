@@ -94,7 +94,10 @@ func find_path(from: Vector2i, to: Vector2i, faction_id: StringName, max_cost: f
 	if from == to:
 		return []
 
-	var cache_key := "%d,%d:%d,%d:%s:%.1f" % [from.x, from.y, to.x, to.y, faction_id, max_cost]
+	# Key must include every input that affects the result: excluded army,
+	# mountain crossing, and the army (its composition drives stride modifiers).
+	var army_key: StringName = army.army_id if army else &""
+	var cache_key := "%d,%d:%d,%d:%s:%.1f:%s:%d:%s" % [from.x, from.y, to.x, to.y, faction_id, max_cost, excluded_army_id, int(can_cross_mountains), army_key]
 	if _path_cache.has(cache_key):
 		var cached: Array = _path_cache[cache_key]
 		var typed: Array[Vector2i] = []
@@ -193,7 +196,9 @@ func get_reachable_tiles(from: Vector2i, movement_points: float, faction_id: Str
 	# Returns Dictionary of Vector2i -> remaining_mp
 	# Dijkstra with sorted open set (ascending remaining — pop_back = best)
 	_ensure_cache()
-	var cache_key := "%d,%d:%.1f:%s" % [from.x, from.y, movement_points, faction_id]
+	# Key must include every input that affects the result (see find_path).
+	var army_key: StringName = army.army_id if army else &""
+	var cache_key := "%d,%d:%.1f:%s:%s:%d:%s" % [from.x, from.y, movement_points, faction_id, excluded_army_id, int(can_cross_mountains), army_key]
 	if _reachable_cache.has(cache_key):
 		return _reachable_cache[cache_key]
 	var result: Dictionary = {}
