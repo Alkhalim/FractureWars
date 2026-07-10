@@ -1702,8 +1702,11 @@ func _process(delta: float) -> void:
 
 	if skip_to_end:
 		for _i in simulator.max_ticks:
-			var actions := simulator.simulate_tick()
-			_process_visual_actions(actions)
+			# Skip _process_visual_actions: the results screen follows
+			# immediately, so spawning labels/projectiles/particles for up to
+			# 5000 ticks in one frame was pure invisible cost (multi-second
+			# freeze on large battles). Nothing else consumes the actions.
+			simulator.simulate_tick()
 			if simulator.is_finished:
 				break
 		_clear_magic_projectiles()
