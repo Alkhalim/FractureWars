@@ -550,23 +550,49 @@ static func _get_neighbor_war_faction_names(region_id: StringName, faction_id: S
 				names.append(display)
 	return names
 
-static func _get_neighbor_region_factions(region_id: StringName, faction_id: StringName) -> Array[StringName]:
-	# Find regions that border this one by checking hex neighbors
-	var hex_map := GameManager.state.hex_map
-	if hex_map == null:
-		return []
-	var region_tiles := hex_map.get_region_tiles(region_id)
-	var neighbor_factions: Array[StringName] = []
-	for coord in region_tiles:
+# Foreign tiles adjacent to each region, in the exact first-visit order of the
+# old region-tiles x neighbors scan (dedup by tile preserves the faction
+# first-appearance order). Static after map generation; rebuilt when the
+# HexMapData instance changes (new game / load).
+static var _region_border_foreign_tiles: Dictionary = {} # region_id -> Array[Vector2i]
+static var _border_tiles_map_id: int = 0
+
+static func _get_border_foreign_tiles(hex_map: HexMapData, region_id: StringName) -> Array:
+	if _border_tiles_map_id != hex_map.get_instance_id():
+		_region_border_foreign_tiles.clear()
+		_border_tiles_map_id = hex_map.get_instance_id()
+	if _region_border_foreign_tiles.has(region_id):
+		return _region_border_foreign_tiles[region_id]
+	var seen: Dictionary = {}
+	var result: Array = []
+	for coord in hex_map.get_region_tiles(region_id):
 		for neighbor_coord in HexHelper.get_neighbors(coord):
 			if not HexHelper.is_valid(neighbor_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			if seen.has(neighbor_coord):
 				continue
 			var tile := hex_map.get_tile(neighbor_coord)
 			if tile == null or tile.region_id == region_id:
 				continue
-			if tile.owner_faction != &"" and tile.owner_faction != faction_id:
-				if not neighbor_factions.has(tile.owner_faction):
-					neighbor_factions.append(tile.owner_faction)
+			seen[neighbor_coord] = true
+			result.append(neighbor_coord)
+	_region_border_foreign_tiles[region_id] = result
+	return result
+
+static func _get_neighbor_region_factions(region_id: StringName, faction_id: StringName) -> Array[StringName]:
+	# Find regions that border this one by checking hex neighbors — reads only
+	# the cached static foreign border tiles instead of all region tiles x 6.
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return []
+	var neighbor_factions: Array[StringName] = []
+	for coord in _get_border_foreign_tiles(hex_map, region_id):
+		var tile := hex_map.get_tile(coord)
+		if tile == null:
+			continue
+		if tile.owner_faction != &"" and tile.owner_faction != faction_id:
+			if not neighbor_factions.has(tile.owner_faction):
+				neighbor_factions.append(tile.owner_faction)
 	return neighbor_factions
 
 # ── Income Multiplier from Loyalty ───────────────────────────
