@@ -1211,6 +1211,11 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 		if fs:
 			skulloath_corruption = fs.corruption
 
+	# Loop invariants hoisted out of the 246-building scan: the loop mutates
+	# nothing, so slots and per-terrain valid-tile results cannot change inside it.
+	var available_slots := city.get_available_building_slots()
+	var valid_tiles_by_terrain: Dictionary = {} # required_terrain (int) -> Array[Vector2i]
+
 	var result: Array[BuildingData] = []
 	for building_id in DataManager.buildings:
 		var building: BuildingData = DataManager.buildings[building_id]
@@ -1253,12 +1258,21 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 		# Skip capital-only buildings in non-capital cities
 		if building.requires_capital and not city.is_capital:
 			continue
-		# Skip if no valid adjacent tile available
-		if get_valid_tiles_for_building(city, building).is_empty():
+		# Skip if no valid adjacent tile available (identical result to
+		# get_valid_tiles_for_building, with the terrain query memoized)
+		var has_valid_tile: bool
+		if building.upgrades_from != &"" and city.building_tiles.has(building.upgrades_from):
+			has_valid_tile = true # upgrade reuses the existing building's tile
+		else:
+			var terrain_key: int = building.required_terrain
+			if not valid_tiles_by_terrain.has(terrain_key):
+				valid_tiles_by_terrain[terrain_key] = get_valid_tiles_for_building_terrain(city, terrain_key)
+			has_valid_tile = not (valid_tiles_by_terrain[terrain_key] as Array).is_empty()
+		if not has_valid_tile:
 			continue
 		if building.upgrades_from == &"":
 			# Base building: needs a free slot
-			if city.get_available_building_slots() <= 0 and not include_slot_blocked:
+			if available_slots <= 0 and not include_slot_blocked:
 				continue
 			result.append(building)
 		else:
