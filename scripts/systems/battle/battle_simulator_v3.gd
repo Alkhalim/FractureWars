@@ -1029,18 +1029,21 @@ func _generate_swarm_offsets(f: BattleFormationV3, count: int, spacing: float) -
 		ring += 1
 
 func _update_entity_world_positions(f: BattleFormationV3, use_lerp: bool = false) -> void:
-	# Compute target positions from center + rotated offsets
-	f.entity_target_positions = PackedVector2Array()
+	# Compute target positions from center + rotated offsets. Reuses the
+	# existing array via resize + indexed writes (called twice per formation
+	# per tick; fresh PackedVector2Array allocations added up).
 	var cos_r := cos(f.rotation)
 	var sin_r := sin(f.rotation)
 	var limit := mini(f.entities_alive, f.entity_local_offsets.size())
+	if f.entity_target_positions.size() != limit:
+		f.entity_target_positions.resize(limit)
 	for i in limit:
 		var local := f.entity_local_offsets[i]
 		var world_offset := Vector2(
 			local.x * cos_r - local.y * sin_r,
 			local.x * sin_r + local.y * cos_r
 		)
-		f.entity_target_positions.append(f.position + world_offset)
+		f.entity_target_positions[i] = f.position + world_offset
 
 	if use_lerp and f.entity_positions.size() == limit:
 		# Row-based lerp: front entities react faster, creating a ripple effect
@@ -3008,16 +3011,19 @@ func _check_army_rout(side_formations: Array[BattleFormationV3], enemy_formation
 
 func _count_friendly_support(f: BattleFormationV3) -> int:
 	var count := 0
-	var perp := Vector2(-f.get_facing_vector().y, f.get_facing_vector().x)
+	# Hoist the facing vector (was computed twice per ally) and compare
+	# squared distances (identical comparison, no sqrt per ally).
+	var facing := f.get_facing_vector()
+	var perp := Vector2(-facing.y, facing.x)
 	for ally in _get_side_formations(f.side):
 		if ally == f or ally.is_dead or ally.is_fled:
 			continue
 		var diff := ally.position - f.position
-		if diff.length() > 80.0:
+		if diff.length_squared() > 6400.0:
 			continue
 		# Check if ally is roughly on our flanks
 		var lateral := absf(diff.dot(perp))
-		var forward := absf(diff.dot(f.get_facing_vector()))
+		var forward := absf(diff.dot(facing))
 		if lateral > forward:
 			count += 1
 	return mini(count, 2)
