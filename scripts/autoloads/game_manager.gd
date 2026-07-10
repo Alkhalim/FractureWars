@@ -2006,6 +2006,7 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 		if region_tile and region_tile.owner_faction == &"":
 			if region_tile.terrain != Enums.TerrainType.MOUNTAINS and region_tile.terrain != Enums.TerrainType.WATER:
 				region_tile.owner_faction = army.faction_id
+				state.hex_map.invalidate_region_owner(region_tile.region_id)
 
 func _check_siege_departure(army: ArmyState) -> void:
 	# If this army was besieging a city and is now leaving, check if any other

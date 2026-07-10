@@ -7,6 +7,14 @@ static var MAP_HEIGHT := 78
 var tiles: Dictionary = {} # Vector2i -> TileState
 var _region_tiles_cache: Dictionary = {} # region_id (StringName) -> Array[Vector2i]
 var _faction_affinity_cache: Dictionary = {} # faction_id (StringName) -> Enums.Realm (or -1 if no FactionData)
+var _region_owner_cache: Dictionary = {} # region_id -> StringName; invalidated on ownership writes
+var _region_adjacency_cache: Dictionary = {} # "a|b" (sorted) -> bool; static after map gen
+
+func invalidate_region_owner_cache() -> void:
+	_region_owner_cache.clear()
+
+func invalidate_region_owner(region_id: StringName) -> void:
+	_region_owner_cache.erase(region_id)
 
 class TileState:
 	var terrain: Enums.TerrainType = Enums.TerrainType.PLAINS
@@ -32,6 +40,8 @@ const TERRAIN_COSTS := {
 func build_region_cache() -> void:
 	_region_tiles_cache.clear()
 	_faction_affinity_cache.clear()
+	_region_owner_cache.clear()
+	_region_adjacency_cache.clear()
 	for coord in tiles:
 		var tile: TileState = tiles[coord]
 		if tile.region_id == &"":
@@ -110,6 +120,8 @@ func get_region_tiles(region_id: StringName) -> Array[Vector2i]:
 	return result
 
 func get_region_owner(region_id: StringName) -> StringName:
+	if _region_owner_cache.has(region_id):
+		return _region_owner_cache[region_id]
 	var region_coords: Array[Vector2i] = get_region_tiles(region_id)
 	var counts: Dictionary = {}
 	for coord in region_coords:
@@ -117,6 +129,7 @@ func get_region_owner(region_id: StringName) -> StringName:
 		if tile.owner_faction != &"":
 			counts[tile.owner_faction] = counts.get(tile.owner_faction, 0) + 1
 	if counts.is_empty():
+		_region_owner_cache[region_id] = &""
 		return &""
 	var best_faction: StringName = &""
 	var best_count := 0
@@ -124,19 +137,30 @@ func get_region_owner(region_id: StringName) -> StringName:
 		if counts[faction_id] > best_count:
 			best_count = counts[faction_id]
 			best_faction = faction_id
+	_region_owner_cache[region_id] = best_faction
 	return best_faction
 
 func regions_adjacent(region_a: StringName, region_b: StringName) -> bool:
-	# Check if two regions share a border (any tile in A neighbors a tile in B)
+	# Check if two regions share a border (any tile in A neighbors a tile in B).
+	# Region layout is static after map generation — memoized permanently,
+	# cleared only in build_region_cache().
+	var pair_key := "%s|%s" % [region_a, region_b] if region_a < region_b else "%s|%s" % [region_b, region_a]
+	if _region_adjacency_cache.has(pair_key):
+		return _region_adjacency_cache[pair_key]
 	var tiles_a := get_region_tiles(region_a)
 	var tiles_b_set: Dictionary = {}
 	for coord in get_region_tiles(region_b):
 		tiles_b_set[coord] = true
+	var adjacent := false
 	for coord in tiles_a:
 		for n in HexHelper.get_neighbors(coord):
 			if tiles_b_set.has(n):
-				return true
-	return false
+				adjacent = true
+				break
+		if adjacent:
+			break
+	_region_adjacency_cache[pair_key] = adjacent
+	return adjacent
 
 ## Updates development_level (0-3) for all owned tiles based on nearby cities.
 ## City score = population + building_count. Full bonus within 2 tiles,
@@ -199,6 +223,7 @@ func set_region_owner(region_id: StringName, faction_id: StringName) -> void:
 			tile.owner_faction = &""
 		else:
 			tile.owner_faction = faction_id
+	invalidate_region_owner(region_id)
 
 ## Assigns tile ownership based on Voronoi partition around cities.
 ## Each tile gets the faction of the closest city in its region.
@@ -234,6 +259,7 @@ func set_city_territory_owner(cities: Array) -> void:
 			tile.owner_faction = closest_fid
 		else:
 			tile.owner_faction = &""
+	invalidate_region_owner_cache()
 	cleanup_ownership_pockets()
 	update_development_levels(cities)
 
@@ -256,6 +282,7 @@ func set_region_city_territory(region_id: StringName, cities: Array) -> void:
 			tile.owner_faction = closest_fid
 		else:
 			tile.owner_faction = &""
+	invalidate_region_owner(region_id)
 	cleanup_ownership_pockets(region_id)
 	update_development_levels(cities)
 
@@ -354,5 +381,6 @@ func cleanup_ownership_pockets(only_region: StringName = &"") -> void:
 				for coord in comp.comp_tiles:
 					tiles[coord].owner_faction = best_faction
 				changed = true
+				invalidate_region_owner_cache()
 		if not changed:
 			break
