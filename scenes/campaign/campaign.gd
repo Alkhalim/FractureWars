@@ -101,6 +101,7 @@ var _settlement_parent_city_id: StringName = &""
 var _settlement_valid_tiles: Array[Vector2i] = []
 var _settlement_overlay_nodes: Array[Node2D] = []
 var _settlement_preview_panel: PanelContainer = null
+var _last_settlement_preview_hex := Vector2i(-9999, -9999)  # Gate preview rebuilds to hex changes
 
 # Building tile placement mode
 var _building_tile_mode := false
@@ -2297,7 +2298,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			var hex_coord := _pixel_to_hex(world_pos)
 			_update_region_hover(world_pos)
 			if HexHelper.is_valid(hex_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-				_show_settlement_preview(hex_coord)
+				# Preview panel content and position depend only on the hex —
+				# rebuild it (free + recreate + income preview calc) only when
+				# the hovered hex actually changes (mirrors _last_hover_hex).
+				if hex_coord != _last_settlement_preview_hex:
+					_last_settlement_preview_hex = hex_coord
+					_show_settlement_preview(hex_coord)
 		return
 
 	# Building tile placement mode input handling
@@ -3968,6 +3974,11 @@ func _on_unit_recruited(city_id: StringName, unit_data_id: StringName, _army_id:
 		var unit_data: UnitData = DataManager.get_unit(unit_data_id)
 		var uname: String = unit_data.display_name if unit_data else str(unit_data_id)
 		_show_notification(uname + " recruited in " + city.get_display_name())
+	# During AI turns, skip the marker rebuild — player turn start calls
+	# _create_army_markers(), matching the deferral pattern of the
+	# neighboring handlers (_on_army_moved / _on_region_ownership_changed).
+	if not TurnManager.is_player_turn:
+		return
 	_create_army_markers()
 
 func _show_notification(text: String) -> void:
@@ -4564,6 +4575,7 @@ func _on_settlement_placement_requested(city_id: StringName) -> void:
 		return
 
 	_settlement_placement_mode = true
+	_last_settlement_preview_hex = Vector2i(-9999, -9999)
 	_settlement_parent_city_id = city_id
 	_close_city_panel()
 	_deselect_all()
@@ -4607,6 +4619,7 @@ func _on_settlement_placement_requested(city_id: StringName) -> void:
 
 func _cancel_settlement_placement() -> void:
 	_settlement_placement_mode = false
+	_last_settlement_preview_hex = Vector2i(-9999, -9999)
 	_settlement_parent_city_id = &""
 	_settlement_valid_tiles.clear()
 	for node in _settlement_overlay_nodes:
@@ -5136,7 +5149,17 @@ func _update_minimap() -> void:
 
 	# Draw camera viewport indicator
 	_draw_minimap_viewport_rect(img, px_w, px_h)
-	_minimap_image.texture = ImageTexture.create_from_image(img)
+	_set_minimap_texture(img)
+
+func _set_minimap_texture(img: Image) -> void:
+	## Reuses the existing ImageTexture via update() when dimensions/format
+	## match (every update after the first); creates it otherwise.
+	var tex := _minimap_image.texture as ImageTexture
+	if tex and tex.get_width() == img.get_width() and tex.get_height() == img.get_height() \
+			and tex.get_format() == img.get_format():
+		tex.update(img)
+	else:
+		_minimap_image.texture = ImageTexture.create_from_image(img)
 
 func _update_minimap_viewport_only() -> void:
 	# Lightweight update: only redraws the viewport rectangle using cached content
@@ -5149,7 +5172,7 @@ func _update_minimap_viewport_only() -> void:
 	var px_h: int = h * 4
 	var img := _minimap_content_cache.duplicate()
 	_draw_minimap_viewport_rect(img, px_w, px_h)
-	_minimap_image.texture = ImageTexture.create_from_image(img)
+	_set_minimap_texture(img)
 
 func _draw_minimap_viewport_rect(img: Image, px_w: int, px_h: int) -> void:
 	var viewport_size := get_viewport_rect().size / camera.zoom
@@ -5194,4 +5217,6 @@ func _minimap_move_camera(local_pos: Vector2) -> void:
 	var ratio_y := clampf(local_pos.y / minimap_size.y, 0.0, 1.0)
 	camera.position = Vector2(ratio_x * map_pixel_w, ratio_y * map_pixel_h)
 	camera._clamp_position()
-	_update_minimap()
+	# Camera move changes only the viewport rectangle — army/shard/fog content
+	# is unchanged, so skip duplicating the fogged cache and rescanning armies.
+	_update_minimap_viewport_only()

@@ -1008,22 +1008,52 @@ func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 				if not dilemma.is_empty():
 					call_deferred("_emit_senate_dilemma", _faction_id, dilemma)
 
+var _army_panel_refresh_queued := false
+
 func _on_army_moved(army_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
 	_check_tutorial("army_moved")
-	# Refresh army panel if the moved army is selected
+	# Refresh army panel if the moved army is selected — coalesced to one full
+	# rebuild per frame (army_moved fires once per hex stepped; each rebuild
+	# frees/recreates action rows, the unit-card grid, and the commander panel).
 	var campaign: Node2D = get_parent().get_parent()
 	if campaign and "selected_army_id" in campaign:
 		if campaign.selected_army_id == army_id:
-			_on_army_selected(army_id)
+			if not _army_panel_refresh_queued:
+				_army_panel_refresh_queued = true
+				call_deferred("_run_queued_army_panel_refresh")
+
+func _run_queued_army_panel_refresh() -> void:
+	_army_panel_refresh_queued = false
+	var campaign: Node2D = get_parent().get_parent()
+	if campaign == null or not "selected_army_id" in campaign:
+		return
+	var selected: StringName = campaign.selected_army_id
+	if selected != &"":
+		_on_army_selected(selected)
+
+var _resource_display_refresh_queued := false
 
 func _on_elderbeast_moved(beast_id: StringName, _from: Vector2i, _to: Vector2i) -> void:
-	# Refresh resource bar (terrain income changed)
-	_update_resource_display()
+	var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id) if GameManager.state else null
+	# Refresh resource bar only for player-owned beasts: the income breakdown
+	# counts elderbeast income only when beast.faction_id == player_id
+	# (see _calculate_income_breakdown), so AI beast moves cannot change any
+	# displayed number. Coalesce multi-hex moves to one update per frame.
+	if beast and beast.faction_id == GameManager.state.player_faction_id:
+		_queue_resource_display_update()
 	# Refresh elderbeast panel if open for this beast
-	if _elderbeast_panel:
-		var beast: ElderbeastState = GameManager.state.elderbeasts.get(beast_id)
-		if beast:
-			_show_elderbeast_panel(beast)
+	if _elderbeast_panel and beast:
+		_show_elderbeast_panel(beast)
+
+func _queue_resource_display_update() -> void:
+	if _resource_display_refresh_queued:
+		return
+	_resource_display_refresh_queued = true
+	call_deferred("_run_queued_resource_display_update")
+
+func _run_queued_resource_display_update() -> void:
+	_resource_display_refresh_queued = false
+	_update_resource_display()
 
 # ── Resource display ─────────────────────────────────────────
 

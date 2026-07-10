@@ -112,9 +112,13 @@ func _process(delta: float) -> void:
 func _zoom_camera(amount: float) -> void:
 	_target_zoom = clampf(_target_zoom + amount, MIN_ZOOM, MAX_ZOOM)
 
+var _hud_cache: Control = null  # Cached ../UILayer/HUD lookup (resolved lazily, revalidated if freed)
+
 func _is_mouse_over_ui() -> bool:
 	# Check if the mouse is hovering over any visible UI panel
-	var hud := get_node_or_null("../UILayer/HUD")
+	if _hud_cache == null or not is_instance_valid(_hud_cache):
+		_hud_cache = get_node_or_null("../UILayer/HUD") as Control
+	var hud := _hud_cache
 	if hud == null:
 		return false
 	var mouse_pos: Vector2 = hud.get_global_mouse_position()
