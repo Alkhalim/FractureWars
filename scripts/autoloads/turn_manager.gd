@@ -304,6 +304,7 @@ func _start_faction_turn() -> void:
 	# Refresh caches for this faction's turn
 	GameManager.movement_system.refresh_caches()
 	GameManager.rebuild_faction_army_cache()
+	_special_effect_sums_cache.clear()
 
 	# Process city system: income, growth, queues, sieges
 	GameManager.city_system.process_turn(faction_id)
@@ -3156,18 +3157,30 @@ func _get_faction_basic_infantry(faction_id: StringName) -> StringName:
 
 # ── Unique Faction Mechanics ────────────────────────────────
 
+# One walk over cities x buildings accumulates ALL special_effects keys; the
+# 2-3 per-turn queries per faction then read from the dict. Cleared every
+# _start_faction_turn (building completion runs before any mechanic reads).
+var _special_effect_sums_cache: Dictionary = {} # faction_id -> {key: float}
+
 func _sum_building_special_effect(fs: FactionState, key: String) -> float:
 	## Sum a special_effects key across all buildings in all of a faction's cities.
-	var total := 0.0
-	for city_id in fs.owned_cities:
-		var city: CityState = GameManager.state.cities.get(city_id)
-		if city == null:
-			continue
-		for building_id in city.buildings:
-			var bd: BuildingData = DataManager.get_building(building_id)
-			if bd and bd.special_effects.has(key):
-				total += float(bd.special_effects[key])
-	return total
+	var sums: Variant = _special_effect_sums_cache.get(fs.faction_data_id)
+	if sums == null:
+		sums = {}
+		for city_id in fs.owned_cities:
+			var city: CityState = GameManager.state.cities.get(city_id)
+			if city == null:
+				continue
+			for building_id in city.buildings:
+				var bd: BuildingData = DataManager.get_building(building_id)
+				if bd == null:
+					continue
+				for k in bd.special_effects:
+					var v: Variant = bd.special_effects[k]
+					if v is int or v is float or v is bool or v is String:
+						sums[k] = sums.get(k, 0.0) + float(v)
+		_special_effect_sums_cache[fs.faction_data_id] = sums
+	return sums.get(key, 0.0)
 
 func _process_faction_mechanic(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
