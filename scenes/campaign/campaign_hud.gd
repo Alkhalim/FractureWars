@@ -1322,14 +1322,75 @@ func _create_resource_bar() -> void:
 	_faction_mechanic_label.add_theme_color_override("font_color", Color(0.75, 0.7, 0.6))
 	resource_bar.add_child(_faction_mechanic_label)
 
+# ── Income projection memo (rebuilt once per _calculate_projected_income) ──
+# One calculate_city_income + calculate_class_percentages call per city and one
+# army scan per update, instead of 3x/2x per city per resource type.
+var _income_city_memo: Dictionary = {}       # city_id -> {income: Dictionary, pcts: Dictionary}
+var _income_upkeep_memo: Dictionary = {}     # res_type -> {by_tag: Dictionary, total: int}
+var _income_memo_valid := false
+var _income_breakdown_cache: Dictionary = {} # res_type -> breakdown (last projection update)
+
+func _rebuild_income_memo() -> void:
+	_income_city_memo.clear()
+	_income_upkeep_memo.clear()
+	_income_memo_valid = false
+	var player_id := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if fs == null:
+		return
+	# One calculate_city_income + calculate_class_percentages per city.
+	# Membership in the memo encodes the same "city exists and not under siege"
+	# filter the breakdown steps 1-3 applied inline.
+	for city_id in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(city_id)
+		if city and not city.is_under_siege:
+			_income_city_memo[city_id] = {
+				income = GameManager.city_system.calculate_city_income(city),
+				pcts = LoyaltySystem.calculate_class_percentages(city, city.faction_id),
+			}
+	# One army/unit scan builds upkeep for ALL resource types at once.
+	# Iteration order (army -> units -> commander) matches the old per-resource
+	# loop, so by_tag key insertion order (tooltip line order) is preserved.
+	for army_id in GameManager.state.armies:
+		var army: ArmyState = GameManager.state.armies[army_id]
+		if army.faction_id != player_id:
+			continue
+		for unit in army.units:
+			var ud := DataManager.get_unit(unit.unit_data_id)
+			if ud == null:
+				continue
+			var tag := "Other"
+			for t in ["infantry", "ranged", "cavalry", "mage", "construct"]:
+				if ud.tags.has(t):
+					tag = t.capitalize()
+					break
+			for res_type in ud.upkeep_cost:
+				var entry: Dictionary = _income_upkeep_memo.get_or_add(res_type, {by_tag = {}, total = 0})
+				entry.by_tag[tag] = entry.by_tag.get(tag, 0) + ud.upkeep_cost[res_type]
+				entry.total += ud.upkeep_cost[res_type]
+		# Commander upkeep
+		if army.commander != null:
+			var level_mult := 1.0 + (army.commander.level - 1) * 0.5
+			for res_type in CommanderSystem.COMMANDER_UPKEEP:
+				var cmd_cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
+				var entry: Dictionary = _income_upkeep_memo.get_or_add(res_type, {by_tag = {}, total = 0})
+				entry.by_tag["Commanders"] = entry.by_tag.get("Commanders", 0) + cmd_cost
+				entry.total += cmd_cost
+	_income_memo_valid = true
+
 func _calculate_projected_income() -> Dictionary:
-	# Use the detailed breakdown for each resource to get true net income
+	# Use the detailed breakdown for each resource to get true net income.
+	# Build the per-update memo once, then derive all per-resource breakdowns
+	# from it and cache them for the hover tooltip.
+	_rebuild_income_memo()
+	_income_breakdown_cache.clear()
 	var income: Dictionary = {}
 	var display_types := [0, 1, 2, 3, 5, 6]
 	if GameManager.state.player_faction_id == &"shardhorde":
 		display_types = [0, 1, 2, 3, 4, 5, 6]
 	for res_type in display_types:
 		var breakdown := _calculate_income_breakdown(res_type)
+		_income_breakdown_cache[res_type] = breakdown
 		if breakdown.net != 0:
 			income[res_type] = breakdown.net
 	return income
@@ -1337,45 +1398,50 @@ func _calculate_projected_income() -> Dictionary:
 func _calculate_income_breakdown(res_type: int) -> Dictionary:
 	# Returns {"cities": {city_name: amount}, "upkeep": {category: amount},
 	#          "modifiers": [{label, amount}], "net": int}
-	# Mirrors the actual _generate_income() logic in city_system.gd
+	# Mirrors the actual _generate_income() logic in city_system.gd.
+	# Per-city income / class percentages / army upkeep come from the memo
+	# built once per update in _rebuild_income_memo().
 	var breakdown := {"cities": {}, "upkeep": {}, "modifiers": [], "net": 0}
 	var player_id := GameManager.state.player_faction_id
 	var fs: FactionState = GameManager.state.faction_states.get(player_id)
 	if fs == null:
 		return breakdown
+	if not _income_memo_valid:
+		_rebuild_income_memo()
 
 	# Step 1: Base city income (from buildings + region)
 	var base_total := 0
 	for city_id in fs.owned_cities:
+		var memo: Dictionary = _income_city_memo.get(city_id, {})
+		if memo.is_empty():
+			continue
 		var city: CityState = GameManager.state.cities.get(city_id)
-		if city and not city.is_under_siege:
-			var city_income := GameManager.city_system.calculate_city_income(city)
-			var amount: int = city_income.get(res_type, 0)
-			if amount != 0:
-				breakdown.cities[city.get_display_name()] = amount
-				base_total += amount
+		var amount: int = (memo.income as Dictionary).get(res_type, 0)
+		if amount != 0:
+			breakdown.cities[city.get_display_name()] = amount
+			base_total += amount
 
 	# Step 2: Class bonuses (applied per-city in _generate_income, aggregate here)
 	var class_bonus_total := 0
 	for city_id in fs.owned_cities:
-		var city: CityState = GameManager.state.cities.get(city_id)
-		if city and not city.is_under_siege:
-			var city_income := GameManager.city_system.calculate_city_income(city)
-			var raw: int = city_income.get(res_type, 0)
-			if raw == 0:
-				continue
-			var pcts := LoyaltySystem.calculate_class_percentages(city, city.faction_id)
-			var bonus := 0
-			match res_type:
-				Enums.ResourceType.FOOD:
-					bonus = int(float(raw) * (pcts.get("peasants", 0.0) * 100.0 * 0.005))
-				Enums.ResourceType.IRON, Enums.ResourceType.WOOD:
-					bonus = int(float(raw) * (pcts.get("artisans", 0.0) * 100.0 * 0.005))
-				Enums.ResourceType.TECHNOLOGY:
-					bonus = int(float(raw) * (pcts.get("scholars", 0.0) * 100.0 * 0.008))
-				Enums.ResourceType.GOLD:
-					bonus = int(float(raw) * (pcts.get("nobles", 0.0) * 100.0 * 0.006))
-			class_bonus_total += bonus
+		var memo: Dictionary = _income_city_memo.get(city_id, {})
+		if memo.is_empty():
+			continue
+		var raw: int = (memo.income as Dictionary).get(res_type, 0)
+		if raw == 0:
+			continue
+		var pcts: Dictionary = memo.pcts
+		var bonus := 0
+		match res_type:
+			Enums.ResourceType.FOOD:
+				bonus = int(float(raw) * (pcts.get("peasants", 0.0) * 100.0 * 0.005))
+			Enums.ResourceType.IRON, Enums.ResourceType.WOOD:
+				bonus = int(float(raw) * (pcts.get("artisans", 0.0) * 100.0 * 0.005))
+			Enums.ResourceType.TECHNOLOGY:
+				bonus = int(float(raw) * (pcts.get("scholars", 0.0) * 100.0 * 0.008))
+			Enums.ResourceType.GOLD:
+				bonus = int(float(raw) * (pcts.get("nobles", 0.0) * 100.0 * 0.006))
+		class_bonus_total += bonus
 	if class_bonus_total != 0:
 		var class_label := ""
 		match res_type:
@@ -1391,26 +1457,27 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 	# Step 3: Loyalty multiplier (applied per-city, aggregate the penalty)
 	var loyalty_penalty := 0
 	for city_id in fs.owned_cities:
+		var memo: Dictionary = _income_city_memo.get(city_id, {})
+		if memo.is_empty():
+			continue
 		var city: CityState = GameManager.state.cities.get(city_id)
-		if city and not city.is_under_siege:
-			var city_income := GameManager.city_system.calculate_city_income(city)
-			var raw: int = city_income.get(res_type, 0)
-			if raw == 0:
-				continue
-			var pcts := LoyaltySystem.calculate_class_percentages(city, city.faction_id)
-			var after_class := raw
-			match res_type:
-				Enums.ResourceType.FOOD:
-					after_class += int(float(raw) * (pcts.get("peasants", 0.0) * 100.0 * 0.005))
-				Enums.ResourceType.IRON, Enums.ResourceType.WOOD:
-					after_class += int(float(raw) * (pcts.get("artisans", 0.0) * 100.0 * 0.005))
-				Enums.ResourceType.TECHNOLOGY:
-					after_class += int(float(raw) * (pcts.get("scholars", 0.0) * 100.0 * 0.008))
-				Enums.ResourceType.GOLD:
-					after_class += int(float(raw) * (pcts.get("nobles", 0.0) * 100.0 * 0.006))
-			var loyalty_mult := LoyaltySystem.get_loyalty_multiplier(city.loyalty)
-			if loyalty_mult < 1.0:
-				loyalty_penalty += int(float(after_class) * loyalty_mult) - after_class
+		var raw: int = (memo.income as Dictionary).get(res_type, 0)
+		if raw == 0:
+			continue
+		var pcts: Dictionary = memo.pcts
+		var after_class := raw
+		match res_type:
+			Enums.ResourceType.FOOD:
+				after_class += int(float(raw) * (pcts.get("peasants", 0.0) * 100.0 * 0.005))
+			Enums.ResourceType.IRON, Enums.ResourceType.WOOD:
+				after_class += int(float(raw) * (pcts.get("artisans", 0.0) * 100.0 * 0.005))
+			Enums.ResourceType.TECHNOLOGY:
+				after_class += int(float(raw) * (pcts.get("scholars", 0.0) * 100.0 * 0.008))
+			Enums.ResourceType.GOLD:
+				after_class += int(float(raw) * (pcts.get("nobles", 0.0) * 100.0 * 0.006))
+		var loyalty_mult := LoyaltySystem.get_loyalty_multiplier(city.loyalty)
+		if loyalty_mult < 1.0:
+			loyalty_penalty += int(float(after_class) * loyalty_mult) - after_class
 	if loyalty_penalty != 0:
 		breakdown.modifiers.append({label = "Low Loyalty", amount = loyalty_penalty})
 		income_subtotal += loyalty_penalty
@@ -1527,28 +1594,13 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 				beast_total += amount
 	income_subtotal += beast_total
 
-	# Upkeep grouped by tag
+	# Upkeep grouped by tag — from the single-pass memo
 	var upkeep_total := 0
 	var upkeep_by_tag: Dictionary = {}
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id == player_id:
-			for unit in army.units:
-				var ud := DataManager.get_unit(unit.unit_data_id)
-				if ud and ud.upkeep_cost.has(res_type):
-					var tag := "Other"
-					for t in ["infantry", "ranged", "cavalry", "mage", "construct"]:
-						if ud.tags.has(t):
-							tag = t.capitalize()
-							break
-					upkeep_by_tag[tag] = upkeep_by_tag.get(tag, 0) + ud.upkeep_cost[res_type]
-					upkeep_total += ud.upkeep_cost[res_type]
-			# Commander upkeep
-			if army.commander != null and CommanderSystem.COMMANDER_UPKEEP.has(res_type):
-				var level_mult := 1.0 + (army.commander.level - 1) * 0.5
-				var cmd_cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
-				upkeep_by_tag["Commanders"] = upkeep_by_tag.get("Commanders", 0) + cmd_cost
-				upkeep_total += cmd_cost
+	var upkeep_memo: Dictionary = _income_upkeep_memo.get(res_type, {})
+	if not upkeep_memo.is_empty():
+		upkeep_by_tag = (upkeep_memo.by_tag as Dictionary).duplicate()
+		upkeep_total = upkeep_memo.total
 	breakdown.upkeep = upkeep_by_tag
 
 	# Population food consumption (quartered rate)
@@ -1676,7 +1728,13 @@ func _on_resource_hover_entered(res_type: int) -> void:
 	if _resource_tooltip == null:
 		return
 	var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-	var breakdown := _calculate_income_breakdown(res_type)
+	# Reuse the breakdown cached by the last projection update. The projection
+	# is refreshed on every state-changing action and at every turn start via
+	# _update_resource_display, so the cached breakdown always matches the
+	# income label currently on screen.
+	var breakdown: Dictionary = _income_breakdown_cache.get(res_type, {})
+	if breakdown.is_empty():
+		breakdown = _calculate_income_breakdown(res_type)
 	var fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
 	var current: int = fs.resources.get(res_type, 0) if fs else 0
 
