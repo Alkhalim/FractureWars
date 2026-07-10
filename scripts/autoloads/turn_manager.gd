@@ -4701,16 +4701,33 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 				if tile:
 					camp_city.region_id = tile.region_id
 
-	# Solar Faith proximity: gain faith near developed foreign cities (diminishing)
+	# Solar Faith proximity: gain faith near developed foreign cities (diminishing).
+	# Inverted: instead of scanning all cities per army, query the ~37-hex
+	# neighborhood via the O(1) city index. Multi-candidate ties resolve by
+	# state.cities insertion order, matching the old first-match semantics.
 	var proximity_faith := 0
 	for army: ArmyState in GameManager.get_faction_armies(fid):
-		for city_id in GameManager.state.cities:
-			var city: CityState = GameManager.state.cities[city_id]
-			if city.faction_id == fid or city.faction_id == &"independent":
-				continue
-			if HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= 3:
-				proximity_faith += mini(city.level, 3)
-				break # Only one city per army counts
+		var best_city: CityState = null
+		var candidates: Array = []
+		for dx in range(-4, 5):
+			for dy in range(-4, 5):
+				var h := Vector2i(army.hex_pos.x + dx, army.hex_pos.y + dy)
+				if HexHelper.hex_distance(army.hex_pos, h) > 3:
+					continue
+				var c: CityState = GameManager.city_system.get_city_at_hex(h)
+				if c == null or c.faction_id == fid or c.faction_id == &"independent":
+					continue
+				candidates.append(c)
+		if candidates.size() == 1:
+			best_city = candidates[0]
+		elif candidates.size() > 1:
+			for city_id in GameManager.state.cities:
+				var c2: CityState = GameManager.state.cities[city_id]
+				if candidates.has(c2):
+					best_city = c2
+					break
+		if best_city:
+			proximity_faith += mini(best_city.level, 3) # Only one city per army counts
 	if proximity_faith > 0:
 		# Diminishing returns based on how long near cities
 		fs.solar_faith_proximity_turns += 1
@@ -4745,18 +4762,23 @@ func _process_sunblessed_wisdom(fs: FactionState, fid: StringName = &"sunblessed
 	var wisdom_gain := 0
 	var educated_cities: Dictionary = {}
 	var sunblessed_armies := GameManager.get_faction_armies(sunblessed_fid)
+	# Union of hexes within distance 2 of any Sunblessed army — replaces the
+	# per-city scan over all armies with an O(1) set lookup (any-match check,
+	# so the inversion cannot change results).
+	var near_army_hexes: Dictionary = {}
+	for army: ArmyState in sunblessed_armies:
+		for dx in range(-3, 4):
+			for dy in range(-3, 4):
+				var h := Vector2i(army.hex_pos.x + dx, army.hex_pos.y + dy)
+				if HexHelper.hex_distance(army.hex_pos, h) <= 2:
+					near_army_hexes[h] = true
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
 		if city.faction_id == sunblessed_fid or city.faction_id == &"independent":
 			continue
 		if educated_cities.has(city_id):
 			continue
-		var near_army := false
-		for army: ArmyState in sunblessed_armies:
-			if HexHelper.hex_distance(army.hex_pos, city.hex_pos) <= 2:
-				near_army = true
-				break
-		if not near_army:
+		if not near_army_hexes.has(city.hex_pos):
 			continue
 		var standing := GameManager.diplomacy_system.get_standing(sunblessed_fid, city.faction_id)
 		if standing >= 20:
