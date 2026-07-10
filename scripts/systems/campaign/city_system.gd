@@ -262,54 +262,72 @@ func calculate_city_income(city: CityState) -> Dictionary:
 
 	return income
 
+# Ordered special-building effect entries per parent faction. Effects compound
+# sequentially (percentage bonuses apply to the running income), so the cache
+# preserves the exact scan order (cities in insertion order, buildings in array
+# order) and apply_region_effects replays it. Invalidated on building
+# add/remove and city ownership changes.
+var _region_effects_cache: Dictionary = {} # parent_faction_id -> Array[Dictionary]
+
+func invalidate_region_effects_cache() -> void:
+	_region_effects_cache.clear()
+
+func _get_region_effect_entries(parent_fid: StringName) -> Array:
+	if _region_effects_cache.has(parent_fid):
+		return _region_effects_cache[parent_fid]
+	var entries: Array = []
+	for scan_city_id in GameManager.state.cities:
+		var scan_city: CityState = GameManager.state.cities[scan_city_id]
+		var scan_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(scan_city.faction_id, scan_city.faction_id)
+		if scan_parent != parent_fid:
+			continue
+		for building_id in scan_city.buildings:
+			if REGION_WIDE_BUILDING_EFFECTS.has(building_id):
+				entries.append({table = 0, region_id = scan_city.region_id, effect = REGION_WIDE_BUILDING_EFFECTS[building_id]})
+			if FACTION_WIDE_BUILDING_EFFECTS.has(building_id):
+				entries.append({table = 1, effect = FACTION_WIDE_BUILDING_EFFECTS[building_id]})
+	_region_effects_cache[parent_fid] = entries
+	return entries
+
 func apply_region_effects(income: Dictionary, city: CityState) -> void:
 	var faction_id := city.faction_id
 	var region_id := city.region_id
 	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 
-	# Scan all cities for region-wide and faction-wide building effects
-	for scan_city_id in GameManager.state.cities:
-		var scan_city: CityState = GameManager.state.cities[scan_city_id]
-		if scan_city.faction_id != faction_id:
-			# Check if same parent faction
-			var scan_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(scan_city.faction_id, scan_city.faction_id)
-			if scan_parent != parent_fid:
-				continue
-
-		for building_id in scan_city.buildings:
+	# Replay the cached effect entries in original scan order (see cache note)
+	for entry: Dictionary in _get_region_effect_entries(parent_fid):
+		var eff: Dictionary = entry.effect
+		if entry.table == 0:
 			# Region-wide effects: only apply if same region
-			if REGION_WIDE_BUILDING_EFFECTS.has(building_id) and scan_city.region_id == region_id:
-				var eff: Dictionary = REGION_WIDE_BUILDING_EFFECTS[building_id]
-				match eff.effect:
-					"gold_income_pct":
-						var gold_bonus := int(income.get(Enums.ResourceType.GOLD, 0) * eff.value / 100.0)
-						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + gold_bonus
-					"tech_flat":
-						income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + eff.value
-					"defense_flat":
-						pass  # Defense is not in income; handled in garrison/battle calculations
-
+			if entry.region_id != region_id:
+				continue
+			match eff.effect:
+				"gold_income_pct":
+					var gold_bonus := int(income.get(Enums.ResourceType.GOLD, 0) * eff.value / 100.0)
+					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + gold_bonus
+				"tech_flat":
+					income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + eff.value
+				"defense_flat":
+					pass  # Defense is not in income; handled in garrison/battle calculations
+		else:
 			# Faction-wide effects: apply to all faction cities
-			if FACTION_WIDE_BUILDING_EFFECTS.has(building_id):
-				var eff: Dictionary = FACTION_WIDE_BUILDING_EFFECTS[building_id]
-				# Check faction filter if present
-				if eff.has("faction_filter"):
-					if parent_fid != eff.faction_filter:
-						continue
-				match eff.effect:
-					"loyalty_flat":
-						pass  # Loyalty bonuses are applied in _update_loyalty, not income
-					"trade_income_pct":
-						var gold_bonus := int(income.get(Enums.ResourceType.GOLD, 0) * eff.value / 100.0)
-						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + gold_bonus
-					"gold_per_relic_building":
-						# Count relic/cultural buildings in this city
-						var relic_count := 0
-						for bid in city.buildings:
-							var bld := DataManager.get_building(bid)
-							if bld and bld.category == &"cultural":
-								relic_count += 1
-						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + relic_count * eff.value
+			if eff.has("faction_filter"):
+				if parent_fid != eff.faction_filter:
+					continue
+			match eff.effect:
+				"loyalty_flat":
+					pass  # Loyalty bonuses are applied in _update_loyalty, not income
+				"trade_income_pct":
+					var gold_bonus := int(income.get(Enums.ResourceType.GOLD, 0) * eff.value / 100.0)
+					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + gold_bonus
+				"gold_per_relic_building":
+					# Count relic/cultural buildings in this city
+					var relic_count := 0
+					for bid in city.buildings:
+						var bld := DataManager.get_building(bid)
+						if bld and bld.category == &"cultural":
+							relic_count += 1
+					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + relic_count * eff.value
 
 func _add_province_growth(region_id: StringName, faction_id: StringName, food_income: int = 0) -> void:
 	var growth := calculate_province_growth(region_id, faction_id)
@@ -510,6 +528,7 @@ func _process_build_queue(city: CityState) -> void:
 			city.building_tiles[building_id] = item.tile_pos
 		city.buildings.append(building_id)
 		city.build_queue.remove_at(0)
+		invalidate_region_effects_cache()
 		EventBus.building_completed.emit(city.city_id, building_id)
 
 func _process_recruit_queue(city: CityState, faction_id: StringName) -> void:
@@ -641,6 +660,7 @@ func _capture_city(city: CityState) -> void:
 	GameManager.change_region_owner(city.region_id, new_owner)
 
 	GameManager.invalidate_completion_cache()
+	invalidate_region_effects_cache()
 	EventBus.city_captured.emit(city.city_id, old_owner, new_owner)
 
 	# If old owner lost their capital, promote their largest remaining city
@@ -736,6 +756,7 @@ func apply_siege_choice_raze(city_id: StringName) -> Dictionary:
 			# Tier 1 building: destroy it
 			destroyed_count += 1
 	city.buildings = new_buildings
+	invalidate_region_effects_cache()
 
 	# Small loot from razing (less than looting)
 	var fs: FactionState = GameManager.state.faction_states.get(razer_id)
@@ -1055,6 +1076,7 @@ func _independent_city_joins(city: CityState, faction_id: StringName) -> void:
 	if fs:
 		fs.owned_cities.append(city.city_id)
 	GameManager.invalidate_completion_cache()
+	invalidate_region_effects_cache()
 	EventBus.city_joined.emit(city.city_id, faction_id)
 
 # ── Terrain helpers ───────────────────────────────────────────
@@ -1115,6 +1137,7 @@ func demolish_building(city_id: StringName, building_id: StringName) -> bool:
 	# Remove from city
 	city.buildings.erase(building_id)
 	city.building_tiles.erase(building_id)
+	invalidate_region_effects_cache()
 	# Refund 1/3 of build cost
 	var building: BuildingData = DataManager.get_building(building_id)
 	if building:

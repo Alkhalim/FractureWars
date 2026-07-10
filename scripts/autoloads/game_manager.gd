@@ -694,6 +694,7 @@ func load_game(slot: int) -> void:
 	movement_system = MovementSystem.new(state.hex_map)
 	city_system.invalidate_city_hex_index()
 	invalidate_completion_cache()
+	city_system.invalidate_region_effects_cache()
 	current_phase = Enums.GamePhase.CAMPAIGN
 	_commander_name_counters.clear()
 	transition_to_scene("res://scenes/campaign/campaign.tscn")
@@ -722,6 +723,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false) -> void:
 	movement_system = MovementSystem.new(state.hex_map)
 	city_system.invalidate_city_hex_index()
 	invalidate_completion_cache()
+	city_system.invalidate_region_effects_cache()
 
 	_init_factions()
 	_init_rebels_faction()
@@ -1824,6 +1826,7 @@ func found_settlement(faction_id: StringName, hex_pos: Vector2i, parent_city_id:
 	city.turns_since_capture = -1
 	state.cities[city.city_id] = city
 	invalidate_completion_cache()
+	city_system.invalidate_region_effects_cache()
 
 	if fs:
 		fs.owned_cities.append(city.city_id)
@@ -1878,6 +1881,7 @@ func setup_sunblessed_camp(army_id: StringName) -> StringName:
 	city.turns_since_capture = -1
 	state.cities[city.city_id] = city
 	invalidate_completion_cache()
+	city_system.invalidate_region_effects_cache()
 	var fs: FactionState = state.faction_states.get(army.faction_id)
 	if fs:
 		fs.owned_cities.append(city.city_id)

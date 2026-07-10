@@ -370,6 +370,7 @@ func _apply_forsaken_sabotage(faction_id: StringName, fs: FactionState) -> void:
 			if city and city.buildings.size() > 0:
 				var destroyed := city.buildings[randi() % city.buildings.size()]
 				city.buildings.erase(destroyed)
+				GameManager.city_system.invalidate_region_effects_cache()
 				break
 	else:
 		# Units desert from random army
