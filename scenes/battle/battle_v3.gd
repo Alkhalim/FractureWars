@@ -113,6 +113,7 @@ var pause_btn: Button
 var strength_meter_panel: PanelContainer
 var strength_bar_player: ColorRect
 var strength_bar_enemy: ColorRect
+var _bar_bg_cache: ColorRect = null # cached BarBG lookup (was a recursive find_child per tick)
 var strength_label: Label
 var roster_panel: PanelContainer
 var player_roster_container: VBoxContainer
@@ -920,7 +921,10 @@ func _update_strength_meter() -> void:
 	if _player_power_initial + _enemy_power_initial <= 0.0:
 		return
 
-	var bar_bg_node := strength_meter_panel.find_child("BarBG", true, false) as ColorRect
+	# Cached: recursive find_child ran every tick
+	if _bar_bg_cache == null or not is_instance_valid(_bar_bg_cache):
+		_bar_bg_cache = strength_meter_panel.find_child("BarBG", true, false) as ColorRect
+	var bar_bg_node := _bar_bg_cache
 	if bar_bg_node == null:
 		return
 	var bar_width: float = bar_bg_node.custom_minimum_size.x

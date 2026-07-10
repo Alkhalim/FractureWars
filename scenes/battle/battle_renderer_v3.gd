@@ -207,6 +207,22 @@ func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, dash: float, ga
 		draw_line(from + dir * pos, from + dir * seg_end, color, width)
 		pos = seg_end + gap
 
+var _faction_color_cache: Dictionary = {} # faction_id -> resolved+contrast-adjusted Color
+
+func _resolved_faction_color(faction_id: StringName, is_player: bool) -> Color:
+	# DataManager lookup + luminance adjustment were repeated per formation
+	# per frame; the result is constant per faction for the whole battle.
+	if _faction_color_cache.has(faction_id):
+		return _faction_color_cache[faction_id]
+	var faction_data := DataManager.get_faction(faction_id)
+	var base_color: Color = faction_data.color if faction_data else (COLOR_PLAYER if is_player else COLOR_ENEMY)
+	# Ensure contrast: darken very light faction colors
+	if base_color.get_luminance() > 0.7:
+		base_color = base_color.darkened(0.2)
+	if faction_data:
+		_faction_color_cache[faction_id] = base_color
+	return base_color
+
 func _draw_formations(sim: BattleSimulatorV3) -> void:
 	var all_formations: Array[BattleSimulatorV3.BattleFormationV3] = []
 	all_formations.append_array(sim.attacker_formations)
@@ -220,11 +236,7 @@ func _draw_formations(sim: BattleSimulatorV3) -> void:
 			continue
 
 		var is_player: bool = f.side == battle_scene.player_side
-		var faction_data := DataManager.get_faction(f.faction_id)
-		var base_color: Color = faction_data.color if faction_data else (COLOR_PLAYER if is_player else COLOR_ENEMY)
-		# Ensure contrast: darken very light faction colors
-		if base_color.get_luminance() > 0.7:
-			base_color = base_color.darkened(0.2)
+		var base_color := _resolved_faction_color(f.faction_id, is_player)
 		if f.is_routing:
 			base_color = base_color.lerp(Color(0.55, 0.25, 0.2), 0.55)
 			base_color.a = 0.7 + 0.3 * sin(Time.get_ticks_msec() * 0.008)
@@ -365,8 +377,22 @@ func _draw_dead_marks(sim: BattleSimulatorV3) -> void:
 		for pos in f.dead_entity_positions:
 			_draw_blood_splatter(pos, r, int(pos.x * 73 + pos.y * 137))
 
+# Splatter polygons are deterministic per (pos, radius, seed) — generated once
+# and cached, since _draw regenerated them every frame for every dead entity.
+var _splatter_cache: Dictionary = {} # [pos, radius, seed] -> Array of [pts, color]
+
 func _draw_blood_splatter(pos: Vector2, radius: float, seed_val: int) -> void:
-	# 2-3 irregular droplet polygons per death position
+	var cache_key := [pos, radius, seed_val]
+	var cached: Variant = _splatter_cache.get(cache_key)
+	if cached == null:
+		cached = _generate_blood_splatter(pos, radius, seed_val)
+		_splatter_cache[cache_key] = cached
+	for droplet in cached:
+		draw_colored_polygon(droplet[0], droplet[1])
+
+func _generate_blood_splatter(pos: Vector2, radius: float, seed_val: int) -> Array:
+	# 2-3 irregular droplet polygons per death position (verbatim generation)
+	var result: Array = []
 	var rng := seed_val
 	var droplet_count := 2 + (absi(rng) % 2) # 2 or 3
 	for d in droplet_count:
@@ -390,7 +416,8 @@ func _draw_blood_splatter(pos: Vector2, radius: float, seed_val: int) -> void:
 		rng = absi(rng * 1103515245 + 12345)
 		var green := 0.08 + float(rng % 100) / 1250.0 # 0.08 - 0.16
 		var blue := 0.05 + float(rng % 100) / 2000.0 # 0.05 - 0.10
-		draw_colored_polygon(pts, Color(red, green, blue, 0.2))
+		result.append([pts, Color(red, green, blue, 0.2)])
+	return result
 
 func _draw_facing_arrow(f: BattleSimulatorV3.BattleFormationV3, base_color: Color) -> void:
 	var facing := f.get_facing_vector()
