@@ -396,12 +396,10 @@ func simulate_tick() -> Array[Dictionary]:
 	# Phase 6: Check win condition
 	_check_victory()
 
-	# Clean stale deaths (older than 5 ticks)
-	var filtered: Array[Dictionary] = []
-	for d in recent_deaths:
-		if d.tick >= tick_count - 5:
-			filtered.append(d)
-	recent_deaths = filtered
+	# Clean stale deaths (older than 5 ticks) — in place, preserving order
+	for i in range(recent_deaths.size() - 1, -1, -1):
+		if recent_deaths[i].tick < tick_count - 5:
+			recent_deaths.remove_at(i)
 
 	tick_completed.emit(actions)
 	return actions
@@ -510,22 +508,21 @@ func _move_formation(f: BattleFormation, dir: Vector2i, tiles: int) -> void:
 
 func _find_all_contact_pairs() -> Array[Array]:
 	var pairs: Array[Array] = []
-	var checked: Dictionary = {}  # "id1:id2" -> true
+	var checked: Dictionary = {} # formation -> Dictionary of partner formations (no string keys)
 
 	for f in attacker_formations:
 		if f.is_dead or f.is_fled or f.is_routing:
 			continue
 		for tile in f.occupied_tiles:
-			for neighbor in _get_neighbors(tile):
-				var other: BattleFormation = grid.get(neighbor)
+			for off in _CONTACT_OFFSETS:
+				var other: BattleFormation = grid.get(tile + off)
 				if other == null or other == f or other.side == f.side:
 					continue
 				if other.is_dead or other.is_fled:
 					continue
-				var key := str(f.instance_id) + ":" + str(other.instance_id)
-				var key_rev := str(other.instance_id) + ":" + str(f.instance_id)
-				if not checked.has(key) and not checked.has(key_rev):
-					checked[key] = true
+				var f_checked: Dictionary = checked.get_or_add(f, {})
+				if not f_checked.has(other) and not (checked.get(other, {}) as Dictionary).has(f):
+					f_checked[other] = true
 					pairs.append([f, other])
 	return pairs
 
