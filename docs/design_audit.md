@@ -5,6 +5,22 @@
 with code evidence (file:line). This is a critical audit — it leads with problems;
 the "what's genuinely good" sections are just as real.*
 
+**Implementation status (July 2026):**
+- **P0: DONE** — shard resonance revived (Shard Reserve dialog + AI), taint shard
+  shattering wired, Tainted Jade/Moonspear AI branches, unit terrain/realm
+  bonuses implemented in the simulator, 146 units tagged
+  (heavy/light/stationary/demonic), supply_range stripped, inert Invest Shard
+  hidden.
+- **P1: DONE** — dilemmas for Skulloath/Gladehost/Forsaken/Sunblessed, 43 T3+
+  buildings gated behind faction techs (unlock stars now live), research queue
+  with auto-advance (shift-click), UX batch 1 (dialog chip backdrops,
+  _format_cost eliminated, economy screen icon rows, dilemma cost-buttons).
+- **P2: OPEN** — upgrade-tier behavior changes, per-faction exclusive building
+  forks, weight-class counter content, terrain gates for
+  Sunblessed/Forsaken/Shardhorde, Shardhorde rebalance + menu fill, tech-tree
+  pruning, settlement differentiation, price normalization, UX batch 2
+  (options panel, trade dialogs, battle panels, faction select).
+
 ---
 
 ## Executive verdict
