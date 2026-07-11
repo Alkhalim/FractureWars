@@ -6,7 +6,7 @@ extends SceneTree
 
 const SIZE := 64
 const OUT_DIR := "res://assets/sprites/ui/icons"
-const ICONS := ["res_gold", "res_iron", "res_tech", "res_food", "res_shards", "res_wood", "res_captives"]
+const ICONS := ["res_gold", "res_iron", "res_tech", "res_food", "res_shards", "res_wood", "res_captives", "res_time"]
 
 var _vp: SubViewport
 var _painter: _IconPainter
@@ -46,6 +46,7 @@ class _IconPainter extends Node2D:
 			"res_shards": _i_shards()
 			"res_wood": _i_wood()
 			"res_captives": _i_captives()
+			"res_time": _i_time()
 
 	func _i_gold() -> void:
 		# Coin stack: two base coins, one on top
@@ -156,6 +157,38 @@ class _IconPainter extends Node2D:
 			var lc := C + Vector2(3 + float(k) * 7.0, 12 + float(k) * 7.0)
 			draw_polyline(_ellipse(lc, 6.0, 4.2, 12), OUTLINE, 5.5, true)
 			draw_polyline(_ellipse(lc, 6.0, 4.2, 12), Color(0.58, 0.58, 0.64), 3.0, true)
+
+	func _i_time() -> void:
+		# Hourglass: gold caps, glass silhouette, sand in both bulbs
+		draw_colored_polygon(PackedVector2Array([
+			C + Vector2(-14, -21), C + Vector2(14, -21), C + Vector2(14, -16), C + Vector2(-14, -16)
+		]), OUTLINE)
+		draw_colored_polygon(PackedVector2Array([
+			C + Vector2(-14, 16), C + Vector2(14, 16), C + Vector2(14, 21), C + Vector2(-14, 21)
+		]), OUTLINE)
+		draw_colored_polygon(PackedVector2Array([
+			C + Vector2(-13, -20), C + Vector2(13, -20), C + Vector2(13, -17), C + Vector2(-13, -17)
+		]), GOLD)
+		draw_colored_polygon(PackedVector2Array([
+			C + Vector2(-13, 17), C + Vector2(13, 17), C + Vector2(13, 20), C + Vector2(-13, 20)
+		]), GOLD)
+		# Glass (two mirrored trapezoids meeting at the waist)
+		var glass_top := PackedVector2Array([
+			C + Vector2(-11, -16), C + Vector2(11, -16), C + Vector2(2, -1), C + Vector2(-2, -1)
+		])
+		var glass_bot := PackedVector2Array([
+			C + Vector2(-2, 1), C + Vector2(2, 1), C + Vector2(11, 16), C + Vector2(-11, 16)
+		])
+		_outlined(glass_top, Color(0.62, 0.72, 0.78, 0.55), C + Vector2(0, -8))
+		_outlined(glass_bot, Color(0.62, 0.72, 0.78, 0.55), C + Vector2(0, 8))
+		# Sand: small pile in the top bulb, larger pile below
+		draw_colored_polygon(PackedVector2Array([
+			C + Vector2(-6, -8), C + Vector2(6, -8), C + Vector2(1.5, -2), C + Vector2(-1.5, -2)
+		]), Color(0.88, 0.74, 0.34))
+		draw_colored_polygon(PackedVector2Array([
+			C + Vector2(-9, 15), C + Vector2(9, 15), C + Vector2(0, 6)
+		]), Color(0.88, 0.74, 0.34))
+		draw_line(C + Vector2(0, -1), C + Vector2(0, 7), Color(0.88, 0.74, 0.34), 1.6)
 
 func _init() -> void:
 	call_deferred("_start")

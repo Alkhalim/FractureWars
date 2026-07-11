@@ -789,7 +789,13 @@ func _render_hex_map() -> void:
 		var tex: Texture2D = null
 		var scaled_uv: PackedVector2Array = PackedVector2Array()
 		if not variants.is_empty():
-			var variant_idx := absi(coord.x * 7 + coord.y * 13 + coord.x * coord.y) % variants.size()
+			var variant_idx: int
+			if variants.size() >= 7:
+				# posmod(3x+5y, 7): every hex-neighbor delta is nonzero mod 7,
+				# so adjacent tiles NEVER repeat the same variant
+				variant_idx = posmod(coord.x * 3 + coord.y * 5, 7) % variants.size()
+			else:
+				variant_idx = absi(coord.x * 7 + coord.y * 13 + coord.x * coord.y) % variants.size()
 			tex = variants[variant_idx]
 		if tex:
 			# draw_colored_polygon UVs are normalized 0-1, not pixel coordinates

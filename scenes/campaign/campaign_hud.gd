@@ -49,6 +49,7 @@ const RESOURCE_COLORS := {
 @onready var region_panel: PanelContainer = $RegionPanel
 @onready var army_panel: PanelContainer = $SelectedArmyPanel
 var city_panel: PanelContainer
+var _city_recruit_vbox: VBoxContainer  # left column of the city panel
 var resource_bar: HBoxContainer
 var _resource_items: Dictionary = {} # resource_type -> {amount_label, income_label, container}
 var _resource_tooltip: PanelContainer
@@ -132,9 +133,14 @@ func _ready() -> void:
 	region_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 
 	# Edge-anchored panels sit flush against the screen edges — small gaps
-	# between the gold frame and the screen border read as unfinished
+	# between the gold frame and the screen border read as unfinished.
+	# The army panel docks directly beside the region info panel.
 	region_panel.offset_left = 0
 	region_panel.offset_bottom = 0
+	army_panel.anchor_left = 0.0
+	army_panel.anchor_right = 0.0
+	army_panel.offset_left = 302.0
+	army_panel.offset_right = 1142.0
 	army_panel.offset_bottom = 0
 
 	# Wire up army panel close button
@@ -461,17 +467,12 @@ func _on_army_selected(army_id: StringName) -> void:
 		if basic_id != &"":
 			var basic_data := DataManager.get_unit(basic_id)
 			if basic_data:
-				var cost_str := ""
-				for res_type in basic_data.recruit_cost:
-					var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-					cost_str += "%d%s " % [basic_data.recruit_cost[res_type], rname.left(1)]
-				var recruit_btn := Button.new()
+				var camp_fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
+				var recruit_btn := GameManager.make_cost_button(
+					"Recruit", basic_data.recruit_cost, 0,
+					camp_fs.resources if camp_fs else {&"_": 0}, 10)
 				recruit_btn.name = "ArmyRecruitButton"
-				recruit_btn.text = "Recruit (%s)" % cost_str.strip_edges()
-				recruit_btn.custom_minimum_size = Vector2(0, 22)
 				recruit_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				recruit_btn.add_theme_font_size_override("font_size", 10)
-				recruit_btn.add_theme_color_override("font_color", Color(0.4, 0.8, 0.5))
 				var rc_army_id := army_id
 				var rc_unit_id := basic_id
 				recruit_btn.pressed.connect(func():
@@ -693,11 +694,16 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 
 	_unit_detail_panel = _create_centered_dialog(420, 400)
 
+	var detail_chip := _make_text_chip()
+	detail_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_chip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_unit_detail_panel.add_child(detail_chip)
+
 	var outer_vbox := VBoxContainer.new()
 	outer_vbox.add_theme_constant_override("separation", 4)
 	outer_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	outer_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_unit_detail_panel.add_child(outer_vbox)
+	detail_chip.add_child(outer_vbox)
 
 	# Header with close
 	var header := HBoxContainer.new()
@@ -6988,24 +6994,50 @@ func _create_city_panel() -> void:
 	city_panel.name = "CityPanel"
 	city_panel.visible = false
 
-	# Position: flush against the right screen edge, below the top bar
+	# Position: flush against the right screen edge and bottom, below the top
+	# bar. Wide enough for two columns: recruitment (left) | city + buildings
+	# (right), so nothing needs scrolling in the common case.
 	city_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	city_panel.anchor_left = 1.0
 	city_panel.anchor_right = 1.0
 	city_panel.anchor_top = 0.0
-	city_panel.anchor_bottom = 0.88
-	city_panel.offset_left = -370.0
+	city_panel.anchor_bottom = 1.0
+	city_panel.offset_left = -740.0
 	city_panel.offset_top = 52.0
 	city_panel.offset_right = 0.0
+	city_panel.offset_bottom = 0.0
 	city_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	city_panel.custom_minimum_size = Vector2(360, 0)
+	city_panel.custom_minimum_size = Vector2(720, 0)
 
 	city_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 
+	var columns := HBoxContainer.new()
+	columns.name = "Columns"
+	columns.add_theme_constant_override("separation", 10)
+	city_panel.add_child(columns)
+
+	# Left column: recruitment
+	var recruit_chip := _make_text_chip()
+	recruit_chip.custom_minimum_size = Vector2(300, 0)
+	recruit_chip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	columns.add_child(recruit_chip)
+
+	var recruit_scroll := ScrollContainer.new()
+	recruit_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	recruit_chip.add_child(recruit_scroll)
+
+	_city_recruit_vbox = VBoxContainer.new()
+	_city_recruit_vbox.add_theme_constant_override("separation", 6)
+	_city_recruit_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	recruit_scroll.add_child(_city_recruit_vbox)
+
+	# Right column: city overview + buildings
 	var scroll := ScrollContainer.new()
+	scroll.name = "CityScroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	city_panel.add_child(scroll)
+	columns.add_child(scroll)
 
 	# Content sits on a dark chip — text directly on the leather texture is
 	# hard to read (baseline rule, see docs/ui_style_guide.md)
@@ -7069,11 +7101,13 @@ func _show_city_panel(city_id: StringName) -> void:
 		var tw := create_tween()
 		tw.tween_property(city_panel, "modulate:a", 1.0, 0.2).set_ease(Tween.EASE_OUT)
 
-	var scroll: ScrollContainer = city_panel.get_child(0)
+	var scroll: ScrollContainer = city_panel.get_node("Columns/CityScroll")
 	var vbox: VBoxContainer = scroll.get_node("Chip/CityVBox")
 
-	# Clear previous content
+	# Clear previous content (both columns)
 	for child in vbox.get_children():
+		child.queue_free()
+	for child in _city_recruit_vbox.get_children():
 		child.queue_free()
 
 	# Header row with title and close button
@@ -7176,14 +7210,10 @@ func _show_city_panel(city_id: StringName) -> void:
 		var upgrade_time := city.get_upgrade_time()
 		var fs_upgrade: FactionState = GameManager.state.faction_states.get(city.faction_id)
 
-		var upgrade_btn := Button.new()
-		upgrade_btn.text = "Upgrade to Level %d  (%d turns)" % [city.level + 1, upgrade_time]
-		upgrade_btn.add_theme_font_size_override("font_size", 12)
+		var upgrade_btn := GameManager.make_cost_button(
+			"Upgrade to Level %d" % (city.level + 1), upgrade_cost, upgrade_time,
+			fs_upgrade.resources if fs_upgrade else {&"_": 0}, 12)
 		upgrade_btn.disabled = not can_afford
-		if can_afford:
-			upgrade_btn.add_theme_color_override("font_color", Color(0.5, 0.9, 0.45))
-		else:
-			upgrade_btn.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48))
 		upgrade_btn.pressed.connect(func() -> void:
 			if GameManager.city_system.start_upgrade(city_id):
 				_show_city_panel(city_id)
@@ -7199,9 +7229,6 @@ func _show_city_panel(city_id: StringName) -> void:
 			pop_req_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
 			vbox.add_child(pop_req_label)
 
-		# Cost breakdown — resource icons, red when missing, green when sufficient
-		vbox.add_child(GameManager.make_cost_row(upgrade_cost,
-			fs_upgrade.resources if fs_upgrade else {&"_": 0}, 11, "Cost:"))
 
 	# Income preview (player cities only) — icon row with green +amounts
 	if is_player_city:
@@ -7229,17 +7256,13 @@ func _show_city_panel(city_id: StringName) -> void:
 
 	# Settlement founding button (only for player capitals that can found)
 	if is_player_city and city.is_capital and city.can_found_settlement:
-		var found_cost_text := _format_cost(CitySystem.SETTLEMENT_FOUNDING_COST)
 		var can_afford_found := GameManager.can_afford_settlement(GameManager.state.player_faction_id)
-		var found_btn := Button.new()
-		found_btn.text = "Found Settlement  (%s)" % found_cost_text
+		var found_fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
+		var found_btn := GameManager.make_cost_button(
+			"Found Settlement", CitySystem.SETTLEMENT_FOUNDING_COST, 0,
+			found_fs.resources if found_fs else {&"_": 0}, 12)
 		found_btn.custom_minimum_size = Vector2(280, 32)
-		found_btn.add_theme_font_size_override("font_size", 12)
 		found_btn.disabled = not can_afford_found
-		if can_afford_found:
-			found_btn.add_theme_color_override("font_color", Color(0.5, 0.9, 0.45))
-		else:
-			found_btn.add_theme_color_override("font_color", Color(0.55, 0.52, 0.48))
 		found_btn.pressed.connect(_on_found_settlement_pressed.bind(city_id))
 		vbox.add_child(found_btn)
 
@@ -7319,15 +7342,16 @@ func _show_city_panel(city_id: StringName) -> void:
 			var card := _create_building_card(building, city_id, fs, is_slot_blocked)
 			build_grid.add_child(card)
 
-	# Recruitment section (player only)
+	# Recruitment section (player only) — left column of the city panel
 	if is_player_city:
-		_add_separator(vbox)
+		var rvbox := _city_recruit_vbox
 
 		var recruit_header := Label.new()
 		recruit_header.text = "Recruitment"
 		recruit_header.add_theme_font_size_override("font_size", 14)
 		recruit_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-		vbox.add_child(recruit_header)
+		rvbox.add_child(recruit_header)
+		_add_separator(rvbox)
 
 		# Available units to recruit (shown first, always in same position)
 		var recruitable := _get_recruitable_units(city)
@@ -7337,12 +7361,12 @@ func _show_city_panel(city_id: StringName) -> void:
 				if unit_data == null:
 					continue
 
-				var btn_row := HBoxContainer.new()
-				btn_row.add_theme_constant_override("separation", 6)
-
-				var recruit_btn := Button.new()
-				recruit_btn.text = unit_data.display_name
-				recruit_btn.custom_minimum_size = Vector2(140, 28)
+				var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
+				var unit_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
+				var recruit_btn := GameManager.make_cost_button(
+					unit_data.display_name, unit_data.recruit_cost, unit_data.recruit_time,
+					fs.resources if fs else {&"_": 0}, 12, "Pop %d" % unit_pop_cost)
+				recruit_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				recruit_btn.pressed.connect(_on_recruit_pressed.bind(city_id, unit_data_id))
 				recruit_btn.mouse_entered.connect(_show_unit_card.bind(unit_data_id))
 				recruit_btn.mouse_exited.connect(_hide_unit_card)
@@ -7356,32 +7380,18 @@ func _show_city_panel(city_id: StringName) -> void:
 						_show_unit_detail(dummy_unit, captured_ud)
 				)
 
-				var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 				var can_afford := fs != null and _can_afford_display(fs, unit_data.recruit_cost)
-				var unit_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
 				var has_pop := province_pop >= unit_pop_cost
 				if not can_afford or not has_pop:
 					recruit_btn.disabled = true
 
-				btn_row.add_child(recruit_btn)
-
-				var cost_parts: Array[String] = []
-				if unit_data.recruit_cost.size() > 0:
-					cost_parts.append(_format_cost(unit_data.recruit_cost))
-				cost_parts.append("Pop: " + str(unit_pop_cost))
-				var cost_label := Label.new()
-				cost_label.text = ", ".join(cost_parts) + " | " + str(unit_data.recruit_time) + " turn(s)"
-				cost_label.add_theme_font_size_override("font_size", 11)
-				cost_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
-				btn_row.add_child(cost_label)
-
-				vbox.add_child(btn_row)
+				rvbox.add_child(recruit_btn)
 		elif recruitable.is_empty():
 			var no_units := Label.new()
 			no_units.text = "  No units available (need Barracks)"
 			no_units.add_theme_font_size_override("font_size", 12)
 			no_units.add_theme_color_override("font_color", Color(0.55, 0.5, 0.45))
-			vbox.add_child(no_units)
+			rvbox.add_child(no_units)
 
 		# Training queue (shown below recruit buttons)
 		var has_any_queue := city.recruit_queue.size() > 0
@@ -7392,12 +7402,12 @@ func _show_city_panel(city_id: StringName) -> void:
 					has_any_queue = true
 					break
 		if has_any_queue:
-			_add_separator(vbox)
+			_add_separator(rvbox)
 			var queue_header := Label.new()
 			queue_header.text = "Training Queue (right-click to cancel)"
 			queue_header.add_theme_font_size_override("font_size", 13)
 			queue_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
-			vbox.add_child(queue_header)
+			rvbox.add_child(queue_header)
 			# Basic/levy queue
 			for qi in city.recruit_queue.size():
 				var item: Dictionary = city.recruit_queue[qi]
@@ -7418,7 +7428,7 @@ func _show_city_panel(city_id: StringName) -> void:
 							_show_city_panel(cap_city_id)
 							_update_resource_display()
 				)
-				vbox.add_child(qlabel)
+				rvbox.add_child(qlabel)
 			# Per-building queues
 			for bq_building_id in city.building_recruit_queues:
 				var bq: Array = city.building_recruit_queues[bq_building_id]
@@ -7446,7 +7456,7 @@ func _show_city_panel(city_id: StringName) -> void:
 								_show_city_panel(cap_city_id)
 								_update_resource_display()
 					)
-					vbox.add_child(qlabel)
+					rvbox.add_child(qlabel)
 
 func _hide_city_panel() -> void:
 	if city_panel:
@@ -7961,17 +7971,19 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	cost_rtl.custom_minimum_size = Vector2(148, 0)
 	cost_rtl.add_theme_font_size_override("normal_font_size", 12)
 	var cost_bbcode := _format_cost_bbcode(building.build_cost, fs)
-	cost_rtl.text = cost_bbcode + "  " + str(building.build_time) + "t"
+	cost_rtl.text = cost_bbcode + "  " + GameManager.time_bbcode(building.build_time)
 	card_vbox.add_child(cost_rtl)
 
-	# Row 2b: Upkeep cost (orange)
+	# Row 2b: Upkeep cost (orange, icon row)
 	var upkeep := GameManager.city_system.get_building_upkeep(building)
 	if not upkeep.is_empty():
-		var upkeep_label := Label.new()
-		upkeep_label.text = "Upkeep: " + _format_cost(upkeep) + "/turn"
-		upkeep_label.add_theme_font_size_override("font_size", 11)
-		upkeep_label.add_theme_color_override("font_color", Color(0.9, 0.6, 0.2))
-		card_vbox.add_child(upkeep_label)
+		var upkeep_rtl := RichTextLabel.new()
+		upkeep_rtl.bbcode_enabled = true
+		upkeep_rtl.fit_content = true
+		upkeep_rtl.scroll_active = false
+		upkeep_rtl.add_theme_font_size_override("normal_font_size", 11)
+		upkeep_rtl.text = "[color=#e69933]Upkeep:[/color] " + GameManager.cost_bbcode(upkeep) + " [color=#e69933]/turn[/color]"
+		card_vbox.add_child(upkeep_rtl)
 
 	# Row 3: Terrain requirement
 	if building.required_terrain >= 0:
@@ -7982,15 +7994,18 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 		req_label.add_theme_color_override("font_color", Color(0.7, 0.6, 0.45))
 		card_vbox.add_child(req_label)
 
-	# Row 4: Key effects summary
-	var effects := _get_building_effects_summary(building)
+	# Row 4: Key effects summary (income parts use resource icons)
+	var effects := _get_building_effects_summary(building, true)
 	if effects != "":
-		var eff_label := Label.new()
-		eff_label.text = effects
-		eff_label.add_theme_font_size_override("font_size", 11)
-		eff_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
-		eff_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		card_vbox.add_child(eff_label)
+		var eff_rtl := RichTextLabel.new()
+		eff_rtl.bbcode_enabled = true
+		eff_rtl.fit_content = true
+		eff_rtl.scroll_active = false
+		eff_rtl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		eff_rtl.add_theme_font_size_override("normal_font_size", 11)
+		eff_rtl.add_theme_color_override("default_color", Color(0.5, 0.75, 0.45))
+		eff_rtl.text = effects
+		card_vbox.add_child(eff_rtl)
 
 	# Click handling
 	var captured_bid := building.id
@@ -8043,12 +8058,16 @@ func _get_building_category_color(building: BuildingData) -> Color:
 		_:
 			return Color(0.4, 0.4, 0.4, 0.35)
 
-func _get_building_effects_summary(building: BuildingData) -> String:
+func _get_building_effects_summary(building: BuildingData, bbcode_icons := false) -> String:
 	var parts: Array[String] = []
 	for res_type in building.income_bonus:
 		if building.income_bonus[res_type] != 0:
-			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-			parts.append("+%d %s" % [building.income_bonus[res_type], rname])
+			if bbcode_icons:
+				var ipath := "res://assets/sprites/ui/icons/%s.png" % GameManager.RESOURCE_ICON_NAMES.get(res_type, "res_gold")
+				parts.append("[img=15]%s[/img]+%d" % [ipath, building.income_bonus[res_type]])
+			else:
+				var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
+				parts.append("+%d %s" % [building.income_bonus[res_type], rname])
 	if building.population_growth_bonus > 0:
 		parts.append("+%d Growth" % building.population_growth_bonus)
 	if building.defense_bonus > 0:
@@ -8107,11 +8126,16 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 
 	_building_detail_panel = _create_centered_dialog(500, 420)
 
+	var detail_chip := _make_text_chip()
+	detail_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_chip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_building_detail_panel.add_child(detail_chip)
+
 	var outer_vbox := VBoxContainer.new()
 	outer_vbox.add_theme_constant_override("separation", 4)
 	outer_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	outer_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_building_detail_panel.add_child(outer_vbox)
+	detail_chip.add_child(outer_vbox)
 
 	# Header with close
 	var header := HBoxContainer.new()
@@ -8453,7 +8477,9 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 		upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
 		vbox.add_child(upkeep_label)
 
-	_unit_card_panel.add_child(vbox)
+	var card_chip := _make_text_chip()
+	_unit_card_panel.add_child(card_chip)
+	card_chip.add_child(vbox)
 	_unit_card_panel.position = get_global_mouse_position() + Vector2(-260, 12)
 	add_child(_unit_card_panel)
 
@@ -11420,10 +11446,15 @@ func _create_faction_overview_panel() -> void:
 	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_faction_detail_panel.add_child(detail_scroll)
 
+	var detail_chip := _make_text_chip()
+	detail_chip.name = "DetailChip"
+	detail_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_scroll.add_child(detail_chip)
+
 	var detail_vbox := VBoxContainer.new()
 	detail_vbox.name = "DetailVBox"
 	detail_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	detail_scroll.add_child(detail_vbox)
+	detail_chip.add_child(detail_vbox)
 
 	add_child(_faction_detail_panel)
 
@@ -11608,7 +11639,7 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 	if _faction_detail_panel == null:
 		return
 	var scroll: ScrollContainer = _faction_detail_panel.get_node("DetailScroll")
-	var vbox: VBoxContainer = scroll.get_node("DetailVBox")
+	var vbox: VBoxContainer = scroll.get_node("DetailChip/DetailVBox")
 	for child in vbox.get_children():
 		vbox.remove_child(child)
 		child.queue_free()
@@ -11802,7 +11833,7 @@ func _show_unit_detail_overview(ud: UnitData) -> void:
 	if _faction_detail_panel == null:
 		return
 	var scroll: ScrollContainer = _faction_detail_panel.get_node("DetailScroll")
-	var vbox: VBoxContainer = scroll.get_node("DetailVBox")
+	var vbox: VBoxContainer = scroll.get_node("DetailChip/DetailVBox")
 	for child in vbox.get_children():
 		vbox.remove_child(child)
 		child.queue_free()

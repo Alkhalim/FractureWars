@@ -85,7 +85,7 @@ const _BTN_REGION := Rect2(140, 325, 1287, 314)   # Visible button area, 3px ble
 const _BTN_MARGIN := 24                            # Border thickness in cropped region
 const _FRAME_REGION := Rect2(76, 99, 1360, 731)   # Gold frame + 40px glow on all sides
 const _FRAME_TEX_MARGIN := Vector4(86, 84, 59, 53) # L T R B — glow + gold border + bevel
-const _FRAME_EXPAND := Vector4(40, 40, 40, 40)    # L T R B — push gold border to panel edge
+const _FRAME_EXPAND := Vector4(46, 44, 45, 45)    # L T R B — measured so the gold border sits exactly on the panel edge (flush panels touch the screen border)
 const _FRAME_CONTENT := Vector4(66, 62, 48, 42)   # L T R B — text padding inside border
 const _NOTIF_REGION := Rect2(160, 29, 1214, 827)  # Columns/eagle + 30px glow
 const _NOTIF_TEX_MARGIN := Vector4(89, 188, 89, 83) # L T R B — columns + eagle + medallion
@@ -242,10 +242,20 @@ func make_resource_icon(res_type: int, size := 16.0) -> TextureRect:
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return tr
 
+const TIME_ICON_PATH := "res://assets/sprites/ui/icons/res_time.png"
+
+func get_time_icon() -> Texture2D:
+	if _resource_icon_cache.has(&"time"):
+		return _resource_icon_cache[&"time"]
+	var tex: Texture2D = load(TIME_ICON_PATH) if ResourceLoader.exists(TIME_ICON_PATH) else null
+	_resource_icon_cache[&"time"] = tex
+	return tex
+
 ## Icon + amount row for costs/incomes — replaces "200 Gold, 30 Iron" text.
 ## With `compare` (current resources) amounts color green/red by
-## affordability; `signed` renders "+N" in income green.
-func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, prefix := "", signed := false) -> HBoxContainer:
+## affordability; `signed` renders "+N" in income green; `turns` > 0 appends
+## an hourglass + turn count.
+func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, prefix := "", signed := false, turns := 0) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	if prefix != "":
@@ -254,7 +264,7 @@ func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, 
 		pl.add_theme_font_size_override("font_size", font_size)
 		pl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
 		row.add_child(pl)
-	var icon_px := float(font_size) + 5.0
+	var icon_px := float(font_size) + 8.0
 	for res_type in cost:
 		var amount: int = cost[res_type]
 		if amount == 0:
@@ -273,10 +283,26 @@ func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, 
 		lbl.add_theme_color_override("font_color", col)
 		pair.add_child(lbl)
 		row.add_child(pair)
+	if turns > 0:
+		var tpair := HBoxContainer.new()
+		tpair.add_theme_constant_override("separation", 2)
+		var ticon := TextureRect.new()
+		ticon.texture = get_time_icon()
+		ticon.custom_minimum_size = Vector2(icon_px, icon_px)
+		ticon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ticon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ticon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tpair.add_child(ticon)
+		var tlbl := Label.new()
+		tlbl.text = str(turns)
+		tlbl.add_theme_font_size_override("font_size", font_size)
+		tlbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.62))
+		tpair.add_child(tlbl)
+		row.add_child(tpair)
 	return row
 
 ## BBCode variant for RichTextLabels (building cards, tooltips).
-func cost_bbcode(cost: Dictionary, compare: Dictionary = {}, icon_px := 14) -> String:
+func cost_bbcode(cost: Dictionary, compare: Dictionary = {}, icon_px := 16) -> String:
 	var parts: Array[String] = []
 	for res_type in cost:
 		var amount: int = cost[res_type]
@@ -288,6 +314,40 @@ func cost_bbcode(cost: Dictionary, compare: Dictionary = {}, icon_px := 14) -> S
 		var path := "res://assets/sprites/ui/icons/%s.png" % RESOURCE_ICON_NAMES.get(res_type, "res_gold")
 		parts.append("[img=%d]%s[/img][color=#%s]%d[/color]" % [icon_px, path, color, amount])
 	return "  ".join(parts)
+
+## Hourglass + turn count for RichTextLabels ("3t" replacements).
+func time_bbcode(turns: int, icon_px := 16) -> String:
+	return "[img=%d]%s[/img][color=#bfb89e]%d[/color]" % [icon_px, TIME_ICON_PATH, turns]
+
+## Button with an icon cost row inside — for actions whose label used to
+## spell costs as text ("Found Settlement (80 Gold, 40 Wood)").
+func make_cost_button(title: String, cost: Dictionary, turns := 0, compare: Dictionary = {}, font_size := 13, extra_text := "") -> Button:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(0, float(font_size) + 22.0)
+	var content := HBoxContainer.new()
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 10)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var title_lbl := Label.new()
+	title_lbl.text = title
+	title_lbl.add_theme_font_size_override("font_size", font_size)
+	title_lbl.add_theme_color_override("font_color", Color(0.95, 0.9, 0.75))
+	title_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	title_lbl.add_theme_constant_override("outline_size", 3)
+	content.add_child(title_lbl)
+	if not cost.is_empty() or turns > 0:
+		var row := make_cost_row(cost, compare, font_size - 1, "", false, turns)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		content.add_child(row)
+	if extra_text != "":
+		var extra := Label.new()
+		extra.text = extra_text
+		extra.add_theme_font_size_override("font_size", font_size - 2)
+		extra.add_theme_color_override("font_color", Color(0.75, 0.72, 0.62))
+		content.add_child(extra)
+	btn.add_child(content)
+	return btn
 
 var _compact_theme: Theme
 

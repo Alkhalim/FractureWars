@@ -76,18 +76,35 @@ class _TilePainter extends Node2D:
 	func _p_plains(rng: RandomNumberGenerator) -> void:
 		var t := rng.randf() * 0.05 - 0.025
 		_fill(Color(0.55 + t, 0.55 + t, 0.32))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 55), 60), Color(0.63, 0.62, 0.38, 0.85))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 60), 46), Color(0.47, 0.48, 0.27, 0.8))
-		# Top-down grass: irregular dot-cluster patches instead of side-view blades
-		for i in 9 + rng.randi() % 4:
-			var p := _rand_in(rng, 90)
-			for k in 5 + rng.randi() % 3:
+		# Many smaller, varied meadow patches — several crossing the tile edge
+		# so adjacent plains blend instead of reading as copies
+		for i in 4 + rng.randi() % 4:
+			var p := _rand_in(rng, 105)
+			var pr := 16.0 + rng.randf() * 22.0
+			var shade_pick := rng.randi() % 3
+			var shade := Color(0.63, 0.62, 0.38, 0.7)
+			if shade_pick == 1:
+				shade = Color(0.47, 0.48, 0.27, 0.65)
+			elif shade_pick == 2:
+				shade = Color(0.58, 0.56, 0.3, 0.6)
+			draw_colored_polygon(_blob(rng, p, pr, 9, 0.5), shade)
+		# Occasional dirt patch / tiny bush per variant for extra variety
+		if rng.randf() < 0.45:
+			draw_colored_polygon(_blob(rng, _rand_in(rng, 70), 13.0 + rng.randf() * 9.0, 8, 0.4), Color(0.52, 0.45, 0.3, 0.75))
+		if rng.randf() < 0.5:
+			var bp := _rand_in(rng, 75)
+			draw_colored_polygon(_blob(rng, bp, 7.5, 8, 0.3), Color(0.3, 0.38, 0.2))
+			draw_circle(bp + Vector2(-1.5, -1.5), 2.4, Color(0.4, 0.48, 0.26))
+		# Top-down grass dot clusters
+		for i in 7 + rng.randi() % 5:
+			var p := _rand_in(rng, 95)
+			for k in 4 + rng.randi() % 4:
 				var dp := p + Vector2(rng.randf_range(-7, 7), rng.randf_range(-5.5, 5.5))
 				draw_circle(dp, 1.4 + rng.randf() * 1.1, Color(0.38, 0.45, 0.22, 0.9))
 			draw_circle(p + Vector2(1.5, 1.0), 1.6, Color(0.62, 0.63, 0.4, 0.8))
 		# Scattered wildflowers
-		for i in 5:
-			var fp := _rand_in(rng, 88)
+		for i in 3 + rng.randi() % 4:
+			var fp := _rand_in(rng, 90)
 			var fcol := Color(0.85, 0.8, 0.5) if rng.randf() < 0.6 else Color(0.8, 0.65, 0.75)
 			draw_circle(fp, 1.8, fcol)
 
@@ -160,24 +177,41 @@ class _TilePainter extends Node2D:
 		for i in 3:
 			draw_circle(_rand_in(rng, 80), 2.0, Color(0.6, 0.52, 0.36))
 
+	func _swamp_pool(rng: RandomNumberGenerator, p: Vector2, pr: float) -> void:
+		draw_colored_polygon(_blob(rng, p, pr, 11, 0.35), Color(0.1, 0.14, 0.12, 0.97))
+		draw_polyline(_blob(rng, p, pr * 0.72, 9, 0.25), Color(0.24, 0.3, 0.24, 0.55), 1.8, true)
+		# Lily pads floating on the pool
+		for i in 1 + rng.randi() % 3:
+			var lp := p + Vector2(rng.randf_range(-pr, pr) * 0.55, rng.randf_range(-pr, pr) * 0.5)
+			draw_circle(lp, 3.6 + rng.randf() * 1.8, Color(0.3, 0.4, 0.22, 0.95))
+			draw_circle(lp + Vector2(-1.0, -1.0), 1.1, Color(0.4, 0.5, 0.28))
+
 	func _p_swamp(rng: RandomNumberGenerator) -> void:
-		_fill(Color(0.32, 0.34, 0.22))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 45), 58), Color(0.27, 0.29, 0.19, 0.85))
-		for i in 2:
-			var p := _rand_in(rng, 55)
-			var pr := 28.0 + rng.randf() * 16.0
-			draw_colored_polygon(_blob(rng, p, pr, 10, 0.3), Color(0.19, 0.23, 0.2, 0.95))
-			draw_polyline(_blob(rng, p, pr * 0.7, 8, 0.25), Color(0.36, 0.4, 0.3, 0.5), 1.8, true)
-		# Top-down lily pads + rush clumps on and around the pools
-		for i in 4:
-			var rp := _rand_in(rng, 78)
-			draw_circle(rp, 4.2 + rng.randf() * 2.0, Color(0.36, 0.46, 0.26, 0.95))
-			draw_circle(rp + Vector2(-1.0, -1.0), 1.3, Color(0.46, 0.56, 0.32))
+		# Darker, murkier base
+		_fill(Color(0.24, 0.26, 0.16))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 62), Color(0.19, 0.21, 0.13, 0.9))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 60), 40), Color(0.28, 0.3, 0.18, 0.7))
+		# Variants 3 and 6: two clearly separated ponds; otherwise 1-2 pools
+		if seed_val == 3 or seed_val == 6:
+			_swamp_pool(rng, C + Vector2(-42 + rng.randf_range(-8, 8), -30 + rng.randf_range(-8, 8)), 22.0 + rng.randf() * 6.0)
+			_swamp_pool(rng, C + Vector2(38 + rng.randf_range(-8, 8), 34 + rng.randf_range(-8, 8)), 19.0 + rng.randf() * 6.0)
+		else:
+			for i in 1 + rng.randi() % 2:
+				_swamp_pool(rng, _rand_in(rng, 55), 26.0 + rng.randf() * 16.0)
+		# Dead snag (bare tree) on some tiles
+		if rng.randf() < 0.5:
+			var sp := _rand_in(rng, 70)
+			draw_line(sp + Vector2(0, 12), sp + Vector2(2, -14), Color(0.16, 0.13, 0.1), 3.0)
+			draw_line(sp + Vector2(1, -4), sp + Vector2(-8, -12), Color(0.16, 0.13, 0.1), 2.0)
+			draw_line(sp + Vector2(1.5, -8), sp + Vector2(9, -15), Color(0.16, 0.13, 0.1), 2.0)
+		# Rush clumps
 		for i in 3:
-			var cp2 := _rand_in(rng, 84)
+			var cp2 := _rand_in(rng, 88)
 			for k in 4:
 				var dp := cp2 + Vector2(rng.randf_range(-5, 5), rng.randf_range(-4, 4))
-				draw_circle(dp, 1.5, Color(0.42, 0.46, 0.26, 0.9))
+				draw_circle(dp, 1.5, Color(0.34, 0.38, 0.2, 0.9))
+		# Low mist streak
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 55), 34, 9, 0.5), Color(0.7, 0.75, 0.7, 0.06))
 
 	func _p_wetlands(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.3, 0.42, 0.36))
@@ -193,24 +227,37 @@ class _TilePainter extends Node2D:
 				var dx := float(k - 1) * 4.0
 				draw_line(p + Vector2(dx, 4), p + Vector2(dx * 1.5, -8), Color(0.42, 0.52, 0.34), 2.6)
 
+	func _tundra_tree(rng: RandomNumberGenerator, tp: Vector2) -> void:
+		# Top-down conifer with snow-side shadow
+		draw_colored_polygon(_blob(rng, tp + Vector2(2.5, 2.5), 11.0, 9, 0.25), Color(0.5, 0.54, 0.55, 0.6))
+		draw_colored_polygon(_blob(rng, tp, 10.5, 9, 0.3), Color(0.2, 0.28, 0.22))
+		draw_colored_polygon(_blob(rng, tp + Vector2(-1.5, -1.5), 5.0, 8, 0.3), Color(0.26, 0.35, 0.28))
+		draw_circle(tp, 1.4, Color(0.32, 0.4, 0.32))
+
 	func _p_tundra(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.66, 0.68, 0.66))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 58), Color(0.58, 0.61, 0.62, 0.7))
-		for i in 2 + rng.randi() % 2:
-			draw_colored_polygon(_blob(rng, _rand_in(rng, 60), 30.0 + rng.randf() * 18.0), Color(0.84, 0.86, 0.87))
-		if rng.randf() < 0.6:
-			# Top-down conifer: dark crown blob with lighter center, snow-side shadow
-			var tp := _rand_in(rng, 60)
-			draw_colored_polygon(_blob(rng, tp + Vector2(2.5, 2.5), 11.0, 9, 0.25), Color(0.5, 0.54, 0.55, 0.6))
-			draw_colored_polygon(_blob(rng, tp, 10.5, 9, 0.3), Color(0.2, 0.28, 0.22))
-			draw_colored_polygon(_blob(rng, tp + Vector2(-1.5, -1.5), 5.0, 8, 0.3), Color(0.26, 0.35, 0.28))
-			draw_circle(tp, 1.4, Color(0.32, 0.4, 0.32))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 60), 58), Color(0.58, 0.61, 0.62, 0.7))
+		# Sprawling multi-blob snow fields, several crossing the tile edge so
+		# neighboring tundra tiles blend into one snowy landscape instead of
+		# each reading as "one speck in the middle"
+		for i in 2 + rng.randi() % 3:
+			var sp := _rand_in(rng, 98)
+			var sr := 24.0 + rng.randf() * 22.0
+			draw_colored_polygon(_blob(rng, sp, sr, 10, 0.5), Color(0.84, 0.86, 0.87))
+			draw_colored_polygon(_blob(rng, sp + Vector2(rng.randf_range(-16, 16), rng.randf_range(-12, 12)), sr * 0.65, 9, 0.55), Color(0.88, 0.9, 0.91))
+		# Trees per variant: offset single tree, a pair, or a rock
+		var tree_mode := seed_val % 3
+		if tree_mode == 0:
+			_tundra_tree(rng, C + Vector2(rng.randf_range(18, 44) * (1.0 if rng.randf() < 0.5 else -1.0), rng.randf_range(-40, 34)))
+		elif tree_mode == 1:
+			_tundra_tree(rng, C + Vector2(-34 + rng.randf_range(-8, 8), -22 + rng.randf_range(-8, 8)))
+			_tundra_tree(rng, C + Vector2(28 + rng.randf_range(-8, 8), 26 + rng.randf_range(-8, 8)))
 		else:
-			var rp := _rand_in(rng, 60)
+			var rp := _rand_in(rng, 65)
 			draw_colored_polygon(_blob(rng, rp, 14, 8, 0.3), Color(0.52, 0.53, 0.52))
 			draw_colored_polygon(_blob(rng, rp + Vector2(-3, -4), 7, 7, 0.3), Color(0.72, 0.73, 0.72))
 		for i in 5:
-			draw_circle(_rand_in(rng, 85), 1.6, Color(0.78, 0.8, 0.8, 0.8))
+			draw_circle(_rand_in(rng, 90), 1.6, Color(0.78, 0.8, 0.8, 0.8))
 
 	func _p_shardwaste(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.42, 0.36, 0.44))
@@ -257,18 +304,29 @@ class _TilePainter extends Node2D:
 		for i in 5:
 			draw_circle(_rand_in(rng, 75), 2.2, Color(0.6, 0.72, 0.78, 0.7))
 
+	func _spiky_crown(rng: RandomNumberGenerator, p: Vector2, cr: float, color: Color) -> void:
+		# Star-shaped canopy crown seen from above — keeps the sharp, aggressive
+		# language but reads as a treetop rather than fallen grass blades
+		var pts := PackedVector2Array()
+		var spikes := 7 + rng.randi() % 3
+		var a0 := rng.randf() * TAU
+		for k in spikes * 2:
+			var a := a0 + TAU * float(k) / float(spikes * 2)
+			var r := cr if k % 2 == 0 else cr * (0.5 + rng.randf() * 0.12)
+			pts.append(p + Vector2(cos(a), sin(a)) * r)
+		draw_colored_polygon(pts, color)
+
 	func _p_jungle(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.16, 0.3, 0.17))
 		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 60), Color(0.13, 0.26, 0.15, 0.9))
-		for i in 6 + rng.randi() % 3:
+		for i in 5 + rng.randi() % 3:
 			var p := _rand_in(rng, 82)
-			var ang0 := rng.randf() * TAU
-			for k in 3:
-				var a := ang0 + float(k - 1) * 0.55
-				var tipd := Vector2(cos(a), sin(a)) * (26.0 + rng.randf() * 10.0)
-				var perp := Vector2(-tipd.y, tipd.x).normalized() * 5.5
-				var col := Color(0.24, 0.42, 0.2) if k != 1 else Color(0.3, 0.5, 0.24)
-				draw_colored_polygon(PackedVector2Array([p + perp, p + tipd, p - perp]), col)
+			var cr := 16.0 + rng.randf() * 9.0
+			# Ground shadow, dark spiky crown, lighter spiky top, dark center
+			draw_colored_polygon(_blob(rng, p + Vector2(3, 3.5), cr * 0.9, 8, 0.3), Color(0.09, 0.19, 0.11, 0.6))
+			_spiky_crown(rng, p, cr, Color(0.18, 0.34, 0.16))
+			_spiky_crown(rng, p + Vector2(-cr * 0.14, -cr * 0.16), cr * 0.62, Color(0.28, 0.48, 0.22))
+			draw_circle(p, 1.6, Color(0.1, 0.22, 0.12))
 		var vp0 := _rand_in(rng, 60)
 		var vine := PackedVector2Array()
 		for k in 9:
@@ -288,7 +346,7 @@ func _start() -> void:
 	_painter = _TilePainter.new()
 	_vp.add_child(_painter)
 	for set_name in SETS:
-		for v in range(1, 6):
+		for v in range(1, 8):
 			_jobs.append([set_name, v])
 
 func _process(_delta: float) -> bool:
