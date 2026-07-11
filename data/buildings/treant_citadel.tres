@@ -13,6 +13,7 @@ build_cost = {0: 408, 1: 57, 5: 155}
 build_time = 4
 defense_bonus = 16
 required_capital_level = 3
+requires_research = &"gh_beast_tongue"
 required_terrain = 1
 upgrades_from = &"living_fortress"
 class_loyalty_bonus = {"peasants": 3, "artisans": 2}

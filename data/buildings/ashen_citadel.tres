@@ -15,6 +15,7 @@ income_bonus = {}
 population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"ashen_champion", &"iron_colossus", &"flame_templar", &"forge_colossus"])
 required_capital_level = 3
+requires_research = &"cg_heat_shields"
 defense_bonus = 5
 recruit_speed_bonus = 1
 upgrades_from = &"crossbow_range"

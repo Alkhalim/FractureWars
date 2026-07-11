@@ -15,6 +15,7 @@ income_bonus = {}
 population_growth_bonus = 0
 unlocks_units = Array[StringName]([&"vine_golem", &"taint_beast", &"tainted_warrior", &"fungal_horror", &"tainted_colossus"])
 required_capital_level = 3
+requires_research = &"jungle_camouflage"
 upgrades_from = &"venomwright_workshop"
 class_loyalty_bonus = {"peasants": -5, "nobles": 4}
 upkeep_cost = {5: 5, 6: 8}

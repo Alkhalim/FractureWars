@@ -15,6 +15,7 @@ population_growth_bonus = 2
 defense_bonus = 3
 unlocks_units = Array[StringName]([&"solar_champion", &"dawn_guardian"])
 required_capital_level = 3
+requires_research = &"righteous_fury"
 upgrades_from = &"solar_chapter_house"
 class_loyalty_bonus = {"nobles": 5}
 special_effects = {"faith_stabilization": 2, "army_attack_bonus": 2}

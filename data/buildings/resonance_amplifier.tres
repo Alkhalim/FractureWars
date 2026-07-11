@@ -14,6 +14,7 @@ build_time = 4
 income_bonus = {4: 25, 2: 10}
 population_growth_bonus = 0
 required_capital_level = 3
+requires_research = &"crystal_growth"
 upgrades_from = &"resonance_core"
 special_effects = {"research_speed_bonus": 0.20}
 upkeep_cost = {0: 5, 1: 8}

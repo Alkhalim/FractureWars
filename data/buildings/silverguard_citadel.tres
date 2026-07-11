@@ -15,6 +15,7 @@ population_growth_bonus = 2
 defense_bonus = 3
 unlocks_units = Array[StringName]([&"eclipse_champion", &"moonstone_golem"])
 required_capital_level = 3
+requires_research = &"ms_holy_warriors"
 upgrades_from = &"silverguard_chapter"
 class_loyalty_bonus = {"nobles": 5}
 upkeep_cost = {0: 5, 1: 8}

@@ -16,6 +16,7 @@ population_growth_bonus = 6
 upgrades_from = &"void_whisperers_den"
 unlocks_units = Array[StringName]([&"void_prophet"])
 required_capital_level = 3
+requires_research = &"corpse_harvest"
 class_loyalty_bonus = {"scholars": 5, "nobles": 2}
 special_effects = {"research_speed_bonus": 0.25}
 upkeep_cost = {0: 8, 5: 5}

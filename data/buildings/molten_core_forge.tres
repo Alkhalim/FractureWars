@@ -15,6 +15,7 @@ income_bonus = {1: 45, 0: 15}
 population_growth_bonus = 1
 unlocks_units = Array[StringName]([])
 required_capital_level = 3
+requires_research = &"cg_blast_furnace"
 upgrades_from = &"ember_foundry"
 class_loyalty_bonus = {"artisans": 4, "nobles": 2}
 upkeep_cost = {5: 8}

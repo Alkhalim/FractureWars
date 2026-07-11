@@ -14,6 +14,7 @@ build_time = 4
 income_bonus = {2: 20}
 defense_bonus = 2
 required_capital_level = 3
+requires_research = &"ritual_frenzy"
 required_terrain = 7
 upgrades_from = &"taint_suppressor"
 class_loyalty_bonus = {"peasants": 2, "artisans": 2, "scholars": 5, "nobles": 2}

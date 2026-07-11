@@ -17,5 +17,6 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([&"imperial_sky_lancers", &"praetorian_champion"])
 required_capital_level = 3
+requires_research = &"legion_standards"
 upgrades_from = &"dracarii_stables"
 upkeep_cost = {0: 5, 1: 8}

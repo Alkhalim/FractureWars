@@ -14,6 +14,7 @@ build_time = 4
 income_bonus = {2: 12, 3: 42}
 population_growth_bonus = 12
 required_capital_level = 3
+requires_research = &"moonwell_blessing"
 upgrades_from = &"solstice_altar"
 class_loyalty_bonus = {"peasants": 5, "artisans": 2, "scholars": 2, "nobles": 2}
 special_effects = {"harmony_bonus": 5, "seasonal_multiplier": 0.2}

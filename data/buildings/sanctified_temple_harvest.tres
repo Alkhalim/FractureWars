@@ -17,6 +17,7 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 3
+requires_research = &"emp_arcane_academy"
 class_loyalty_bonus = {"peasants": 4, "artisans": 1, "scholars": 2, "nobles": -2}
 upgrades_from = &"temple_of_the_pantheon"
 upkeep_cost = {0: 8, 5: 5}

@@ -17,5 +17,6 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([&"marching_bastion", &"war_elephant"])
 required_capital_level = 4
+requires_research = &"emp_military_reforms"
 upgrades_from = &"ferromantic_workshop"
 upkeep_cost = {0: 3, 1: 3}

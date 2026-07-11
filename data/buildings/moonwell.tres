@@ -14,6 +14,7 @@ build_time = 4
 income_bonus = {2: 20, 3: 10}
 population_growth_bonus = 5
 required_capital_level = 3
+requires_research = &"spirit_pact"
 upgrades_from = &"ancestral_oak"
 class_loyalty_bonus = {"peasants": 3, "artisans": 1, "scholars": 4, "nobles": 2}
 special_effects = {"harmony_bonus": 3}
