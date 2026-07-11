@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"hive_bulwark"
+display_name = "Hive Bulwark"
+description = "Layered chitin ramparts grown rather than built. They knit themselves shut around wounds."
+faction_id = &"shardhorde"
+category = &"defensive"
+build_cost = {0: 140, 1: 50}
+build_time = 3
+income_bonus = {}
+population_growth_bonus = 0
+required_capital_level = 2
+defense_bonus = 8
+special_effects = { "garrison_strength_bonus": 0.15 }

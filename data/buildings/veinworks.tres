@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"veinworks"
+display_name = "Veinworks"
+description = "Burrower-beasts chew ore veins straight out of the mountainside."
+faction_id = &"shardhorde"
+category = &"economic"
+build_cost = {0: 130, 3: 40}
+build_time = 3
+income_bonus = {1: 20}
+population_growth_bonus = 0
+required_capital_level = 2
+required_terrain = 2

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"worldshard_monolith"
+display_name = "Worldshard Monolith"
+description = "A colossal splinter of the Fracture itself, raised as a beacon. All realms feel its pull."
+faction_id = &"shardhorde"
+category = &"cultural"
+build_cost = {0: 420, 1: 120, 4: 20}
+build_time = 6
+income_bonus = {4: 4, 2: 8}
+population_growth_bonus = 0
+required_capital_level = 4
+special_effects = { "diplomacy_standing_bonus": 1 }
