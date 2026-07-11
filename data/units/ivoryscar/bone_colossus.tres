@@ -25,6 +25,6 @@ recruit_time = 5
 population_cost = 0
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["construct", "melee", "undead"])
+tags = Array[String](["construct", "melee", "undead", "heavy", "stationary"])
 base_morale = 110
 captive_chance = 0.0

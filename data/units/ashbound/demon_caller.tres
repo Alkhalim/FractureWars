@@ -24,6 +24,6 @@ recruit_time = 3
 population_cost = 4
 terrain_bonuses = {}
 realm_bonuses = {}
-tags = Array[String](["mage", "ranged"])
+tags = Array[String](["mage", "ranged", "demonic"])
 spell_type = &"fireball"
 base_morale = 35

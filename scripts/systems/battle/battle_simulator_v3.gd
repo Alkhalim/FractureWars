@@ -91,6 +91,7 @@ var terrain_grid_h: int = 60
 # Spatial hash grid for proximity queries
 var _battle_hex_pos: Vector2i = Vector2i.ZERO
 var _campaign_terrain: Enums.TerrainType = Enums.TerrainType.PLAINS
+var _battle_realm: int = -1  # Enums.Realm of the battle tile's region (-1 = unknown)
 var _is_city_battle: bool = false
 var _defense_meta: Dictionary = {} # tower_positions, siege_positions from defensive buildings
 var spatial_grid: Dictionary = {}  # Vector2i -> Array[BattleFormationV3]
@@ -286,6 +287,11 @@ class BattleFormationV3:
 func setup_terrain(campaign_terrain: Enums.TerrainType, hex_pos: Vector2i) -> void:
 	_battle_hex_pos = hex_pos
 	_campaign_terrain = campaign_terrain
+	_battle_realm = -1
+	if GameManager.state and GameManager.state.hex_map:
+		var btile = GameManager.state.hex_map.get_tile(hex_pos)
+		if btile:
+			_battle_realm = btile.realm_influence
 	_is_city_battle = GameManager.city_system.get_city_at_hex(hex_pos) != null
 	terrain_grid_w = ceili(FIELD_WIDTH / terrain_cell_size)
 	terrain_grid_h = ceili(FIELD_HEIGHT / terrain_cell_size)
@@ -391,6 +397,15 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.stun_chance_pct = r_eff.get("stun_chance_pct", 0) / 100.0
 	f.siege_bonus = r_eff.get("siege_bonus", 0)
 	f.adjacent_unit_damage_pct = r_eff.get("adjacent_unit_damage_pct", 0) / 100.0
+
+	# Per-unit terrain & realm home-turf bonuses from UnitData (data-driven):
+	# fraction applied to both attack and defense on matching ground
+	var home_bonus: float = ud.terrain_bonuses.get(int(_campaign_terrain), 0.0)
+	if _battle_realm >= 0:
+		home_bonus += ud.realm_bonuses.get(_battle_realm, 0.0)
+	if home_bonus != 0.0:
+		f.attack += int(f.attack * home_bonus)
+		f.defense += int(f.defense * home_bonus)
 
 	# Building special_effects: flying_unit_attack_bonus
 	if f.tags.has("flying"):
