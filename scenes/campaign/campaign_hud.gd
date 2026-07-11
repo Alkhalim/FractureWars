@@ -837,20 +837,18 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	vbox.add_child(cost_header)
 
 	if unit_data.recruit_cost.size() > 0:
-		var recruit_label := Label.new()
 		var detail_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
-		var pop_suffix := "  |  Pop: %d" % detail_pop_cost if detail_pop_cost > 0 else ""
-		recruit_label.text = "  Recruit: " + _format_cost(unit_data.recruit_cost) + pop_suffix
-		recruit_label.add_theme_font_size_override("font_size", 12)
-		recruit_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
-		vbox.add_child(recruit_label)
+		var recruit_row := GameManager.make_cost_row(unit_data.recruit_cost, {}, 12, "Recruit:")
+		if detail_pop_cost > 0:
+			var pop_lbl := Label.new()
+			pop_lbl.text = "Pop: %d" % detail_pop_cost
+			pop_lbl.add_theme_font_size_override("font_size", 12)
+			pop_lbl.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+			recruit_row.add_child(pop_lbl)
+		vbox.add_child(recruit_row)
 
 	if unit_data.upkeep_cost.size() > 0:
-		var upkeep_label := Label.new()
-		upkeep_label.text = "  Upkeep: " + _format_cost(unit_data.upkeep_cost)
-		upkeep_label.add_theme_font_size_override("font_size", 12)
-		upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
-		vbox.add_child(upkeep_label)
+		vbox.add_child(GameManager.make_cost_row(unit_data.upkeep_cost, {}, 12, "Upkeep:"))
 
 	# Veterancy
 	if unit.veterancy_level > 0 or unit.experience > 0:
@@ -2035,6 +2033,8 @@ func _toggle_economy_panel() -> void:
 
 func _refresh_economy_panel() -> void:
 	var scroll: ScrollContainer = economy_panel.get_child(0)
+	# Dark chip backdrop so the readout never sits on raw leather
+	scroll.add_theme_stylebox_override("panel", _make_text_chip_style())
 	var vbox: VBoxContainer = scroll.get_node("EconomyVBox")
 	for child in vbox.get_children():
 		child.queue_free()
@@ -2061,11 +2061,10 @@ func _refresh_economy_panel() -> void:
 		if city == null:
 			continue
 		var city_income := GameManager.city_system.calculate_city_income(city)
-		var income_parts: Array[String] = []
+		var income_pos: Dictionary = {}
 		for res_type in city_income:
 			if city_income[res_type] > 0:
-				var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-				income_parts.append("+%d %s" % [city_income[res_type], rname])
+				income_pos[res_type] = city_income[res_type]
 				total_income[res_type] = total_income.get(res_type, 0) + city_income[res_type]
 
 		var city_label := Label.new()
@@ -2075,12 +2074,8 @@ func _refresh_economy_panel() -> void:
 		city_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 		vbox.add_child(city_label)
 
-		if income_parts.size() > 0:
-			var income_text := Label.new()
-			income_text.text = "    " + ", ".join(income_parts)
-			income_text.add_theme_font_size_override("font_size", 11)
-			income_text.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
-			vbox.add_child(income_text)
+		if not income_pos.is_empty():
+			vbox.add_child(GameManager.make_cost_row(income_pos, {}, 11, "    ", true))
 
 		if city.is_under_siege:
 			var siege_note := Label.new()
@@ -2123,15 +2118,10 @@ func _refresh_economy_panel() -> void:
 				total_upkeep[res] = total_upkeep.get(res, 0) + ud.upkeep_cost[res]
 
 	for tag in upkeep_by_tag:
-		var parts: Array[String] = []
+		var upk_neg: Dictionary = {}
 		for res_type in upkeep_by_tag[tag]:
-			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-			parts.append("-%d %s" % [upkeep_by_tag[tag][res_type], rname])
-		var tag_label := Label.new()
-		tag_label.text = "  %s: %s" % [tag, ", ".join(parts)]
-		tag_label.add_theme_font_size_override("font_size", 12)
-		tag_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
-		vbox.add_child(tag_label)
+			upk_neg[res_type] = -upkeep_by_tag[tag][res_type]
+		vbox.add_child(GameManager.make_cost_row(upk_neg, {}, 12, "  %s:" % tag, true))
 
 	if upkeep_by_tag.is_empty():
 		var no_upkeep := Label.new()
@@ -2155,22 +2145,19 @@ func _refresh_economy_panel() -> void:
 	for res in total_upkeep:
 		all_resources[res] = true
 
+	var net_all: Dictionary = {}
 	for res_type in all_resources:
-		var inc: int = total_income.get(res_type, 0)
-		var upk: int = total_upkeep.get(res_type, 0)
-		var net: int = inc - upk
-		var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-		var net_label := Label.new()
-		var sign_str := "+" if net >= 0 else ""
-		net_label.text = "  %s: %s%d" % [rname, sign_str, net]
-		net_label.add_theme_font_size_override("font_size", 13)
-		if net > 0:
-			net_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
-		elif net < 0:
-			net_label.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
-		else:
-			net_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
-		vbox.add_child(net_label)
+		var net: int = total_income.get(res_type, 0) - total_upkeep.get(res_type, 0)
+		if net != 0:
+			net_all[res_type] = net
+	if net_all.is_empty():
+		var none_lbl := Label.new()
+		none_lbl.text = "  Balanced (no net change)"
+		none_lbl.add_theme_font_size_override("font_size", 12)
+		none_lbl.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+		vbox.add_child(none_lbl)
+	else:
+		vbox.add_child(GameManager.make_cost_row(net_all, {}, 13, "  ", true))
 
 # ── Panel Style Helper ────────────────────────────────────────
 
@@ -2186,8 +2173,7 @@ func _make_close_button(callback: Callable, btn_size: Vector2 = Vector2(30, 30))
 
 ## Dark translucent backing panel — put text content on this instead of
 ## directly on the leather panel texture.
-func _make_text_chip() -> PanelContainer:
-	var chip := PanelContainer.new()
+func _make_text_chip_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.05, 0.04, 0.03, 0.72)
 	style.set_corner_radius_all(5)
@@ -2195,7 +2181,11 @@ func _make_text_chip() -> PanelContainer:
 	style.content_margin_right = 14.0
 	style.content_margin_top = 10.0
 	style.content_margin_bottom = 10.0
-	chip.add_theme_stylebox_override("panel", style)
+	return style
+
+func _make_text_chip() -> PanelContainer:
+	var chip := PanelContainer.new()
+	chip.add_theme_stylebox_override("panel", _make_text_chip_style())
 	return chip
 
 func _make_label(text: String, font_size: int = 14, color: Color = Color.WHITE) -> Label:
@@ -6983,8 +6973,8 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 		_faction_dilemma_dialog.queue_free()
 
 	var choices: Array = dilemma_data.get("choices", [])
-	var dialog_height: int = 200 + choices.size() * 40
-	_faction_dilemma_dialog = _create_centered_dialog(420, dialog_height)
+	var dialog_height: int = 190 + choices.size() * 66
+	_faction_dilemma_dialog = _create_centered_dialog(440, dialog_height)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
@@ -7010,13 +7000,13 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	for choice in choices:
-		var btn := Button.new()
-		btn.text = choice.get("label", "Choose")
-		btn.tooltip_text = choice.get("description", "")
-		btn.custom_minimum_size = Vector2(380, 36)
 		var effect: String = choice.get("effect", "")
-		# Disable button if player can't afford the cost
 		var cost: Dictionary = choice.get("cost", {})
+		# Cost is rendered INSIDE the button as an icon row (never hidden in
+		# a tooltip), colored red where unaffordable
+		var btn := GameManager.make_cost_button(choice.get("label", "Choose"), cost, 0,
+			fs.resources if fs else {}, 13)
+		btn.custom_minimum_size = Vector2(400, 36)
 		var can_afford := true
 		if not cost.is_empty() and fs != null:
 			for res_type in cost:
@@ -7027,10 +7017,7 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 		if choice.get("requires_shard", false) and fs != null:
 			if fs.owned_shards.is_empty():
 				can_afford = false
-		if not can_afford:
-			btn.disabled = true
-			btn.text += "  [Can't Afford]"
-			btn.modulate = Color(0.5, 0.5, 0.5, 0.7)
+		btn.disabled = not can_afford
 		btn.pressed.connect(func():
 			AudioManager.play_sfx(&"ui_click")
 			EventBus.dilemma_resolved.emit(faction_id, dilemma_type, effect)
@@ -7038,6 +7025,15 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 			_faction_dilemma_dialog = null
 			_update_resource_display())
 		vbox.add_child(btn)
+		# Consequence text visible under the button, not tooltip-hidden
+		var choice_desc: String = choice.get("description", "")
+		if choice_desc != "":
+			var cd := Label.new()
+			cd.text = choice_desc
+			cd.add_theme_font_size_override("font_size", 11)
+			cd.add_theme_color_override("font_color", Color(0.72, 0.69, 0.6))
+			cd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			vbox.add_child(cd)
 
 	add_child(_faction_dilemma_dialog)
 
@@ -8333,11 +8329,7 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 	# Upkeep cost display (orange)
 	var detail_upkeep := GameManager.city_system.get_building_upkeep(building)
 	if not detail_upkeep.is_empty():
-		var upkeep_eff := Label.new()
-		upkeep_eff.text = "  Upkeep: " + _format_cost(detail_upkeep) + "/turn"
-		upkeep_eff.add_theme_font_size_override("font_size", 12)
-		upkeep_eff.add_theme_color_override("font_color", Color(0.9, 0.6, 0.2))
-		vbox.add_child(upkeep_eff)
+		vbox.add_child(GameManager.make_cost_row(detail_upkeep, {}, 12, "Upkeep/turn:"))
 
 	_add_separator(vbox)
 
@@ -8425,11 +8417,7 @@ func _show_building_detail(building_id: StringName, city_id: StringName) -> void
 					if fs and not _can_afford_display(fs, next.build_cost):
 						upgrade_btn.disabled = true
 					vbox.add_child(upgrade_btn)
-					var cost_label := Label.new()
-					cost_label.text = _format_cost(next.build_cost) + " | " + str(next.build_time) + " turn(s)"
-					cost_label.add_theme_font_size_override("font_size", 11)
-					cost_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
-					vbox.add_child(cost_label)
+					vbox.add_child(GameManager.make_cost_row(next.build_cost, {}, 11, "", false, next.build_time))
 					break
 
 	# Demolish button (player only, if building is owned)
@@ -8518,18 +8506,10 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 	vbox.add_child(squad_label)
 
 	if unit_data.recruit_cost.size() > 0:
-		var recruit_label := Label.new()
-		recruit_label.text = "Recruit: " + _format_cost(unit_data.recruit_cost)
-		recruit_label.add_theme_font_size_override("font_size", 10)
-		recruit_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
-		vbox.add_child(recruit_label)
+		vbox.add_child(GameManager.make_cost_row(unit_data.recruit_cost, {}, 10, "Recruit:"))
 
 	if unit_data.upkeep_cost.size() > 0:
-		var upkeep_label := Label.new()
-		upkeep_label.text = "Upkeep: " + _format_cost(unit_data.upkeep_cost)
-		upkeep_label.add_theme_font_size_override("font_size", 10)
-		upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
-		vbox.add_child(upkeep_label)
+		vbox.add_child(GameManager.make_cost_row(unit_data.upkeep_cost, {}, 10, "Upkeep:"))
 
 	var card_chip := _make_text_chip()
 	_unit_card_panel.add_child(card_chip)
@@ -10405,6 +10385,16 @@ func _create_centered_dialog(width: int, height: int) -> PanelContainer:
 	dialog.offset_bottom = height / 2
 	dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	dialog.grow_vertical = Control.GROW_DIRECTION_BOTH
+	# Dark chip backdrop behind whatever content the caller adds — dialog text
+	# must never sit directly on the leather texture (ui_style_guide). Panel
+	# containers stack all children in the same rect, so this stays behind.
+	var backdrop := Panel.new()
+	var bstyle := StyleBoxFlat.new()
+	bstyle.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	bstyle.set_corner_radius_all(5)
+	backdrop.add_theme_stylebox_override("panel", bstyle)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dialog.add_child(backdrop)
 	return dialog
 
 # ── Faction Defeated Notification ─────────────────────────────
@@ -10791,11 +10781,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 					_show_building_detail(rc_bid, &"")
 			)
 			btn_row.add_child(build_btn)
-			var cost_label := Label.new()
-			cost_label.text = _format_cost(avail_building.build_cost) + " | " + str(avail_building.build_time) + " turn(s)"
-			cost_label.add_theme_font_size_override("font_size", 11)
-			cost_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
-			btn_row.add_child(cost_label)
+			btn_row.add_child(GameManager.make_cost_row(avail_building.build_cost, {}, 11, "", false, avail_building.build_time))
 			vbox.add_child(btn_row)
 
 	# Recruitment
@@ -10857,11 +10843,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 					_show_unit_detail(dummy_unit, rc_ud)
 			)
 			btn_row.add_child(recruit_btn)
-			var cost_label := Label.new()
-			cost_label.text = _format_cost(ud.recruit_cost) + " | " + str(ud.recruit_time) + " turn(s)"
-			cost_label.add_theme_font_size_override("font_size", 11)
-			cost_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
-			btn_row.add_child(cost_label)
+			btn_row.add_child(GameManager.make_cost_row(ud.recruit_cost, {}, 11, "", false, ud.recruit_time))
 			vbox.add_child(btn_row)
 	elif available_units.is_empty():
 		var no_units := Label.new()

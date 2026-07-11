@@ -279,7 +279,7 @@ func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, 
 		if not compare.is_empty():
 			col = Color(0.6, 0.8, 0.55) if int(compare.get(res_type, 0)) >= amount else Color(0.9, 0.25, 0.2)
 		elif signed:
-			col = Color(0.5, 0.75, 0.45)
+			col = Color(0.5, 0.75, 0.45) if amount > 0 else Color(0.85, 0.4, 0.32)
 		lbl.add_theme_color_override("font_color", col)
 		pair.add_child(lbl)
 		row.add_child(pair)
