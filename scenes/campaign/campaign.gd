@@ -4,7 +4,7 @@ const TERRAIN_NAMES := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wet
 const REALM_NAMES := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
 
 # Hex outer radius (center to vertex) for flat-top hexes
-const HEX_RADIUS := 32.0
+const HEX_RADIUS := 38.0  # +20% over the original 32 — more room for tile detail and buildings
 # Derived spacing
 const HEX_H_SPACING := HEX_RADIUS * 1.5 # 36.0 - horizontal center-to-center
 const HEX_V_SPACING := HEX_RADIUS * 1.732 # sqrt(3) * radius ≈ 41.57
@@ -18,17 +18,19 @@ const DIR_TO_EDGE_EVEN := [0, 5, 4, 2, 3, 1]
 const DIR_TO_EDGE_ODD  := [0, 5, 4, 3, 2, 1]
 
 # Terrain base colors
+# Base colors matching the v2 gouache tile palette (also used for shoreline
+# bleed bands, the overview sprite, and the minimap)
 const TERRAIN_COLORS := {
-	Enums.TerrainType.PLAINS: Color(0.62, 0.58, 0.42),
-	Enums.TerrainType.FOREST: Color(0.28, 0.38, 0.22),
-	Enums.TerrainType.MOUNTAINS: Color(0.45, 0.42, 0.38),
-	Enums.TerrainType.DESERT: Color(0.72, 0.62, 0.40),
-	Enums.TerrainType.SWAMP: Color(0.30, 0.32, 0.22),
-	Enums.TerrainType.WETLANDS: Color(0.48, 0.52, 0.42),
-	Enums.TerrainType.TUNDRA: Color(0.58, 0.56, 0.52),
-	Enums.TerrainType.SHARD_WASTES: Color(0.42, 0.28, 0.38),
-	Enums.TerrainType.WATER: Color(0.22, 0.30, 0.38),
-	Enums.TerrainType.JUNGLE: Color(0.20, 0.34, 0.18),
+	Enums.TerrainType.PLAINS: Color(0.55, 0.55, 0.32),
+	Enums.TerrainType.FOREST: Color(0.24, 0.35, 0.21),
+	Enums.TerrainType.MOUNTAINS: Color(0.45, 0.42, 0.37),
+	Enums.TerrainType.DESERT: Color(0.71, 0.62, 0.42),
+	Enums.TerrainType.SWAMP: Color(0.32, 0.34, 0.22),
+	Enums.TerrainType.WETLANDS: Color(0.30, 0.42, 0.36),
+	Enums.TerrainType.TUNDRA: Color(0.66, 0.68, 0.66),
+	Enums.TerrainType.SHARD_WASTES: Color(0.42, 0.36, 0.44),
+	Enums.TerrainType.WATER: Color(0.13, 0.20, 0.34),
+	Enums.TerrainType.JUNGLE: Color(0.16, 0.30, 0.17),
 }
 
 # Border color between tiles
@@ -117,6 +119,7 @@ var _beast_terrain_overlays: Array[Node2D] = []
 
 # Terrain textures (loaded once in _render_hex_map)
 var _terrain_textures: Dictionary = {}
+var _river_textures: Array[Texture2D] = []
 
 # Cloud shadow overlay
 var _cloud_shadow_node: ColorRect
@@ -137,7 +140,7 @@ var _water_overlay_node: Node2D
 
 # SubViewport baking for hex map (converts thousands of draw calls → 1 sprite)
 var _hex_map_viewport: SubViewport
-var _hex_map_sprite: Sprite2D
+var _hex_map_sprite: Node2D  # container holding the baked map piece sprites
 var _hex_map_baked := false
 var _bake_frames_remaining := -1
 
@@ -203,9 +206,11 @@ func _ready() -> void:
 	_build_region_tiles_cache()
 	_create_fog_overlay()
 	_update_trade_routes()
-	# Ensure labels render above region borders
+	# Ensure labels render above region borders; army markers above labels so
+	# armies are never hidden behind city/region nameplates
 	region_labels_node.z_index = 2
 	city_markers_node.z_index = 2
+	army_markers_node.z_index = 3
 	_create_minimap()
 	_create_cloud_shadows()
 	EventBus.elderbeast_moved.connect(_on_elderbeast_moved)
@@ -243,7 +248,8 @@ func _ready() -> void:
 			TurnManager._end_current_faction_turn()
 
 func _process(delta: float) -> void:
-	# SubViewport bake countdown
+	# Bake countdown — each piece renders for 2 frames, then _finish_bake
+	# captures it and arms the next piece
 	if _bake_frames_remaining >= 0:
 		_bake_frames_remaining -= 1
 		if _bake_frames_remaining < 0:
@@ -288,6 +294,7 @@ func _process(delta: float) -> void:
 			_last_cull_cam_pos = cam_pos
 			_last_cull_cam_zoom = cam_zoom
 			_update_lod()
+			_update_close_lod()
 			_cull_hex_tiles()
 
 # ── Hex geometry ──────────────────────────────────────────────
@@ -340,7 +347,9 @@ func _build_world_hex_polys(coords: Array, radius: float) -> Array:
 # ── Viewport culling ──────────────────────────────────────────
 
 func _cull_hex_tiles() -> void:
-	if _overview_visible or _hex_map_baked or _bake_frames_remaining >= 0:
+	if _overview_visible or _bake_frames_remaining >= 0:
+		return
+	if _hex_map_baked and not _chunks_live:
 		return
 	var vp_size := get_viewport_rect().size
 	var cam_pos := camera.position
@@ -445,14 +454,64 @@ func _update_lod() -> void:
 		# Hide chunks/details/borders in overview (they're baked or not needed)
 		child.visible = not should_overview
 
-func _bake_hex_map_to_texture() -> void:
-	## Renders hex_map_layer children into a SubViewport, captures as ImageTexture,
-	## and displays as a single Sprite2D. Animated water overlay stays live.
-	var map_w := int(HexMapData.MAP_WIDTH * HEX_H_SPACING + HEX_H_SPACING + 40)
-	var map_h := int(HexMapData.MAP_HEIGHT * HEX_V_SPACING + HEX_V_SPACING + 40)
-	map_w = mini(map_w, 8192)
-	map_h = mini(map_h, 8192)
+# Close-up LOD: past this zoom the baked bitmap looks pixelated, so the live
+# chunk nodes are reparented back from the SubViewport and drawn directly
+# (with viewport culling). Hysteresis avoids churn at the boundary.
+const LIVE_ZOOM_ENTER := 1.1
+const LIVE_ZOOM_EXIT := 1.0
+var _baked_nodes: Array[Node] = []  # everything moved into the bake viewport
+var _chunks_live := false
+var _rebake_when_baked := false
 
+func _update_close_lod() -> void:
+	if not _hex_map_baked or _bake_frames_remaining >= 0:
+		return
+	var z := camera.zoom.x
+	var want_live := z >= LIVE_ZOOM_ENTER if not _chunks_live else z > LIVE_ZOOM_EXIT
+	if want_live == _chunks_live:
+		return
+	_chunks_live = want_live
+	if want_live:
+		# Only the CHUNK nodes come back (they cull per-chunk); the whole-map
+		# batch nodes (borders/details/elevation — single uncullable items,
+		# tens of thousands of commands) stay baked. The full-res sprite stays
+		# visible beneath the live chunks to supply borders and shading.
+		for node in _baked_nodes:
+			if node is _HexChunkNode and node.get_parent() == _hex_map_viewport:
+				_hex_map_viewport.remove_child(node)
+				hex_map_layer.add_child(node)
+		# Keep the animated water + overview above the live chunks
+		if _water_overlay_node and _water_overlay_node.get_parent() == hex_map_layer:
+			hex_map_layer.move_child(_water_overlay_node, hex_map_layer.get_child_count() - 1)
+		if _overview_sprite and _overview_sprite.get_parent() == hex_map_layer:
+			hex_map_layer.move_child(_overview_sprite, hex_map_layer.get_child_count() - 1)
+		_cull_hex_tiles()
+	else:
+		for node in _baked_nodes:
+			if node is _HexChunkNode and node.get_parent() == hex_map_layer:
+				hex_map_layer.remove_child(node)
+				_hex_map_viewport.add_child(node)
+				node.visible = true
+		if _rebake_when_baked:
+			_rebake_when_baked = false
+			_request_rebake()
+
+# ── Tiled map bake ───────────────────────────────────────────
+# The map is baked full-resolution in 2048x2048 pieces, captured sequentially
+# from ONE small SubViewport (camera repositioned per piece) into a grid of
+# sprites. 2048 render targets work on every GPU — the previous single
+# 5704x4512 target hit driver limits/GL_FRAMEBUFFER_INCOMPLETE on some
+# machines, falling back to live chunk rendering (~90 ms frames).
+const BAKE_TILE_SIZE := 2048
+
+var _bake_cam: Camera2D = null
+var _bake_tiles: Array[Vector2i] = []       # pending piece origins (world px)
+var _bake_sprite_map: Dictionary = {}        # origin -> Sprite2D
+
+func _bake_hex_map_to_texture() -> void:
+	_begin_map_bake()
+
+func _begin_map_bake() -> void:
 	# Remove water overlay from hex_map_layer before baking (keep it live for animation)
 	if _water_overlay_node and _water_overlay_node.get_parent() == hex_map_layer:
 		hex_map_layer.remove_child(_water_overlay_node)
@@ -461,26 +520,32 @@ func _bake_hex_map_to_texture() -> void:
 		hex_map_layer.remove_child(_overview_sprite)
 
 	_hex_map_viewport = SubViewport.new()
-	_hex_map_viewport.size = Vector2i(map_w, map_h)
+	_hex_map_viewport.size = Vector2i(BAKE_TILE_SIZE, BAKE_TILE_SIZE)
 	_hex_map_viewport.transparent_bg = true
-	_hex_map_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_hex_map_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(_hex_map_viewport)
+	_bake_cam = Camera2D.new()
+	_bake_cam.anchor_mode = Camera2D.ANCHOR_MODE_FIXED_TOP_LEFT
+	_hex_map_viewport.add_child(_bake_cam)
 
-	# Reparent all hex_map_layer children into SubViewport
-	var children: Array[Node] = []
+	# Reparent all hex_map_layer children into SubViewport (list kept so the
+	# close-up LOD can move them back for crisp rendering at high zoom)
+	_baked_nodes.clear()
 	for child in hex_map_layer.get_children():
-		children.append(child)
-	for child in children:
+		_baked_nodes.append(child)
+	for child in _baked_nodes:
 		hex_map_layer.remove_child(child)
 		_hex_map_viewport.add_child(child)
-	# All chunks must be visible for baking
+	# All chunks must be visible for baking, and freshly redrawn — reparenting
+	# into the SubViewport does not reliably carry existing draw commands over
 	for chunk_key: Vector2i in _hex_chunks:
 		_hex_chunks[chunk_key].visible = true
+		_hex_chunks[chunk_key].queue_redraw()
 
-	# Create sprite to display baked texture
-	_hex_map_sprite = Sprite2D.new()
-	_hex_map_sprite.centered = false
+	# Container for the baked piece sprites
+	_hex_map_sprite = Node2D.new()
 	hex_map_layer.add_child(_hex_map_sprite)
+	_bake_sprite_map.clear()
 
 	# Re-add water overlay and overview sprite on top
 	if _water_overlay_node:
@@ -488,27 +553,89 @@ func _bake_hex_map_to_texture() -> void:
 	if _overview_sprite:
 		hex_map_layer.add_child(_overview_sprite)
 
-	_bake_frames_remaining = 3
+	_queue_all_bake_tiles()
+	_start_next_bake_tile()
+
+func _queue_all_bake_tiles() -> void:
+	var map_w := ceili(HexMapData.MAP_WIDTH * HEX_H_SPACING + HEX_H_SPACING + 40.0)
+	var map_h := ceili(HexMapData.MAP_HEIGHT * HEX_V_SPACING + HEX_V_SPACING + 40.0)
+	_bake_tiles.clear()
+	for ty in range(0, map_h, BAKE_TILE_SIZE):
+		for tx in range(0, map_w, BAKE_TILE_SIZE):
+			_bake_tiles.append(Vector2i(tx, ty))
+
+func _start_next_bake_tile() -> void:
+	if _bake_tiles.is_empty() or _hex_map_viewport == null:
+		return
+	_bake_cam.position = Vector2(_bake_tiles[0])
+	_hex_map_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_bake_frames_remaining = 2
 
 func _finish_bake() -> void:
-	if _hex_map_viewport == null:
+	## Captures the current bake piece; starts the next or completes the bake.
+	if _hex_map_viewport == null or _bake_tiles.is_empty():
 		return
+	var origin: Vector2i = _bake_tiles[0]
+	_bake_tiles.remove_at(0)
+	var img: Image = null
 	var tex := _hex_map_viewport.get_texture()
 	if tex:
-		var img := tex.get_image()
-		if img and not img.is_empty():
-			_hex_map_sprite.texture = ImageTexture.create_from_image(img)
-			_hex_map_baked = true
-	_hex_map_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		img = tex.get_image()
+	var ok := img != null and not img.is_empty()
+	if ok and origin == Vector2i.ZERO:
+		# Validate the first piece (always contains map content): a fully
+		# transparent readback means the render target never rendered
+		ok = false
+		for i in 8:
+			if img.get_pixel(BAKE_TILE_SIZE * (i * 2 + 1) / 16, BAKE_TILE_SIZE / 2).a > 0.01:
+				ok = true
+				break
+	if not ok:
+		# 2048 targets should work everywhere; if not, restore live chunk
+		# rendering (slower, but functional on any GPU)
+		push_warning("Map bake unavailable on this GPU — using live chunk rendering")
+		for node in _baked_nodes:
+			if node.get_parent() == _hex_map_viewport:
+				_hex_map_viewport.remove_child(node)
+				hex_map_layer.add_child(node)
+		_hex_map_viewport.queue_free()
+		_hex_map_viewport = null
+		_bake_cam = null
+		_bake_tiles.clear()
+		_cull_hex_tiles()
+		return
+
+	var spr: Sprite2D = _bake_sprite_map.get(origin)
+	if spr == null:
+		spr = Sprite2D.new()
+		spr.centered = false
+		spr.position = Vector2(origin)
+		spr.texture = ImageTexture.create_from_image(img)
+		_hex_map_sprite.add_child(spr)
+		_bake_sprite_map[origin] = spr
+	else:
+		(spr.texture as ImageTexture).update(img)
+
+	if _bake_tiles.is_empty():
+		_hex_map_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		_hex_map_baked = true
+	else:
+		_start_next_bake_tile()
 
 func _rebake_hex_map() -> void:
 	if _hex_map_viewport == null or not _hex_map_baked:
 		return
-	# Re-enable SubViewport, redraw chunks, and recapture
-	_hex_map_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	if _chunks_live:
+		# Chunks are currently in the main tree for close-up rendering —
+		# rebake when they return to the SubViewport (zoom back out)
+		_rebake_when_baked = true
+		return
+	if not _bake_tiles.is_empty():
+		return  # A bake pass is already in flight
 	for chunk_key: Vector2i in _hex_chunks:
 		_hex_chunks[chunk_key].queue_redraw()
-	_bake_frames_remaining = 3
+	_queue_all_bake_tiles()
+	_start_next_bake_tile()
 
 var _rebake_queued := false
 
@@ -543,26 +670,32 @@ func _load_terrain_textures() -> void:
 		Enums.TerrainType.WATER: "water",
 		Enums.TerrainType.JUNGLE: "jungle",
 	}
+	# v2 gouache tile set; falls back to the legacy campaign_map dir per terrain
 	for terrain in base_names:
 		var variants: Array[Texture2D] = []
-		# Try numbered variants first (1-9) — these are the actual files
-		for i in range(1, 10):
-			var path := "res://assets/sprites/campaign_map/%s%d.png" % [base_names[terrain], i]
-			if ResourceLoader.exists(path):
-				var tex = load(path)
-				if tex:
-					variants.append(tex)
-			else:
+		for dir in ["campaign_map_v2", "campaign_map"]:
+			for i in range(1, 10):
+				var path := "res://assets/sprites/%s/%s%d.png" % [dir, base_names[terrain], i]
+				if ResourceLoader.exists(path):
+					var tex = load(path)
+					if tex:
+						variants.append(tex)
+				else:
+					break
+			if not variants.is_empty():
 				break
-		# Fallback: try unnumbered base name (e.g. plains.png)
-		if variants.is_empty():
-			var base_path := "res://assets/sprites/campaign_map/%s.png" % base_names[terrain]
-			if ResourceLoader.exists(base_path):
-				var tex = load(base_path)
-				if tex:
-					variants.append(tex)
 		if not variants.is_empty():
 			_terrain_textures[terrain] = variants
+	# River variants (water tiles in narrow channels render as flowing water)
+	_river_textures.clear()
+	for i in range(1, 10):
+		var rpath := "res://assets/sprites/campaign_map_v2/river%d.png" % i
+		if ResourceLoader.exists(rpath):
+			var rtex = load(rpath)
+			if rtex:
+				_river_textures.append(rtex)
+		else:
+			break
 
 func _render_hex_map() -> void:
 	var hex_map := GameManager.state.hex_map
@@ -602,6 +735,8 @@ func _render_hex_map() -> void:
 	# Build chunk data: group tiles into HEX_CHUNK_SIZE x HEX_CHUNK_SIZE chunks
 	# Each chunk is a single _HexChunkNode with all its tiles batched into _draw()
 	var chunk_entries: Dictionary = {}  # chunk_key -> Array of [world_poly, color, tex, uv]
+	var chunk_shores: Dictionary = {}  # chunk_key -> Array of [band_poly, color]
+	var chunk_foams: Dictionary = {}   # chunk_key -> Array of PackedVector2Array
 	var water_polys: Array = []  # Collect water tile polygons for animation overlay
 
 	for coord in hex_map.tiles:
@@ -618,8 +753,39 @@ func _render_hex_map() -> void:
 
 		var chunk_key := Vector2i(coord.x / HEX_CHUNK_SIZE, coord.y / HEX_CHUNK_SIZE)
 
-		# Determine texture
+		# Determine texture — a water tile is a RIVER when its water neighbors
+		# do not touch each other (a channel running through land); if any two
+		# of its water neighbors are adjacent to one another it is part of an
+		# open water body (ocean/lake), as is an isolated pond.
 		var variants: Array = _terrain_textures.get(tile.terrain, [])
+		var uv_rot := 0.0
+		var neighbors := HexHelper.get_neighbors(coord)
+		if tile.terrain == Enums.TerrainType.WATER and not _river_textures.is_empty():
+			var dir_lut: Array = DIR_TO_EDGE_EVEN if (coord.x & 1 == 0) else DIR_TO_EDGE_ODD
+			var water_idx: Array[int] = []  # edge indices (circular 0-5)
+			var water_dirs: Array[Vector2] = []
+			for ni in 6:
+				var n: Vector2i = neighbors[ni]
+				if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+					continue
+				var ntile: HexMapData.TileState = hex_map.tiles.get(n)
+				if ntile == null:
+					continue
+				if ntile.terrain == Enums.TerrainType.WATER:
+					water_idx.append(dir_lut[ni])
+					water_dirs.append(_hex_to_pixel(n) - pixel_pos)
+			var open_water := water_idx.is_empty()  # isolated pond = still water
+			for i in water_idx.size():
+				for j in range(i + 1, water_idx.size()):
+					var d := absi(water_idx[i] - water_idx[j])
+					if d == 1 or d == 5:  # cyclically adjacent directions
+						open_water = true
+			if not open_water:
+				variants = _river_textures
+				if water_dirs.size() >= 2:
+					uv_rot = (water_dirs[0] - water_dirs[1]).angle()
+				elif water_dirs.size() == 1:
+					uv_rot = water_dirs[0].angle()
 		var tex: Texture2D = null
 		var scaled_uv: PackedVector2Array = PackedVector2Array()
 		if not variants.is_empty():
@@ -627,10 +793,12 @@ func _render_hex_map() -> void:
 			tex = variants[variant_idx]
 		if tex:
 			# draw_colored_polygon UVs are normalized 0-1, not pixel coordinates
-			# Crop to center 85% of texture to avoid edge artifacts
+			# Crop to center 85% of texture to avoid edge artifacts; rivers
+			# additionally rotate UVs so the baked flow lines follow the channel
 			var crop_factor := 0.85
 			for uv in hex_uvs:
-				scaled_uv.append(Vector2(0.5 + (uv.x - 0.5) * crop_factor, 0.5 + (uv.y - 0.5) * crop_factor))
+				var v := (uv - Vector2(0.5, 0.5)).rotated(uv_rot) * crop_factor
+				scaled_uv.append(Vector2(0.5, 0.5) + v)
 
 		# All tiles go into chunk batched _draw()
 		var color: Color = Color.WHITE if tex else base_color
@@ -645,6 +813,70 @@ func _render_hex_map() -> void:
 		if tile.terrain == Enums.TerrainType.WATER:
 			water_polys.append(world_poly)
 
+		# Terrain bleed bands: neighbors softly bleed their color into this
+		# tile along shared edges — a continuous, corner-rounding curve (no
+		# pinched wedges). Water tiles receive strong bleed + foam from every
+		# land neighbor (shoreline); land tiles receive a subtle bleed from
+		# differing land neighbors (lower terrain enum bleeds onto higher).
+		var is_water := tile.terrain == Enums.TerrainType.WATER
+		var edge_lut: Array = DIR_TO_EDGE_EVEN if (coord.x & 1 == 0) else DIR_TO_EDGE_ODD
+		var edge_src: Array = [null, null, null, null, null, null]  # edge -> source tile or null
+		for ni in 6:
+			var n: Vector2i = neighbors[ni]
+			if not HexHelper.is_valid(n, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var ntile: HexMapData.TileState = hex_map.tiles.get(n)
+			if ntile == null or ntile.terrain == tile.terrain:
+				continue
+			if is_water:
+				if ntile.terrain != Enums.TerrainType.WATER:
+					edge_src[edge_lut[ni]] = ntile
+			else:
+				# Land-to-land bleed only, one direction per pair for stability
+				if ntile.terrain != Enums.TerrainType.WATER and int(ntile.terrain) < int(tile.terrain):
+					edge_src[edge_lut[ni]] = ntile
+		var band_depth := HEX_RADIUS * (0.42 if is_water else 0.26)
+		var band_alpha := 0.85 if is_water else 0.45
+		for e in 6:
+			if edge_src[e] == null:
+				continue
+			var v0: Vector2 = fill_poly[e] + offset
+			var v1: Vector2 = fill_poly[(e + 1) % 6] + offset
+			# Continue at full depth into corners shared with another bleeding
+			# edge — the inner curve then wraps smoothly around the corner
+			# instead of pinching into a wedge
+			var prev_open: bool = edge_src[(e + 5) % 6] != null
+			var next_open: bool = edge_src[(e + 1) % 6] != null
+			var band := PackedVector2Array([v0, v1])
+			var foam := PackedVector2Array()
+			for k in 9:
+				var t := 1.0 - float(k) / 8.0
+				var base_pt := v0.lerp(v1, t)
+				var fade_in := 1.0 if prev_open else clampf(t / 0.45, 0.0, 1.0)
+				var fade_out := 1.0 if next_open else clampf((1.0 - t) / 0.45, 0.0, 1.0)
+				var s := minf(fade_in, fade_out)
+				s = s * s * (3.0 - 2.0 * s)  # smoothstep
+				if s <= 0.001:
+					continue  # closed end — point would duplicate the corner vertex
+				# World-position noise — continuous across edges and tiles, so
+				# open corners get IDENTICAL inner points on both edges (bands
+				# meet exactly, no wedge gaps) and boundaries look organic
+				var wob := sin(base_pt.x * 0.11 + base_pt.y * 0.07) * 2.6 \
+					+ sin(base_pt.x * 0.31 + base_pt.y * 0.23) * 1.3
+				var depth := (band_depth + wob) * s
+				var inward := (offset - base_pt).normalized()
+				band.append(base_pt + inward * depth)
+				if is_water:
+					foam.append(base_pt + inward * (depth + 1.4 * s))
+			var src_col: Color = TERRAIN_COLORS.get((edge_src[e] as HexMapData.TileState).terrain, Color.GRAY)
+			if not chunk_shores.has(chunk_key):
+				chunk_shores[chunk_key] = []
+				chunk_foams[chunk_key] = []
+			chunk_shores[chunk_key].append([band, Color(src_col.r, src_col.g, src_col.b, band_alpha)])
+			if is_water:
+				foam.reverse()
+				chunk_foams[chunk_key].append(foam)
+
 		# Procedural terrain details (only for terrains without textures)
 		if not tex:
 			_add_terrain_detail(offset, tile.terrain, fill_poly, base_color)
@@ -653,6 +885,8 @@ func _render_hex_map() -> void:
 	for chunk_key in chunk_entries:
 		var chunk := _HexChunkNode.new()
 		chunk.tile_entries = chunk_entries[chunk_key]
+		chunk.shore_entries = chunk_shores.get(chunk_key, [])
+		chunk.foam_lines = chunk_foams.get(chunk_key, [])
 		hex_map_layer.add_child(chunk)
 		_hex_chunks[chunk_key] = chunk
 
@@ -1167,6 +1401,10 @@ class _HexChunkNode extends Node2D:
 	## Batched hex tile renderer — draws all tiles in a chunk with a single _draw() call.
 	## Each entry: [polygon, color, texture, uv_array]
 	var tile_entries: Array = []  # Array of [PackedVector2Array, Color, Texture2D_or_null, PackedVector2Array_or_null]
+	var shore_entries: Array = []  # Array of [band_poly, color] — land bleed into water tiles
+	var foam_lines: Array = []     # Array of PackedVector2Array — foam line inside each band
+
+	const _FOAM_COLOR := Color(0.85, 0.9, 0.92, 0.5)
 
 	func _draw() -> void:
 		for entry in tile_entries:
@@ -1177,53 +1415,83 @@ class _HexChunkNode extends Node2D:
 				draw_colored_polygon(poly, col, entry[3], tex)
 			else:
 				draw_colored_polygon(poly, col)
+		for shore in shore_entries:
+			draw_colored_polygon(shore[0], shore[1])
+		for foam in foam_lines:
+			draw_polyline(foam, _FOAM_COLOR, 1.8, true)
 
 class _WaterAnimOverlay extends Node2D:
 	## Single node that draws a transparent animated overlay on all water tiles.
-	## Uses a ShaderMaterial for wave animation — one node, one draw call.
+	## All hexes are merged into ONE indexed triangle array — issuing one
+	## polygon command per water tile (~2-3k) cost several ms of render-server
+	## CPU every frame. The ShaderMaterial animates the waves.
 	var water_polys: Array = []  # Array of PackedVector2Array (world-space)
+	var _pts := PackedVector2Array()
+	var _cols := PackedColorArray()
+	var _idx := PackedInt32Array()
+
 	func _draw() -> void:
-		for poly in water_polys:
-			draw_colored_polygon(poly, Color.WHITE)
+		if _pts.is_empty():
+			for poly in water_polys:
+				var base := _pts.size()
+				_pts.append_array(poly)
+				for i in poly.size():
+					_cols.append(Color.WHITE)
+				for i in range(1, poly.size() - 1):
+					_idx.append(base)
+					_idx.append(base + i)
+					_idx.append(base + i + 1)
+		if _pts.is_empty():
+			return
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _idx, _pts, _cols)
 
 class _FogDrawNode extends Node2D:
+	## Whole-map fog as ONE indexed triangle array. Geometry is built once;
+	## fog changes only rewrite the per-vertex COLORS of affected tiles and
+	## queue a single-command redraw. Camera moves cost nothing (the canvas
+	## item persists; the GPU culls off-screen triangles). The previous
+	## implementation issued up to ~9k draw_colored_polygon calls per redraw
+	## and redrew on every camera move — ~90 ms frames while panning.
 	var tile_polys: Dictionary = {}   # coord -> PackedVector2Array (world-space)
 	var tile_alphas: Dictionary = {}  # coord -> float (0.0=visible, 0.45=explored, 0.75=hidden)
-	var fogged_tiles: Array = []  # Only tiles with alpha > 0 — rebuilt when alphas change
-	var _needs_list_rebuild := true
 
-	func mark_dirty() -> void:
-		_needs_list_rebuild = true
+	const _FOG_BASE := Color(0.03, 0.02, 0.05)
+	var _points := PackedVector2Array()
+	var _colors := PackedColorArray()
+	var _indices := PackedInt32Array()
+	var _tile_vert_start: Dictionary = {}  # coord -> first vertex index
+
+	func build_geometry() -> void:
+		_points.clear()
+		_colors.clear()
+		_indices.clear()
+		_tile_vert_start.clear()
+		for coord in tile_polys:
+			var poly: PackedVector2Array = tile_polys[coord]
+			var base := _points.size()
+			_tile_vert_start[coord] = base
+			_points.append_array(poly)
+			var c := Color(_FOG_BASE.r, _FOG_BASE.g, _FOG_BASE.b, tile_alphas.get(coord, 0.0))
+			for i in poly.size():
+				_colors.append(c)
+			for i in range(1, poly.size() - 1):
+				_indices.append(base)
+				_indices.append(base + i)
+				_indices.append(base + i + 1)
+
+	func set_tile_alpha(coord: Vector2i, alpha: float) -> void:
+		tile_alphas[coord] = alpha
+		var base: int = _tile_vert_start.get(coord, -1)
+		if base < 0:
+			return
+		var c := Color(_FOG_BASE.r, _FOG_BASE.g, _FOG_BASE.b, alpha)
+		for i in 6:
+			_colors[base + i] = c
 
 	func _draw() -> void:
-		if _needs_list_rebuild:
-			_needs_list_rebuild = false
-			fogged_tiles.clear()
-			for coord in tile_alphas:
-				if tile_alphas[coord] > 0.0:
-					fogged_tiles.append(coord)
-		# Viewport culling — only draw fog polys in/near the visible area
-		var cam := get_viewport().get_camera_2d()
-		var vis_rect: Rect2
-		if cam:
-			var vp_size := get_viewport_rect().size
-			var cam_zoom := cam.zoom.x
-			var margin := 120.0
-			var half_w := (vp_size.x / cam_zoom) / 2.0 + margin
-			var half_h := (vp_size.y / cam_zoom) / 2.0 + margin
-			vis_rect = Rect2(cam.position.x - half_w, cam.position.y - half_h, half_w * 2.0, half_h * 2.0)
-		else:
-			vis_rect = Rect2(-1e6, -1e6, 2e6, 2e6) # No camera — draw all
-		var fog_base := Color(0.03, 0.02, 0.05)
-		for coord in fogged_tiles:
-			var alpha: float = tile_alphas[coord]
-			if alpha <= 0.0:
-				continue
-			var poly: PackedVector2Array = tile_polys[coord]
-			# Quick AABB check using first vertex (hex center ± radius)
-			if not vis_rect.has_point(poly[0]):
-				continue
-			draw_colored_polygon(poly, Color(fog_base.r, fog_base.g, fog_base.b, alpha))
+		if _points.is_empty():
+			return
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _indices, _points, _colors)
 
 class _ElevationDrawNode extends Node2D:
 	var cliff_polys: Array = []
@@ -1425,99 +1693,949 @@ func _create_army_markers() -> void:
 		var army: ArmyState = GameManager.state.armies[army_id]
 		_create_army_marker(army)
 
+# ── Marker vector-art helpers ────────────────────────────────
+# Shared visual language for map markers: dark silhouette outline, bronze/gold
+# trim (matches the UI frames), faction color on cloth/roofs, soft ground shadow.
+const _MARKER_OUTLINE := Color(0.07, 0.055, 0.045, 0.95)
+const _MARKER_GOLD := Color(0.78, 0.62, 0.32)
+const _MARKER_STONE := Color(0.42, 0.38, 0.33)
+const _MARKER_STONE_LIGHT := Color(0.5, 0.46, 0.4)
+
+func _marker_poly(parent: Node2D, pts: PackedVector2Array, color: Color) -> Polygon2D:
+	var p := Polygon2D.new()
+	p.polygon = pts
+	p.color = color
+	p.antialiased = true
+	parent.add_child(p)
+	return p
+
+func _marker_line(parent: Node2D, pts: PackedVector2Array, color: Color, width: float, closed := false) -> Line2D:
+	var l := Line2D.new()
+	l.points = pts
+	l.width = width
+	l.default_color = color
+	l.antialiased = true
+	l.closed = closed
+	l.joint_mode = Line2D.LINE_JOINT_ROUND
+	l.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	l.end_cap_mode = Line2D.LINE_CAP_ROUND
+	parent.add_child(l)
+	return l
+
+func _ellipse_pts(center: Vector2, rx: float, ry: float, segs := 14) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in segs:
+		var a := TAU * float(i) / float(segs)
+		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry))
+	return pts
+
+func _ellipse_arc_pts(center: Vector2, rx: float, ry: float, a0: float, a1: float, segs := 14) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in segs + 1:
+		var a := lerpf(a0, a1, float(i) / float(segs))
+		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry))
+	return pts
+
+static func _scaled_pts(pts: PackedVector2Array, s: float, origin := Vector2.ZERO) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for p in pts:
+		out.append(origin + (p - origin) * s)
+	return out
+
+## Diplomatic relation color for marker base rings: blue = yours, green =
+## allied, light green = friendly, red = at war/hostile, white = neutral.
+func _relation_ring_color(faction_id: StringName) -> Color:
+	var player_id := GameManager.state.player_faction_id
+	if faction_id == player_id:
+		return Color(0.3, 0.5, 1.0)
+	if faction_id == &"" or faction_id == &"independent" or faction_id == &"rebels":
+		return Color(0.9, 0.9, 0.9)
+	var relation := GameManager.get_relation(player_id, faction_id)
+	if relation == Enums.FactionRelation.ALLIED:
+		return Color(0.2, 0.85, 0.3)
+	if relation == Enums.FactionRelation.WAR or relation == Enums.FactionRelation.HOSTILE:
+		return Color(0.95, 0.2, 0.15)
+	if relation == Enums.FactionRelation.FRIENDLY:
+		return Color(0.2, 0.85, 0.3, 0.7)
+	return Color(0.9, 0.9, 0.9)
+
+## Culture that decides a faction's marker SHAPES. Minor factions use their
+## parent's set but render in their own faction color, so subfactions stay
+## distinguishable by color.
+func _marker_culture(faction_id: StringName) -> StringName:
+	var parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	return parent
+
+# ── Per-culture army shield art ──────────────────────────────
+# Envelope roughly x in [-10, 10], y in [-13, 12]; the unit-count roundel
+# (drawn by the caller) sits at (0, -3.5) r 6.2 and covers the center.
+
+func _draw_army_shield_art(marker: Node2D, culture: StringName, fc: Color) -> void:
+	match culture:
+		&"empire": _shield_scutum(marker, fc)
+		&"skulloath": _shield_horde_round(marker, fc)
+		&"gladehost": _shield_leaf(marker, fc)
+		&"tainted_jade": _shield_serpent_disc(marker, fc)
+		&"moonspear": _shield_crescent(marker, fc)
+		&"sunblessed": _shield_sunray(marker, fc)
+		&"thunderswarm": _shield_bolt(marker, fc)
+		&"cinderguard": _shield_kite(marker, fc)
+		&"forsaken": _shield_tattered(marker, fc)
+		&"ivoryscar": _shield_relic(marker, fc)
+		&"shardhorde": _shield_crystal(marker, fc)
+		_: _shield_heater(marker, fc)
+
+func _shield_base(marker: Node2D, pts: PackedVector2Array, fc: Color, center := Vector2(0, -1)) -> void:
+	# Outline silhouette → gold rim → faction-color field
+	_marker_poly(marker, _scaled_pts(pts, 1.22, center), _MARKER_OUTLINE)
+	_marker_poly(marker, _scaled_pts(pts, 1.1, center), _MARKER_GOLD)
+	_marker_poly(marker, pts, fc)
+
+func _shield_heater(marker: Node2D, fc: Color) -> void:
+	var shield := PackedVector2Array([
+		Vector2(-9, -11), Vector2(9, -11), Vector2(9, -3), Vector2(8, 2),
+		Vector2(5.5, 6), Vector2(2.5, 8.6), Vector2(0, 10),
+		Vector2(-2.5, 8.6), Vector2(-5.5, 6), Vector2(-8, 2), Vector2(-9, -3)
+	])
+	_shield_base(marker, shield, fc)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-9, -4), Vector2(0, 1), Vector2(9, -4),
+		Vector2(9, 0), Vector2(0, 5), Vector2(-9, 0)
+	]), fc.darkened(0.3))
+	_marker_line(marker, PackedVector2Array([Vector2(-7.5, -10), Vector2(7.5, -10)]),
+		Color(1, 1, 1, 0.3), 1.4)
+
+func _shield_scutum(marker: Node2D, fc: Color) -> void:
+	# Roman tower shield: chamfered rectangle, gold spine + wing chevrons
+	var shield := PackedVector2Array([
+		Vector2(-7, -12), Vector2(7, -12), Vector2(8.4, -10), Vector2(8.4, 8),
+		Vector2(7, 10), Vector2(-7, 10), Vector2(-8.4, 8), Vector2(-8.4, -10)
+	])
+	_shield_base(marker, shield, fc)
+	_marker_line(marker, PackedVector2Array([Vector2(0, -11.2), Vector2(0, 9.2)]),
+		_MARKER_GOLD, 1.3)
+	_marker_line(marker, PackedVector2Array([Vector2(-6.4, -10.4), Vector2(-3.2, -7.6)]),
+		_MARKER_GOLD, 1.1)
+	_marker_line(marker, PackedVector2Array([Vector2(6.4, -10.4), Vector2(3.2, -7.6)]),
+		_MARKER_GOLD, 1.1)
+
+func _shield_horde_round(marker: Node2D, fc: Color) -> void:
+	# Round hide shield with horn studs on the rim
+	var shield := _ellipse_pts(Vector2(0, -1), 10.0, 10.0, 18)
+	_shield_base(marker, shield, fc)
+	for i in 6:
+		var a := TAU * float(i) / 6.0 + PI / 6.0
+		var tip := Vector2(0, -1) + Vector2(cos(a), sin(a)) * 12.6
+		var b1 := Vector2(0, -1) + Vector2(cos(a + 0.18), sin(a + 0.18)) * 9.4
+		var b2 := Vector2(0, -1) + Vector2(cos(a - 0.18), sin(a - 0.18)) * 9.4
+		_marker_poly(marker, PackedVector2Array([tip, b1, b2]), Color(0.85, 0.8, 0.7))
+
+func _shield_leaf(marker: Node2D, fc: Color) -> void:
+	# Leaf-shaped wooden shield with vine trim
+	var shield := PackedVector2Array([
+		Vector2(0, -13), Vector2(5.5, -8), Vector2(7.5, -1), Vector2(5, 6),
+		Vector2(0, 11), Vector2(-5, 6), Vector2(-7.5, -1), Vector2(-5.5, -8)
+	])
+	_shield_base(marker, shield, fc)
+	_marker_line(marker, PackedVector2Array([
+		Vector2(0, -12), Vector2(1.6, -8.4), Vector2(-1.2, -5.2), Vector2(1.2, 3.4), Vector2(0, 9.6)
+	]), _MARKER_GOLD, 1.0)
+
+func _shield_serpent_disc(marker: Node2D, fc: Color) -> void:
+	# Jade disc with coiled serpent rings
+	var shield := _ellipse_pts(Vector2(0, -1), 10.0, 10.0, 18)
+	_shield_base(marker, shield, fc)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(0, -1), 8.0, 8.0, -PI * 0.4, PI * 0.9, 10),
+		fc.lightened(0.3), 1.2)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(0, -1), 8.0, 8.0, PI * 0.55, PI * 0.75, 3),
+		_MARKER_GOLD, 1.4)
+
+func _shield_crescent(marker: Node2D, fc: Color) -> void:
+	# Round shield with a gold crescent along the left rim
+	var shield := _ellipse_pts(Vector2(0, -1), 10.0, 10.0, 18)
+	_shield_base(marker, shield, fc)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(0, -1), 7.6, 7.6, PI * 0.6, PI * 1.4, 10),
+		_MARKER_GOLD, 2.0)
+
+func _shield_sunray(marker: Node2D, fc: Color) -> void:
+	# Round shield with gold rays radiating from the boss
+	var shield := _ellipse_pts(Vector2(0, -1), 10.0, 10.0, 18)
+	_shield_base(marker, shield, fc)
+	for i in 8:
+		var a := TAU * float(i) / 8.0 + PI / 8.0
+		_marker_line(marker, PackedVector2Array([
+			Vector2(0, -2.5) + Vector2(cos(a), sin(a)) * 6.8,
+			Vector2(0, -2.5) + Vector2(cos(a), sin(a)) * 9.2
+		]), _MARKER_GOLD, 1.3)
+
+func _shield_bolt(marker: Node2D, fc: Color) -> void:
+	# Round rimmed shield with a jagged lightning bolt across the face
+	var shield := _ellipse_pts(Vector2(0, -1), 10.0, 10.0, 18)
+	_shield_base(marker, shield, fc)
+	_marker_line(marker, PackedVector2Array([
+		Vector2(-3.2, -9.4), Vector2(0.8, -3.4), Vector2(-1.2, -2.2), Vector2(3.2, 7.2)
+	]), _MARKER_GOLD, 1.6)
+
+func _shield_kite(marker: Node2D, fc: Color) -> void:
+	# Heavy riveted kite shield with an ember slit
+	var shield := PackedVector2Array([
+		Vector2(-8.5, -10), Vector2(8.5, -10), Vector2(7.8, -3),
+		Vector2(5, 5), Vector2(0, 11), Vector2(-5, 5), Vector2(-7.8, -3)
+	])
+	_shield_base(marker, shield, fc)
+	for i in 4:
+		var rx := -6.0 + 4.0 * float(i)
+		_marker_poly(marker, _ellipse_pts(Vector2(rx, -8.6), 0.7, 0.7, 6), _MARKER_GOLD)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-0.8, 3.4), Vector2(0.8, 3.4), Vector2(0.8, 7.6), Vector2(-0.8, 7.6)
+	]), Color(0.95, 0.5, 0.15, 0.95))
+
+func _shield_tattered(marker: Node2D, fc: Color) -> void:
+	# Dark heater with a ragged bottom edge and pale dagger
+	var shield := PackedVector2Array([
+		Vector2(-9, -10), Vector2(9, -10), Vector2(9, -2), Vector2(7, 3),
+		Vector2(5, 1.6), Vector2(4, 6), Vector2(1.5, 4), Vector2(0, 9),
+		Vector2(-2, 4), Vector2(-4.5, 6.4), Vector2(-6, 1.6), Vector2(-8, 3.4), Vector2(-9, -2)
+	])
+	_shield_base(marker, shield, fc.darkened(0.15))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-0.9, -9), Vector2(0.9, -9), Vector2(0.9, 4), Vector2(0, 7), Vector2(-0.9, 4)
+	]), Color(0.85, 0.82, 0.75, 0.75))
+
+func _shield_relic(marker: Node2D, fc: Color) -> void:
+	# Faction field with bone inner ring and relic eye below the boss
+	var shield := _ellipse_pts(Vector2(0, -1), 10.0, 10.0, 18)
+	_shield_base(marker, shield, fc)
+	_marker_line(marker, _ellipse_pts(Vector2(0, -1), 8.6, 8.6, 16), Color(0.88, 0.84, 0.72), 1.2)
+	_marker_line(marker, _ellipse_pts(Vector2(0, 5.8), 1.9, 1.1, 8), Color(0.88, 0.84, 0.72), 0.9)
+	_marker_poly(marker, _ellipse_pts(Vector2(0, 5.8), 0.6, 0.6, 6), Color(0.1, 0.08, 0.06))
+
+func _shield_crystal(marker: Node2D, fc: Color) -> void:
+	# Jagged crystal-edged shield with facet lines
+	var shield := PackedVector2Array([
+		Vector2(-3, -12), Vector2(4, -10.5), Vector2(9, -4), Vector2(7.4, 2.4),
+		Vector2(3, 10), Vector2(-2, 8.4), Vector2(-8, 5), Vector2(-9.4, -4.6)
+	])
+	_shield_base(marker, shield, fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-6.8, 3.6), Vector2(-2.2, -2.6)]),
+		fc.lightened(0.35), 1.0)
+	_marker_line(marker, PackedVector2Array([Vector2(5.6, -6.8), Vector2(2.4, -9.4)]),
+		fc.lightened(0.35), 1.0)
+
+# ── Per-culture settlement art ───────────────────────────────
+# Envelope: x in [-9, 9], ground y = 5, top around y = -11.
+
+func _draw_settlement_art(marker: Node2D, culture: StringName, fc: Color) -> void:
+	match culture:
+		&"empire": _stl_empire(marker, fc)
+		&"skulloath": _stl_skulloath(marker, fc)
+		&"gladehost": _stl_gladehost(marker, fc)
+		&"tainted_jade": _stl_tainted_jade(marker, fc)
+		&"moonspear": _stl_moonspear(marker, fc)
+		&"sunblessed": _stl_sunblessed(marker, fc)
+		&"thunderswarm": _stl_thunderswarm(marker, fc)
+		&"cinderguard": _stl_cinderguard(marker, fc)
+		&"forsaken": _stl_forsaken(marker, fc)
+		&"ivoryscar": _stl_ivoryscar(marker, fc)
+		&"shardhorde": _stl_shardhorde(marker, fc)
+		_: _stl_generic(marker, fc)
+
+func _stl_body(marker: Node2D, pts: PackedVector2Array, center: Vector2, color: Color) -> void:
+	_marker_poly(marker, _scaled_pts(pts, 1.16, center), _MARKER_OUTLINE)
+	_marker_poly(marker, pts, color)
+
+func _stl_empire(marker: Node2D, fc: Color) -> void:
+	# Villa: stone box, shallow faction-color gable, portico columns
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-7.5, 5), Vector2(7.5, 5), Vector2(7.5, -3), Vector2(-7.5, -3)
+	]), Vector2(0, 1), _MARKER_STONE_LIGHT)
+	_marker_poly(marker, _scaled_pts(PackedVector2Array([
+		Vector2(-8.6, -3), Vector2(8.6, -3), Vector2(0, -9.4)
+	]), 1.12, Vector2(0, -5)), _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-8.6, -3), Vector2(8.6, -3), Vector2(0, -9.4)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-3.2, 5), Vector2(-3.2, -2.4)]), _MARKER_STONE, 1.2)
+	_marker_line(marker, PackedVector2Array([Vector2(3.2, 5), Vector2(3.2, -2.4)]), _MARKER_STONE, 1.2)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.4, 5), Vector2(1.4, 5), Vector2(1.4, 0.6), Vector2(-1.4, 0.6)
+	]), Color(0.14, 0.1, 0.08))
+
+func _stl_skulloath(marker: Node2D, fc: Color) -> void:
+	# Single yurt: faction dome, dark door, smoke hole
+	var dome := _ellipse_arc_pts(Vector2(0, 5), 8.0, 10.5, PI, TAU, 12)
+	dome.append(Vector2(8.0, 5))
+	_marker_poly(marker, _scaled_pts(dome, 1.14, Vector2(0, 0)), _MARKER_OUTLINE)
+	_marker_poly(marker, dome, fc)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(0, 5), 8.0, 10.5, PI + 0.35, TAU - 0.35, 8),
+		Color(0.2, 0.15, 0.12, 0.6), 1.0)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.8, 5), Vector2(1.8, 5), Vector2(1.8, 0.6), Vector2(0, -0.6), Vector2(-1.8, 0.6)
+	]), Color(0.12, 0.09, 0.07))
+	_marker_poly(marker, _ellipse_pts(Vector2(0, -5.2), 1.2, 0.8, 8), Color(0.14, 0.11, 0.09))
+
+func _stl_gladehost(marker: Node2D, fc: Color) -> void:
+	# Moss-roofed hut against a sapling
+	_marker_line(marker, PackedVector2Array([Vector2(5.6, 5), Vector2(6.4, -6.4)]),
+		Color(0.3, 0.23, 0.16), 1.4)
+	_marker_poly(marker, _ellipse_pts(Vector2(6.6, -8.2), 3.4, 2.8, 10), fc.darkened(0.15))
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-7, 5), Vector2(2.5, 5), Vector2(2.5, -1.5), Vector2(-7, -1.5)
+	]), Vector2(-2.2, 1.8), _MARKER_STONE)
+	var roof := _ellipse_arc_pts(Vector2(-2.2, -1.5), 6.2, 5.4, PI, TAU, 10)
+	_marker_poly(marker, _scaled_pts(roof, 1.12, Vector2(-2.2, -1.5)), _MARKER_OUTLINE)
+	_marker_poly(marker, roof, fc)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-3.6, 5), Vector2(-1.0, 5), Vector2(-1.0, 1), Vector2(-3.6, 1)
+	]), Color(0.12, 0.09, 0.07))
+
+func _stl_tainted_jade(marker: Node2D, fc: Color) -> void:
+	# Thatched jungle hut on a low stone base
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-8, 5), Vector2(8, 5), Vector2(7, 2.2), Vector2(-7, 2.2)
+	]), Vector2(0, 3.6), _MARKER_STONE)
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-5.4, 2.2), Vector2(5.4, 2.2), Vector2(5.4, -2), Vector2(-5.4, -2)
+	]), Vector2(0, 0), Color(0.4, 0.32, 0.22))
+	_marker_poly(marker, _scaled_pts(PackedVector2Array([
+		Vector2(-6.8, -2), Vector2(6.8, -2), Vector2(0, -9.8)
+	]), 1.12, Vector2(0, -4.5)), _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-6.8, -2), Vector2(6.8, -2), Vector2(0, -9.8)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-4.4, -3.8), Vector2(4.4, -3.8)]),
+		fc.darkened(0.25), 1.0)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.5, 2.2), Vector2(1.5, 2.2), Vector2(1.5, -1.4), Vector2(-1.5, -1.4)
+	]), Color(0.1, 0.08, 0.06))
+
+func _stl_moonspear(marker: Node2D, fc: Color) -> void:
+	# Dome hut with a tiny crescent finial
+	var dome := _ellipse_arc_pts(Vector2(0, 5), 7.2, 9.4, PI, TAU, 12)
+	dome.append(Vector2(7.2, 5))
+	_marker_poly(marker, _scaled_pts(dome, 1.14, Vector2(0, 0.5)), _MARKER_OUTLINE)
+	_marker_poly(marker, dome, fc)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(0.6, -6.2), 1.4, 1.5, PI * 0.65, PI * 1.9, 7),
+		_MARKER_GOLD, 1.1)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.7, 5), Vector2(1.7, 5), Vector2(1.7, 0.8), Vector2(0, -0.4), Vector2(-1.7, 0.8)
+	]), Color(0.12, 0.1, 0.12))
+	_marker_poly(marker, _ellipse_pts(Vector2(-3.4, -1.6), 0.7, 0.7, 6), Color(0.92, 0.9, 0.7, 0.9))
+
+func _stl_sunblessed(marker: Node2D, fc: Color) -> void:
+	# Adobe flat-roof house with a gold sun mark over the door
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-7.5, 5), Vector2(7.5, 5), Vector2(7, -4.5), Vector2(-7, -4.5)
+	]), Vector2(0, 0.2), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-7, -4.4), Vector2(7, -4.4)]),
+		fc.darkened(0.25), 1.2)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.6, 5), Vector2(1.6, 5), Vector2(1.6, 0.4), Vector2(-1.6, 0.4)
+	]), Color(0.14, 0.1, 0.08))
+	_marker_poly(marker, _ellipse_pts(Vector2(0, -1.8), 1.1, 1.1, 8), _MARKER_GOLD)
+
+func _stl_thunderswarm(marker: Node2D, fc: Color) -> void:
+	# Turf-roofed longhut
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-8.5, 5), Vector2(8.5, 5), Vector2(8.5, 0.5), Vector2(-8.5, 0.5)
+	]), Vector2(0, 2.7), Color(0.35, 0.29, 0.22))
+	_marker_poly(marker, _scaled_pts(PackedVector2Array([
+		Vector2(-9.6, 0.5), Vector2(9.6, 0.5), Vector2(0, -7.4)
+	]), 1.12, Vector2(0, -2)), _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-9.6, 0.5), Vector2(9.6, 0.5), Vector2(0, -7.4)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-2.4, -5.4), Vector2(2.4, -5.4)]),
+		fc.darkened(0.3), 1.0)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.6, 5), Vector2(1.6, 5), Vector2(1.6, 1.4), Vector2(-1.6, 1.4)
+	]), Color(0.12, 0.09, 0.07))
+
+func _stl_cinderguard(marker: Node2D, fc: Color) -> void:
+	# Stone cottage with ember chimney
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-7, 5), Vector2(7, 5), Vector2(7, -2), Vector2(-7, -2)
+	]), Vector2(0, 1.5), Color(0.34, 0.3, 0.28))
+	_marker_poly(marker, _scaled_pts(PackedVector2Array([
+		Vector2(-8, -2), Vector2(8, -2), Vector2(0, -8.6)
+	]), 1.12, Vector2(0, -4)), _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-8, -2), Vector2(8, -2), Vector2(0, -8.6)
+	]), fc)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(3.2, -3.4), Vector2(5.2, -3.4), Vector2(5.2, -9.4), Vector2(3.2, -9.4)
+	]), Color(0.28, 0.24, 0.22))
+	_marker_poly(marker, _ellipse_pts(Vector2(4.2, -9.9), 1.0, 0.8, 8), Color(0.95, 0.5, 0.15, 0.95))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.5, 5), Vector2(1.5, 5), Vector2(1.5, 1), Vector2(-1.5, 1)
+	]), Color(0.12, 0.09, 0.07))
+
+func _stl_forsaken(marker: Node2D, fc: Color) -> void:
+	# Leaning shack with one lit window
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-6.5, 5), Vector2(6, 5), Vector2(7, -3.5), Vector2(-4.5, -2.5)
+	]), Vector2(0, 1), Color(0.26, 0.23, 0.24))
+	_marker_poly(marker, _scaled_pts(PackedVector2Array([
+		Vector2(-6, -2.4), Vector2(8.4, -3.6), Vector2(0.6, -8.8)
+	]), 1.12, Vector2(1, -4.5)), _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-6, -2.4), Vector2(8.4, -3.6), Vector2(0.6, -8.8)
+	]), fc.darkened(0.25))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(1.8, 0.4), Vector2(3.6, 0.3), Vector2(3.6, 2.1), Vector2(1.8, 2.2)
+	]), Color(0.95, 0.75, 0.35, 0.85))
+
+func _stl_ivoryscar(marker: Node2D, fc: Color) -> void:
+	# Bone-frame tent: pale hide with rib supports and faction band
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-8, 5), Vector2(8, 5), Vector2(0, -9)
+	]), Vector2(0, 1), Color(0.82, 0.78, 0.66))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-5.4, 5), Vector2(5.4, 5), Vector2(4.4, 3.2), Vector2(-4.4, 3.2)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-4.6, 3.4), Vector2(0, -8.2)]),
+		Color(0.62, 0.58, 0.48), 1.0)
+	_marker_line(marker, PackedVector2Array([Vector2(4.6, 3.4), Vector2(0, -8.2)]),
+		Color(0.62, 0.58, 0.48), 1.0)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.4, 5), Vector2(1.4, 5), Vector2(0, 1.6)
+	]), Color(0.12, 0.1, 0.08))
+
+func _stl_shardhorde(marker: Node2D, fc: Color) -> void:
+	# Lean-to slab against a glowing crystal
+	_marker_poly(marker, _scaled_pts(PackedVector2Array([
+		Vector2(1.4, 5), Vector2(5.6, 5), Vector2(3.4, -8.8)
+	]), 1.14, Vector2(3.4, 0)), _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(1.4, 5), Vector2(5.6, 5), Vector2(3.4, -8.8)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(3.2, 3.6), Vector2(3.5, -6.4)]),
+		fc.lightened(0.35), 0.9)
+	_stl_body(marker, PackedVector2Array([
+		Vector2(-8.5, 5), Vector2(0.5, 5), Vector2(-6.5, -4.5)
+	]), Vector2(-4.5, 2), Color(0.36, 0.32, 0.28))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-4.4, 5), Vector2(-1.6, 5), Vector2(-4.2, 1.4)
+	]), Color(0.12, 0.09, 0.07))
+
+func _stl_generic(marker: Node2D, fc: Color) -> void:
+	# Neutral hamlet (previous design)
+	var rear_roof := PackedVector2Array([Vector2(2, -2)])
+	for i in 9:
+		var a := PI + PI * float(i) / 8.0
+		rear_roof.append(Vector2(5.5, -2) + Vector2(cos(a) * 4.0, sin(a) * 4.5))
+	rear_roof.append(Vector2(9.5, -2))
+	rear_roof.append(Vector2(9.5, 3))
+	rear_roof.append(Vector2(2, 3))
+	_marker_poly(marker, _scaled_pts(rear_roof, 1.16, Vector2(5.5, 0.5)), _MARKER_OUTLINE)
+	_marker_poly(marker, rear_roof, fc.darkened(0.35))
+	var body := PackedVector2Array([
+		Vector2(-8, 5), Vector2(-8, -2), Vector2(4, -2), Vector2(4, 5)
+	])
+	_marker_poly(marker, _scaled_pts(body, 1.18, Vector2(-2, 1.5)), _MARKER_OUTLINE)
+	_marker_poly(marker, body, _MARKER_STONE)
+	var roof := PackedVector2Array()
+	for i in 11:
+		var a := PI + PI * float(i) / 10.0
+		roof.append(Vector2(-2, -2) + Vector2(cos(a) * 7.4, sin(a) * 6.4))
+	_marker_poly(marker, _scaled_pts(roof, 1.12, Vector2(-2, -2)), _MARKER_OUTLINE)
+	_marker_poly(marker, roof, fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-8.6, -2.4), Vector2(4.6, -2.4)]),
+		_MARKER_GOLD, 1.1)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-3.6, 5), Vector2(-3.6, 0.5), Vector2(-0.4, 0.5), Vector2(-0.4, 5)
+	]), Color(0.16, 0.12, 0.09))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(1.2, 0.2), Vector2(3.0, 0.2), Vector2(3.0, 2.0), Vector2(1.2, 2.0)
+	]), Color(0.95, 0.8, 0.35, 0.9))
+
+# ── Per-culture city art ─────────────────────────────────────
+# Envelope: x in [-13, 13], ground y = 8, structures top out near y = -20
+# (the universal capital crown sits at -22.5 .. -27.5).
+
+func _draw_city_art(marker: Node2D, culture: StringName, fc: Color, is_capital: bool) -> void:
+	match culture:
+		&"empire": _city_empire(marker, fc, is_capital)
+		&"skulloath": _city_skulloath(marker, fc, is_capital)
+		&"gladehost": _city_gladehost(marker, fc, is_capital)
+		&"tainted_jade": _city_tainted_jade(marker, fc, is_capital)
+		&"moonspear": _city_moonspear(marker, fc, is_capital)
+		&"sunblessed": _city_sunblessed(marker, fc, is_capital)
+		&"thunderswarm": _city_thunderswarm(marker, fc, is_capital)
+		&"cinderguard": _city_cinderguard(marker, fc, is_capital)
+		&"forsaken": _city_forsaken(marker, fc, is_capital)
+		&"ivoryscar": _city_ivoryscar(marker, fc, is_capital)
+		&"shardhorde": _city_shardhorde(marker, fc, is_capital)
+		_: _city_generic(marker, fc)
+
+func _city_wall(marker: Node2D, top_y := -5.0) -> void:
+	# Shared curtain wall with crenellation teeth + gold trim
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-12.6, 8), Vector2(12.6, 8), Vector2(12.6, top_y), Vector2(-12.6, top_y)
+	]), _MARKER_STONE)
+	for i in 4:
+		var tx := [-11.2, -6.6, 6.6, 11.2][i] as float
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(tx - 1.2, top_y), Vector2(tx + 1.2, top_y),
+			Vector2(tx + 1.2, top_y - 2.4), Vector2(tx - 1.2, top_y - 2.4)
+		]), _MARKER_STONE)
+	_marker_line(marker, PackedVector2Array([Vector2(-12.6, top_y + 0.1), Vector2(12.6, top_y + 0.1)]),
+		_MARKER_GOLD, 1.1)
+
+func _city_gate(marker: Node2D) -> void:
+	var gate_pts := PackedVector2Array([Vector2(-3, 8)])
+	for i in 9:
+		var a := PI + PI * float(i) / 8.0
+		gate_pts.append(Vector2(0, 2.5) + Vector2(cos(a) * 3.0, sin(a) * 3.5))
+	gate_pts.append(Vector2(3, 8))
+	_marker_poly(marker, gate_pts, Color(0.1, 0.07, 0.05, 0.9))
+
+func _city_backplate(marker: Node2D, pts: PackedVector2Array, center: Vector2) -> void:
+	_marker_poly(marker, _scaled_pts(pts, 1.14, center), _MARKER_OUTLINE)
+
+func _city_empire(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Roman castrum: wall + basilica with faction-color pediment + gate columns
+	var body := PackedVector2Array([
+		Vector2(-13.6, 9), Vector2(13.6, 9), Vector2(13.6, -6), Vector2(6.5, -6),
+		Vector2(6.5, -14), Vector2(0, -20.2), Vector2(-6.5, -14), Vector2(-6.5, -6), Vector2(-13.6, -6)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	_city_wall(marker)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-5, -5), Vector2(5, -5), Vector2(5, -13.5), Vector2(-5, -13.5)
+	]), _MARKER_STONE_LIGHT)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-6.2, -13.5), Vector2(6.2, -13.5), Vector2(0, -19.2)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-6.2, -13.4), Vector2(6.2, -13.4)]),
+		_MARKER_GOLD, 1.0)
+	_marker_line(marker, PackedVector2Array([Vector2(-2.6, -5.4), Vector2(-2.6, -13)]),
+		_MARKER_STONE, 1.4)
+	_marker_line(marker, PackedVector2Array([Vector2(2.6, -5.4), Vector2(2.6, -13)]),
+		_MARKER_STONE, 1.4)
+	_city_gate(marker)
+	if is_capital:
+		# Gold laurel wreath on the pediment
+		_marker_line(marker, _ellipse_arc_pts(Vector2(0, -15.2), 2.2, 2.2, 0.6, TAU - 0.6, 10),
+			_MARKER_GOLD, 1.1)
+
+func _city_skulloath(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Khan's enclosure: palisade + yurt domes + horned totem
+	var body := PackedVector2Array([
+		Vector2(-13.6, 9), Vector2(13.6, 9), Vector2(13.6, -4), Vector2(6, -4),
+		Vector2(5, -12), Vector2(-5, -12), Vector2(-6, -4), Vector2(-13.6, -4)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	# Palisade wall with stake lines
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-12.6, 8), Vector2(12.6, 8), Vector2(12.6, -3), Vector2(-12.6, -3)
+	]), Color(0.36, 0.3, 0.24))
+	for i in 6:
+		var sx := -10.5 + 4.2 * float(i)
+		_marker_line(marker, PackedVector2Array([Vector2(sx, 8), Vector2(sx, -3.6)]),
+			Color(0.24, 0.19, 0.15), 1.0)
+	# Side yurts
+	for s in 2:
+		var cx := -7.2 + 14.4 * float(s)
+		_marker_poly(marker, _ellipse_arc_pts(Vector2(cx, -3), 3.6, 5.4, PI, TAU, 8), fc.darkened(0.2))
+	# Great yurt (faction color dome) + dark door
+	_marker_poly(marker, _ellipse_arc_pts(Vector2(0, -3), 5.8, 9.0, PI, TAU, 10), fc)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(0, -3), 5.8, 9.0, PI + 0.35, TAU - 0.35, 8),
+		_MARKER_GOLD, 1.0)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.6, -3), Vector2(1.6, -3), Vector2(1.6, -7), Vector2(0, -8.2), Vector2(-1.6, -7)
+	]), Color(0.12, 0.09, 0.07))
+	# Horned totem above the great yurt
+	_marker_line(marker, PackedVector2Array([Vector2(0, -12), Vector2(0, -17.5)]),
+		Color(0.3, 0.24, 0.18), 1.4)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(-2.6, -17.2), 2.6, 3.4, -PI * 0.5, -PI * 0.05, 6),
+		Color(0.85, 0.8, 0.7), 1.3)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(2.6, -17.2), 2.6, 3.4, -PI * 0.5, -PI * 0.95, 6),
+		Color(0.85, 0.8, 0.7), 1.3)
+	if is_capital:
+		_marker_poly(marker, _ellipse_pts(Vector2(0, -18.2), 1.8, 1.8, 8), _MARKER_GOLD)
+
+func _city_gladehost(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Great-tree city: trunk, faction-color canopy, platform walkway, root gate
+	var canopy_c := Vector2(0, -12.5)
+	_marker_poly(marker, _ellipse_pts(canopy_c, 12.2, 8.6, 16), _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-4.4, 9), Vector2(4.4, 9), Vector2(2.6, -8), Vector2(-2.6, -8)
+	]), _MARKER_OUTLINE)
+	# Trunk
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-3.6, 8), Vector2(3.6, 8), Vector2(2.2, -8), Vector2(-2.2, -8)
+	]), Color(0.34, 0.26, 0.18))
+	# Root gate
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.7, 8), Vector2(1.7, 8), Vector2(1.4, 3.6), Vector2(0, 2.6), Vector2(-1.4, 3.6)
+	]), Color(0.1, 0.07, 0.05, 0.9))
+	# Canopy blobs (faction color)
+	_marker_poly(marker, _ellipse_pts(Vector2(-5.4, -10.6), 5.8, 4.9, 12), fc.darkened(0.15))
+	_marker_poly(marker, _ellipse_pts(Vector2(5.4, -10.6), 5.8, 4.9, 12), fc.darkened(0.15))
+	_marker_poly(marker, _ellipse_pts(Vector2(0, -13.8), 6.8, 5.6, 12), fc)
+	# Platform walkway ring on the trunk
+	_marker_line(marker, PackedVector2Array([Vector2(-5.4, -2.5), Vector2(5.4, -2.5)]),
+		_MARKER_GOLD, 1.2)
+	if is_capital:
+		# Golden bloom in the crown
+		for i in 6:
+			var a := TAU * float(i) / 6.0
+			_marker_line(marker, PackedVector2Array([
+				Vector2(0, -14.5), Vector2(0, -14.5) + Vector2(cos(a), sin(a)) * 2.6
+			]), _MARKER_GOLD, 1.2)
+
+func _city_tainted_jade(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Stepped pyramid with faction-color temple and serpent stair rails
+	var body := PackedVector2Array([
+		Vector2(-13.6, 9), Vector2(13.6, 9), Vector2(9.4, 0.4), Vector2(6.2, -6.4),
+		Vector2(3.4, -18.8), Vector2(-3.4, -18.8), Vector2(-6.2, -6.4), Vector2(-9.4, 0.4)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-12.6, 8), Vector2(12.6, 8), Vector2(8.6, 1), Vector2(-8.6, 1)
+	]), _MARKER_STONE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-8.6, 1), Vector2(8.6, 1), Vector2(5.6, -5.6), Vector2(-5.6, -5.6)
+	]), _MARKER_STONE_LIGHT)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-5.6, -5.6), Vector2(5.6, -5.6), Vector2(3.4, -11), Vector2(-3.4, -11)
+	]), _MARKER_STONE)
+	# Temple top (faction color)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-3, -11), Vector2(3, -11), Vector2(3, -16.4), Vector2(-3, -16.4)
+	]), fc)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-3.8, -16.4), Vector2(3.8, -16.4), Vector2(0, -18.6)
+	]), fc.darkened(0.2))
+	# Central stair strip
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.7, 8), Vector2(1.7, 8), Vector2(1.2, -11), Vector2(-1.2, -11)
+	]), Color(0.55, 0.52, 0.44))
+	# Serpent-head stair rails (small gold hooks at the base)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(-3.2, 7), 1.6, 1.6, PI * 0.5, PI * 1.5, 6),
+		_MARKER_GOLD, 1.2)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(3.2, 7), 1.6, 1.6, PI * 0.5, -PI * 0.5, 6),
+		_MARKER_GOLD, 1.2)
+	if is_capital:
+		# Gold sun-serpent disc above the temple
+		_marker_line(marker, _ellipse_pts(Vector2(0, -20.4), 1.7, 1.7, 10), _MARKER_GOLD, 1.1)
+
+func _city_moonspear(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Domed sanctum + crescent-tipped spire
+	var body := PackedVector2Array([
+		Vector2(-13.6, 9), Vector2(13.6, 9), Vector2(13.6, -4), Vector2(8.6, -4),
+		Vector2(7.4, -19), Vector2(4.4, -19), Vector2(2.2, -4), Vector2(-13.6, -4)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	_city_wall(marker, -3.0)
+	# Sanctum dome (faction color)
+	_marker_poly(marker, _ellipse_arc_pts(Vector2(-3, -3), 7.2, 9.8, PI, TAU, 12), fc)
+	_marker_line(marker, _ellipse_arc_pts(Vector2(-3, -3), 7.2, 9.8, PI + 0.3, TAU - 0.3, 10),
+		_MARKER_GOLD, 1.0)
+	# Star lantern dots on the dome
+	_marker_poly(marker, _ellipse_pts(Vector2(-5.4, -8.2), 0.8, 0.8, 6), Color(0.92, 0.9, 0.7, 0.9))
+	_marker_poly(marker, _ellipse_pts(Vector2(-0.8, -10.2), 0.8, 0.8, 6), Color(0.92, 0.9, 0.7, 0.9))
+	# Spire
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(4.6, -4), Vector2(7.2, -4), Vector2(6.4, -18.2), Vector2(5.4, -18.2)
+	]), _MARKER_STONE_LIGHT)
+	# Gold crescent tip
+	_marker_line(marker, _ellipse_arc_pts(Vector2(5.9, -19.6), 1.9, 2.1, PI * 0.65, PI * 1.9, 8),
+		_MARKER_GOLD, 1.3)
+	if is_capital:
+		_marker_poly(marker, _ellipse_pts(Vector2(-3, -14.6), 1.7, 1.7, 10), _MARKER_GOLD)
+
+func _city_sunblessed(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Sun temple: gold-trimmed dome between two obelisks, sun disc over gate
+	var body := PackedVector2Array([
+		Vector2(-13.6, 9), Vector2(13.6, 9), Vector2(13.6, -4), Vector2(10.6, -4),
+		Vector2(9.6, -16), Vector2(7, -16), Vector2(6.4, -4), Vector2(-6.4, -4),
+		Vector2(-7, -16), Vector2(-9.6, -16), Vector2(-10.6, -4), Vector2(-13.6, -4)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	_city_wall(marker, -3.0)
+	# Obelisks
+	for s in 2:
+		var ox := -8.3 + 16.6 * float(s)
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(ox - 1.2, -3), Vector2(ox + 1.2, -3),
+			Vector2(ox + 0.7, -14.6), Vector2(ox - 0.7, -14.6)
+		]), _MARKER_STONE_LIGHT)
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(ox - 0.7, -14.6), Vector2(ox + 0.7, -14.6), Vector2(ox, -16.4)
+		]), _MARKER_GOLD)
+	# Dome (faction color, gold base line)
+	_marker_poly(marker, _ellipse_arc_pts(Vector2(0, -3), 6.4, 9.6, PI, TAU, 12), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-6.4, -3.2), Vector2(6.4, -3.2)]),
+		_MARKER_GOLD, 1.2)
+	# Sun disc over the gate
+	_marker_poly(marker, _ellipse_pts(Vector2(0, 0.2), 1.6, 1.6, 8), _MARKER_GOLD)
+	if is_capital:
+		for i in 8:
+			var a := TAU * float(i) / 8.0
+			_marker_line(marker, PackedVector2Array([
+				Vector2(0, -12.4) + Vector2(cos(a), sin(a)) * 2.0,
+				Vector2(0, -12.4) + Vector2(cos(a), sin(a)) * 3.6
+			]), _MARKER_GOLD, 1.0)
+
+func _city_thunderswarm(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Storm hall: longhouse with faction roof + lightning-rod mast
+	var body := PackedVector2Array([
+		Vector2(-13.6, 9), Vector2(13.6, 9), Vector2(13.6, -1), Vector2(3.4, -12),
+		Vector2(2.6, -20), Vector2(0.6, -20), Vector2(-0.4, -12), Vector2(-13.6, -1)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	# Hall walls
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-11.6, 8), Vector2(11.6, 8), Vector2(11.6, -0.6), Vector2(-11.6, -0.6)
+	]), Color(0.35, 0.29, 0.22))
+	# Steep faction-color roof
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-12.8, -0.6), Vector2(12.8, -0.6), Vector2(1.6, -11.4)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-12.8, -0.5), Vector2(12.8, -0.5)]),
+		_MARKER_GOLD, 1.0)
+	# Crossed gable beams
+	_marker_line(marker, PackedVector2Array([Vector2(-1.4, -12.2), Vector2(4.6, -6.4)]),
+		Color(0.3, 0.24, 0.18), 1.2)
+	_marker_line(marker, PackedVector2Array([Vector2(4.6, -12.2), Vector2(-1.4, -6.4)]),
+		Color(0.3, 0.24, 0.18), 1.2)
+	# Lightning-rod mast with crackling gold tip
+	_marker_line(marker, PackedVector2Array([Vector2(1.6, -11.4), Vector2(1.6, -19)]),
+		Color(0.3, 0.24, 0.18), 1.3)
+	_marker_line(marker, PackedVector2Array([
+		Vector2(1.6, -19), Vector2(3.2, -16.8), Vector2(1.9, -16.2), Vector2(3.6, -13.6)
+	]), _MARKER_GOLD, 1.2)
+	# Dark door
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.6, 8), Vector2(1.6, 8), Vector2(1.6, 2.6), Vector2(-1.6, 2.6)
+	]), Color(0.12, 0.09, 0.07))
+	if is_capital:
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(-4.6, -14.2), Vector2(-2.6, -17.8), Vector2(-3.4, -15.4),
+			Vector2(-1.8, -15.8), Vector2(-4.4, -12.2), Vector2(-3.8, -14.4)
+		]), _MARKER_GOLD)
+
+func _city_cinderguard(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Squat bastion: angled walls, ember forge chimney, portcullis gate
+	var body := PackedVector2Array([
+		Vector2(-14.2, 9), Vector2(14.2, 9), Vector2(11, -9), Vector2(7.6, -9),
+		Vector2(7.2, -17.6), Vector2(4, -17.6), Vector2(3.8, -9), Vector2(-11, -9)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	# Angled bastion wall
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-13.2, 8), Vector2(13.2, 8), Vector2(10, -8), Vector2(-10, -8)
+	]), Color(0.34, 0.3, 0.28))
+	for i in 3:
+		var tx := -7.2 + 7.2 * float(i)
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(tx - 1.3, -8), Vector2(tx + 1.3, -8),
+			Vector2(tx + 1.3, -10.4), Vector2(tx - 1.3, -10.4)
+		]), Color(0.34, 0.3, 0.28))
+	_marker_line(marker, PackedVector2Array([Vector2(-10, -7.9), Vector2(10, -7.9)]),
+		_MARKER_GOLD, 1.1)
+	# Faction banner strip across the wall
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-8.4, -1), Vector2(8.4, -1), Vector2(8.4, -4.6), Vector2(-8.4, -4.6)
+	]), fc)
+	# Forge chimney with ember glow
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(4.6, -8), Vector2(6.8, -8), Vector2(6.6, -16.6), Vector2(4.8, -16.6)
+	]), Color(0.28, 0.24, 0.22))
+	_marker_poly(marker, _ellipse_pts(Vector2(5.7, -17.2), 1.3, 1.0, 8), Color(0.95, 0.5, 0.15, 0.95))
+	# Portcullis gate (vertical bars)
+	_city_gate(marker)
+	for i in 3:
+		var gx := -1.5 + 1.5 * float(i)
+		_marker_line(marker, PackedVector2Array([Vector2(gx, 8), Vector2(gx, 1.6)]),
+			Color(0.5, 0.44, 0.36), 0.8)
+	if is_capital:
+		# Gold anvil crest
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(-4.4, -13.2), Vector2(-0.6, -13.2), Vector2(-1.2, -14.6),
+			Vector2(-1.8, -14.6), Vector2(-1.8, -15.8), Vector2(-3.2, -15.8),
+			Vector2(-3.2, -14.6), Vector2(-3.8, -14.6)
+		]), _MARKER_GOLD)
+
+func _city_forsaken(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Shrouded citadel: hooded tower, narrow lit windows, tattered banner
+	var body := PackedVector2Array([
+		Vector2(-13.6, 9), Vector2(13.6, 9), Vector2(13.6, -3), Vector2(6.6, -3),
+		Vector2(5.4, -13), Vector2(7.8, -15.4), Vector2(0.6, -20.6), Vector2(-4.6, -14),
+		Vector2(-5.4, -3), Vector2(-13.6, -3)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	_city_wall(marker, -2.0)
+	# Hooded tower (tapering, with overhanging cowl)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-4.4, -2), Vector2(4.4, -2), Vector2(3.2, -13.6), Vector2(-3.4, -13.6)
+	]), Color(0.26, 0.23, 0.24))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-4.4, -12.6), Vector2(6.6, -14.4), Vector2(0.4, -19.6), Vector2(-3.6, -15.4)
+	]), Color(0.2, 0.17, 0.19))
+	# Narrow lit windows
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.6, -6), Vector2(-0.8, -6), Vector2(-0.8, -9.6), Vector2(-1.6, -9.6)
+	]), Color(0.95, 0.75, 0.35, 0.9))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(1.2, -5), Vector2(2.0, -5), Vector2(2.0, -8.2), Vector2(1.2, -8.2)
+	]), Color(0.95, 0.75, 0.35, 0.75))
+	# Tattered faction banner off the cowl
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(4.4, -14.8), Vector2(7.4, -15.2), Vector2(7.2, -10.4), Vector2(6.4, -12),
+		Vector2(5.8, -9.6), Vector2(5.0, -11.6)
+	]), fc)
+	if is_capital:
+		# Gold eye crest on the cowl
+		_marker_line(marker, _ellipse_pts(Vector2(0.4, -16.4), 1.9, 1.1, 8), _MARKER_GOLD, 0.9)
+		_marker_poly(marker, _ellipse_pts(Vector2(0.4, -16.4), 0.6, 0.6, 6), _MARKER_GOLD)
+
+func _city_ivoryscar(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Black pyramid with ivory capstone seam and relic light at the apex
+	var body := PackedVector2Array([
+		Vector2(-14.2, 9), Vector2(14.2, 9), Vector2(0.0, -20.2)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-13.2, 8), Vector2(13.2, 8), Vector2(0, -19)
+	]), Color(0.16, 0.14, 0.15))
+	# Faction color band at the base
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-13.2, 8), Vector2(13.2, 8), Vector2(11.4, 5.2), Vector2(-11.4, 5.2)
+	]), fc)
+	# Ivory capstone seam
+	_marker_line(marker, PackedVector2Array([Vector2(-3.4, -12), Vector2(3.4, -12)]),
+		Color(0.88, 0.84, 0.72), 1.3)
+	# Relic light at the apex
+	_marker_poly(marker, _ellipse_pts(Vector2(0, -16.2), 1.4, 1.4, 8), Color(0.9, 0.85, 0.6, 0.95))
+	# Dark entry
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.8, 8), Vector2(1.8, 8), Vector2(0, 3.6)
+	]), Color(0.06, 0.05, 0.05))
+	if is_capital:
+		# Gold scarab crest (oval + wing notches)
+		_marker_poly(marker, _ellipse_pts(Vector2(0, -7.4), 1.6, 2.0, 8), _MARKER_GOLD)
+		_marker_line(marker, PackedVector2Array([Vector2(-3.2, -8.4), Vector2(-1.4, -7.4)]), _MARKER_GOLD, 1.0)
+		_marker_line(marker, PackedVector2Array([Vector2(3.2, -8.4), Vector2(1.4, -7.4)]), _MARKER_GOLD, 1.0)
+
+func _city_shardhorde(marker: Node2D, fc: Color, is_capital: bool) -> void:
+	# Crystal hold: rock base with jutting faction-color shard towers
+	var body := PackedVector2Array([
+		Vector2(-14, 9), Vector2(14, 9), Vector2(12, -1), Vector2(8.6, -2),
+		Vector2(10.4, -13), Vector2(5.4, -4), Vector2(2.2, -20), Vector2(-3.4, -4.6),
+		Vector2(-8.2, -14.6), Vector2(-8.4, -2), Vector2(-12, -1)
+	])
+	_marker_poly(marker, body, _MARKER_OUTLINE)
+	# Rock mound
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-13, 8), Vector2(13, 8), Vector2(11, -0.6), Vector2(4.4, -2.8),
+		Vector2(-4.4, -2.8), Vector2(-11, -0.6)
+	]), Color(0.3, 0.27, 0.25))
+	# Side shards
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-9.4, -1), Vector2(-5.8, -2.4), Vector2(-7.4, -13.4)
+	]), fc.darkened(0.2))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(6.4, -1.6), Vector2(9.8, -0.6), Vector2(9.4, -11.8)
+	]), fc.darkened(0.25))
+	# Great resonating crystal
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-2.8, -2.8), Vector2(3.4, -2.8), Vector2(1.6, -18.8)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(0.2, -3.2), Vector2(1.4, -16.4)]),
+		fc.lightened(0.35), 1.1)
+	# Dark entry in the rock
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-1.8, 8), Vector2(1.8, 8), Vector2(1.4, 3.4), Vector2(0, 2.4), Vector2(-1.4, 3.4)
+	]), Color(0.08, 0.06, 0.06))
+	if is_capital:
+		# Gold shard-star at the crystal tip
+		for i in 4:
+			var a := TAU * float(i) / 4.0 + PI / 4.0
+			_marker_line(marker, PackedVector2Array([
+				Vector2(1.6, -19.6), Vector2(1.6, -19.6) + Vector2(cos(a), sin(a)) * 2.4
+			]), _MARKER_GOLD, 1.1)
+
+func _city_generic(marker: Node2D, fc: Color) -> void:
+	# Neutral/independent: the standard stone keep
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-14, 9.5), Vector2(-14, -8), Vector2(-11.5, -8), Vector2(-11.5, -15.5),
+		Vector2(-6, -15.5), Vector2(-6, -8), Vector2(-5.6, -8), Vector2(-5.6, -19.5),
+		Vector2(5.6, -19.5), Vector2(5.6, -8), Vector2(6, -8), Vector2(6, -15.5),
+		Vector2(11.5, -15.5), Vector2(11.5, -8), Vector2(14, -8), Vector2(14, 9.5)
+	]), _MARKER_OUTLINE)
+	_city_wall(marker, -6.5)
+	for side: float in [-1.0, 1.0]:
+		var cx := 8.75 * side
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(cx - 2.4, -6.5), Vector2(cx + 2.4, -6.5),
+			Vector2(cx + 2.4, -13.5), Vector2(cx - 2.4, -13.5)
+		]), _MARKER_STONE_LIGHT)
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(cx - 3.1, -13.5), Vector2(cx + 3.1, -13.5), Vector2(cx, -18.2)
+		]), fc.darkened(0.12))
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-4.6, -6.5), Vector2(4.6, -6.5), Vector2(4.6, -18.5), Vector2(-4.6, -18.5)
+	]), _MARKER_STONE_LIGHT)
+	for kx: float in [-3.4, 0.0, 3.4]:
+		_marker_poly(marker, PackedVector2Array([
+			Vector2(kx - 1.0, -18.5), Vector2(kx + 1.0, -18.5),
+			Vector2(kx + 1.0, -20.8), Vector2(kx - 1.0, -20.8)
+		]), _MARKER_STONE_LIGHT)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(-2.2, -17.5), Vector2(2.2, -17.5), Vector2(2.2, -9.5),
+		Vector2(0, -7.5), Vector2(-2.2, -9.5)
+	]), fc)
+	_marker_line(marker, PackedVector2Array([Vector2(-2.4, -17.5), Vector2(2.4, -17.5)]),
+		_MARKER_GOLD, 1.0)
+	_city_gate(marker)
+
 func _create_army_marker(army: ArmyState) -> void:
 	var marker := Node2D.new()
 	marker.position = _hex_to_pixel(army.hex_pos)
 	var faction_data: FactionData = DataManager.get_faction(army.faction_id)
 	var faction_color: Color = faction_data.color if faction_data else Color.WHITE
 
-	# Banner/shield shape (pointed bottom)
-	var shield_poly := PackedVector2Array([
-		Vector2(-10, -12), Vector2(10, -12), Vector2(10, 4),
-		Vector2(0, 12), Vector2(-10, 4)
-	])
+	# Ground shadow
+	_marker_poly(marker, _ellipse_pts(Vector2(0, 10.5), 11.0, 3.5), Color(0, 0, 0, 0.3))
 
-	# Outer border (gold/bronze)
-	var border := Polygon2D.new()
-	var border_poly := PackedVector2Array()
-	for pt in shield_poly:
-		border_poly.append(pt * 1.2)
-	border.polygon = border_poly
-	border.color = Color(0.72, 0.58, 0.3) # Bronze
-	marker.add_child(border)
+	# Faction-flavored shield (culture decides shape, faction color the field)
+	_draw_army_shield_art(marker, _marker_culture(army.faction_id), faction_color)
 
-	# Inner shield fill
-	var fill := Polygon2D.new()
-	fill.polygon = shield_poly
-	fill.color = faction_color
-	marker.add_child(fill)
+	# Relation ring (front arc) at the shield base — same read as city markers
+	var rel_ring := _marker_line(marker,
+		_ellipse_arc_pts(Vector2(0, 10.5), 11.0, 3.4, -0.35, PI + 0.35, 14),
+		_relation_ring_color(army.faction_id), 2.0)
+	rel_ring.name = "RelationRing"
+	rel_ring.z_index = 1
 
-	# Unit count emblem
-	var emblem := Polygon2D.new()
-	emblem.polygon = _make_circle(6.0, 8)
-	emblem.position = Vector2(0, -3)
-	emblem.color = faction_color.darkened(0.3)
-	marker.add_child(emblem)
+	# Unit count roundel
+	var roundel_pos := Vector2(0, -3.5)
+	var roundel := _marker_poly(marker, _make_circle(6.2, 14), Color(0.1, 0.08, 0.06, 0.92))
+	roundel.position = roundel_pos
+	var rim := _marker_line(marker, _make_circle(6.2, 14), _MARKER_GOLD, 1.2, true)
+	rim.position = roundel_pos
 
 	var label := Label.new()
 	label.text = str(army.units.size())
-	label.position = Vector2(-4, -10)
+	label.position = Vector2(-8, -12)
+	label.custom_minimum_size = Vector2(16, 0)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", 11)
-	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_color_override("font_color", Color(0.95, 0.9, 0.78))
 	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	label.add_theme_constant_override("shadow_offset_x", 1)
 	label.add_theme_constant_override("shadow_offset_y", 1)
 	marker.add_child(label)
 
-	# Top-edge highlight on shield for bevel effect
-	var bevel_highlight := Line2D.new()
-	bevel_highlight.points = PackedVector2Array([
-		Vector2(-9, -11.5), Vector2(9, -11.5)
-	])
-	bevel_highlight.width = 1.5
-	bevel_highlight.default_color = Color(1, 1, 1, 0.35)
-	marker.add_child(bevel_highlight)
-
-	# Small sword/spear cross icon on shield face
-	var sword_v := Line2D.new()
-	sword_v.points = PackedVector2Array([Vector2(0, -8), Vector2(0, 3)])
-	sword_v.width = 1.2
-	sword_v.default_color = Color(1, 1, 1, 0.5)
-	marker.add_child(sword_v)
-	var sword_h := Line2D.new()
-	sword_h.points = PackedVector2Array([Vector2(-3.5, -4), Vector2(3.5, -4)])
-	sword_h.width = 1.2
-	sword_h.default_color = Color(1, 1, 1, 0.5)
-	marker.add_child(sword_h)
-
-	# Banner pole extending above shield
-	var banner_pole := Line2D.new()
-	banner_pole.points = PackedVector2Array([Vector2(6, -12), Vector2(6, -28)])
-	banner_pole.width = 1.5
-	banner_pole.default_color = Color(0.55, 0.42, 0.22)
-	marker.add_child(banner_pole)
-
-	# Triangular pennant flag at pole top in faction color
-	var pennant := Polygon2D.new()
-	pennant.polygon = PackedVector2Array([
-		Vector2(6, -28), Vector2(6, -20), Vector2(16, -24)
-	])
-	pennant.color = faction_color
-	marker.add_child(pennant)
-
-	# Inner stripe on flag for detail
-	var flag_stripe := Polygon2D.new()
-	flag_stripe.polygon = PackedVector2Array([
-		Vector2(6, -25.5), Vector2(6, -22.5), Vector2(13, -24)
-	])
-	flag_stripe.color = faction_color.lightened(0.3)
-	marker.add_child(flag_stripe)
-
 	# Selection ring (hidden by default, shown when selected)
 	var sel_ring := Polygon2D.new()
 	sel_ring.name = "SelectionRing"
-	sel_ring.polygon = _make_circle(16.0, 12)
+	sel_ring.polygon = _make_circle(16.0, 16)
 	sel_ring.color = Color(1, 0.85, 0.2, 0.35)
+	sel_ring.antialiased = true
 	sel_ring.visible = false
 	marker.add_child(sel_ring)
 
@@ -1541,200 +2659,20 @@ func _create_city_marker(city: CityState) -> void:
 	var faction_data: FactionData = DataManager.get_faction(city.faction_id)
 	var faction_color: Color = faction_data.color if faction_data else Color.WHITE
 
+	var culture := _marker_culture(city.faction_id)
 	if city.is_settlement:
-		# Settlement icon: smaller house shape
-		var house := Polygon2D.new()
-		house.polygon = PackedVector2Array([
-			Vector2(-7, 4), Vector2(-7, -3), Vector2(0, -9), Vector2(7, -3), Vector2(7, 4)
-		])
-		house.color = faction_color.darkened(0.15)
-		marker.add_child(house)
-
-		# Thatch texture: 2-3 horizontal stripes on roof
-		var thatch1 := Line2D.new()
-		thatch1.points = PackedVector2Array([Vector2(-5, -5), Vector2(5, -5)])
-		thatch1.width = 0.8
-		thatch1.default_color = faction_color.darkened(0.35)
-		marker.add_child(thatch1)
-		var thatch2 := Line2D.new()
-		thatch2.points = PackedVector2Array([Vector2(-3.5, -7), Vector2(3.5, -7)])
-		thatch2.width = 0.8
-		thatch2.default_color = faction_color.darkened(0.35)
-		marker.add_child(thatch2)
-		var thatch3 := Line2D.new()
-		thatch3.points = PackedVector2Array([Vector2(-1.5, -8.5), Vector2(1.5, -8.5)])
-		thatch3.width = 0.7
-		thatch3.default_color = faction_color.darkened(0.35)
-		marker.add_child(thatch3)
-
-		# Small chimney rectangle on roof side
-		var chimney := Polygon2D.new()
-		chimney.polygon = PackedVector2Array([
-			Vector2(3, -6), Vector2(5, -6), Vector2(5, -9), Vector2(3, -9)
-		])
-		chimney.color = faction_color.darkened(0.45)
-		marker.add_child(chimney)
-
-		# Warm-glowing window square on house face
-		var window := Polygon2D.new()
-		window.polygon = PackedVector2Array([
-			Vector2(-5, -1), Vector2(-3, -1), Vector2(-3, 1), Vector2(-5, 1)
-		])
-		window.color = Color(0.95, 0.8, 0.35, 0.9)
-		marker.add_child(window)
-
-		# Door
-		var door := Polygon2D.new()
-		door.polygon = PackedVector2Array([
-			Vector2(-2, 4), Vector2(-2, 0), Vector2(2, 0), Vector2(2, 4)
-		])
-		door.color = faction_color.darkened(0.4)
-		marker.add_child(door)
+		# Ground shadow + culture-flavored hamlet
+		_marker_poly(marker, _ellipse_pts(Vector2(0, 5), 9.5, 3.0), Color(0, 0, 0, 0.3))
+		_draw_settlement_art(marker, culture, faction_color)
 	else:
-		# City/Capital icon: castle with towers
-
-		# Drop shadow (offset darker copy beneath the city)
-		var shadow_offset := Vector2(2, 3)
-		var shadow_color := Color(0, 0, 0, 0.3)
-		var shadow_base := Polygon2D.new()
-		shadow_base.polygon = PackedVector2Array([
-			Vector2(-10, -8) + shadow_offset, Vector2(10, -8) + shadow_offset,
-			Vector2(10, 8) + shadow_offset, Vector2(-10, 8) + shadow_offset
-		])
-		shadow_base.color = shadow_color
-		shadow_base.z_index = -1
-		marker.add_child(shadow_base)
-		var shadow_tl := Polygon2D.new()
-		shadow_tl.polygon = PackedVector2Array([
-			Vector2(-12, -14) + shadow_offset, Vector2(-6, -14) + shadow_offset,
-			Vector2(-6, -6) + shadow_offset, Vector2(-12, -6) + shadow_offset
-		])
-		shadow_tl.color = shadow_color
-		shadow_tl.z_index = -1
-		marker.add_child(shadow_tl)
-		var shadow_tr := Polygon2D.new()
-		shadow_tr.polygon = PackedVector2Array([
-			Vector2(6, -14) + shadow_offset, Vector2(12, -14) + shadow_offset,
-			Vector2(12, -6) + shadow_offset, Vector2(6, -6) + shadow_offset
-		])
-		shadow_tr.color = shadow_color
-		shadow_tr.z_index = -1
-		marker.add_child(shadow_tr)
-		var shadow_tc := Polygon2D.new()
-		shadow_tc.polygon = PackedVector2Array([
-			Vector2(-4, -18) + shadow_offset, Vector2(4, -18) + shadow_offset,
-			Vector2(4, -6) + shadow_offset, Vector2(-4, -6) + shadow_offset
-		])
-		shadow_tc.color = shadow_color
-		shadow_tc.z_index = -1
-		marker.add_child(shadow_tc)
-
-		var base := Polygon2D.new()
-		base.polygon = PackedVector2Array([
-			Vector2(-10, -8), Vector2(10, -8), Vector2(10, 8),
-			Vector2(-10, 8)
-		])
-		base.color = faction_color.darkened(0.2)
-		marker.add_child(base)
-
-		# Dark arch gate shape at base center
-		var gate := Polygon2D.new()
-		gate.polygon = PackedVector2Array([
-			Vector2(-3, 8), Vector2(-3, 3), Vector2(-2, 1),
-			Vector2(0, 0), Vector2(2, 1), Vector2(3, 3), Vector2(3, 8)
-		])
-		gate.color = Color(0.08, 0.05, 0.05, 0.85)
-		marker.add_child(gate)
-
-		# Tower left
-		var tower_l := Polygon2D.new()
-		tower_l.polygon = PackedVector2Array([
-			Vector2(-12, -14), Vector2(-6, -14), Vector2(-6, -6), Vector2(-12, -6)
-		])
-		tower_l.color = faction_color.darkened(0.1)
-		marker.add_child(tower_l)
-
-		# Left tower crenellations (2 teeth)
-		var cren_l1 := Polygon2D.new()
-		cren_l1.polygon = PackedVector2Array([
-			Vector2(-12, -16.5), Vector2(-10, -16.5), Vector2(-10, -14), Vector2(-12, -14)
-		])
-		cren_l1.color = faction_color.darkened(0.1)
-		marker.add_child(cren_l1)
-		var cren_l2 := Polygon2D.new()
-		cren_l2.polygon = PackedVector2Array([
-			Vector2(-8, -16.5), Vector2(-6, -16.5), Vector2(-6, -14), Vector2(-8, -14)
-		])
-		cren_l2.color = faction_color.darkened(0.1)
-		marker.add_child(cren_l2)
-
-		# Tower right
-		var tower_r := Polygon2D.new()
-		tower_r.polygon = PackedVector2Array([
-			Vector2(6, -14), Vector2(12, -14), Vector2(12, -6), Vector2(6, -6)
-		])
-		tower_r.color = faction_color.darkened(0.1)
-		marker.add_child(tower_r)
-
-		# Right tower crenellations (2 teeth)
-		var cren_r1 := Polygon2D.new()
-		cren_r1.polygon = PackedVector2Array([
-			Vector2(6, -16.5), Vector2(8, -16.5), Vector2(8, -14), Vector2(6, -14)
-		])
-		cren_r1.color = faction_color.darkened(0.1)
-		marker.add_child(cren_r1)
-		var cren_r2 := Polygon2D.new()
-		cren_r2.polygon = PackedVector2Array([
-			Vector2(10, -16.5), Vector2(12, -16.5), Vector2(12, -14), Vector2(10, -14)
-		])
-		cren_r2.color = faction_color.darkened(0.1)
-		marker.add_child(cren_r2)
-
-		# Center tower (taller)
-		var is_player_capital := city.is_capital and city.faction_id == GameManager.state.player_faction_id
-		var tower_c := Polygon2D.new()
-		tower_c.polygon = PackedVector2Array([
-			Vector2(-4, -18), Vector2(4, -18), Vector2(4, -6), Vector2(-4, -6)
-		])
-		tower_c.color = faction_color.lightened(0.15) if is_player_capital else faction_color
-		marker.add_child(tower_c)
-
-		# Center tower crenellations (3 narrower teeth)
-		var cren_c1 := Polygon2D.new()
-		cren_c1.polygon = PackedVector2Array([
-			Vector2(-4, -20), Vector2(-2.5, -20), Vector2(-2.5, -18), Vector2(-4, -18)
-		])
-		cren_c1.color = faction_color.lightened(0.15) if is_player_capital else faction_color
-		marker.add_child(cren_c1)
-		var cren_c2 := Polygon2D.new()
-		cren_c2.polygon = PackedVector2Array([
-			Vector2(-0.75, -20), Vector2(0.75, -20), Vector2(0.75, -18), Vector2(-0.75, -18)
-		])
-		cren_c2.color = faction_color.lightened(0.15) if is_player_capital else faction_color
-		marker.add_child(cren_c2)
-		var cren_c3 := Polygon2D.new()
-		cren_c3.polygon = PackedVector2Array([
-			Vector2(2.5, -20), Vector2(4, -20), Vector2(4, -18), Vector2(2.5, -18)
-		])
-		cren_c3.color = faction_color.lightened(0.15) if is_player_capital else faction_color
-		marker.add_child(cren_c3)
-
-		# Faction banner detail (small colored triangle on tallest tower)
-		var banner := Polygon2D.new()
-		banner.polygon = PackedVector2Array([
-			Vector2(4, -17), Vector2(8, -14), Vector2(4, -11)
-		])
-		banner.color = faction_color.lightened(0.25)
-		marker.add_child(banner)
-
-		# Gold diamond indicator on player capital
-		if is_player_capital:
-			var crown := Polygon2D.new()
-			crown.polygon = PackedVector2Array([
-				Vector2(0, -26), Vector2(4, -22), Vector2(0, -18), Vector2(-4, -22)
-			])
-			crown.color = Color(0.95, 0.85, 0.3)
-			marker.add_child(crown)
+		# Ground shadow + culture-flavored city, universal crown on capitals
+		_marker_poly(marker, _ellipse_pts(Vector2(0, 8.5), 14.5, 4.0), Color(0, 0, 0, 0.3))
+		_draw_city_art(marker, culture, faction_color, city.is_capital)
+		if city.is_capital:
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-4.5, -23), Vector2(-4.5, -26.5), Vector2(-2.2, -24.4),
+				Vector2(0, -27.5), Vector2(2.2, -24.4), Vector2(4.5, -26.5), Vector2(4.5, -23)
+			]), Color(0.95, 0.85, 0.3))
 
 	# City level glow — scales with city level, larger for capitals
 	if city.faction_id == GameManager.state.player_faction_id:
@@ -1859,27 +2797,17 @@ func _create_city_marker(city: CityState) -> void:
 	var outline := Line2D.new()
 	outline.name = "CityOutline"
 	outline.width = 2.0
-	var player_id := GameManager.state.player_faction_id
-	var outline_color: Color
-	if city.faction_id == player_id:
-		outline_color = Color(0.3, 0.5, 1.0)  # Blue — own city
-	elif city.faction_id == &"" or city.faction_id == &"independent" or city.faction_id == &"rebels":
-		outline_color = Color(0.9, 0.9, 0.9)  # White — neutral
-	else:
-		var relation := GameManager.get_relation(player_id, city.faction_id)
-		if relation == Enums.FactionRelation.ALLIED:
-			outline_color = Color(0.2, 0.85, 0.3)  # Green — allied
-		elif relation == Enums.FactionRelation.WAR or relation == Enums.FactionRelation.HOSTILE:
-			outline_color = Color(0.95, 0.2, 0.15)  # Red — enemy
-		elif relation == Enums.FactionRelation.FRIENDLY:
-			outline_color = Color(0.2, 0.85, 0.3, 0.7)  # Light green — friendly
-		else:
-			outline_color = Color(0.9, 0.9, 0.9)  # White — neutral
-	outline.default_color = outline_color
-	outline.points = PackedVector2Array([
-		Vector2(-12, -20), Vector2(12, -20), Vector2(12, 8),
-		Vector2(-12, 8), Vector2(-12, -20)
-	])
+	outline.default_color = _relation_ring_color(city.faction_id)
+	# Relation ring at the marker's base — only the FRONT arc is drawn; the
+	# part that would pass "behind" the structure stays hidden
+	var ring_center := Vector2(0, 5) if city.is_settlement else Vector2(0, 8.5)
+	var ring_rx := 11.0 if city.is_settlement else 16.0
+	var ring_ry := 3.4 if city.is_settlement else 5.0
+	outline.points = _ellipse_arc_pts(ring_center, ring_rx, ring_ry, -0.35, PI + 0.35, 16)
+	outline.antialiased = true
+	outline.joint_mode = Line2D.LINE_JOINT_ROUND
+	outline.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	outline.end_cap_mode = Line2D.LINE_CAP_ROUND
 	outline.z_index = 1
 	marker.add_child(outline)
 
@@ -1923,43 +2851,88 @@ func _add_building_tile_marker(tile_pos: Vector2i, building: BuildingData, facti
 	var marker := Node2D.new()
 	marker.position = pixel_pos
 
-	# Category-colored diamond shape at center of hex
-	var cat_color: Color = BUILDING_CATEGORY_COLORS.get(
-		building.category if building else &"economic",
-		Color(0.5, 0.5, 0.5, 0.7)
-	)
+	# Small building graphic per category — deliberately more modest than the
+	# city marker (which stays the visual anchor and the only one ringed).
+	# The roof carries the category color for at-a-glance reading; a small
+	# faction-color pennant marks ownership.
+	var cat: StringName = building.category if building else &"economic"
+	var cat_color: Color = BUILDING_CATEGORY_COLORS.get(cat, Color(0.5, 0.5, 0.5, 0.7))
+	cat_color.a = 1.0
+
+	# Ground shadow
+	_marker_poly(marker, _ellipse_pts(Vector2(0, 4), 7.0, 2.2), Color(0, 0, 0, 0.25))
+
+	match cat:
+		&"military":
+			# Barracks tent: wide low body + peaked category roof
+			_marker_poly(marker, _scaled_pts(PackedVector2Array([
+				Vector2(-6.5, 4), Vector2(6.5, 4), Vector2(0, -6.5)
+			]), 1.2, Vector2(0, 0.5)), _MARKER_OUTLINE)
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-6.5, 4), Vector2(6.5, 4), Vector2(0, -6.5)
+			]), cat_color.darkened(0.15))
+			_marker_line(marker, PackedVector2Array([Vector2(0, -6.5), Vector2(0, 4)]),
+				cat_color.darkened(0.45), 1.0)
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-1.4, 4), Vector2(1.4, 4), Vector2(0, 0.8)
+			]), Color(0.12, 0.09, 0.07))
+		&"defensive":
+			# Mini watchtower: tapered stone tower with crenellated top
+			_marker_poly(marker, _scaled_pts(PackedVector2Array([
+				Vector2(-3.4, 4), Vector2(3.4, 4), Vector2(2.6, -6), Vector2(-2.6, -6)
+			]), 1.25, Vector2(0, -0.5)), _MARKER_OUTLINE)
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-3.4, 4), Vector2(3.4, 4), Vector2(2.6, -6), Vector2(-2.6, -6)
+			]), _MARKER_STONE)
+			for tx: float in [-2.4, 0.0, 2.4]:
+				_marker_poly(marker, PackedVector2Array([
+					Vector2(tx - 0.8, -6), Vector2(tx + 0.8, -6),
+					Vector2(tx + 0.8, -7.8), Vector2(tx - 0.8, -7.8)
+				]), _MARKER_STONE)
+			_marker_line(marker, PackedVector2Array([Vector2(-2.6, -5.9), Vector2(2.6, -5.9)]),
+				cat_color, 1.1)
+		&"cultural":
+			# Small shrine: stone base + category-colored dome + gold finial
+			_marker_poly(marker, _scaled_pts(PackedVector2Array([
+				Vector2(-4.5, 4), Vector2(4.5, 4), Vector2(4.5, -1), Vector2(-4.5, -1)
+			]), 1.2, Vector2(0, 1.5)), _MARKER_OUTLINE)
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-4.5, 4), Vector2(4.5, 4), Vector2(4.5, -1), Vector2(-4.5, -1)
+			]), _MARKER_STONE_LIGHT)
+			_marker_poly(marker, _ellipse_arc_pts(Vector2(0, -1), 4.2, 5.6, PI, TAU, 10), cat_color)
+			_marker_poly(marker, _ellipse_pts(Vector2(0, -6.9), 0.9, 0.9, 6), _MARKER_GOLD)
+		_:
+			# Economic: barn — stone body + category-colored gable roof
+			_marker_poly(marker, _scaled_pts(PackedVector2Array([
+				Vector2(-5.5, 4), Vector2(5.5, 4), Vector2(5.5, -1.5), Vector2(-5.5, -1.5)
+			]), 1.2, Vector2(0, 1.2)), _MARKER_OUTLINE)
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-5.5, 4), Vector2(5.5, 4), Vector2(5.5, -1.5), Vector2(-5.5, -1.5)
+			]), _MARKER_STONE)
+			_marker_poly(marker, _scaled_pts(PackedVector2Array([
+				Vector2(-6.3, -1.5), Vector2(6.3, -1.5), Vector2(0, -7)
+			]), 1.12, Vector2(0, -3.5)), _MARKER_OUTLINE)
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-6.3, -1.5), Vector2(6.3, -1.5), Vector2(0, -7)
+			]), cat_color.darkened(0.1))
+			_marker_poly(marker, PackedVector2Array([
+				Vector2(-1.3, 4), Vector2(1.3, 4), Vector2(1.3, 1), Vector2(-1.3, 1)
+			]), Color(0.12, 0.09, 0.07))
+
+	# Faction pennant (ownership at a glance)
+	_marker_line(marker, PackedVector2Array([Vector2(5.2, -3), Vector2(5.2, -9.5)]),
+		Color(0.4, 0.3, 0.18), 1.0)
+	_marker_poly(marker, PackedVector2Array([
+		Vector2(5.2, -9.5), Vector2(8.4, -8.4), Vector2(5.2, -7.3)
+	]), faction_color)
+
 	if under_construction:
-		cat_color.a = 0.35 # fainter for buildings in progress
-
-	# Small diamond (rotated square)
-	var diamond := Polygon2D.new()
-	var s := 5.0
-	diamond.polygon = PackedVector2Array([
-		Vector2(0, -s), Vector2(s, 0), Vector2(0, s), Vector2(-s, 0)
-	])
-	diamond.color = cat_color
-	marker.add_child(diamond)
-
-	# Faction-colored ring around the diamond
-	var ring := Line2D.new()
-	ring.width = 1.0
-	ring.default_color = Color(faction_color.r, faction_color.g, faction_color.b, 0.6 if not under_construction else 0.3)
-	var ring_r := 7.0
-	var ring_pts := PackedVector2Array()
-	for i in 8:
-		var angle := TAU * i / 8.0
-		ring_pts.append(Vector2(cos(angle) * ring_r, sin(angle) * ring_r))
-	ring_pts.append(ring_pts[0]) # close the loop
-	ring.points = ring_pts
-	marker.add_child(ring)
-
-	# Construction scaffolding indicator (small lines)
-	if under_construction:
-		var scaffold := Line2D.new()
-		scaffold.width = 1.0
-		scaffold.default_color = Color(0.7, 0.6, 0.3, 0.5)
-		scaffold.points = PackedVector2Array([Vector2(-4, -3), Vector2(0, -7), Vector2(4, -3)])
-		marker.add_child(scaffold)
+		# In progress: ghosted + scaffold cross-beams
+		marker.modulate = Color(1, 1, 1, 0.45)
+		_marker_line(marker, PackedVector2Array([Vector2(-5.5, 3.5), Vector2(5.5, -6)]),
+			Color(0.75, 0.62, 0.35), 1.2)
+		_marker_line(marker, PackedVector2Array([Vector2(5.5, 3.5), Vector2(-5.5, -6)]),
+			Color(0.75, 0.62, 0.35), 1.2)
 
 	marker.set_meta("hex_pos", tile_pos)
 	marker.set_meta("faction_id", city_faction_id)
@@ -4208,6 +5181,7 @@ func _create_fog_overlay() -> void:
 			world_poly.append(p + pos)
 		_fog_draw_node.tile_polys[coord] = world_poly
 		_fog_draw_node.tile_alphas[coord] = 0.75
+	_fog_draw_node.build_geometry()
 	fog_overlay_node.add_child(_fog_draw_node)
 	_fog_dirty = true
 
@@ -4478,10 +5452,9 @@ func _update_fog_of_war() -> void:
 			else:
 				new_alpha = 0.75
 			if alphas[coord] != new_alpha:
-				alphas[coord] = new_alpha
+				_fog_draw_node.set_tile_alpha(coord, new_alpha)
 				changed = true
 		if changed:
-			_fog_draw_node.mark_dirty()
 			_fog_draw_node.queue_redraw()
 			_minimap_fog_dirty = true
 
@@ -4842,7 +5815,7 @@ func _clear_beast_terrain_overlay() -> void:
 # ── Minimap ──────────────────────────────────────────────────
 
 const MINIMAP_SIZE := Vector2(360, 220)
-const MINIMAP_MARGIN := Vector2(16, 16)
+const MINIMAP_MARGIN := Vector2(0, 0)  # flush to the screen corner (UI baseline)
 var _minimap_panel: PanelContainer
 var _minimap_image: TextureRect
 var _minimap_view_mode := 0  # 0=terrain, 1=political, 2=culture
@@ -4854,8 +5827,10 @@ var _minimap_fogged_cache: Image  # Terrain + fog dimming (no armies/viewport)
 var _minimap_fog_dirty := true  # True when fog state changes
 
 func _create_minimap() -> void:
-	# Outer container for button + minimap
+	# Outer container for button + minimap. Compact gold theme keeps the
+	# buttons narrow enough to fit and matches the game's UI style.
 	var outer_vbox := VBoxContainer.new()
+	outer_vbox.theme = GameManager.get_compact_theme()
 	outer_vbox.add_theme_constant_override("separation", 2)
 
 	# Map view mode buttons (Terrain | Political | Culture)
@@ -4935,17 +5910,20 @@ func _create_minimap() -> void:
 	_minimap_panel.add_child(_minimap_image)
 	outer_vbox.add_child(_minimap_panel)
 
-	# Position in bottom-right of screen with safe margins
+	# Position in bottom-right of screen with safe margins. Grow toward the
+	# top-left so oversized content can never spill off-screen.
 	outer_vbox.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	outer_vbox.anchor_left = 1.0
 	outer_vbox.anchor_top = 1.0
 	outer_vbox.anchor_right = 1.0
 	outer_vbox.anchor_bottom = 1.0
-	var total_btn_height := 54  # Two button rows (24+2+24+4)
+	var total_btn_height := 60  # Two button rows
 	outer_vbox.offset_left = -MINIMAP_SIZE.x - MINIMAP_MARGIN.x - 16
 	outer_vbox.offset_top = -MINIMAP_SIZE.y - MINIMAP_MARGIN.y - total_btn_height - 16
 	outer_vbox.offset_right = -MINIMAP_MARGIN.x
 	outer_vbox.offset_bottom = -MINIMAP_MARGIN.y
+	outer_vbox.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	outer_vbox.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 	# Click to navigate
 	_minimap_image.gui_input.connect(_on_minimap_click)
