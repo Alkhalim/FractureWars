@@ -123,59 +123,88 @@ class _TilePainter extends Node2D:
 		for i in 6:
 			draw_circle(_rand_in(rng, 90), 2.2, Color(0.28, 0.4, 0.22, 0.8))
 
+	func _mount_peak(rng: RandomNumberGenerator, base_c: Vector2, s: float, snow_cap: bool) -> void:
+		# One peak: body, hard-shadowed east face, ridge line, optional snow.
+		# All extents scale with s and are safe inside the hex crop.
+		var apex := base_c + Vector2(rng.randf_range(-8, 8) * s, -74.0 * s)
+		var bl := base_c + Vector2(-52.0 * s + rng.randf_range(-6, 6), 0)
+		var br := base_c + Vector2(54.0 * s + rng.randf_range(-6, 6), rng.randf_range(0, 5))
+		var ridge_l := apex.lerp(bl, 0.42) + Vector2(-6.0 * s, rng.randf_range(-10, 2) * s)
+		var ridge_r := apex.lerp(br, 0.38) + Vector2(7.0 * s, rng.randf_range(-8, 4) * s)
+		draw_colored_polygon(PackedVector2Array([bl, ridge_l, apex, ridge_r, br]), Color(0.56, 0.52, 0.45))
+		draw_colored_polygon(PackedVector2Array([apex, ridge_r, br, apex + Vector2(3.0 * s, 12.0 * s)]), Color(0.3, 0.27, 0.25))
+		draw_polyline(PackedVector2Array([bl, ridge_l, apex]), Color(0.24, 0.21, 0.19), maxf(1.6, 2.6 * s), true)
+		if snow_cap:
+			var snow := PackedVector2Array([apex])
+			var sl := apex.lerp(ridge_l, 0.6)
+			var sr := apex.lerp(ridge_r, 0.56)
+			snow.append(sl)
+			for k in 4:
+				var t := float(k + 1) / 5.0
+				snow.append(sl.lerp(sr, t) + Vector2(0, (-6.0 if k % 2 == 0 else 4.0) * s))
+			snow.append(sr)
+			draw_colored_polygon(snow, Color(0.92, 0.93, 0.94))
+		for i in 4:
+			var sp := bl.lerp(br, rng.randf()) + Vector2(rng.randf_range(-5, 5), rng.randf_range(2, 9))
+			draw_circle(sp, 1.4 + rng.randf() * 1.4, Color(0.36, 0.33, 0.3, 0.85))
+
 	func _p_mountain(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.45, 0.42, 0.37))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 45), 62), Color(0.41, 0.38, 0.34, 0.6))
-		var off := Vector2(rng.randf_range(-14, 10), rng.randf_range(-4, 8))
-		var apex := C + off + Vector2(rng.randf_range(-6, 6), -92)
-		var bl := C + off + Vector2(-88, 62)
-		var br := C + off + Vector2(92, 66)
-		var ridge_l := apex.lerp(bl, 0.42) + Vector2(-8, rng.randf_range(-12, 2))
-		var ridge_r := apex.lerp(br, 0.38) + Vector2(9, rng.randf_range(-10, 4))
-		# Body + hard shadowed east face
-		draw_colored_polygon(PackedVector2Array([bl, ridge_l, apex, ridge_r, br]), Color(0.56, 0.52, 0.45))
-		draw_colored_polygon(PackedVector2Array([apex, ridge_r, br, apex + Vector2(4, 14)]), Color(0.3, 0.27, 0.25))
-		# Crisp ridge line down the west slope
-		draw_polyline(PackedVector2Array([bl, ridge_l, apex]), Color(0.24, 0.21, 0.19), 3.0, true)
-		# Snow cap with zigzag snowline
-		var snow := PackedVector2Array([apex])
-		var sl := apex.lerp(ridge_l, 0.62)
-		var sr := apex.lerp(ridge_r, 0.58)
-		snow.append(sl)
-		for k in 4:
-			var t := float(k + 1) / 5.0
-			var base_pt := sl.lerp(sr, t)
-			snow.append(base_pt + Vector2(0, -7 if k % 2 == 0 else 5))
-		snow.append(sr)
-		draw_colored_polygon(snow, Color(0.92, 0.93, 0.94))
-		# Companion peak with its own ridge line
-		var p2 := C + off + Vector2(64, 20)
-		var apex2 := p2 + Vector2(rng.randf_range(-4, 6), -52)
-		draw_colored_polygon(PackedVector2Array([p2 + Vector2(-42, 44), apex2, p2 + Vector2(44, 46)]), Color(0.5, 0.46, 0.4))
-		draw_colored_polygon(PackedVector2Array([apex2, p2 + Vector2(44, 46), apex2 + Vector2(3, 10)]), Color(0.32, 0.29, 0.26))
-		draw_polyline(PackedVector2Array([p2 + Vector2(-42, 44), apex2]), Color(0.26, 0.23, 0.21), 2.2, true)
-		# Strata hints on the shadowed face + scree at the base
-		for i in 2:
-			var sy := 20.0 + float(i) * 16.0
-			draw_line(apex + Vector2(4, sy), apex + Vector2(16 + float(i) * 9.0, sy + 6), Color(0.24, 0.22, 0.2, 0.6), 1.8)
-		for i in 7:
-			var sp := bl.lerp(br, rng.randf()) + Vector2(rng.randf_range(-6, 6), rng.randf_range(2, 12))
-			draw_circle(sp, 1.6 + rng.randf() * 1.4, Color(0.36, 0.33, 0.3, 0.85))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 55), 62), Color(0.41, 0.38, 0.34, 0.6))
+		# Structural variant modes so tiles don't read as one copy-pasted peak
+		match seed_val % 3:
+			0:
+				# One large peak + small companion, varied placement
+				var main_c := C + Vector2(rng.randf_range(-24, 10), rng.randf_range(26, 44))
+				_mount_peak(rng, main_c + Vector2(rng.randf_range(30, 48), rng.randf_range(2, 10)), 0.55 + rng.randf() * 0.15, false)
+				_mount_peak(rng, main_c, 0.95 + rng.randf() * 0.15, true)
+			1:
+				# Overlapping ridge of two medium peaks
+				var rc := C + Vector2(rng.randf_range(-16, 16), rng.randf_range(26, 40))
+				_mount_peak(rng, rc + Vector2(-30 + rng.randf_range(-8, 8), 4), 0.72 + rng.randf() * 0.12, rng.randf() < 0.5)
+				_mount_peak(rng, rc + Vector2(30 + rng.randf_range(-8, 8), 0), 0.8 + rng.randf() * 0.15, true)
+			_:
+				# Diagonal chain of three small peaks
+				var start := C + Vector2(rng.randf_range(-46, -30), rng.randf_range(-18, -2))
+				var step := Vector2(38 + rng.randf_range(-6, 6), 26 + rng.randf_range(-6, 6))
+				for i in 3:
+					var pc := start + step * float(i) + Vector2(rng.randf_range(-6, 6), rng.randf_range(-4, 4))
+					_mount_peak(rng, pc + Vector2(0, 30), 0.5 + rng.randf() * 0.2, i == 1)
 
 	func _p_desert(rng: RandomNumberGenerator) -> void:
 		var t := rng.randf() * 0.04 - 0.02
 		_fill(Color(0.71 + t, 0.62 + t, 0.42))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 62), Color(0.76, 0.67, 0.46, 0.85))
-		for i in 2 + rng.randi() % 2:
-			var p := _rand_in(rng, 70)
-			var w := 44.0 + rng.randf() * 34.0
-			var arc := PackedVector2Array()
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 65), 55), Color(0.76, 0.67, 0.46, 0.75))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 70), 40), Color(0.66, 0.57, 0.38, 0.6))
+		# Barchan dunes from above: crescent slip-face shadows with a lit
+		# windward rim, varied position/rotation/size
+		for i in 2 + rng.randi() % 3:
+			var p := _rand_in(rng, 85)
+			var dr := 18.0 + rng.randf() * 20.0
+			var rot := rng.randf() * TAU
+			var a0 := rot - PI * 0.42
+			var a1 := rot + PI * 0.42
+			var shadow := PackedVector2Array()
+			for k in 8:
+				var a := lerpf(a0, a1, float(k) / 7.0)
+				shadow.append(p + Vector2(cos(a), sin(a)) * dr)
+			for k in 8:
+				var a := lerpf(a1, a0, float(k) / 7.0)
+				shadow.append(p + Vector2(cos(a), sin(a)) * (dr - 5.0 - rng.randf() * 3.0))
+			draw_colored_polygon(shadow, Color(0.55, 0.46, 0.3, 0.85))
+			var rim := PackedVector2Array()
 			for k in 9:
-				var tt := float(k) / 8.0
-				arc.append(p + Vector2((tt - 0.5) * w * 2.0, -sin(tt * PI) * w * 0.3))
-			draw_polyline(arc, Color(0.58, 0.49, 0.32, 0.9), 3.6, true)
+				var a := lerpf(a0, a1, float(k) / 8.0)
+				rim.append(p + Vector2(cos(a), sin(a)) * (dr + 1.5))
+			draw_polyline(rim, Color(0.82, 0.73, 0.5, 0.9), 2.2, true)
+		# Faint sand ripples + pebbles
+		var rip_dir := rng.randf() * TAU
+		for i in 4:
+			var rp := _rand_in(rng, 80)
+			var rv := Vector2(cos(rip_dir), sin(rip_dir)) * (10.0 + rng.randf() * 8.0)
+			draw_line(rp - rv, rp + rv, Color(0.62, 0.53, 0.35, 0.5), 1.4)
 		for i in 3:
-			draw_circle(_rand_in(rng, 80), 2.0, Color(0.6, 0.52, 0.36))
+			draw_circle(_rand_in(rng, 85), 2.0, Color(0.6, 0.52, 0.36))
 
 	func _swamp_pool(rng: RandomNumberGenerator, p: Vector2, pr: float) -> void:
 		draw_colored_polygon(_blob(rng, p, pr, 11, 0.35), Color(0.1, 0.14, 0.12, 0.97))
@@ -214,18 +243,29 @@ class _TilePainter extends Node2D:
 		draw_colored_polygon(_blob(rng, _rand_in(rng, 55), 34, 9, 0.5), Color(0.7, 0.75, 0.7, 0.06))
 
 	func _p_wetlands(rng: RandomNumberGenerator) -> void:
-		_fill(Color(0.3, 0.42, 0.36))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 45), 55), Color(0.34, 0.46, 0.38, 0.8))
+		# Green-dominant marsh: grass base with small irregular PUDDLES — no
+		# horizontal wave bands (those read as impassable water/river)
+		_fill(Color(0.34, 0.44, 0.3))
+		for i in 2 + rng.randi() % 3:
+			draw_colored_polygon(_blob(rng, _rand_in(rng, 95), 22.0 + rng.randf() * 26.0, 9, 0.5), Color(0.3, 0.4, 0.27, 0.7))
+		# Scattered small puddles with grassy rims
+		for i in 2 + rng.randi() % 3:
+			var pp := _rand_in(rng, 80)
+			var pr := 9.0 + rng.randf() * 11.0
+			draw_colored_polygon(_blob(rng, pp, pr * 1.25, 9, 0.4), Color(0.26, 0.36, 0.22, 0.9))
+			draw_colored_polygon(_blob(rng, pp, pr, 9, 0.35), Color(0.3, 0.42, 0.44, 0.95))
+			draw_circle(pp + Vector2(-pr * 0.25, -pr * 0.25), 1.6, Color(0.55, 0.66, 0.66, 0.7))
+		# Dense tuft clusters + reeds
+		for i in 8 + rng.randi() % 5:
+			var p := _rand_in(rng, 95)
+			for k in 4 + rng.randi() % 3:
+				var dp := p + Vector2(rng.randf_range(-6, 6), rng.randf_range(-5, 5))
+				draw_circle(dp, 1.4 + rng.randf() * 1.0, Color(0.42, 0.52, 0.3, 0.9))
 		for i in 3:
-			var y := -52.0 + float(i) * 50.0 + rng.randf_range(-8, 8)
-			var pts := _wavy_line(rng, C + Vector2(-105, y), C + Vector2(105, y), 6.0, 10)
-			draw_polyline(pts, Color(0.34, 0.5, 0.52, 0.85), 9.0, true)
-			draw_polyline(pts, Color(0.44, 0.6, 0.6, 0.5), 2.4, true)
-		for i in 5:
-			var p := _rand_in(rng, 85)
+			var rp := _rand_in(rng, 85)
 			for k in 3:
-				var dx := float(k - 1) * 4.0
-				draw_line(p + Vector2(dx, 4), p + Vector2(dx * 1.5, -8), Color(0.42, 0.52, 0.34), 2.6)
+				var rx := float(k - 1) * 3.4
+				draw_circle(rp + Vector2(rx, rng.randf_range(-2, 2)), 1.7, Color(0.5, 0.56, 0.3))
 
 	func _tundra_tree(rng: RandomNumberGenerator, tp: Vector2) -> void:
 		# Top-down conifer with snow-side shadow
@@ -259,22 +299,40 @@ class _TilePainter extends Node2D:
 		for i in 5:
 			draw_circle(_rand_in(rng, 90), 1.6, Color(0.78, 0.8, 0.8, 0.8))
 
+	func _shard_cluster(rng: RandomNumberGenerator, cp: Vector2, scale: float) -> void:
+		draw_circle(cp, (24.0 + rng.randf() * 22.0) * scale, Color(0.62, 0.45, 0.75, 0.1 + rng.randf() * 0.1))
+		for i in 1 + rng.randi() % 4:
+			var sp := cp + Vector2(rng.randf_range(-22, 22) * scale, rng.randf_range(-12, 16) * scale)
+			var h := (16.0 + rng.randf() * 42.0) * scale
+			var tilt := rng.randf_range(-0.6, 0.6)
+			var tip := sp + Vector2(sin(tilt) * h, -cos(tilt) * h)
+			var half_w := (4.0 + rng.randf() * 6.0) * scale * clampf(h / 34.0, 0.6, 1.3)
+			draw_colored_polygon(PackedVector2Array([sp + Vector2(-half_w, 0), tip, sp + Vector2(half_w, 0)]), Color(0.6, 0.42, 0.72))
+			draw_line(sp + Vector2(-half_w * 0.4, -2), tip, Color(0.78, 0.62, 0.88), maxf(1.2, 2.2 * scale))
+
 	func _p_shardwaste(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.42, 0.36, 0.44))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 45), 56), Color(0.34, 0.29, 0.37, 0.85))
-		var cp := _rand_in(rng, 45)
-		draw_circle(cp, 44, Color(0.62, 0.45, 0.75, 0.16))
+		# Varied ground mottling, some crossing tile edges
 		for i in 2 + rng.randi() % 2:
-			var sp := cp + Vector2(rng.randf_range(-20, 20), rng.randf_range(-8, 14))
-			var h := 34.0 + rng.randf() * 26.0
-			var tilt := rng.randf_range(-0.5, 0.5)
-			var tip := sp + Vector2(sin(tilt) * h, -cos(tilt) * h)
-			var half_w := 8.0 + rng.randf() * 4.0
-			draw_colored_polygon(PackedVector2Array([sp + Vector2(-half_w, 0), tip, sp + Vector2(half_w, 0)]), Color(0.6, 0.42, 0.72))
-			draw_line(sp + Vector2(-half_w * 0.4, -2), tip, Color(0.78, 0.62, 0.88), 2.2)
-		for i in 2:
-			var sp2 := _rand_in(rng, 80)
-			draw_colored_polygon(PackedVector2Array([sp2 + Vector2(-4, 0), sp2 + Vector2(rng.randf_range(-6, 6), -14), sp2 + Vector2(4, 0)]), Color(0.55, 0.4, 0.66, 0.9))
+			draw_colored_polygon(_blob(rng, _rand_in(rng, 95), 26.0 + rng.randf() * 30.0, 9, 0.45), Color(0.34, 0.29, 0.37, 0.7))
+		# 1-3 crystal clusters at varied positions/sizes (may sit near edges),
+		# instead of one centered circle-with-crystals
+		for i in 1 + rng.randi() % 3:
+			_shard_cluster(rng, _rand_in(rng, 82), 0.6 + rng.randf() * 0.6)
+		# Lone stray shards
+		for i in 1 + rng.randi() % 3:
+			var sp2 := _rand_in(rng, 95)
+			var lh := 8.0 + rng.randf() * 12.0
+			draw_colored_polygon(PackedVector2Array([
+				sp2 + Vector2(-3.5, 0), sp2 + Vector2(rng.randf_range(-6, 6), -lh), sp2 + Vector2(3.5, 0)
+			]), Color(0.55, 0.4, 0.66, 0.9))
+		# Ground crack
+		if rng.randf() < 0.6:
+			var ck0 := _rand_in(rng, 70)
+			var ck := PackedVector2Array([ck0])
+			for k in 4:
+				ck.append(ck[k] + Vector2(rng.randf_range(-4, 18), rng.randf_range(6, 16)))
+			draw_polyline(ck, Color(0.26, 0.22, 0.3, 0.8), 1.8, true)
 
 	func _p_water(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.13, 0.2, 0.34))
