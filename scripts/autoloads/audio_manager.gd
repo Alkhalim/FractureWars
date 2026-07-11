@@ -615,16 +615,29 @@ func _save_settings() -> void:
 func create_options_panel(parent: Control) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.name = "OptionsPanel"
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.1, 0.18, 0.95)
-	style.border_color = Color(0.55, 0.42, 0.2)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(20)
-	panel.add_theme_stylebox_override("panel", style)
-	panel.size = Vector2(380, 480)
-	panel.position = (parent.get_viewport_rect().size - panel.size) / 2.0
+	# Game skin (gold/leather frame), anchored center so it survives resizes
+	panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -210
+	panel.offset_top = -260
+	panel.offset_right = 210
+	panel.offset_bottom = 260
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	parent.add_child(panel)
+
+	# Dark chip backdrop so the controls never sit on raw leather
+	var backdrop := Panel.new()
+	var bstyle := StyleBoxFlat.new()
+	bstyle.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	bstyle.set_corner_radius_all(5)
+	backdrop.add_theme_stylebox_override("panel", bstyle)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(backdrop)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 16)
@@ -667,6 +680,7 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	fs_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
 	fs_row.add_child(fs_label)
 	var fs_check := CheckButton.new()
+	fs_check.modulate = Color(1.0, 0.92, 0.68)
 	fs_check.button_pressed = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 	fs_check.toggled.connect(func(on: bool):
 		if on:
@@ -694,6 +708,7 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	shake_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
 	shake_row.add_child(shake_label)
 	var shake_check := CheckButton.new()
+	shake_check.modulate = Color(1.0, 0.92, 0.68)
 	shake_check.button_pressed = not GameManager.has_meta("disable_screen_shake")
 	shake_check.toggled.connect(func(on: bool):
 		if on:
@@ -734,6 +749,20 @@ func _add_volume_row(parent: VBoxContainer, label_text: String, initial_value: f
 	slider.value = initial_value
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.custom_minimum_size = Vector2(140, 0)
+	# Skin the slider track to the gold/leather language
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.16, 0.13, 0.1)
+	track.set_corner_radius_all(3)
+	track.content_margin_top = 4.0
+	track.content_margin_bottom = 4.0
+	slider.add_theme_stylebox_override("slider", track)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.78, 0.62, 0.32)
+	fill.set_corner_radius_all(3)
+	fill.content_margin_top = 4.0
+	fill.content_margin_bottom = 4.0
+	slider.add_theme_stylebox_override("grabber_area", fill)
+	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
 	row.add_child(slider)
 
 	var pct_label := Label.new()

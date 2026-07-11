@@ -119,7 +119,7 @@ var roster_panel: PanelContainer
 var player_roster_container: VBoxContainer
 var enemy_roster_container: VBoxContainer
 var queue_panel: PanelContainer
-var _queue_slot_labels: Array[Label] = []
+var _queue_slot_labels: Array[Button] = [] # flat buttons acting as queue slots
 var _queue_slot_x_buttons: Array[Button] = []
 var _queue_palette_buttons: Array[Button] = []
 var _queue_drag_command: int = -1  # Currently dragged QueueCommand (-1 = none)
@@ -234,10 +234,11 @@ func _build_ui() -> void:
 	order_panel.anchor_right = 0
 	order_panel.anchor_top = 0
 	order_panel.anchor_bottom = 1
-	order_panel.offset_left = 4
+	# Flush to the left and bottom screen edges (ui_style_guide)
+	order_panel.offset_left = 0
 	order_panel.offset_top = 388
-	order_panel.offset_right = 320
-	order_panel.offset_bottom = -4
+	order_panel.offset_right = 316
+	order_panel.offset_bottom = 0
 	order_panel.grow_horizontal = Control.GROW_DIRECTION_END
 
 	var order_vbox := VBoxContainer.new()
@@ -268,19 +269,10 @@ func _build_ui() -> void:
 	retreat_btn.custom_minimum_size = Vector2(200, 32)
 	retreat_btn.add_theme_font_size_override("font_size", 12)
 	retreat_btn.visible = false
-	var retreat_style := StyleBoxFlat.new()
-	retreat_style.bg_color = Color(0.4, 0.12, 0.1, 0.9)
-	retreat_style.border_width_left = 1
-	retreat_style.border_width_top = 1
-	retreat_style.border_width_right = 1
-	retreat_style.border_width_bottom = 1
-	retreat_style.border_color = Color(0.7, 0.25, 0.2, 0.8)
-	retreat_style.corner_radius_top_left = 3
-	retreat_style.corner_radius_top_right = 3
-	retreat_style.corner_radius_bottom_right = 3
-	retreat_style.corner_radius_bottom_left = 3
-	retreat_btn.add_theme_stylebox_override("normal", retreat_style)
-	retreat_btn.add_theme_color_override("font_color", Color(1.0, 0.7, 0.6))
+	# Danger action: keep the themed button skin, signal danger via font color
+	# only (ui_style_guide pattern) instead of replacing the whole stylebox
+	retreat_btn.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45))
+	retreat_btn.add_theme_color_override("font_hover_color", Color(1.0, 0.68, 0.58))
 	retreat_btn.pressed.connect(_on_retreat_all)
 	order_vbox.add_child(retreat_btn)
 
@@ -293,10 +285,11 @@ func _build_ui() -> void:
 	strength_meter_panel.anchor_right = 1
 	strength_meter_panel.anchor_top = 0
 	strength_meter_panel.anchor_bottom = 0
-	strength_meter_panel.offset_left = -320
-	strength_meter_panel.offset_right = -4
-	strength_meter_panel.offset_top = 4
-	strength_meter_panel.offset_bottom = 90
+	# Flush to the right and top screen edges
+	strength_meter_panel.offset_left = -316
+	strength_meter_panel.offset_right = 0
+	strength_meter_panel.offset_top = 0
+	strength_meter_panel.offset_bottom = 86
 	strength_meter_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 
 	var meter_vbox := VBoxContainer.new()
@@ -350,10 +343,11 @@ func _build_ui() -> void:
 	queue_panel.anchor_right = 0
 	queue_panel.anchor_top = 0
 	queue_panel.anchor_bottom = 0
-	queue_panel.offset_left = 4
-	queue_panel.offset_right = 320
-	queue_panel.offset_top = 4
-	queue_panel.offset_bottom = 376
+	# Flush to the left and top screen edges; order panel starts right below
+	queue_panel.offset_left = 0
+	queue_panel.offset_right = 316
+	queue_panel.offset_top = 0
+	queue_panel.offset_bottom = 380
 	queue_panel.grow_horizontal = Control.GROW_DIRECTION_END
 
 	var queue_vbox := VBoxContainer.new()
@@ -381,12 +375,15 @@ func _build_ui() -> void:
 		num_lbl.custom_minimum_size = Vector2(18, 0)
 		slot_hbox.add_child(num_lbl)
 
-		var cmd_lbl := Label.new()
+		# Clickable slot = an actual (flat-styled) Button, not a Label
+		var cmd_lbl := Button.new()
 		cmd_lbl.text = "---"
+		cmd_lbl.flat = true
+		cmd_lbl.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		cmd_lbl.add_theme_font_size_override("font_size", 11)
 		cmd_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+		cmd_lbl.add_theme_color_override("font_hover_color", Color(0.95, 0.9, 0.78))
 		cmd_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cmd_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
 		var captured_slot_idx := i
 		cmd_lbl.gui_input.connect(_on_queue_slot_input.bind(captured_slot_idx))
 		slot_hbox.add_child(cmd_lbl)
@@ -2235,6 +2232,15 @@ func _show_result() -> void:
 	for child in result_panel.get_children():
 		child.queue_free()
 
+	# Dark chip backdrop — result text must not sit on raw leather
+	var backdrop := Panel.new()
+	var bstyle := StyleBoxFlat.new()
+	bstyle.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	bstyle.set_corner_radius_all(5)
+	backdrop.add_theme_stylebox_override("panel", bstyle)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	result_panel.add_child(backdrop)
+
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
 
@@ -2260,6 +2266,12 @@ func _show_result() -> void:
 	sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
 	vbox.add_child(sep)
 
+	# Roster report scrolls so long armies never overflow the fixed panel
+	var report_scroll := ScrollContainer.new()
+	report_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	report_scroll.custom_minimum_size = Vector2(0, 180)
+	vbox.add_child(report_scroll)
+
 	var casualty_label := Label.new()
 	casualty_label.add_theme_font_size_override("font_size", 12)
 	casualty_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.65))
@@ -2284,39 +2296,17 @@ func _show_result() -> void:
 			status = "FLED"
 		text += "  %s - %s (%d/%d HP, %d dmg dealt)\n" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp, f.damage_dealt]
 
+	casualty_label.text = text
+	report_scroll.add_child(casualty_label)
+
+	# Spoils as icon rows (captives / loot / plunder)
 	var player_captives: int = simulator.captives.get(player_side, 0)
 	if player_captives > 0:
-		text += "\nCaptives gained: %d" % player_captives
-
-	var res_names := {
-		Enums.ResourceType.GOLD: "Gold",
-		Enums.ResourceType.IRON: "Iron",
-		Enums.ResourceType.WOOD: "Wood",
-		Enums.ResourceType.FOOD: "Food",
-		Enums.ResourceType.TECHNOLOGY: "Tech",
-	}
+		vbox.add_child(GameManager.make_cost_row({Enums.ResourceType.CAPTIVES: player_captives}, {}, 12, "Captives:", true))
 	if player_won and _battle_loot.size() > 0:
-		var loot_parts: Array[String] = []
-		for res_type in _battle_loot:
-			var amount: int = _battle_loot[res_type]
-			if amount > 0:
-				var rname: String = res_names.get(res_type, "???")
-				loot_parts.append("+%d %s" % [amount, rname])
-		if loot_parts.size() > 0:
-			text += "\nSpoils of war: %s" % ", ".join(loot_parts)
-
+		vbox.add_child(GameManager.make_cost_row(_battle_loot, {}, 12, "Spoils of war:", true))
 	if player_won and _battle_plunder.size() > 0:
-		var plunder_parts: Array[String] = []
-		for res_type in _battle_plunder:
-			var amount: int = _battle_plunder[res_type]
-			if amount > 0:
-				var rname: String = res_names.get(res_type, "???")
-				plunder_parts.append("+%d %s" % [amount, rname])
-		if plunder_parts.size() > 0:
-			text += "\nPlundered from city: %s" % ", ".join(plunder_parts)
-
-	casualty_label.text = text
-	vbox.add_child(casualty_label)
+		vbox.add_child(GameManager.make_cost_row(_battle_plunder, {}, 12, "Plundered:", true))
 
 	var continue_btn := Button.new()
 	continue_btn.text = "Continue"

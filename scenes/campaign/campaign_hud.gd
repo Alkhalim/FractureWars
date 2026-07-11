@@ -172,7 +172,31 @@ func _unhandled_input(event: InputEvent) -> void:
 			if GameManager.has_save(1):
 				GameManager.load_game(1)
 		elif event.keycode == KEY_ESCAPE:
-			_toggle_pause_menu()
+			# ESC dismisses the topmost open overlay first; only when nothing
+			# is open does it toggle the pause menu (consistent cancel)
+			if not _close_topmost_overlay():
+				_toggle_pause_menu()
+
+## Closes the topmost open dialog/screen. Returns true if something closed.
+## The faction dilemma is deliberately NOT dismissable — it demands a choice.
+func _close_topmost_overlay() -> bool:
+	if _shard_reserve_dialog != null and is_instance_valid(_shard_reserve_dialog):
+		_shard_reserve_dialog.queue_free()
+		_shard_reserve_dialog = null
+		return true
+	for child in get_children():
+		if child is PanelContainer and child.visible and String(child.name).ends_with("Dialog"):
+			child.queue_free()
+			return true
+	for p in [economy_panel, _research_panel, _diplomacy_panel, faction_overview_panel, city_panel]:
+		if p != null and is_instance_valid(p) and p.visible:
+			if p == city_panel:
+				_hide_city_panel()
+			else:
+				p.visible = false
+			AudioManager.play_sfx(&"door_close")
+			return true
+	return false
 
 func _show_save_toast(text: String) -> void:
 	var toast := Label.new()
@@ -3699,7 +3723,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			give_row.add_child(give_lbl)
 			var give_res := OptionButton.new()
 			for entry in trade_res_entries:
-				give_res.add_item(entry.name, entry.id)
+				give_res.add_icon_item(GameManager.get_resource_icon(entry.id), entry.name, entry.id)
 			give_res.custom_minimum_size = Vector2(90, 0)
 			# Select saved value
 			for idx in give_res.get_item_count():
@@ -3728,7 +3752,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			recv_row.add_child(recv_lbl)
 			var recv_res := OptionButton.new()
 			for entry in trade_res_entries:
-				recv_res.add_item(entry.name, entry.id)
+				recv_res.add_icon_item(GameManager.get_resource_icon(entry.id), entry.name, entry.id)
 			recv_res.custom_minimum_size = Vector2(90, 0)
 			for idx in recv_res.get_item_count():
 				if recv_res.get_item_id(idx) == _diplo_trade_params.recv_res:
@@ -3814,7 +3838,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				g_res_row.add_child(g_res_lbl)
 				var g_res_opt := OptionButton.new()
 				for entry in trade_res_entries:
-					g_res_opt.add_item(entry.name, entry.id)
+					g_res_opt.add_icon_item(GameManager.get_resource_icon(entry.id), entry.name, entry.id)
 				g_res_opt.custom_minimum_size = Vector2(90, 0)
 				for idx in g_res_opt.get_item_count():
 					if g_res_opt.get_item_id(idx) == _diplo_gift_params.resource:
@@ -5064,25 +5088,29 @@ func _show_counter_offer_dialog(target: StringName, reason: String, counter_offe
 		var c_give_amt: int = counter_offer.get("give_amount", 0)
 		var c_recv_res: int = counter_offer.get("receive_resource", 0)
 		var c_recv_amt: int = counter_offer.get("receive_amount", 0)
-		var give_name: String = RESOURCE_NAMES[c_give_res] if c_give_res < RESOURCE_NAMES.size() else "?"
-		var recv_name: String = RESOURCE_NAMES[c_recv_res] if c_recv_res < RESOURCE_NAMES.size() else "?"
-		terms_lbl.text = "They want: You give %d %s, receive %d %s per turn" % [c_give_amt, give_name, c_recv_amt, recv_name]
+		terms_lbl.text = "Their counter-offer (per turn):"
+		vbox.add_child(terms_lbl)
+		vbox.add_child(GameManager.make_cost_row({c_give_res: c_give_amt}, {}, 12, "You give:"))
+		vbox.add_child(GameManager.make_cost_row({c_recv_res: c_recv_amt}, {}, 12, "You receive:", true))
 	elif is_item_counter:
 		var item_name: String = counter_offer.get("item_name", "an item")
 		var type_label: String = co_proposal_type.replace("_", " ").capitalize()
 		terms_lbl.text = "They demand your \"%s\" in exchange for %s" % [item_name, type_label]
+		vbox.add_child(terms_lbl)
 	elif is_resource_sweetener:
 		var res_type: int = counter_offer.get("resource_type", 0)
 		var amount: int = counter_offer.get("amount", 0)
-		var res_name: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
 		var type_label: String = co_proposal_type.replace("_", " ").capitalize()
-		terms_lbl.text = "They want %d %s to agree to %s" % [amount, res_name, type_label]
+		terms_lbl.text = "They want the following to agree to %s:" % type_label
+		vbox.add_child(terms_lbl)
+		vbox.add_child(GameManager.make_cost_row({res_type: amount}, {}, 12, "Demand:"))
 	else:
 		# Legacy gold_cost format fallback
 		var gold: int = counter_offer.get("gold_cost", 0)
 		var type_label: String = co_proposal_type.replace("_", " ").capitalize()
-		terms_lbl.text = "They want %d Gold to agree to %s" % [gold, type_label]
-	vbox.add_child(terms_lbl)
+		terms_lbl.text = "They want the following to agree to %s:" % type_label
+		vbox.add_child(terms_lbl)
+		vbox.add_child(GameManager.make_cost_row({0: gold}, {}, 12, "Demand:"))
 
 	var btn_row := HBoxContainer.new()
 	btn_row.add_theme_constant_override("separation", 8)

@@ -553,9 +553,15 @@ func _show_faction_select() -> void:
 	right_vbox.add_child(sep_top)
 
 	# ── Faction Overview (scrollable, shares space with leader section) ──
+	# Dark chip backdrop keeps the description text off the raw leather
 	var desc_scroll := ScrollContainer.new()
 	desc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var desc_chip := StyleBoxFlat.new()
+	desc_chip.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	desc_chip.set_corner_radius_all(5)
+	desc_chip.set_content_margin_all(12)
+	desc_scroll.add_theme_stylebox_override("panel", desc_chip)
 	right_vbox.add_child(desc_scroll)
 
 	var desc_vbox := VBoxContainer.new()
