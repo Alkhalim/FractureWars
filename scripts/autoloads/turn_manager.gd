@@ -159,6 +159,15 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 				"storm_wall": _apply_storm_ability(fs, faction_id, "storm_wall")
 				"storm_harvest": _apply_storm_ability(fs, faction_id, "storm_harvest")
 				"storm_hold": pass
+		"dark_bargain":
+			_apply_dark_bargain(fs, choice_effect)
+		"season_festival":
+			_apply_season_festival(fs, choice_effect)
+		"espionage_op":
+			_apply_espionage_operation(fs, choice_effect, fs.espionage_op_target)
+			fs.espionage_op_target = &""
+		"golden_age":
+			_apply_golden_age(fs, faction_id, choice_effect)
 		"forge_allocation":
 			if choice_effect.begins_with("build_fort_"):
 				# Build fortress at a settlement
@@ -3452,6 +3461,50 @@ func _process_skulloath_corruption(fs: FactionState) -> void:
 	if fs.corruption >= 35 and fs.corruption <= 65:
 		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 3
 
+	# ── Dark Bargain dilemma: the player STEERS corruption instead of only
+	# drifting via buildings/captives (every 4 turns, offset from other dilemmas)
+	if GameManager.state.current_turn % 4 == 2 and GameManager.state.current_turn > 2:
+		var sk_captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
+		if fs.faction_data_id == GameManager.state.player_faction_id:
+			var choices := [
+				{"label": "Walk the Line", "description": "Hold the balance. +3 Technology from diverse knowledge.", "effect": "bargain_balance"},
+				{"label": "Ancestral Rites", "description": "Purge the darkness: -12 Corruption, +2 loyalty in all cities. Costs 40 Gold.", "effect": "bargain_purge", "cost": {0: 40}},
+			]
+			if sk_captives >= 10:
+				choices.insert(0, {"label": "Feed the Hunger", "description": "Sacrifice 10 Captives: +12 Corruption, +10 Iron.", "effect": "bargain_embrace", "cost": {6: 10}})
+			EventBus.dilemma_triggered.emit(fs.faction_data_id, "dark_bargain", {
+				"title": "Dark Bargain (Corruption: %d)" % fs.corruption,
+				"description": "The old spirits and the demon whisper alike. Choose whose voice grows louder.",
+				"choices": choices,
+			})
+		else:
+			# AI: embrace toward the demonic band when at war with captives to spare
+			if sk_captives >= 10 and fs.corruption < 81:
+				for other_id in GameManager.state.faction_states:
+					if other_id != fs.faction_data_id and GameManager.get_relation(fs.faction_data_id, other_id) == Enums.FactionRelation.WAR:
+						_apply_dark_bargain(fs, "bargain_embrace")
+						break
+
+func _apply_dark_bargain(fs: FactionState, effect: String) -> void:
+	match effect:
+		"bargain_embrace":
+			if fs.resources.get(Enums.ResourceType.CAPTIVES, 0) >= 10:
+				fs.resources[Enums.ResourceType.CAPTIVES] = fs.resources.get(Enums.ResourceType.CAPTIVES, 0) - 10
+				fs.corruption = clampi(fs.corruption + 12, 0, 100)
+				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 10
+		"bargain_purge":
+			if fs.resources.get(Enums.ResourceType.GOLD, 0) >= 40:
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) - 40
+				fs.corruption = clampi(fs.corruption - 12, 0, 100)
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						for cls in city.class_loyalty:
+							if cls != "captives":
+								city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+		"bargain_balance":
+			fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 3
+
 # ── Tainted Jade: Taint Power + Taint Focus ───────────────
 # Taint Focus (player choice): 0=balanced, 1=verdant growth, 2=venomous war, 3=creeping doom
 # Each focus changes how taint power manifests across multiple game systems.
@@ -3622,6 +3675,25 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 # Each season has strong, distinct effects on economy, military, diplomacy, population.
 # Seasonal Festival dilemma at each season change gives player a bonus choice.
 
+func _apply_season_festival(fs: FactionState, effect: String) -> void:
+	match effect:
+		"festival_grand":
+			if fs.resources.get(Enums.ResourceType.FOOD, 0) >= 30:
+				fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) - 30
+				fs.harmony = mini(fs.harmony + 15, 100)
+				for city_id in fs.owned_cities:
+					var city: CityState = GameManager.state.cities.get(city_id)
+					if city:
+						for cls in city.class_loyalty:
+							if cls != "captives":
+								city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
+		"festival_toil":
+			fs.harmony = maxi(fs.harmony - 8, 0)
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 25
+			fs.resources[Enums.ResourceType.WOOD] = fs.resources.get(Enums.ResourceType.WOOD, 0) + 12
+		"festival_quiet":
+			fs.harmony = mini(fs.harmony + 5, 100)
+
 func get_current_season() -> int:
 	var month: int = GameManager.state.current_month
 	if month <= 2:
@@ -3688,6 +3760,31 @@ func _process_gladehost_seasons(fs: FactionState) -> void:
 		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + gold_bonus
 
 	var season := get_current_season()
+
+	# ── Seasonal Festival dilemma on every season change ──
+	if season != fs.last_season:
+		var first_season := fs.last_season == -1
+		fs.last_season = season
+		if not first_season:
+			if fs.faction_data_id == GameManager.state.player_faction_id:
+				EventBus.dilemma_triggered.emit(fs.faction_data_id, "season_festival", {
+					"title": "%s Rites (Harmony: %d)" % [get_season_name(season), fs.harmony],
+					"description": "The season turns. How will the Gladehost greet it?",
+					"choices": [
+						{"label": "Grand Festival", "description": "Spend 30 Food: +15 Harmony and +2 loyalty in all cities.", "effect": "festival_grand", "cost": {3: 30}},
+						{"label": "Season of Toil", "description": "Work through the rites: +25 Gold, +12 Wood, but -8 Harmony.", "effect": "festival_toil"},
+						{"label": "Quiet Observance", "description": "Honor the cycle simply. +5 Harmony.", "effect": "festival_quiet"},
+					],
+				})
+			else:
+				# AI: restore harmony when low, cash in when high
+				if fs.harmony < 55 and fs.resources.get(Enums.ResourceType.FOOD, 0) >= 30:
+					_apply_season_festival(fs, "festival_grand")
+				elif fs.harmony > 75:
+					_apply_season_festival(fs, "festival_toil")
+				else:
+					_apply_season_festival(fs, "festival_quiet")
+
 	# Building special_effects: seasonal_multiplier amplifies harmony
 	var seasonal_amp := _sum_building_special_effect(fs, "seasonal_multiplier")
 	var harmony_mult := float(fs.harmony) / 100.0 * (1.0 + seasonal_amp) # Amplified by buildings
@@ -4450,49 +4547,83 @@ func _process_forsaken_espionage(fs: FactionState) -> void:
 					best_target = other_id
 
 		if best_target != &"" and best_gold > 15:
-			var enemy_fs: FactionState = GameManager.state.faction_states[best_target]
-			# Gold theft (scales with espionage level)
-			var stolen := mini(best_gold / 5, 25 + fs.espionage_network / 2)
-			enemy_fs.resources[Enums.ResourceType.GOLD] = maxi(0, enemy_fs.resources.get(Enums.ResourceType.GOLD, 0) - stolen)
-			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + stolen
-
-			# 25+ espionage: also steal research progress
-			if fs.espionage_network >= 25:
-				var their_tech: int = enemy_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
-				var tech_stolen := mini(their_tech / 4, 10)
-				enemy_fs.resources[Enums.ResourceType.TECHNOLOGY] = maxi(0, enemy_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) - tech_stolen)
-				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_stolen
-
-			# 30+ espionage: erode border city loyalty
-			if fs.espionage_network >= 30:
-				for c_id in enemy_fs.owned_cities:
-					var c: CityState = GameManager.state.cities.get(c_id)
-					if c == null:
-						continue
-					# Check if city is in a border region
-					for fr_id in fs.owned_regions:
-						if GameManager.state.hex_map.regions_adjacent(c.region_id, fr_id):
-							for cls in c.class_loyalty:
-								if cls != "captives":
-									c.class_loyalty[cls] = clampi(c.class_loyalty[cls] - 3, -100, 100)
-							break
-
-			# Detection risk: 20% chance to be caught (penalizes standing with ALL factions)
-			if randf() < 0.20:
-				fs.espionage_caught_by.append(best_target)
-				for other_id in GameManager.state.faction_states:
-					if other_id == &"forsaken" or GameManager.is_npc_faction(other_id):
-						continue
-					var other_fs2: FactionState = GameManager.state.faction_states[other_id]
-					if not other_fs2.is_defeated:
-						GameManager.diplomacy_system.modify_standing(&"forsaken", other_id, -3, "Espionage detected")
-
+			if fs.faction_data_id == GameManager.state.player_faction_id:
+				# Player picks the operation — the network is a tool, not an autopilot
+				fs.espionage_op_target = best_target
+				var target_fd: FactionData = DataManager.get_faction(best_target)
+				var tname: String = target_fd.display_name if target_fd else str(best_target)
+				var choices := [
+					{"label": "Steal Treasury", "description": "Drain %s's gold reserves. 20%% detection risk." % tname, "effect": "spy_gold"},
+					{"label": "Lie Low", "description": "No operation. Agents mend cover: improves standing with factions that caught you.", "effect": "spy_lielow"},
+				]
+				if fs.espionage_network >= 25:
+					choices.insert(1, {"label": "Steal Research", "description": "Copy %s's research archives. 15%% detection risk." % tname, "effect": "spy_tech"})
+				if fs.espionage_network >= 30:
+					choices.insert(2, {"label": "Undermine Loyalty", "description": "Agitate %s's border cities (-3 loyalty). 25%% detection risk." % tname, "effect": "spy_loyalty"})
+				EventBus.dilemma_triggered.emit(fs.faction_data_id, "espionage_op", {
+					"title": "Shadow Operations (Network: %d)" % fs.espionage_network,
+					"description": "Your handlers await orders. Target of opportunity: %s." % tname,
+					"choices": choices,
+				})
+			else:
+				# AI runs the full classic sweep
+				_apply_espionage_operation(fs, "spy_gold", best_target)
+				if fs.espionage_network >= 25:
+					_apply_espionage_operation(fs, "spy_tech", best_target)
+				if fs.espionage_network >= 30:
+					_apply_espionage_operation(fs, "spy_loyalty", best_target)
 			fs.espionage_sabotage_cooldown = 2 # Every 2 turns
 
 	# Passive tech income from intelligence gathering
 	if fs.espionage_network >= 15:
 		var tech_gain := mini(fs.espionage_network / 10, 3)
 		fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_gain
+
+## One espionage operation against a target faction (shared by AI + dilemma)
+func _apply_espionage_operation(fs: FactionState, op: String, target: StringName) -> void:
+	var enemy_fs: FactionState = GameManager.state.faction_states.get(target)
+	if enemy_fs == null and op != "spy_lielow":
+		return
+	var detection := 0.0
+	match op:
+		"spy_gold":
+			var their_gold: int = enemy_fs.resources.get(Enums.ResourceType.GOLD, 0)
+			var stolen := mini(their_gold / 5, 25 + fs.espionage_network / 2)
+			enemy_fs.resources[Enums.ResourceType.GOLD] = maxi(0, their_gold - stolen)
+			fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + stolen
+			detection = 0.20
+		"spy_tech":
+			var their_tech: int = enemy_fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
+			var tech_stolen := mini(their_tech / 4, 10)
+			enemy_fs.resources[Enums.ResourceType.TECHNOLOGY] = maxi(0, their_tech - tech_stolen)
+			fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + tech_stolen
+			detection = 0.15
+		"spy_loyalty":
+			for c_id in enemy_fs.owned_cities:
+				var c: CityState = GameManager.state.cities.get(c_id)
+				if c == null:
+					continue
+				for fr_id in fs.owned_regions:
+					if GameManager.state.hex_map.regions_adjacent(c.region_id, fr_id):
+						for cls in c.class_loyalty:
+							if cls != "captives":
+								c.class_loyalty[cls] = clampi(c.class_loyalty[cls] - 3, -100, 100)
+						break
+			detection = 0.25
+		"spy_lielow":
+			# Mend cover: recover standing with factions that caught your agents
+			for caught_id in fs.espionage_caught_by:
+				GameManager.diplomacy_system.modify_standing(fs.faction_data_id, caught_id, 2, "Spies lie low")
+			fs.espionage_caught_by.clear()
+			return
+	if randf() < detection:
+		fs.espionage_caught_by.append(target)
+		for other_id in GameManager.state.faction_states:
+			if other_id == fs.faction_data_id or GameManager.is_npc_faction(other_id):
+				continue
+			var other_fs2: FactionState = GameManager.state.faction_states[other_id]
+			if not other_fs2.is_defeated:
+				GameManager.diplomacy_system.modify_standing(fs.faction_data_id, other_id, -3, "Espionage detected")
 
 # ── Ivoryscar: Relic Power ───────────────────────────────
 # Grows from shard_wastes control + owned shards. MUCH stronger scaling:
@@ -4677,6 +4808,10 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 	if faith_stab > 0 and fs.solar_faith > 50:
 		fs.solar_faith = mini(fs.solar_faith + faith_stab, 100) # Counteract decay
 
+	# Golden Age cooldown tick
+	if fs.golden_age_cooldown > 0:
+		fs.golden_age_cooldown -= 1
+
 	# ── High Faith (85+): Radiant Blessing ──
 	if fs.solar_faith >= 85:
 		# Strong army healing in owned territory
@@ -4696,6 +4831,27 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 						city.class_loyalty[cls] = clampi(city.class_loyalty[cls] + 2, -100, 100)
 		# Gold income from faithful donations
 		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 6
+
+		# ── Golden Age dilemma: spend accumulated faith on a great work ──
+		if fs.golden_age_cooldown <= 0:
+			if fs.faction_data_id == GameManager.state.player_faction_id:
+				EventBus.dilemma_triggered.emit(fid, "golden_age", {
+					"title": "The Sun Stands High (Faith: %d)" % fs.solar_faith,
+					"description": "The faithful overflow with devotion. Spend this radiance, or let it shine on.",
+					"choices": [
+						{"label": "Proclaim a Golden Age", "description": "Spend 30 Faith: +50 Gold, +25 Technology, heal all armies.", "effect": "golden_proclaim"},
+						{"label": "Radiant Teachings", "description": "Spend 20 Faith: +30 Wisdom for the academies.", "effect": "golden_teach"},
+						{"label": "Preserve the Flame", "description": "Keep the faith burning. Passive blessings continue.", "effect": "golden_preserve"},
+					],
+				})
+				fs.golden_age_cooldown = 8
+			else:
+				# AI: build wisdom first, then cash in at very high faith
+				if fs.wisdom < 100:
+					_apply_golden_age(fs, fid, "golden_teach")
+				elif fs.solar_faith >= 95:
+					_apply_golden_age(fs, fid, "golden_proclaim")
+				fs.golden_age_cooldown = 8
 
 	# ── Moderate Faith (70-84): Warm Glow ──
 	elif fs.solar_faith >= 70:
@@ -4810,6 +4966,25 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 # ── Sunblessed: Wisdom & Teaching ─────────────────────────
 # Wisdom grows near allied cities. Much stronger: tech, diplomacy, educator aura.
 # High wisdom unlocks: research cost reduction, ally tech sharing, cultural victory progress.
+
+func _apply_golden_age(fs: FactionState, fid: StringName, effect: String) -> void:
+	match effect:
+		"golden_proclaim":
+			if fs.solar_faith >= 30:
+				fs.solar_faith -= 30
+				fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + 50
+				fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 25
+				for army: ArmyState in GameManager.get_faction_armies(fid):
+					for unit in army.units:
+						var ud := DataManager.get_unit(unit.unit_data_id)
+						if ud:
+							unit.current_hp = mini(unit.current_hp + 15, ud.max_hp * ud.squad_size)
+		"golden_teach":
+			if fs.solar_faith >= 20:
+				fs.solar_faith -= 20
+				fs.wisdom = clampi(fs.wisdom + 30, 0, 200)
+		"golden_preserve":
+			pass
 
 func _process_sunblessed_wisdom(fs: FactionState, fid: StringName = &"sunblessed") -> void:
 	var sunblessed_fid := fid

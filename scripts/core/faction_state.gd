@@ -95,6 +95,7 @@ extends Resource
 # Forsaken: espionage operation cooldowns & tracking
 @export var espionage_sabotage_cooldown: int = 0
 @export var espionage_caught_by: Array[StringName] = [] # factions that detected your spies
+@export var espionage_op_target: StringName = &"" # target of the pending operations dilemma
 
 # Tainted Jade: Taint Focus (0=balanced, 1=verdant growth, 2=venomous war, 3=creeping doom)
 @export var taint_focus: int = 0
@@ -118,6 +119,12 @@ extends Resource
 
 # Sunblessed: Solar Faith proximity tracking
 @export var solar_faith_proximity_turns: int = 0
+
+# Gladehost: last season seen (detects season change for the Festival dilemma)
+@export var last_season: int = -1
+
+# Sunblessed: Golden Age dilemma cooldown
+@export var golden_age_cooldown: int = 0
 
 # Shard crystal sockets in research techs
 # research_id -> realm (int) of socketed crystal
