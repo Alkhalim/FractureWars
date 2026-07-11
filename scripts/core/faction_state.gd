@@ -126,6 +126,9 @@ extends Resource
 # Sunblessed: Golden Age dilemma cooldown
 @export var golden_age_cooldown: int = 0
 
+# Research queue: techs to auto-start (in order) when the current one finishes
+@export var research_queue: Array[StringName] = []
+
 # Shard crystal sockets in research techs
 # research_id -> realm (int) of socketed crystal
 @export var research_sockets: Dictionary = {}

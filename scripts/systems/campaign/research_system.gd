@@ -101,6 +101,49 @@ func _complete_research(faction_id: StringName, fs: FactionState) -> void:
 	fs.research_progress = 0
 	_invalidate_cache(faction_id)
 	EventBus.research_completed.emit(faction_id, research_id)
+	_advance_queue(faction_id, fs)
+
+## Auto-advance: start the first queued tech whose prerequisites are met and
+## whose cost is affordable. Unmet entries stay queued for the next completion.
+func _advance_queue(faction_id: StringName, fs: FactionState) -> void:
+	var i := 0
+	while i < fs.research_queue.size():
+		var next_id: StringName = fs.research_queue[i]
+		var nd: ResearchData = DataManager.research.get(next_id)
+		if nd == null or fs.completed_research.has(next_id):
+			fs.research_queue.remove_at(i)  # stale entry
+			continue
+		var prereqs_met := true
+		for prereq in nd.prerequisites:
+			if not fs.completed_research.has(prereq):
+				prereqs_met = false
+				break
+		if prereqs_met and start_research(faction_id, next_id):
+			fs.research_queue.remove_at(i)
+			return
+		i += 1
+
+func queue_research(faction_id: StringName, research_id: StringName) -> bool:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return false
+	var data: ResearchData = DataManager.research.get(research_id)
+	if data == null or fs.completed_research.has(research_id):
+		return false
+	if fs.current_research_id == research_id or fs.research_queue.has(research_id):
+		return false
+	if fs.research_queue.size() >= 5:
+		return false
+	fs.research_queue.append(research_id)
+	# Nothing active? Try to start right away.
+	if fs.current_research_id == &"":
+		_advance_queue(faction_id, fs)
+	return true
+
+func unqueue_research(faction_id: StringName, research_id: StringName) -> void:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs:
+		fs.research_queue.erase(research_id)
 
 func cancel_research(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)

@@ -5417,6 +5417,29 @@ func _refresh_research_panel() -> void:
 			cur_row.add_child(cancel_btn2)
 			vbox.add_child(cur_row)
 
+	# Research queue row (Shift-click nodes in the tree to queue/unqueue)
+	var queue_row := HBoxContainer.new()
+	queue_row.add_theme_constant_override("separation", 6)
+	var queue_lbl := Label.new()
+	queue_lbl.text = "Queue:" if not fs.research_queue.is_empty() else "Queue: (Shift-click a tech to auto-research it next)"
+	queue_lbl.add_theme_font_size_override("font_size", 11)
+	queue_lbl.add_theme_color_override("font_color", Color(0.6, 0.75, 0.9))
+	queue_row.add_child(queue_lbl)
+	for qid in fs.research_queue:
+		var qd: ResearchData = DataManager.get_research(qid)
+		if qd == null:
+			continue
+		var qbtn := Button.new()
+		qbtn.text = qd.display_name + "  ✕"
+		qbtn.tooltip_text = "Remove from queue"
+		qbtn.custom_minimum_size = Vector2(0, 24)
+		var qid_c: StringName = qid
+		qbtn.pressed.connect(func():
+			GameManager.research_system.unqueue_research(player_id, qid_c)
+			_refresh_research_panel())
+		queue_row.add_child(qbtn)
+	vbox.add_child(queue_row)
+
 	# Shard investment section — only for techs that actually define
 	# shard_bonuses; on the other ~479 techs the invest would grant nothing
 	var _cur_rd: ResearchData = DataManager.get_research(fs.current_research_id) if fs.current_research_id != &"" else null
@@ -5910,6 +5933,20 @@ class _RadialTechTree extends Control:
 				var star_pos := pos + Vector2(node_r * 0.7, -node_r * 0.7)
 				draw_circle(star_pos, 4.0 * _zoom, Color(0.95, 0.8, 0.2, 0.85))
 
+			# Queue badge: numbered marker on techs waiting in the auto-queue
+			var queue_idx: int = fs.research_queue.find(research_id)
+			if queue_idx >= 0 and not is_completed and not is_in_progress:
+				draw_arc(pos, node_r + 3.0 * _zoom, 0, TAU, 24, Color(0.5, 0.75, 0.95, 0.8), maxf(1.5, 2.0 * _zoom))
+				var badge_pos := pos + Vector2(-node_r * 0.75, -node_r * 0.75)
+				draw_circle(badge_pos, 7.0 * _zoom, Color(0.16, 0.3, 0.45, 0.95))
+				draw_arc(badge_pos, 7.0 * _zoom, 0, TAU, 16, Color(0.6, 0.8, 1.0), maxf(1.0, 1.2 * _zoom))
+				var qfont := get_theme_default_font()
+				var qsize := clampi(int(round(10.0 * _zoom)), 7, 13)
+				var qtext := str(queue_idx + 1)
+				var qw := qfont.get_string_size(qtext, HORIZONTAL_ALIGNMENT_CENTER, -1, qsize).x
+				draw_string(qfont, badge_pos + Vector2(-qw * 0.5, qsize * 0.36), qtext,
+					HORIZONTAL_ALIGNMENT_CENTER, -1, qsize, Color(0.85, 0.93, 1.0))
+
 			# Name label — hidden at far zoom (hover still shows the tooltip),
 			# scaled with zoom otherwise. Completed/in-progress always labeled.
 			var show_label: bool = _zoom >= 0.55 or is_completed or is_in_progress or research_id == _hovered_id
@@ -6089,7 +6126,10 @@ class _RadialTechTree extends Control:
 					if was_click:
 						var clicked := _get_node_at(event.position)
 						if clicked != &"":
-							_try_start_research(clicked)
+							if event.shift_pressed:
+								_toggle_queue(clicked)
+							else:
+								_try_start_research(clicked)
 			elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 				var clicked := _get_node_at(event.position)
 				if clicked != &"":
@@ -6150,6 +6190,19 @@ class _RadialTechTree extends Control:
 		if result and hud_ref:
 			hud_ref._refresh_research_panel()
 			hud_ref._update_research_status_label()
+
+	## Shift-click: add/remove a tech from the auto-research queue
+	func _toggle_queue(research_id: StringName) -> void:
+		var fs: FactionState = GameManager.state.faction_states.get(player_faction_id)
+		if fs == null or fs.completed_research.has(research_id):
+			return
+		if fs.research_queue.has(research_id):
+			GameManager.research_system.unqueue_research(player_faction_id, research_id)
+		else:
+			GameManager.research_system.queue_research(player_faction_id, research_id)
+		if hud_ref:
+			hud_ref._refresh_research_panel()
+		queue_redraw()
 
 	func _get_node_at(screen_pos: Vector2) -> StringName:
 		var hit_radius := (NODE_RADIUS + 5) * _zoom
