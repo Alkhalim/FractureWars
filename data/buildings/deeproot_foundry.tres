@@ -15,6 +15,7 @@ income_bonus = {1: 80}
 population_growth_bonus = 3
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
+special_effects = { "region_population_growth_bonus": 1 }
 upgrades_from = &"jade_forge"
 class_loyalty_bonus = {"artisans": 2, "captives": -4}
 upkeep_cost = {0: 3, 5: 5}

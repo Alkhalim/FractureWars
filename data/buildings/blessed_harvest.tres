@@ -16,5 +16,6 @@ population_growth_bonus = 8
 upgrades_from = &"pilgrim_gardens"
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
+special_effects = { "region_population_growth_bonus": 1 }
 class_loyalty_bonus = {"peasants": 3}
 upkeep_cost = {1: 5, 5: 3}

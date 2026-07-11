@@ -15,6 +15,7 @@ income_bonus = {}
 population_growth_bonus = 20
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
+special_effects = { "solar_faith_income": 1 }
 upgrades_from = &"wanderers_rest"
 class_loyalty_bonus = {"peasants": 4, "artisans": 2, "scholars": 3, "nobles": 3}
 upkeep_cost = {0: 3}

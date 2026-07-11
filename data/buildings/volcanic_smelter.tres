@@ -16,5 +16,6 @@ population_growth_bonus = 3
 unlocks_units = Array[StringName]([])
 upgrades_from = &"magma_vent"
 required_capital_level = 2
+special_effects = { "region_population_growth_bonus": 1 }
 class_loyalty_bonus = {"artisans": 2}
 upkeep_cost = {0: 5}

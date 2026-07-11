@@ -16,5 +16,6 @@ population_growth_bonus = 6
 unlocks_units = Array[StringName]([])
 upgrades_from = &"caravan_depot"
 required_capital_level = 2
+special_effects = { "region_population_growth_bonus": 1 }
 class_loyalty_bonus = {"artisans": 2, "nobles": 3}
 upkeep_cost = {1: 3, 5: 5}

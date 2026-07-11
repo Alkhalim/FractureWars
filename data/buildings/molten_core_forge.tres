@@ -15,6 +15,7 @@ income_bonus = {1: 45, 0: 15}
 population_growth_bonus = 1
 unlocks_units = Array[StringName]([])
 required_capital_level = 3
+special_effects = { "region_population_growth_bonus": 1 }
 exclusive_group = &"cinder_creed"
 requires_research = &"cg_blast_furnace"
 upgrades_from = &"ember_foundry"
