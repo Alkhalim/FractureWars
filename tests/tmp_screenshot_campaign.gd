@@ -61,6 +61,14 @@ func _process(_delta: float) -> bool:
 			_city_pos = _campaign.call("_hex_to_pixel", coast)
 		elif not player_cities.is_empty():
 			_city_pos = _campaign.call("_hex_to_pixel", player_cities[0].hex_pos)
+	if _frames == 45:
+		# Open the city panel for the first player city (icon cost rows etc.)
+		var gm2: Node = root.get_node("/root/GameManager")
+		for cid in gm2.state.cities:
+			if gm2.state.cities[cid].faction_id == &"skulloath":
+				var hud: Control = _campaign.get_node("UILayer/HUD")
+				hud.call("_show_city_panel", cid)
+				break
 	if _frames >= 40 and _city_pos != Vector2.ZERO:
 		# Pin camera every frame — the camera controller edge-pans/zoom-lerps
 		var cam: Camera2D = _campaign.get("camera")

@@ -1078,176 +1078,6 @@ const RESOURCE_ICONS := {
 	6: "⛓",  # Captives - people
 }
 
-static func _create_resource_icon(res_type: int, icon_size: float = 16.0) -> SubViewportContainer:
-	var container := SubViewportContainer.new()
-	container.custom_minimum_size = Vector2(icon_size, icon_size)
-	container.stretch = true
-	var viewport := SubViewport.new()
-	viewport.size = Vector2i(int(icon_size), int(icon_size))
-	viewport.transparent_bg = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
-	container.add_child(viewport)
-	var root := Node2D.new()
-	root.position = Vector2(icon_size / 2.0, icon_size / 2.0)
-	viewport.add_child(root)
-	var s := icon_size / 16.0  # scale factor
-	match res_type:
-		0:  # Gold - stacked coins
-			for i in 3:
-				var coin := Polygon2D.new()
-				var pts := PackedVector2Array()
-				for j in 10:
-					var angle := TAU * j / 10.0
-					pts.append(Vector2(cos(angle) * 5.0 * s, sin(angle) * 3.5 * s))
-				coin.polygon = pts
-				coin.position = Vector2(float(i - 1) * 2.0 * s, float(1 - i) * 1.5 * s)
-				coin.color = Color(0.95, 0.85, 0.3).darkened(i * 0.08)
-				root.add_child(coin)
-				# Rim highlight on top coin
-				if i == 0:
-					var rim := Polygon2D.new()
-					var rim_pts := PackedVector2Array()
-					for j in 10:
-						var angle := TAU * j / 10.0
-						rim_pts.append(Vector2(cos(angle) * 3.0 * s, sin(angle) * 2.0 * s))
-					rim.polygon = rim_pts
-					rim.position = coin.position
-					rim.color = Color(1.0, 0.95, 0.5, 0.4)
-					root.add_child(rim)
-		1:  # Iron - ingot with rivet detail
-			var ingot := Polygon2D.new()
-			ingot.polygon = PackedVector2Array([
-				Vector2(-6 * s, -3 * s), Vector2(6 * s, -3 * s),
-				Vector2(5 * s, 4 * s), Vector2(-5 * s, 4 * s)
-			])
-			ingot.color = Color(0.55, 0.55, 0.6)
-			root.add_child(ingot)
-			var highlight := Polygon2D.new()
-			highlight.polygon = PackedVector2Array([
-				Vector2(-6 * s, -3 * s), Vector2(6 * s, -3 * s),
-				Vector2(4 * s, -0.5 * s), Vector2(-4 * s, -0.5 * s)
-			])
-			highlight.color = Color(0.72, 0.72, 0.78, 0.6)
-			root.add_child(highlight)
-			# Anvil groove
-			var groove := Polygon2D.new()
-			groove.polygon = PackedVector2Array([
-				Vector2(-3 * s, 1 * s), Vector2(3 * s, 1 * s),
-				Vector2(2.5 * s, 2 * s), Vector2(-2.5 * s, 2 * s)
-			])
-			groove.color = Color(0.42, 0.42, 0.47)
-			root.add_child(groove)
-		2:  # Technology - gear with center hub
-			var gear := Polygon2D.new()
-			var pts := PackedVector2Array()
-			for j in 16:
-				var angle := TAU * j / 16.0
-				var r := 6.0 * s if j % 2 == 0 else 4.0 * s
-				pts.append(Vector2(cos(angle) * r, sin(angle) * r))
-			gear.polygon = pts
-			gear.color = Color(0.45, 0.55, 0.65)
-			root.add_child(gear)
-			# Center hub
-			var hub := Polygon2D.new()
-			var hub_pts := PackedVector2Array()
-			for j in 8:
-				var angle := TAU * j / 8.0
-				hub_pts.append(Vector2(cos(angle) * 2.0 * s, sin(angle) * 2.0 * s))
-			hub.polygon = hub_pts
-			hub.color = Color(0.35, 0.42, 0.52)
-			root.add_child(hub)
-		3:  # Food - wheat sheaf
-			var steak := Polygon2D.new()
-			steak.polygon = PackedVector2Array([
-				Vector2(-5 * s, -3 * s), Vector2(-2 * s, -5 * s),
-				Vector2(4 * s, -3 * s), Vector2(6 * s, 1 * s),
-				Vector2(3 * s, 5 * s), Vector2(-3 * s, 4 * s),
-				Vector2(-6 * s, 1 * s)
-			])
-			steak.color = Color(0.6, 0.35, 0.25)
-			root.add_child(steak)
-			# Bone notch
-			var bone := Polygon2D.new()
-			bone.polygon = PackedVector2Array([
-				Vector2(-1 * s, -4 * s), Vector2(1 * s, -4 * s),
-				Vector2(2 * s, -2 * s), Vector2(-1 * s, -2 * s)
-			])
-			bone.color = Color(0.85, 0.82, 0.75)
-			root.add_child(bone)
-			# Fat marbling
-			var fat := Polygon2D.new()
-			fat.polygon = PackedVector2Array([
-				Vector2(0, 0), Vector2(3 * s, -1 * s),
-				Vector2(4 * s, 1 * s), Vector2(1 * s, 2 * s)
-			])
-			fat.color = Color(0.75, 0.5, 0.4, 0.5)
-			root.add_child(fat)
-		4:  # Shard Essence - purple crystal
-			var crystal := Polygon2D.new()
-			crystal.polygon = PackedVector2Array([
-				Vector2(0, -6 * s), Vector2(4 * s, -1 * s),
-				Vector2(3 * s, 5 * s), Vector2(-3 * s, 5 * s),
-				Vector2(-4 * s, -1 * s)
-			])
-			crystal.color = Color(0.6, 0.3, 0.85)
-			root.add_child(crystal)
-			# Inner glow facet
-			var facet := Polygon2D.new()
-			facet.polygon = PackedVector2Array([
-				Vector2(0, -3.5 * s), Vector2(2 * s, 0),
-				Vector2(0, 3 * s), Vector2(-2 * s, 0)
-			])
-			facet.color = Color(0.8, 0.5, 1.0, 0.5)
-			root.add_child(facet)
-		5:  # Wood - crossed logs with bark detail
-			for angle in [0.4, -0.4]:
-				var log := Polygon2D.new()
-				log.polygon = PackedVector2Array([
-					Vector2(-6 * s, -1.8 * s), Vector2(6 * s, -1.8 * s),
-					Vector2(6 * s, 1.8 * s), Vector2(-6 * s, 1.8 * s)
-				])
-				log.color = Color(0.55, 0.38, 0.22)
-				log.rotation = angle
-				root.add_child(log)
-				# Bark grain
-				var grain := Polygon2D.new()
-				grain.polygon = PackedVector2Array([
-					Vector2(-4 * s, -0.5 * s), Vector2(4 * s, -0.5 * s),
-					Vector2(4 * s, 0.5 * s), Vector2(-4 * s, 0.5 * s)
-				])
-				grain.color = Color(0.65, 0.48, 0.3, 0.4)
-				grain.rotation = angle
-				root.add_child(grain)
-		6:  # Captives - person outlines with chains
-			for i in 3:
-				var x_off := float(i - 1) * 4.5 * s
-				# Head
-				var head := Polygon2D.new()
-				var hpts := PackedVector2Array()
-				for j in 8:
-					var angle := TAU * j / 8.0
-					hpts.append(Vector2(cos(angle) * 2.2 * s + x_off, sin(angle) * 2.2 * s - 3.5 * s))
-				head.polygon = hpts
-				head.color = Color(0.65, 0.45, 0.35)
-				root.add_child(head)
-				# Shoulders
-				var body := Polygon2D.new()
-				body.polygon = PackedVector2Array([
-					Vector2(x_off - 3 * s, -0.5 * s), Vector2(x_off + 3 * s, -0.5 * s),
-					Vector2(x_off + 2 * s, 5 * s), Vector2(x_off - 2 * s, 5 * s)
-				])
-				body.color = Color(0.65, 0.45, 0.35)
-				root.add_child(body)
-			# Chain link between figures
-			var chain := Polygon2D.new()
-			chain.polygon = PackedVector2Array([
-				Vector2(-3.5 * s, 0), Vector2(3.5 * s, 0),
-				Vector2(3.5 * s, 0.8 * s), Vector2(-3.5 * s, 0.8 * s)
-			])
-			chain.color = Color(0.5, 0.5, 0.5, 0.6)
-			root.add_child(chain)
-	return container
-
 func _create_resource_bar() -> void:
 	resource_bar = HBoxContainer.new()
 	resource_bar.add_theme_constant_override("separation", 16)
@@ -1296,8 +1126,8 @@ func _create_resource_bar() -> void:
 		var top_row := HBoxContainer.new()
 		top_row.add_theme_constant_override("separation", 3)
 
-		# Polygon icon
-		var icon := _create_resource_icon(res_type, 22.0)
+		# Shared resource glyph (see GameManager.make_resource_icon)
+		var icon := GameManager.make_resource_icon(res_type, 22.0)
 		top_row.add_child(icon)
 
 		# Amount label
@@ -7369,43 +7199,19 @@ func _show_city_panel(city_id: StringName) -> void:
 			pop_req_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
 			vbox.add_child(pop_req_label)
 
-		# Cost breakdown — red for missing resources, green for sufficient
-		var cost_hbox := HBoxContainer.new()
-		cost_hbox.add_theme_constant_override("separation", 8)
-		var cost_prefix := Label.new()
-		cost_prefix.text = "Cost: "
-		cost_prefix.add_theme_font_size_override("font_size", 11)
-		cost_prefix.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
-		cost_hbox.add_child(cost_prefix)
-		for res_type in upgrade_cost:
-			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-			var amount: int = upgrade_cost[res_type]
-			var have: int = fs_upgrade.resources.get(res_type, 0) if fs_upgrade else 0
-			var cost_label := Label.new()
-			cost_label.text = "%d %s" % [amount, rname]
-			cost_label.add_theme_font_size_override("font_size", 11)
-			if have >= amount:
-				cost_label.add_theme_color_override("font_color", Color(0.6, 0.8, 0.55))
-			else:
-				cost_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
-			cost_hbox.add_child(cost_label)
-		vbox.add_child(cost_hbox)
+		# Cost breakdown — resource icons, red when missing, green when sufficient
+		vbox.add_child(GameManager.make_cost_row(upgrade_cost,
+			fs_upgrade.resources if fs_upgrade else {&"_": 0}, 11, "Cost:"))
 
-	# Income preview (player cities only)
+	# Income preview (player cities only) — icon row with green +amounts
 	if is_player_city:
 		var income := GameManager.city_system.calculate_city_income(city)
-		if income.size() > 0:
-			var income_parts: Array[String] = []
-			for res_type in income:
-				if income[res_type] > 0:
-					var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-					income_parts.append("+" + str(income[res_type]) + " " + rname)
-			if income_parts.size() > 0:
-				var income_label := Label.new()
-				income_label.text = "Income: " + ", ".join(income_parts)
-				income_label.add_theme_font_size_override("font_size", 14)
-				income_label.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
-				vbox.add_child(income_label)
+		var positive: Dictionary = {}
+		for res_type in income:
+			if income[res_type] > 0:
+				positive[res_type] = income[res_type]
+		if positive.size() > 0:
+			vbox.add_child(GameManager.make_cost_row(positive, {}, 13, "Income:", true))
 
 	# Garrison info
 	var garrison_def: Array = GameManager.city_system._get_garrison_composition(city)
@@ -8096,14 +7902,7 @@ func _find_upgrade_for(building_id: StringName) -> BuildingData:
 	return null
 
 func _format_cost_bbcode(cost: Dictionary, fs: FactionState) -> String:
-	var parts: Array[String] = []
-	for res_type in cost:
-		var amount: int = cost[res_type]
-		var has: int = fs.resources.get(res_type, 0) if fs else 0
-		var hex_color: String = "66cc66" if has >= amount else "cc4444"
-		var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-		parts.append("[color=#%s]%d %s[/color]" % [hex_color, amount, rname])
-	return ", ".join(parts)
+	return GameManager.cost_bbcode(cost, fs.resources if fs else {&"_": 0})
 
 func _create_building_card(building: BuildingData, city_id: StringName, fs: FactionState, slot_blocked: bool = false) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -11846,25 +11645,18 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 
 	_add_detail_separator(vbox)
 
-	# Build cost
-	var cost_label := Label.new()
-	cost_label.text = "Build Cost: %s  |  Build Time: %d turn(s)" % [_format_cost(bd.build_cost), bd.build_time]
-	cost_label.add_theme_font_size_override("font_size", 13)
-	cost_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
-	vbox.add_child(cost_label)
+	# Build cost — icon row + build time
+	var cost_row := GameManager.make_cost_row(bd.build_cost, {}, 13, "Cost:")
+	var time_label := Label.new()
+	time_label.text = " |  %d turn(s)" % bd.build_time
+	time_label.add_theme_font_size_override("font_size", 13)
+	time_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
+	cost_row.add_child(time_label)
+	vbox.add_child(cost_row)
 
-	# Income bonuses
+	# Income bonuses — icon row with green +amounts
 	if not bd.income_bonus.is_empty():
-		var parts := PackedStringArray()
-		for res_type in bd.income_bonus:
-			var rname: String = RESOURCE_NAMES[res_type] if res_type < RESOURCE_NAMES.size() else "?"
-			var color: Color = RESOURCE_COLORS.get(res_type, Color(0.7, 0.7, 0.7))
-			parts.append("+%d %s" % [bd.income_bonus[res_type], rname])
-		var income_label := Label.new()
-		income_label.text = "Income: " + ", ".join(parts)
-		income_label.add_theme_font_size_override("font_size", 13)
-		income_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.35))
-		vbox.add_child(income_label)
+		vbox.add_child(GameManager.make_cost_row(bd.income_bonus, {}, 13, "Income:", true))
 
 	# Growth
 	if bd.population_growth_bonus != 0:
@@ -12077,9 +11869,9 @@ func _show_unit_detail_overview(ud: UnitData) -> void:
 	_add_stat_line(vbox, "Squad Size: %d" % ud.squad_size, Color(0.7, 0.65, 0.55))
 	var pop_cost: int = ud.population_cost if ud.population_cost >= 0 else ud.squad_size
 	_add_stat_line(vbox, "Population Cost: %d" % pop_cost, Color(0.7, 0.65, 0.55))
-	_add_stat_line(vbox, "Recruit Cost: %s" % _format_cost(ud.recruit_cost), Color(0.85, 0.75, 0.5))
+	vbox.add_child(GameManager.make_cost_row(ud.recruit_cost, {}, 12, "Recruit Cost:"))
 	_add_stat_line(vbox, "Recruit Time: %d turn(s)" % ud.recruit_time, Color(0.7, 0.65, 0.55))
-	_add_stat_line(vbox, "Upkeep: %s" % _format_cost(ud.upkeep_cost), Color(0.85, 0.55, 0.4))
+	vbox.add_child(GameManager.make_cost_row(ud.upkeep_cost, {}, 12, "Upkeep:"))
 	_add_stat_line(vbox, "Captive Chance: %d%%" % int(ud.captive_chance * 100), Color(0.7, 0.65, 0.55))
 
 	# Terrain bonuses

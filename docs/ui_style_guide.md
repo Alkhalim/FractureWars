@@ -58,6 +58,20 @@ like buttons" reports).
 - Columns of option rows are fixed-width (~430 px) and centered, never
   expand-fill across wide panels.
 
+## Resource display
+
+- Resource amounts are shown as **icon + number**, never "200 Gold" text.
+  Factories: `GameManager.make_resource_icon(type, px)`,
+  `GameManager.make_cost_row(cost, compare, font_size, prefix, signed)` for
+  Control layouts, `GameManager.cost_bbcode(cost, compare)` for
+  RichTextLabels. Affordability coloring (green/red) comes from passing the
+  player's resources as `compare`; incomes use `signed = true`.
+- Icons are generated assets (`tests/tools_generate_resource_icons.gd` →
+  `assets/sprites/ui/icons/res_*.png`): gold coin stack, iron ingots, tech
+  scroll, wheat sheaf, shard crystal, log pair, captive shackle.
+- Exception: plain Button labels may spell the resource name (buttons cannot
+  embed icons).
+
 ## Map & markers
 
 - Marker visual language: dark silhouette outline, bronze/gold trim
