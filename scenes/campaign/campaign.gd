@@ -759,6 +759,7 @@ func _render_hex_map() -> void:
 		# open water body (ocean/lake), as is an isolated pond.
 		var variants: Array = _terrain_textures.get(tile.terrain, [])
 		var uv_rot := 0.0
+		var is_river := false
 		var neighbors := HexHelper.get_neighbors(coord)
 		if tile.terrain == Enums.TerrainType.WATER and not _river_textures.is_empty():
 			var dir_lut: Array = DIR_TO_EDGE_EVEN if (coord.x & 1 == 0) else DIR_TO_EDGE_ODD
@@ -782,10 +783,17 @@ func _render_hex_map() -> void:
 						open_water = true
 			if not open_water:
 				variants = _river_textures
+				is_river = true
 				if water_dirs.size() >= 2:
 					uv_rot = (water_dirs[0] - water_dirs[1]).angle()
 				elif water_dirs.size() == 1:
 					uv_rot = water_dirs[0].angle()
+		if not is_river:
+			# All tiles are painted top-down and rotation-safe, so each tile
+			# also gets one of 6 hex rotations for extra variety (rivers keep
+			# their flow-aligned rotation instead). Different hash than the
+			# variant pick so rotation and variant vary independently.
+			uv_rot = (TAU / 6.0) * float(posmod(coord.x * 5 + coord.y * 11 + coord.x * coord.y * 3, 6))
 		var tex: Texture2D = null
 		var scaled_uv: PackedVector2Array = PackedVector2Array()
 		if not variants.is_empty():

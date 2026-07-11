@@ -110,7 +110,7 @@ class _TilePainter extends Node2D:
 
 	func _p_forest(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.24, 0.35, 0.21))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 64), Color(0.2, 0.31, 0.18, 0.9))
+		_shade(rng, Color(0.2, 0.31, 0.18, 0.7))
 		for i in 8 + rng.randi() % 4:
 			var p := _rand_in(rng, 84)
 			var cr := 20.0 + rng.randf() * 13.0
@@ -123,85 +123,131 @@ class _TilePainter extends Node2D:
 		for i in 6:
 			draw_circle(_rand_in(rng, 90), 2.2, Color(0.28, 0.4, 0.22, 0.8))
 
-	func _mount_peak(rng: RandomNumberGenerator, base_c: Vector2, s: float, snow_cap: bool) -> void:
-		# One peak: body, hard-shadowed east face, ridge line, optional snow.
-		# All extents scale with s and are safe inside the hex crop.
-		var apex := base_c + Vector2(rng.randf_range(-8, 8) * s, -74.0 * s)
-		var bl := base_c + Vector2(-52.0 * s + rng.randf_range(-6, 6), 0)
-		var br := base_c + Vector2(54.0 * s + rng.randf_range(-6, 6), rng.randf_range(0, 5))
-		var ridge_l := apex.lerp(bl, 0.42) + Vector2(-6.0 * s, rng.randf_range(-10, 2) * s)
-		var ridge_r := apex.lerp(br, 0.38) + Vector2(7.0 * s, rng.randf_range(-8, 4) * s)
-		draw_colored_polygon(PackedVector2Array([bl, ridge_l, apex, ridge_r, br]), Color(0.56, 0.52, 0.45))
-		draw_colored_polygon(PackedVector2Array([apex, ridge_r, br, apex + Vector2(3.0 * s, 12.0 * s)]), Color(0.3, 0.27, 0.25))
-		draw_polyline(PackedVector2Array([bl, ridge_l, apex]), Color(0.24, 0.21, 0.19), maxf(1.6, 2.6 * s), true)
-		if snow_cap:
-			var snow := PackedVector2Array([apex])
-			var sl := apex.lerp(ridge_l, 0.6)
-			var sr := apex.lerp(ridge_r, 0.56)
-			snow.append(sl)
-			for k in 4:
-				var t := float(k + 1) / 5.0
-				snow.append(sl.lerp(sr, t) + Vector2(0, (-6.0 if k % 2 == 0 else 4.0) * s))
-			snow.append(sr)
-			draw_colored_polygon(snow, Color(0.92, 0.93, 0.94))
+	## 2-3 spread-out shading blobs — replaces the old single centered dark
+	## circle that made tiles read as "one dark spot in the middle"
+	func _shade(rng: RandomNumberGenerator, color: Color) -> void:
+		for i in 2 + rng.randi() % 2:
+			draw_colored_polygon(_blob(rng, _rand_in(rng, 95), 22.0 + rng.randf() * 24.0, 9, 0.45), color)
+
+	func _mount_massif(rng: RandomNumberGenerator, p: Vector2, s: float, snow: bool) -> void:
+		# Rocky mass seen from ABOVE (rotation-safe): angular body, subtle
+		# shadow lobe, lit facet, sharp ridge cracks, optional summit snowfield
+		var body := _blob(rng, p, 34.0 * s, 8, 0.55)
+		draw_colored_polygon(_blob(rng, p + Vector2(4.0 * s, 5.0 * s), 34.0 * s, 8, 0.5), Color(0.26, 0.23, 0.21, 0.8))
+		draw_colored_polygon(body, Color(0.58, 0.55, 0.48))
+		draw_colored_polygon(_blob(rng, p + Vector2(-4.0 * s, -5.0 * s), 20.0 * s, 8, 0.5), Color(0.68, 0.64, 0.56))
+		# Ridge cracks across the mass
+		for i in 2 + rng.randi() % 2:
+			var a := rng.randf() * TAU
+			var dirv := Vector2(cos(a), sin(a))
+			var mid := p + Vector2(rng.randf_range(-8, 8), rng.randf_range(-8, 8)) * s
+			var crack := PackedVector2Array([mid - dirv * 22.0 * s])
+			crack.append(mid + Vector2(rng.randf_range(-4, 4), rng.randf_range(-4, 4)) * s)
+			crack.append(mid + dirv * 20.0 * s)
+			draw_polyline(crack, Color(0.26, 0.23, 0.2, 0.9), maxf(1.4, 2.2 * s), true)
+		if snow:
+			draw_colored_polygon(_blob(rng, p + Vector2(-2.0 * s, -2.0 * s), 13.0 * s, 9, 0.6), Color(0.92, 0.93, 0.94))
 		for i in 4:
-			var sp := bl.lerp(br, rng.randf()) + Vector2(rng.randf_range(-5, 5), rng.randf_range(2, 9))
+			var a2 := rng.randf() * TAU
+			var sp := p + Vector2(cos(a2), sin(a2)) * (34.0 * s + rng.randf() * 8.0)
 			draw_circle(sp, 1.4 + rng.randf() * 1.4, Color(0.36, 0.33, 0.3, 0.85))
 
 	func _p_mountain(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.45, 0.42, 0.37))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 55), 62), Color(0.41, 0.38, 0.34, 0.6))
-		# Structural variant modes so tiles don't read as one copy-pasted peak
+		_shade(rng, Color(0.41, 0.38, 0.34, 0.55))
+		# Structural variant modes, all top-down and rotation-safe
 		match seed_val % 3:
 			0:
-				# One large peak + small companion, varied placement
-				var main_c := C + Vector2(rng.randf_range(-24, 10), rng.randf_range(26, 44))
-				_mount_peak(rng, main_c + Vector2(rng.randf_range(30, 48), rng.randf_range(2, 10)), 0.55 + rng.randf() * 0.15, false)
-				_mount_peak(rng, main_c, 0.95 + rng.randf() * 0.15, true)
+				# One large massif + small companion
+				var main_c := _rand_in(rng, 30)
+				_mount_massif(rng, main_c + Vector2((1.0 if rng.randf() < 0.5 else -1.0) * (52.0 + rng.randf() * 12.0), rng.randf_range(-34, 34)), 0.58 + rng.randf() * 0.15, false)
+				_mount_massif(rng, main_c, 1.15 + rng.randf() * 0.15, true)
 			1:
-				# Overlapping ridge of two medium peaks
-				var rc := C + Vector2(rng.randf_range(-16, 16), rng.randf_range(26, 40))
-				_mount_peak(rng, rc + Vector2(-30 + rng.randf_range(-8, 8), 4), 0.72 + rng.randf() * 0.12, rng.randf() < 0.5)
-				_mount_peak(rng, rc + Vector2(30 + rng.randf_range(-8, 8), 0), 0.8 + rng.randf() * 0.15, true)
+				# Two overlapping medium masses
+				var rc := _rand_in(rng, 25)
+				var axis := rng.randf() * TAU
+				var off := Vector2(cos(axis), sin(axis)) * (38.0 + rng.randf() * 8.0)
+				_mount_massif(rng, rc - off, 0.85 + rng.randf() * 0.12, rng.randf() < 0.5)
+				_mount_massif(rng, rc + off, 0.95 + rng.randf() * 0.15, true)
 			_:
-				# Diagonal chain of three small peaks
-				var start := C + Vector2(rng.randf_range(-46, -30), rng.randf_range(-18, -2))
-				var step := Vector2(38 + rng.randf_range(-6, 6), 26 + rng.randf_range(-6, 6))
+				# Chain of three small masses along a random axis
+				var axis2 := rng.randf() * TAU
+				var step := Vector2(cos(axis2), sin(axis2)) * (40.0 + rng.randf() * 8.0)
+				var start := C - step + Vector2(rng.randf_range(-10, 10), rng.randf_range(-10, 10))
 				for i in 3:
-					var pc := start + step * float(i) + Vector2(rng.randf_range(-6, 6), rng.randf_range(-4, 4))
-					_mount_peak(rng, pc + Vector2(0, 30), 0.5 + rng.randf() * 0.2, i == 1)
+					var pc := start + step * float(i) + Vector2(rng.randf_range(-7, 7), rng.randf_range(-7, 7))
+					_mount_massif(rng, pc, 0.6 + rng.randf() * 0.18, i == 1)
+
+	func _palm(rng: RandomNumberGenerator, pp: Vector2) -> void:
+		# Small lone palm seen from ABOVE: soft shadow, radial fronds, trunk dot
+		draw_colored_polygon(_blob(rng, pp + Vector2(3, 3), 15.0, 8, 0.3), Color(0.5, 0.42, 0.28, 0.5))
+		var fronds := 6 + rng.randi() % 3
+		for i in fronds:
+			var fa := TAU * float(i) / float(fronds) + rng.randf_range(-0.15, 0.15)
+			var fl := 15.0 + rng.randf() * 5.0
+			var dirv := Vector2(cos(fa), sin(fa))
+			var perp := Vector2(-dirv.y, dirv.x)
+			draw_colored_polygon(PackedVector2Array([
+				pp, pp + dirv * fl * 0.55 + perp * 2.6, pp + dirv * fl, pp + dirv * fl * 0.55 - perp * 2.6
+			]), Color(0.25, 0.42, 0.2))
+		draw_circle(pp, 2.4, Color(0.45, 0.35, 0.2))
 
 	func _p_desert(rng: RandomNumberGenerator) -> void:
-		var t := rng.randf() * 0.04 - 0.02
-		_fill(Color(0.71 + t, 0.62 + t, 0.42))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 65), 55), Color(0.76, 0.67, 0.46, 0.75))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 70), 40), Color(0.66, 0.57, 0.38, 0.6))
-		# Barchan dunes from above: crescent slip-face shadows with a lit
-		# windward rim, varied position/rotation/size
+		# Wider per-tile tint range: warm/pale/reddish sand mixes
+		var t := rng.randf() * 0.08 - 0.04
+		var h := rng.randf() * 0.05
+		_fill(Color(0.71 + t, 0.62 + t - h * 0.4, 0.42 + h))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 65), 55), Color(0.76 + t, 0.67 + t, 0.46 + h, 0.75))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 70), 40), Color(0.66 + t, 0.57 + t - h * 0.5, 0.38, 0.6))
+		# Barchan dunes from above: one shared wind direction per tile, no
+		# overlapping placement, elongated irregular crescents (not round arcs)
+		var wind := rng.randf() * TAU
+		var placed: Array = []
 		for i in 2 + rng.randi() % 3:
+			var dr := 16.0 + rng.randf() * 16.0
 			var p := _rand_in(rng, 85)
-			var dr := 18.0 + rng.randf() * 20.0
-			var rot := rng.randf() * TAU
-			var a0 := rot - PI * 0.42
-			var a1 := rot + PI * 0.42
-			var shadow := PackedVector2Array()
-			for k in 8:
-				var a := lerpf(a0, a1, float(k) / 7.0)
-				shadow.append(p + Vector2(cos(a), sin(a)) * dr)
-			for k in 8:
-				var a := lerpf(a1, a0, float(k) / 7.0)
-				shadow.append(p + Vector2(cos(a), sin(a)) * (dr - 5.0 - rng.randf() * 3.0))
-			draw_colored_polygon(shadow, Color(0.55, 0.46, 0.3, 0.85))
-			var rim := PackedVector2Array()
+			var ok := false
+			for attempt in 8:
+				ok = true
+				for pr in placed:
+					if p.distance_to(pr[0]) < (dr + pr[1]) * 1.05:
+						ok = false
+						break
+				if ok:
+					break
+				p = _rand_in(rng, 95)
+			if not ok:
+				continue
+			placed.append([p, dr])
+			var rot := wind + rng.randf_range(-0.3, 0.3)
+			var dirv := Vector2(cos(rot), sin(rot))
+			var perp := Vector2(-dirv.y, dirv.x)
+			var elong := 1.3 + rng.randf() * 0.35
+			var span := PI * (0.36 + rng.randf() * 0.14)
+			var outer := PackedVector2Array()
+			var inner := PackedVector2Array()
+			var mound := PackedVector2Array()
 			for k in 9:
-				var a := lerpf(a0, a1, float(k) / 8.0)
-				rim.append(p + Vector2(cos(a), sin(a)) * (dr + 1.5))
-			draw_polyline(rim, Color(0.82, 0.73, 0.5, 0.9), 2.2, true)
-		# Faint sand ripples + pebbles
-		var rip_dir := rng.randf() * TAU
+				var la := lerpf(-span, span, float(k) / 8.0)
+				var rr := dr * (0.92 + rng.randf() * 0.16)
+				var band := 9.0 + rng.randf() * 5.0  # slip face must read as a dune body, not a crack
+				outer.append(p + dirv * cos(la) * rr + perp * sin(la) * rr * elong)
+				inner.append(p + dirv * cos(la) * (rr - band) + perp * sin(la) * (rr - band) * elong)
+				mound.append(p + dirv * cos(la) * (rr - band * 0.4) * 0.72 + perp * sin(la) * (rr - band * 0.4) * 0.72 * elong)
+			# Soft lighter mound filling the dune's windward interior
+			draw_colored_polygon(mound, Color(0.78 + t, 0.69 + t, 0.48 + h, 0.7))
+			var shadow := outer.duplicate()
+			inner.reverse()
+			shadow.append_array(inner)
+			draw_colored_polygon(shadow, Color(0.55 + t, 0.46 + t, 0.3, 0.85))
+			draw_polyline(outer, Color(0.82 + t, 0.73 + t, 0.5, 0.9), 2.2, true)
+		# One desert variant carries a small lone palm
+		if seed_val == 4:
+			_palm(rng, C + Vector2(rng.randf_range(24, 48) * (1.0 if rng.randf() < 0.5 else -1.0), rng.randf_range(-42, 38)))
+		# Faint sand ripples (following the wind) + pebbles
 		for i in 4:
 			var rp := _rand_in(rng, 80)
-			var rv := Vector2(cos(rip_dir), sin(rip_dir)) * (10.0 + rng.randf() * 8.0)
+			var rv := Vector2(cos(wind), sin(wind)) * (10.0 + rng.randf() * 8.0)
 			draw_line(rp - rv, rp + rv, Color(0.62, 0.53, 0.35, 0.5), 1.4)
 		for i in 3:
 			draw_circle(_rand_in(rng, 85), 2.0, Color(0.6, 0.52, 0.36))
@@ -216,17 +262,27 @@ class _TilePainter extends Node2D:
 			draw_circle(lp + Vector2(-1.0, -1.0), 1.1, Color(0.4, 0.5, 0.28))
 
 	func _p_swamp(rng: RandomNumberGenerator) -> void:
-		# Darker, murkier base
-		_fill(Color(0.24, 0.26, 0.16))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 62), Color(0.19, 0.21, 0.13, 0.9))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 60), 40), Color(0.28, 0.3, 0.18, 0.7))
-		# Variants 3 and 6: two clearly separated ponds; otherwise 1-2 pools
-		if seed_val == 3 or seed_val == 6:
-			_swamp_pool(rng, C + Vector2(-42 + rng.randf_range(-8, 8), -30 + rng.randf_range(-8, 8)), 22.0 + rng.randf() * 6.0)
-			_swamp_pool(rng, C + Vector2(38 + rng.randf_range(-8, 8), 34 + rng.randf_range(-8, 8)), 19.0 + rng.randf() * 6.0)
-		else:
-			for i in 1 + rng.randi() % 2:
-				_swamp_pool(rng, _rand_in(rng, 55), 26.0 + rng.randf() * 16.0)
+		# Very dark, murky base — swamps are hard to traverse and must read so
+		_fill(Color(0.19, 0.21, 0.12))
+		_shade(rng, Color(0.15, 0.17, 0.1, 0.75))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 60), 40), Color(0.24, 0.26, 0.15, 0.6))
+		# Every tile gets 2-3 pools, most of them large, so standing water
+		# dominates the terrain
+		match seed_val % 3:
+			0:
+				# Two big clearly separated ponds
+				_swamp_pool(rng, C + Vector2(-40 + rng.randf_range(-8, 8), -28 + rng.randf_range(-8, 8)), 26.0 + rng.randf() * 8.0)
+				_swamp_pool(rng, C + Vector2(36 + rng.randf_range(-8, 8), 32 + rng.randf_range(-8, 8)), 22.0 + rng.randf() * 8.0)
+			1:
+				# One dominant pool + a smaller satellite near the edge
+				_swamp_pool(rng, _rand_in(rng, 35), 34.0 + rng.randf() * 10.0)
+				var sat_a := rng.randf() * TAU
+				_swamp_pool(rng, C + Vector2(cos(sat_a), sin(sat_a)) * (72.0 + rng.randf() * 14.0), 14.0 + rng.randf() * 6.0)
+			_:
+				# Three medium pools spread across the tile
+				for i in 3:
+					var pa := TAU * float(i) / 3.0 + rng.randf() * 1.2
+					_swamp_pool(rng, C + Vector2(cos(pa), sin(pa)) * (44.0 + rng.randf() * 18.0), 17.0 + rng.randf() * 9.0)
 		# Dead snag (bare tree) on some tiles
 		if rng.randf() < 0.5:
 			var sp := _rand_in(rng, 70)
@@ -274,9 +330,13 @@ class _TilePainter extends Node2D:
 		draw_colored_polygon(_blob(rng, tp + Vector2(-1.5, -1.5), 5.0, 8, 0.3), Color(0.26, 0.35, 0.28))
 		draw_circle(tp, 1.4, Color(0.32, 0.4, 0.32))
 
+	func _tundra_rock(rng: RandomNumberGenerator, rp: Vector2, s := 1.0) -> void:
+		draw_colored_polygon(_blob(rng, rp, 14.0 * s, 8, 0.3), Color(0.52, 0.53, 0.52))
+		draw_colored_polygon(_blob(rng, rp + Vector2(-3, -4) * s, 7.0 * s, 7, 0.3), Color(0.72, 0.73, 0.72))
+
 	func _p_tundra(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.66, 0.68, 0.66))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 60), 58), Color(0.58, 0.61, 0.62, 0.7))
+		_shade(rng, Color(0.58, 0.61, 0.62, 0.6))
 		# Sprawling multi-blob snow fields, several crossing the tile edge so
 		# neighboring tundra tiles blend into one snowy landscape instead of
 		# each reading as "one speck in the middle"
@@ -285,59 +345,81 @@ class _TilePainter extends Node2D:
 			var sr := 24.0 + rng.randf() * 22.0
 			draw_colored_polygon(_blob(rng, sp, sr, 10, 0.5), Color(0.84, 0.86, 0.87))
 			draw_colored_polygon(_blob(rng, sp + Vector2(rng.randf_range(-16, 16), rng.randf_range(-12, 12)), sr * 0.65, 9, 0.55), Color(0.88, 0.9, 0.91))
-		# Trees per variant: offset single tree, a pair, or a rock
-		var tree_mode := seed_val % 3
-		if tree_mode == 0:
-			_tundra_tree(rng, C + Vector2(rng.randf_range(18, 44) * (1.0 if rng.randf() < 0.5 else -1.0), rng.randf_range(-40, 34)))
-		elif tree_mode == 1:
-			_tundra_tree(rng, C + Vector2(-34 + rng.randf_range(-8, 8), -22 + rng.randf_range(-8, 8)))
-			_tundra_tree(rng, C + Vector2(28 + rng.randf_range(-8, 8), 26 + rng.randf_range(-8, 8)))
-		else:
-			var rp := _rand_in(rng, 65)
-			draw_colored_polygon(_blob(rng, rp, 14, 8, 0.3), Color(0.52, 0.53, 0.52))
-			draw_colored_polygon(_blob(rng, rp + Vector2(-3, -4), 7, 7, 0.3), Color(0.72, 0.73, 0.72))
+		# Features per variant: single offset tree, tree pair, one rock, or two rocks
+		match seed_val % 4:
+			0:
+				_tundra_tree(rng, C + Vector2(rng.randf_range(18, 44) * (1.0 if rng.randf() < 0.5 else -1.0), rng.randf_range(-40, 34)))
+			1:
+				_tundra_tree(rng, C + Vector2(-34 + rng.randf_range(-8, 8), -22 + rng.randf_range(-8, 8)))
+				_tundra_tree(rng, C + Vector2(28 + rng.randf_range(-8, 8), 26 + rng.randf_range(-8, 8)))
+			2:
+				_tundra_rock(rng, _rand_in(rng, 65))
+			_:
+				_tundra_rock(rng, C + Vector2(-30 + rng.randf_range(-10, 10), 20 + rng.randf_range(-10, 10)), 0.9 + rng.randf() * 0.2)
+				_tundra_rock(rng, C + Vector2(32 + rng.randf_range(-10, 10), -24 + rng.randf_range(-10, 10)), 0.7 + rng.randf() * 0.2)
 		for i in 5:
 			draw_circle(_rand_in(rng, 90), 1.6, Color(0.78, 0.8, 0.8, 0.8))
 
+	## One crystal kite seen from ABOVE: radiates outward from its base in a
+	## random direction (no side-view "pointing up" spikes)
+	func _shard_kite(rng: RandomNumberGenerator, base: Vector2, a: float, length: float, scale: float) -> void:
+		var dirv := Vector2(cos(a), sin(a))
+		var perp := Vector2(-dirv.y, dirv.x)
+		var hw := (4.5 + rng.randf() * 4.0) * scale * clampf(length / 28.0, 0.65, 1.3)
+		var tip := base + dirv * length
+		var waist := base + dirv * length * 0.35
+		draw_colored_polygon(PackedVector2Array([base, waist + perp * hw, tip, waist - perp * hw]), Color(0.6, 0.42, 0.72))
+		draw_line(base + dirv * length * 0.1, tip, Color(0.78, 0.62, 0.88), maxf(1.2, 2.0 * scale))
+		draw_line(waist + perp * hw * 0.7, tip, Color(0.48, 0.32, 0.6), 1.2)
+
 	func _shard_cluster(rng: RandomNumberGenerator, cp: Vector2, scale: float) -> void:
+		# Glow patch + shards spraying outward in varied directions (top-down)
 		draw_circle(cp, (24.0 + rng.randf() * 22.0) * scale, Color(0.62, 0.45, 0.75, 0.1 + rng.randf() * 0.1))
-		for i in 1 + rng.randi() % 4:
-			var sp := cp + Vector2(rng.randf_range(-22, 22) * scale, rng.randf_range(-12, 16) * scale)
-			var h := (16.0 + rng.randf() * 42.0) * scale
-			var tilt := rng.randf_range(-0.6, 0.6)
-			var tip := sp + Vector2(sin(tilt) * h, -cos(tilt) * h)
-			var half_w := (4.0 + rng.randf() * 6.0) * scale * clampf(h / 34.0, 0.6, 1.3)
-			draw_colored_polygon(PackedVector2Array([sp + Vector2(-half_w, 0), tip, sp + Vector2(half_w, 0)]), Color(0.6, 0.42, 0.72))
-			draw_line(sp + Vector2(-half_w * 0.4, -2), tip, Color(0.78, 0.62, 0.88), maxf(1.2, 2.2 * scale))
+		var n := 2 + rng.randi() % 4
+		var base_a := rng.randf() * TAU
+		for i in n:
+			var a := base_a + TAU * float(i) / float(n) + rng.randf_range(-0.5, 0.5)
+			var base := cp + Vector2(cos(a), sin(a)) * rng.randf_range(2, 9) * scale
+			_shard_kite(rng, base, a, (16.0 + rng.randf() * 26.0) * scale, scale)
 
 	func _p_shardwaste(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.42, 0.36, 0.44))
 		# Varied ground mottling, some crossing tile edges
 		for i in 2 + rng.randi() % 2:
 			draw_colored_polygon(_blob(rng, _rand_in(rng, 95), 26.0 + rng.randf() * 30.0, 9, 0.45), Color(0.34, 0.29, 0.37, 0.7))
+		# Jagged ground cracks: 2-3 per tile, each with its own random overall
+		# direction, hard zigzags and occasional forks — drawn under crystals
+		for i in 2 + rng.randi() % 2:
+			var ca := rng.randf() * TAU
+			var cd := Vector2(cos(ca), sin(ca))
+			var pts := PackedVector2Array([_rand_in(rng, 80)])
+			for k in 5 + rng.randi() % 3:
+				if rng.randf() < 0.35:
+					ca += rng.randf_range(-1.0, 1.0)
+					cd = Vector2(cos(ca), sin(ca))
+				var cperp := Vector2(-cd.y, cd.x)
+				pts.append(pts[k] + cd * (7.0 + rng.randf() * 9.0) + cperp * rng.randf_range(-7.0, 7.0))
+			draw_polyline(pts, Color(0.26, 0.22, 0.3, 0.85), 1.4 + rng.randf() * 1.2, true)
+			if rng.randf() < 0.7 and pts.size() > 3:
+				var bi := 1 + rng.randi() % (pts.size() - 2)
+				var ba := ca + rng.randf_range(0.6, 1.4) * (1.0 if rng.randf() < 0.5 else -1.0)
+				var bd := Vector2(cos(ba), sin(ba))
+				var bpts := PackedVector2Array([pts[bi]])
+				for k in 2 + rng.randi() % 2:
+					bpts.append(bpts[k] + bd * (6.0 + rng.randf() * 7.0) + Vector2(rng.randf_range(-4, 4), rng.randf_range(-4, 4)))
+				draw_polyline(bpts, Color(0.26, 0.22, 0.3, 0.7), 1.2, true)
 		# 1-3 crystal clusters at varied positions/sizes (may sit near edges),
 		# instead of one centered circle-with-crystals
 		for i in 1 + rng.randi() % 3:
 			_shard_cluster(rng, _rand_in(rng, 82), 0.6 + rng.randf() * 0.6)
-		# Lone stray shards
+		# Lone stray shards, also radiating in random directions
 		for i in 1 + rng.randi() % 3:
-			var sp2 := _rand_in(rng, 95)
-			var lh := 8.0 + rng.randf() * 12.0
-			draw_colored_polygon(PackedVector2Array([
-				sp2 + Vector2(-3.5, 0), sp2 + Vector2(rng.randf_range(-6, 6), -lh), sp2 + Vector2(3.5, 0)
-			]), Color(0.55, 0.4, 0.66, 0.9))
-		# Ground crack
-		if rng.randf() < 0.6:
-			var ck0 := _rand_in(rng, 70)
-			var ck := PackedVector2Array([ck0])
-			for k in 4:
-				ck.append(ck[k] + Vector2(rng.randf_range(-4, 18), rng.randf_range(6, 16)))
-			draw_polyline(ck, Color(0.26, 0.22, 0.3, 0.8), 1.8, true)
+			_shard_kite(rng, _rand_in(rng, 95), rng.randf() * TAU, 8.0 + rng.randf() * 12.0, 0.8)
 
 	func _p_water(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.13, 0.2, 0.34))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 62), Color(0.11, 0.18, 0.31, 0.9))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 55), 34), Color(0.15, 0.23, 0.37, 0.8))
+		_shade(rng, Color(0.11, 0.18, 0.31, 0.7))
+		draw_colored_polygon(_blob(rng, _rand_in(rng, 75), 34), Color(0.15, 0.23, 0.37, 0.8))
 		for i in 3:
 			draw_circle(_rand_in(rng, 80), 1.4, Color(0.4, 0.5, 0.62, 0.5))
 		for i in 3 + rng.randi() % 2:
@@ -351,7 +433,7 @@ class _TilePainter extends Node2D:
 
 	func _p_river(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.18, 0.3, 0.4))
-		draw_colored_polygon(_blob(rng, C, 90, 10, 0.25), Color(0.2, 0.33, 0.43, 0.7))
+		_shade(rng, Color(0.2, 0.33, 0.43, 0.6))
 		for i in 3:
 			var y := float(i - 1) * 46.0 + rng.randf_range(-6, 6)
 			var line := PackedVector2Array()
@@ -376,8 +458,8 @@ class _TilePainter extends Node2D:
 
 	func _p_jungle(rng: RandomNumberGenerator) -> void:
 		_fill(Color(0.16, 0.3, 0.17))
-		draw_colored_polygon(_blob(rng, _rand_in(rng, 50), 60), Color(0.13, 0.26, 0.15, 0.9))
-		for i in 5 + rng.randi() % 3:
+		_shade(rng, Color(0.13, 0.26, 0.15, 0.7))
+		for i in 8 + rng.randi() % 3:
 			var p := _rand_in(rng, 82)
 			var cr := 16.0 + rng.randf() * 9.0
 			# Ground shadow, dark spiky crown, lighter spiky top, dark center
