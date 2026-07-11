@@ -17,6 +17,7 @@ defense_bonus = 3
 unlocks_units = Array[StringName]([])
 required_capital_level = 3
 exclusive_group = &"serpent_path"
+requires_capital = true
 requires_research = &"blood_magic"
 upgrades_from = &"jungle_shrine"
 class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 5, "nobles": 3}

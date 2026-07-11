@@ -16,6 +16,7 @@ population_growth_bonus = 6
 unlocks_units = Array[StringName]([&"storm_shaman", &"storm_healer"])
 required_capital_level = 3
 exclusive_group = &"storm_doctrine"
+requires_capital = true
 requires_research = &"ts_rune_armor"
 upgrades_from = &"thundercallers_lodge"
 class_loyalty_bonus = {"scholars": 5, "nobles": 2}

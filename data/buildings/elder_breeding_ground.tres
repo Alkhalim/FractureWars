@@ -16,6 +16,7 @@ population_growth_bonus = 3
 unlocks_units = Array[StringName]([&"elder_ceratops", &"shard_wyrm", &"shard_colossus", &"shardback_behemoth"])
 required_capital_level = 3
 exclusive_group = &"horde_evolution"
+requires_capital = true
 requires_research = &"alpha_command"
 upgrades_from = &"hive_spire"
 class_loyalty_bonus = {}

@@ -16,6 +16,7 @@ population_growth_bonus = -3
 recruit_speed_bonus = 2
 required_capital_level = 3
 exclusive_group = &"skull_path"
+requires_capital = true
 requires_research = &"sk_dire_wargs"
 required_terrain = 7
 upgrades_from = &"void_sanctum"

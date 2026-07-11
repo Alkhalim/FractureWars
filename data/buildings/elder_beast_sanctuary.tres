@@ -15,6 +15,7 @@ defense_bonus = 2
 unlocks_units = Array[StringName]([&"bear_companion", &"elder_treant", &"treant"])
 required_capital_level = 3
 exclusive_group = &"glade_path"
+requires_capital = true
 requires_research = &"gh_bark_armor"
 upgrades_from = &"beastkeepers_glade"
 class_loyalty_bonus = {"peasants": 2, "nobles": 2}

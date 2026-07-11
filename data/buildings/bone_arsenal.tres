@@ -15,6 +15,7 @@ population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"ancient_champion", &"bone_colossus", &"great_scarab", &"sand_wyrm", &"relic_golem"])
 required_capital_level = 3
 exclusive_group = &"ivory_legacy"
+requires_capital = true
 requires_research = &"iv_dust_warriors"
 upgrades_from = &"bone_stables"
 class_loyalty_bonus = {"nobles": 4, "peasants": -3}

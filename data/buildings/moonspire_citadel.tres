@@ -18,6 +18,7 @@ recruit_speed_bonus = 1
 unlocks_units = Array[StringName]([&"eclipse_champion", &"moonstone_golem", &"frost_wyvern", &"frost_hydra"])
 required_capital_level = 3
 exclusive_group = &"lunar_doctrine"
+requires_capital = true
 requires_research = &"crescent_shield"
 class_loyalty_bonus = {"nobles": 4}
 special_effects = {"lunar_phase_tech_bonus": 4}

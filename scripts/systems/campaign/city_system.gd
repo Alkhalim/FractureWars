@@ -1262,6 +1262,9 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 		# Skip capital-only buildings in non-capital cities
 		if building.requires_capital and not city.is_capital:
 			continue
+		# Frontier structures are settlement-exclusive
+		if building.settlement_only and not city.is_settlement:
+			continue
 		# Skip if no valid adjacent tile available (identical result to
 		# get_valid_tiles_for_building, with the terrain query memoized)
 		var has_valid_tile: bool

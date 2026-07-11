@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"waystation"
+display_name = "Waystation"
+description = "Stables, bunks and a warm meal for travelers between the great cities."
+faction_id = &""
+category = &"economic"
+build_cost = {0: 75}
+build_time = 2
+income_bonus = {0: 7, 3: 4}
+required_capital_level = 1
+settlement_only = true

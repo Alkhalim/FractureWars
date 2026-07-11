@@ -22,3 +22,4 @@ extends Resource
 @export var special_effects: Dictionary = {} # Special gameplay effects (e.g. region_population_growth_bonus, army_movement_bonus, recruit_cost_discount_pct, etc.)
 @export var requires_research: StringName = &"" # Research ID required to unlock this building
 @export var exclusive_group: StringName = &"" # Doctrine fork: only ONE building per group can exist faction-wide
+@export var settlement_only: bool = false # If true, can only be built in settlements (frontier structures)

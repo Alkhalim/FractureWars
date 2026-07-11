@@ -16,6 +16,7 @@ population_growth_bonus = 6
 unlocks_units = Array[StringName]([&"magma_crawler", &"cinder_drake"])
 required_capital_level = 3
 exclusive_group = &"cinder_creed"
+requires_capital = true
 requires_research = &"cg_magma_weapons"
 upgrades_from = &"forge_academy"
 class_loyalty_bonus = {"scholars": 5, "nobles": 2}
