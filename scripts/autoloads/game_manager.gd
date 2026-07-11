@@ -76,16 +76,21 @@ func _fade_in(duration: float) -> void:
 # to the visible element, then NinePatch margins on the cropped region.
 # Adjust region_rect / margins here if borders look misaligned.
 
-const _BTN_REGION := Rect2(55, 320, 1426, 384)    # Visible button area (wider crop)
-const _BTN_MARGIN := 22                            # Border thickness in cropped region
-const _FRAME_REGION := Rect2(5, 5, 1526, 1014)    # Panel frame incl. glow
-const _FRAME_TEX_MARGIN := Vector4(90, 80, 90, 85) # L T R B — glow + gold border
-const _FRAME_EXPAND := Vector4(80, 70, 80, 75)    # L T R B — push gold border to panel edge
-const _FRAME_CONTENT := Vector4(45, 40, 45, 40)   # L T R B — text padding inside border
-const _NOTIF_REGION := Rect2(20, 5, 1496, 1014)
-const _NOTIF_TEX_MARGIN := Vector4(220, 270, 220, 190) # L T R B — columns + eagle + medallion
-const _NOTIF_EXPAND := Vector4(25, 20, 25, 20)
-const _NOTIF_CONTENT := Vector4(240, 290, 240, 210)
+# Measured from the artwork (tests/tmp_measure_ui_regions.gd scan):
+# button1.png graphic spans x143..1423, y328..635; frame1.png gold border
+# outer edge (116,139)-(1396,790), interior starts (162,183); the nine-patch
+# border zones (texture_margin) must fully contain the gold border or it
+# lands in the stretching center patch and drifts with panel size.
+const _BTN_REGION := Rect2(140, 325, 1287, 314)   # Visible button area, 3px bleed
+const _BTN_MARGIN := 24                            # Border thickness in cropped region
+const _FRAME_REGION := Rect2(76, 99, 1360, 731)   # Gold frame + 40px glow on all sides
+const _FRAME_TEX_MARGIN := Vector4(86, 84, 59, 53) # L T R B — glow + gold border + bevel
+const _FRAME_EXPAND := Vector4(40, 40, 40, 40)    # L T R B — push gold border to panel edge
+const _FRAME_CONTENT := Vector4(66, 62, 48, 42)   # L T R B — text padding inside border
+const _NOTIF_REGION := Rect2(160, 29, 1214, 827)  # Columns/eagle + 30px glow
+const _NOTIF_TEX_MARGIN := Vector4(89, 188, 89, 83) # L T R B — columns + eagle + medallion
+const _NOTIF_EXPAND := Vector4(30, 30, 30, 30)
+const _NOTIF_CONTENT := Vector4(75, 175, 75, 70)
 
 var _btn_texture: Texture2D
 var _frame_texture: Texture2D
@@ -214,6 +219,66 @@ func make_notification_style() -> StyleBox:
 	s.content_margin_right = _NOTIF_CONTENT.z
 	s.content_margin_bottom = _NOTIF_CONTENT.w
 	return s
+
+var _compact_theme: Theme
+
+## Compact HUD theme: same leather/gold artwork as the global theme but
+## pre-scaled to 25%, so the gold border is ~11px instead of ~45px and content
+## margins suit dense fixed-size panels (battle HUD, overlays). All region and
+## margin values are the make_panel_style/_make_btn_style constants divided by 4.
+func get_compact_theme() -> Theme:
+	if _compact_theme:
+		return _compact_theme
+	var theme := Theme.new()
+	if _frame_texture:
+		var frame_tex := _scaled_image_texture(_frame_texture, 4)
+		var panel := StyleBoxTexture.new()
+		panel.texture = frame_tex
+		panel.region_rect = Rect2(19, 25, 340, 183)
+		panel.texture_margin_left = 22
+		panel.texture_margin_top = 21
+		panel.texture_margin_right = 15
+		panel.texture_margin_bottom = 13
+		panel.expand_margin_left = 10
+		panel.expand_margin_top = 10
+		panel.expand_margin_right = 10
+		panel.expand_margin_bottom = 10
+		panel.content_margin_left = 16
+		panel.content_margin_top = 15
+		panel.content_margin_right = 10
+		panel.content_margin_bottom = 9
+		theme.set_stylebox("panel", "PanelContainer", panel)
+	if _btn_texture:
+		var btn_tex := _scaled_image_texture(_btn_texture, 4)
+		theme.set_stylebox("normal", "Button", _make_compact_btn_style(btn_tex, Color.WHITE))
+		theme.set_stylebox("hover", "Button", _make_compact_btn_style(btn_tex, Color(1.25, 1.2, 1.1)))
+		theme.set_stylebox("pressed", "Button", _make_compact_btn_style(btn_tex, Color(0.6, 0.55, 0.5), true))
+		theme.set_stylebox("disabled", "Button", _make_compact_btn_style(btn_tex, Color(0.5, 0.48, 0.45, 0.7)))
+		theme.set_stylebox("focus", "Button", _make_compact_btn_style(btn_tex, Color(1.15, 1.12, 1.05)))
+	_compact_theme = theme
+	return _compact_theme
+
+func _make_compact_btn_style(tex: Texture2D, modulate: Color, pressed := false) -> StyleBoxTexture:
+	var s := StyleBoxTexture.new()
+	s.texture = tex
+	s.region_rect = Rect2(35, 81, 322, 79)
+	s.texture_margin_left = 6
+	s.texture_margin_top = 6
+	s.texture_margin_right = 6
+	s.texture_margin_bottom = 6
+	s.content_margin_left = 10
+	s.content_margin_right = 10
+	s.content_margin_top = 5.0 + (1.0 if pressed else 0.0)
+	s.content_margin_bottom = 5.0 - (1.0 if pressed else 0.0)
+	s.modulate_color = modulate
+	return s
+
+func _scaled_image_texture(tex: Texture2D, div: int) -> ImageTexture:
+	var img := tex.get_image()
+	if img.is_compressed():
+		img.decompress()
+	img.resize(img.get_width() / div, img.get_height() / div, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(img)
 
 # Minor faction → parent faction mapping
 const MINOR_FACTION_PARENTS := {

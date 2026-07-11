@@ -459,11 +459,11 @@ func _show_faction_select() -> void:
 	# Left side: faction list in a scroll container
 	var left_panel := PanelContainer.new()
 	left_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
-	left_panel.custom_minimum_size = Vector2(220, 0)
+	left_panel.custom_minimum_size = Vector2(270, 0)
 	left_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	hbox.add_child(left_panel)
 
-	# Panel style already provides 45/40px content margins — no extra margin needed
+	# Panel style already provides its own content margins — no extra margin needed
 	var left_outer_vbox := VBoxContainer.new()
 	left_outer_vbox.add_theme_constant_override("separation", 4)
 	left_panel.add_child(left_outer_vbox)
@@ -527,7 +527,7 @@ func _show_faction_select() -> void:
 	right_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	hbox.add_child(right_panel)
 
-	# Panel style already provides 45/40px content margins — no extra margin needed
+	# Panel style already provides its own content margins — no extra margin needed
 	var right_vbox := VBoxContainer.new()
 	right_vbox.add_theme_constant_override("separation", 8)
 	right_panel.add_child(right_vbox)
@@ -555,7 +555,6 @@ func _show_faction_select() -> void:
 	# ── Faction Overview (scrollable, shares space with leader section) ──
 	var desc_scroll := ScrollContainer.new()
 	desc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	desc_scroll.size_flags_stretch_ratio = 0.45
 	desc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	right_vbox.add_child(desc_scroll)
 
@@ -598,9 +597,9 @@ func _show_faction_select() -> void:
 	right_vbox.add_child(sep_leader)
 
 	# Leader sub-panel with subtle background
+	# Leader section sizes to its content; the description scroll above
+	# absorbs the remaining vertical space.
 	var leader_panel := PanelContainer.new()
-	leader_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	leader_panel.size_flags_stretch_ratio = 0.55
 	var leader_style := StyleBoxFlat.new()
 	leader_style.bg_color = Color(0.1, 0.08, 0.06, 0.7)
 	leader_style.border_color = Color(0.5, 0.38, 0.2, 0.5)
