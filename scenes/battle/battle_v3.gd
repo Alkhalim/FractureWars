@@ -197,6 +197,10 @@ func _build_scene() -> void:
 	renderer = $BattleRenderer
 	renderer.set_script(preload("res://scenes/battle/battle_renderer_v3.gd"))
 	renderer.set("battle_scene", self)
+	# set_script() on an already-readied node neither calls _ready nor enables
+	# _process for the new script — do both explicitly.
+	renderer.set_process(true)
+	renderer.call("_ensure_layers")
 
 	# Impact marks layer (below effects, persists for battle duration)
 	_impact_marks = Node2D.new()
@@ -222,14 +226,17 @@ func _build_ui() -> void:
 	var ui_layer: CanvasLayer = $UILayer
 
 	# --- Order Panel (Left Side) ---
+	# Sits below the command queue panel (which occupies the top of the left
+	# column) — previously both overlapped, hiding the formation list.
 	order_panel = _create_panel()
 	order_panel.name = "OrderPanel"
-	order_panel.anchors_preset = Control.PRESET_LEFT_WIDE
 	order_panel.anchor_left = 0
 	order_panel.anchor_right = 0
+	order_panel.anchor_top = 0
+	order_panel.anchor_bottom = 1
 	order_panel.offset_left = 4
-	order_panel.offset_top = 4
-	order_panel.offset_right = 220
+	order_panel.offset_top = 388
+	order_panel.offset_right = 320
 	order_panel.offset_bottom = -4
 	order_panel.grow_horizontal = Control.GROW_DIRECTION_END
 
@@ -336,7 +343,7 @@ func _build_ui() -> void:
 
 	ui_layer.add_child(strength_meter_panel)
 
-	# --- Command Queue Panel (Right Side, below strength meter) ---
+	# --- Command Queue Panel (top of the left column, above formation list) ---
 	queue_panel = _create_panel()
 	queue_panel.name = "QueuePanel"
 	queue_panel.anchor_left = 0
@@ -345,8 +352,8 @@ func _build_ui() -> void:
 	queue_panel.anchor_bottom = 0
 	queue_panel.offset_left = 4
 	queue_panel.offset_right = 320
-	queue_panel.offset_top = 96
-	queue_panel.offset_bottom = 360
+	queue_panel.offset_top = 4
+	queue_panel.offset_bottom = 376
 	queue_panel.grow_horizontal = Control.GROW_DIRECTION_END
 
 	var queue_vbox := VBoxContainer.new()
@@ -512,7 +519,7 @@ func _build_ui() -> void:
 	unit_info_panel.anchor_bottom = 1
 	unit_info_panel.offset_left = 4
 	unit_info_panel.offset_top = -120
-	unit_info_panel.offset_right = 220
+	unit_info_panel.offset_right = 320
 	unit_info_panel.offset_bottom = -4
 	ui_layer.add_child(unit_info_panel)
 
@@ -524,9 +531,9 @@ func _build_ui() -> void:
 	sim_panel.anchor_top = 1
 	sim_panel.anchor_right = 0.5
 	sim_panel.anchor_bottom = 1
-	sim_panel.offset_left = -180
-	sim_panel.offset_top = -50
-	sim_panel.offset_right = 180
+	sim_panel.offset_left = -200
+	sim_panel.offset_top = -64
+	sim_panel.offset_right = 200
 	sim_panel.offset_bottom = -4
 	sim_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 
@@ -684,6 +691,17 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 				all_dead = false
 				break
 
+		# Dark backing chip so roster text reads against the leather panel texture
+		var group_panel := PanelContainer.new()
+		var chip_style := StyleBoxFlat.new()
+		chip_style.bg_color = Color(0.05, 0.04, 0.03, 0.78)
+		chip_style.set_corner_radius_all(4)
+		chip_style.content_margin_left = 6.0
+		chip_style.content_margin_right = 6.0
+		chip_style.content_margin_top = 4.0
+		chip_style.content_margin_bottom = 4.0
+		group_panel.add_theme_stylebox_override("panel", chip_style)
+
 		var group_box := VBoxContainer.new()
 		group_box.add_theme_constant_override("separation", 2)
 
@@ -830,7 +848,8 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 		if all_dead:
 			group_box.modulate = Color(0.6, 0.55, 0.5, 0.6)
 
-		container.add_child(group_box)
+		group_panel.add_child(group_box)
+		container.add_child(group_panel)
 
 func _on_roster_row_hover(f) -> void:
 	if hovered_formation != f:
@@ -953,7 +972,14 @@ func _update_strength_meter() -> void:
 	strength_label.text = "YOU %s  |  ENEMY %s" % [player_pct_text, enemy_pct_text]
 
 func _create_panel() -> PanelContainer:
+	# Compact leather/gold theme keeps battle HUD consistent with the rest of
+	# the game's UI (campaign panels use the full-size variant of the same art).
 	var panel := PanelContainer.new()
+	var compact := GameManager.get_compact_theme()
+	if compact.has_stylebox("panel", "PanelContainer"):
+		panel.theme = compact
+		return panel
+	# Fallback when UI textures are missing: previous flat style
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.06, 0.05, 0.08, 0.92)
 	style.border_width_left = 1
@@ -1361,10 +1387,27 @@ func _find_formation_at(world_pos: Vector2) -> BattleSimulatorV3.BattleFormation
 	for f in all_formations:
 		if f.is_dead or f.is_fled:
 			continue
+		# Hit-test the formation's entity bounding box (grown by entity radius)
+		# so clicks on the empty pixels between individual entities still select
+		# the formation. Center distance only breaks ties between overlaps.
+		var limit := mini(f.entities_alive, f.entity_positions.size())
+		var min_x := f.position.x
+		var max_x := min_x
+		var min_y := f.position.y
+		var max_y := min_y
+		for i in limit:
+			var p: Vector2 = f.entity_positions[i]
+			min_x = minf(min_x, p.x)
+			max_x = maxf(max_x, p.x)
+			min_y = minf(min_y, p.y)
+			max_y = maxf(max_y, p.y)
+		var grow := BattleSimulatorV3.get_entity_radius(f) + 8.0
+		if world_pos.x < min_x - grow or world_pos.x > max_x + grow:
+			continue
+		if world_pos.y < min_y - grow or world_pos.y > max_y + grow:
+			continue
 		var dist := f.position.distance_to(world_pos)
-		# Use entity radius + padding as click threshold (larger units = larger click area)
-		var search_radius := BattleSimulatorV3.get_entity_radius(f) + 20.0
-		if dist < search_radius and dist < best_dist:
+		if dist < best_dist:
 			best_dist = dist
 			best = f
 	return best
@@ -1727,6 +1770,8 @@ func _process(delta: float) -> void:
 	sim_timer += delta
 	if sim_timer >= sim_speed:
 		sim_timer -= sim_speed
+		# Renderer interpolates entity positions between ticks
+		renderer.snapshot_positions()
 		var actions := simulator.simulate_tick()
 		_process_visual_actions(actions)
 		var remaining := maxi(0, BattleSimulatorV3.BATTLE_TIMER_TICKS - simulator.tick_count)

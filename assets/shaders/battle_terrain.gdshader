@@ -5,30 +5,31 @@ uniform vec2 grid_size; // terrain_grid_w, terrain_grid_h
 uniform vec2 field_size; // FIELD_WIDTH, FIELD_HEIGHT
 uniform float time;
 
-// --- Terrain Colors (brighter, more saturated) ---
+// --- Terrain Colors — lifted brightness + stronger hue separation so the
+// battlefield reads as grass/sand/rock instead of uniform dark mud ---
 vec3 get_terrain_color(int t) {
-	if (t == 1) return vec3(0.12, 0.28, 0.10);     // FOREST — rich deep green
-	if (t == 2) return vec3(0.30, 0.26, 0.22);      // ROCK — warm gray-brown
-	if (t == 3) return vec3(0.08, 0.15, 0.32);      // WATER — deep blue
-	if (t == 4) return vec3(0.32, 0.28, 0.16);      // SAND — warm tan
-	if (t == 5) return vec3(0.18, 0.14, 0.08);      // MUD — dark brown
-	if (t == 6) return vec3(0.24, 0.30, 0.38);      // ICE — cold blue-gray
-	if (t == 7) return vec3(0.26, 0.12, 0.32);      // CRYSTAL — vibrant purple
-	if (t == 8) return vec3(0.16, 0.22, 0.12);      // BRUSH — muted olive green
-	return vec3(0.15, 0.14, 0.12);                   // OPEN — neutral warm gray
+	if (t == 1) return vec3(0.14, 0.34, 0.12);      // FOREST — rich deep green
+	if (t == 2) return vec3(0.38, 0.33, 0.27);      // ROCK — warm gray-brown
+	if (t == 3) return vec3(0.10, 0.21, 0.42);      // WATER — deep blue
+	if (t == 4) return vec3(0.46, 0.39, 0.21);      // SAND — warm tan
+	if (t == 5) return vec3(0.24, 0.17, 0.10);      // MUD — dark brown
+	if (t == 6) return vec3(0.32, 0.40, 0.50);      // ICE — cold blue-gray
+	if (t == 7) return vec3(0.32, 0.15, 0.40);      // CRYSTAL — vibrant purple
+	if (t == 8) return vec3(0.20, 0.29, 0.14);      // BRUSH — olive green
+	return vec3(0.25, 0.26, 0.16);                   // OPEN — dry field green
 }
 
 // Secondary color for terrain detail patterns
 vec3 get_terrain_detail_color(int t) {
-	if (t == 1) return vec3(0.08, 0.20, 0.06);      // FOREST — darker leaf patches
-	if (t == 2) return vec3(0.38, 0.34, 0.28);      // ROCK — lighter stone veins
-	if (t == 3) return vec3(0.10, 0.20, 0.42);      // WATER — lighter highlights
-	if (t == 4) return vec3(0.38, 0.34, 0.22);      // SAND — lighter dune highlights
-	if (t == 5) return vec3(0.12, 0.10, 0.06);      // MUD — darker puddles
-	if (t == 6) return vec3(0.32, 0.38, 0.48);      // ICE — frost highlights
-	if (t == 7) return vec3(0.34, 0.18, 0.42);      // CRYSTAL — brighter veins
-	if (t == 8) return vec3(0.20, 0.28, 0.14);      // BRUSH — lighter leaf bits
-	return vec3(0.18, 0.17, 0.14);                   // OPEN — slightly lighter
+	if (t == 1) return vec3(0.09, 0.24, 0.07);      // FOREST — darker leaf patches
+	if (t == 2) return vec3(0.46, 0.41, 0.34);      // ROCK — lighter stone veins
+	if (t == 3) return vec3(0.13, 0.27, 0.52);      // WATER — lighter highlights
+	if (t == 4) return vec3(0.53, 0.46, 0.28);      // SAND — lighter dune highlights
+	if (t == 5) return vec3(0.15, 0.12, 0.07);      // MUD — darker puddles
+	if (t == 6) return vec3(0.40, 0.48, 0.58);      // ICE — frost highlights
+	if (t == 7) return vec3(0.42, 0.22, 0.50);      // CRYSTAL — brighter veins
+	if (t == 8) return vec3(0.25, 0.35, 0.17);      // BRUSH — lighter leaf bits
+	return vec3(0.30, 0.31, 0.19);                   // OPEN — slightly lighter grass
 }
 
 // --- Noise Functions ---
@@ -105,7 +106,9 @@ void fragment() {
 	// Fine grain noise (texture)
 	float fine_noise = value_noise(grid_coord * 8.0) * 0.05 - 0.025;
 
-	vec3 final_color = base_color + vec3(large_noise + med_noise + fine_noise);
+	// Multiplicative noise keeps hue/saturation — the old additive gray
+	// noise desaturated everything toward mud
+	vec3 final_color = base_color * (1.0 + (large_noise + med_noise + fine_noise) * 1.6);
 
 	// --- Terrain-specific detail patterns ---
 	if (center_t == 0) {
