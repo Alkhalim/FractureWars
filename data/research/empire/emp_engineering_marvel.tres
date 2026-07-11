@@ -18,4 +18,4 @@ faction_id = &"empire"
 tree_angle = 180.0
 tree_branch = &"engineering"
 socket_realm = 3
-socket_bonus = { "army_movement_bonus": 2, "supply_range": 2 }
+socket_bonus = { "army_movement_bonus": 2 }

@@ -18,4 +18,4 @@ faction_id = &"tainted_jade"
 tree_angle = 60
 tree_branch = &"serpent_lore"
 socket_realm = 3
-socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }
+socket_bonus = { "army_movement_bonus": 1 }

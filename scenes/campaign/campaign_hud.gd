@@ -5417,8 +5417,11 @@ func _refresh_research_panel() -> void:
 			cur_row.add_child(cancel_btn2)
 			vbox.add_child(cur_row)
 
-	# Shard investment section
-	if fs.current_research_id != &"" and fs.owned_shards.size() > 0:
+	# Shard investment section — only for techs that actually define
+	# shard_bonuses; on the other ~479 techs the invest would grant nothing
+	var _cur_rd: ResearchData = DataManager.get_research(fs.current_research_id) if fs.current_research_id != &"" else null
+	var _can_invest: bool = _cur_rd != null and not _cur_rd.shard_bonuses.is_empty()
+	if _can_invest and fs.owned_shards.size() > 0:
 		var shard_row := HBoxContainer.new()
 		shard_row.add_theme_constant_override("separation", 6)
 		var shard_lbl := Label.new()
@@ -5660,7 +5663,6 @@ class _RadialTechTree extends Control:
 			"shard_power_bonus": return "Shard power: %s%d" % [sign, value]
 			"population_growth": return "Population growth: %s%d%%" % [sign, value]
 			"loyalty_bonus": return "City loyalty: %s%d" % [sign, value]
-			"supply_range": return "Supply range: %s%d tiles" % [sign, value]
 			"vision_range": return "Vision range: %s%d tiles" % [sign, value]
 			"commander_xp_bonus": return "Commander XP: %s%d%%" % [sign, value]
 			"garrison_defense": return "Garrison defense: %s%d" % [sign, value]
@@ -5696,7 +5698,6 @@ class _RadialTechTree extends Control:
 			"vision_range_bonus": return "Vision range: %s%d tiles" % [sign, value]
 			"max_army_size_bonus": return "Max army size: %s%d" % [sign, value]
 			"attrition_reduction_pct": return "Attrition reduced by %d%%" % value
-			"supply_range_bonus": return "Supply range: %s%d tiles" % [sign, value]
 			"army_movement_bonus": return "Army movement: %s%d" % [sign, value]
 			# Phase 1D-F – Faction mechanic effects
 			"corruption_per_turn": return "Corruption: %s%d per turn" % [sign, value]

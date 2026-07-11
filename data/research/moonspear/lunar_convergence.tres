@@ -18,4 +18,4 @@ faction_id = &"moonspear"
 tree_angle = 80
 tree_branch = &"silver_arms"
 socket_realm = 3
-socket_bonus = { "army_movement_bonus": 1, "supply_range": 1 }
+socket_bonus = { "army_movement_bonus": 1 }
