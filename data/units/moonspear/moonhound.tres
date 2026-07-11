@@ -26,6 +26,7 @@ population_cost = 0
 terrain_bonuses = {6: 0.15}
 realm_bonuses = {}
 tags = Array[String](["beast", "melee", "fast", "swarm", "light"])
+vs_attack_bonuses = {"stationary": 3}
 base_morale = 55
 morale_aura = -2
 fear_radius = 3

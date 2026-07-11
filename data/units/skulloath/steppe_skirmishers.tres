@@ -27,4 +27,4 @@ realm_bonuses = {}
 tags = Array[String](["ranged"])
 base_morale = 35
 captive_chance = 0.35
-vs_attack_bonuses = {"cavalry": 3}
+vs_attack_bonuses = {"cavalry": 3, "light": 3}

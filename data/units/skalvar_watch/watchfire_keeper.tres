@@ -25,4 +25,5 @@ population_cost = 14
 terrain_bonuses = {2: 0.15}
 realm_bonuses = {}
 tags = Array[String](["ranged", "tundrawalker"])
+vs_attack_bonuses = {"light": 3}
 base_morale = 55

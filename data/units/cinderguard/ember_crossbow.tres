@@ -26,4 +26,4 @@ terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["infantry", "ranged", "cinderguard"])
 base_morale = 60
-vs_attack_bonuses = {"cavalry": 2}
+vs_attack_bonuses = {"cavalry": 2, "light": 3}

@@ -24,4 +24,5 @@ recruit_time = 2
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["ranged"])
+vs_attack_bonuses = {"light": 3}
 base_morale = 55

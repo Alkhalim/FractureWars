@@ -26,5 +26,6 @@ population_cost = 0
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["monster", "ranged", "fast", "light"])
+vs_attack_bonuses = {"stationary": 3, "light": 3}
 base_morale = 90
 captive_chance = 0.0

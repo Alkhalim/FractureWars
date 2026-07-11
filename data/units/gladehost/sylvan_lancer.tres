@@ -26,5 +26,6 @@ population_cost = 5
 terrain_bonuses = {1: 0.15}
 realm_bonuses = {}
 tags = Array[String](["cavalry", "melee", "fast"])
+vs_attack_bonuses = {"heavy": 4}
 base_morale = 60
 captive_chance = 0.15

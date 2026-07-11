@@ -26,5 +26,5 @@ terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["ranged"])
 base_morale = 55
-vs_attack_bonuses = {"monster": 5, "beast": 5}
+vs_attack_bonuses = {"monster": 5, "beast": 5, "light": 3}
 vs_defense_bonuses = {"monster": 3, "beast": 3}

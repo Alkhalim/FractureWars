@@ -25,6 +25,7 @@ population_cost = 0
 terrain_bonuses = {}
 realm_bonuses = {1: 0.2}
 tags = Array[String](["support", "ranged"])
+vs_attack_bonuses = {"light": 3}
 base_morale = 85
 morale_aura = 8
 fear_radius = 4

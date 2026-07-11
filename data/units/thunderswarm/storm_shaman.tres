@@ -30,4 +30,4 @@ morale_aura = 6
 fear_radius = 4
 armor_aura = 2
 captive_chance = 0.0
-vs_attack_bonuses = {"monster": 4}
+vs_attack_bonuses = {"monster": 4, "light": 3}

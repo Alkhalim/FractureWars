@@ -25,6 +25,7 @@ population_cost = 0
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["monster", "melee", "fast", "flying", "light"])
+vs_attack_bonuses = {"stationary": 3}
 base_morale = 75
 tiles_per_entity = 6
 captive_chance = 0.05

@@ -26,6 +26,7 @@ population_cost = 4
 terrain_bonuses = {}
 realm_bonuses = {}
 tags = Array[String](["cavalry", "ranged", "fast", "light"])
+vs_attack_bonuses = {"stationary": 3, "light": 3}
 base_morale = 45
 morale_aura = -3
 fear_radius = 4

@@ -25,5 +25,6 @@ population_cost = 8
 terrain_bonuses = {4: 0.2}
 realm_bonuses = {}
 tags = Array[String](["cavalry", "melee", "fast", "desertstrider", "light"])
+vs_attack_bonuses = {"stationary": 3}
 base_morale = 60
 tiles_per_entity = 2
