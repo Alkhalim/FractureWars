@@ -8551,6 +8551,7 @@ func _create_shard_display() -> void:
 	shard_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	shard_label.mouse_entered.connect(_on_shard_label_mouse_entered)
 	shard_label.mouse_exited.connect(_on_shard_label_mouse_exited)
+	shard_label.gui_input.connect(_on_shard_label_gui_input)
 
 	var hbox: HBoxContainer = $TopBar/HBoxContainer
 	var spacer := hbox.get_node("Spacer")
@@ -8627,6 +8628,96 @@ func _on_shard_label_mouse_exited() -> void:
 func _on_shard_claimed(_shard_id: StringName, _faction_id: StringName) -> void:
 	_update_shard_display()
 	_update_resource_display()
+
+func _on_shard_label_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		AudioManager.play_sfx(&"ui_click")
+		_show_shard_reserve_dialog()
+
+var _shard_reserve_dialog: PanelContainer = null
+
+## Shard Reserve: lists claimed shards; Shardhorde can consume them for realm
+## resonance, Tainted Jade can shatter them for taint power.
+func _show_shard_reserve_dialog() -> void:
+	if _shard_reserve_dialog != null:
+		_shard_reserve_dialog.queue_free()
+		_shard_reserve_dialog = null
+	var pid := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(pid)
+	if fs == null:
+		return
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(pid, pid)
+	var rows := maxi(fs.owned_shards.size(), 1)
+	_shard_reserve_dialog = _create_centered_dialog(460, 150 + rows * 44)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	_shard_reserve_dialog.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Shard Reserve"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+	_add_separator(vbox)
+
+	if fs.owned_shards.is_empty():
+		var none := Label.new()
+		none.text = "No claimed shards. Claim shardfalls on the map to fill your reserve."
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		none.add_theme_font_size_override("font_size", 13)
+		none.add_theme_color_override("font_color", Color(0.75, 0.72, 0.6))
+		vbox.add_child(none)
+	for shard_id in fs.owned_shards.duplicate():
+		var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+		if shard == null:
+			continue
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		vbox.add_child(row)
+		var info := Label.new()
+		info.text = "%s Shard  (Power %d)" % [ShardfallSystem.get_realm_name(shard.realm), shard.power_level]
+		info.add_theme_font_size_override("font_size", 13)
+		info.add_theme_color_override("font_color", Color(0.85, 0.7, 0.95))
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(info)
+		if parent_fid == &"shardhorde":
+			var btn := Button.new()
+			var active: bool = fs.shard_resonance.has(shard.realm)
+			btn.text = "Refresh Resonance" if active else "Consume — 6t %s Resonance" % ShardfallSystem.get_realm_name(shard.realm)
+			btn.custom_minimum_size = Vector2(220, 32)
+			var sid: StringName = shard_id
+			btn.pressed.connect(func() -> void:
+				TurnManager.consume_shard_for_resonance(pid, sid)
+				AudioManager.play_sfx(&"shard_claim")
+				_update_shard_display()
+				_update_resource_display()
+				_show_shard_reserve_dialog())
+			row.add_child(btn)
+		elif parent_fid == &"tainted_jade":
+			var btn2 := Button.new()
+			btn2.text = "Shatter — +%d Taint" % (shard.power_level * 12)
+			btn2.custom_minimum_size = Vector2(200, 32)
+			var sid2: StringName = shard_id
+			btn2.pressed.connect(func() -> void:
+				TurnManager.destroy_shard_for_taint(pid, sid2)
+				AudioManager.play_sfx(&"shard_claim")
+				_update_shard_display()
+				_update_resource_display()
+				_show_shard_reserve_dialog())
+			row.add_child(btn2)
+
+	_add_separator(vbox)
+	var close := Button.new()
+	close.text = "Close"
+	close.custom_minimum_size = Vector2(120, 34)
+	close.pressed.connect(func() -> void:
+		if _shard_reserve_dialog:
+			_shard_reserve_dialog.queue_free()
+			_shard_reserve_dialog = null)
+	var center := CenterContainer.new()
+	center.add_child(close)
+	vbox.add_child(center)
 
 # ── Commander Panel ───────────────────────────────────────────
 

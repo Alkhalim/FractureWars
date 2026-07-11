@@ -3586,6 +3586,10 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 			if city:
 				city.population = maxi(20, city.population - 1)
 
+	# AI: shatter a spare claimed shard for taint (keep one in reserve)
+	if fs.faction_data_id != GameManager.state.player_faction_id and fs.owned_shards.size() >= 2 and fs.taint_power < 60:
+		destroy_shard_for_taint(fs.faction_data_id, fs.owned_shards[0])
+
 	# Trigger taint focus dilemma every 4 turns
 	if GameManager.state.current_turn % 4 == 0 and fs.taint_power >= 15:
 		if fs.faction_data_id == GameManager.state.player_faction_id:
@@ -3598,6 +3602,20 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 					{"label": "Creeping Doom", "description": "Accelerate shard decay, erode enemy border loyalty, movement denial.", "effect": "taint_focus_3"},
 				]
 			})
+		else:
+			# AI picks a focus by posture: at war -> Venomous War; many border
+			# rivals with shards -> Creeping Doom; otherwise grow
+			var at_war := false
+			for other_id in GameManager.state.faction_states:
+				if other_id != fs.faction_data_id and GameManager.get_relation(fs.faction_data_id, other_id) == Enums.FactionRelation.WAR:
+					at_war = true
+					break
+			if at_war:
+				fs.taint_focus = 2
+			elif fs.taint_power >= 50:
+				fs.taint_focus = 3
+			else:
+				fs.taint_focus = 1
 
 # ── Gladehost: Seasonal Cycle ──────────────────────────────
 # Harmony (0-100) scales ALL seasonal bonuses multiplicatively.
@@ -3825,6 +3843,21 @@ func _process_shardhorde_resonance(fs: FactionState) -> void:
 			if not other_fs.is_defeated:
 				GameManager.diplomacy_system.modify_standing(&"shardhorde", other_id, -1, "Overwhelming shard power")
 
+	# AI: consume a claimed shard whenever its realm resonance is inactive
+	# (players do this via the Shard Reserve dialog on the top-bar shard label)
+	if fs.faction_data_id != GameManager.state.player_faction_id and not fs.owned_shards.is_empty():
+		var best_id: StringName = &""
+		var best_power := -1
+		for shard_id in fs.owned_shards:
+			var shard: ShardInstance = GameManager.state.active_shards.get(shard_id)
+			if shard == null or fs.shard_resonance.has(shard.realm):
+				continue
+			if shard.power_level > best_power:
+				best_power = shard.power_level
+				best_id = shard_id
+		if best_id != &"":
+			consume_shard_for_resonance(fs.faction_data_id, best_id)
+
 	# Shard wastes passive essence
 	var wastes_count := 0
 	for region_id in fs.owned_regions:
@@ -3900,6 +3933,18 @@ func _process_moonspear_lunar(fs: FactionState) -> void:
 					{"label": "Rush Forward", "description": "Skip to next phase immediately (costs 20 Gold).", "effect": "lunar_skip", "cost": {0: 20}},
 				]
 			})
+		else:
+			# AI: hold Full Moon while at war (defensive phase), if affordable
+			if fs.lunar_phase == 2 and fs.resources.get(Enums.ResourceType.GOLD, 0) >= 80 and fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) >= 10:
+				var ai_at_war := false
+				for other_id in GameManager.state.faction_states:
+					if other_id != fs.faction_data_id and GameManager.get_relation(fs.faction_data_id, other_id) == Enums.FactionRelation.WAR:
+						ai_at_war = true
+						break
+				if ai_at_war:
+					fs.resources[Enums.ResourceType.GOLD] -= 40
+					fs.resources[Enums.ResourceType.SHARD_ESSENCE] -= 5
+					fs.lunar_ritual_extended = 3
 
 	# Cooldown tracking for skip
 	if fs.lunar_skip_cooldown > 0:
