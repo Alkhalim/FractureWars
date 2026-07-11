@@ -122,8 +122,20 @@ func _ready() -> void:
 	EventBus.dilemma_triggered.connect(_on_dilemma_triggered)
 	EventBus.faction_defeated.connect(_on_faction_defeated)
 
+	# UI baseline (see docs/ui_style_guide.md): the whole campaign HUD uses the
+	# compact gold theme — its 6px button borders render correctly at the
+	# 22-40px control heights used in HUD panels and the top bar (the full-size
+	# skin needs ≥48px and collapsed into unreadable flat slivers below that).
+	theme = GameManager.get_compact_theme()
+
 	army_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 	region_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
+
+	# Edge-anchored panels sit flush against the screen edges — small gaps
+	# between the gold frame and the screen border read as unfinished
+	region_panel.offset_left = 0
+	region_panel.offset_bottom = 0
+	army_panel.offset_bottom = 0
 
 	# Wire up army panel close button
 	var army_close_btn: Button = army_panel.get_node("VBox/HeaderRow/CloseButton")
@@ -2336,6 +2348,20 @@ func _make_close_button(callback: Callable, btn_size: Vector2 = Vector2(30, 30))
 	btn.pressed.connect(callback)
 	return btn
 
+## Dark translucent backing panel — put text content on this instead of
+## directly on the leather panel texture.
+func _make_text_chip() -> PanelContainer:
+	var chip := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	style.set_corner_radius_all(5)
+	style.content_margin_left = 14.0
+	style.content_margin_right = 14.0
+	style.content_margin_top = 10.0
+	style.content_margin_bottom = 10.0
+	chip.add_theme_stylebox_override("panel", style)
+	return chip
+
 func _make_label(text: String, font_size: int = 14, color: Color = Color.WHITE) -> Label:
 	var lbl := Label.new()
 	lbl.text = text
@@ -3512,9 +3538,19 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	player_portrait_col.add_child(player_name_lbl)
 	top_row.add_child(player_portrait_col)
 
-	# Center info column
+	# Center info column — on a dark backing chip so the text doesn't sit
+	# directly on the leather texture
+	var info_chip := PanelContainer.new()
+	info_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var info_chip_style := StyleBoxFlat.new()
+	info_chip_style.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	info_chip_style.set_corner_radius_all(5)
+	info_chip_style.content_margin_left = 14.0
+	info_chip_style.content_margin_right = 14.0
+	info_chip_style.content_margin_top = 10.0
+	info_chip_style.content_margin_bottom = 10.0
+	info_chip.add_theme_stylebox_override("panel", info_chip_style)
 	var info_col := VBoxContainer.new()
-	info_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info_col.add_theme_constant_override("separation", 4)
 
 	# Faction name + relation
@@ -3650,7 +3686,8 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			t_lbl.add_theme_color_override("font_color", Color(0.5, 0.7, 0.8))
 			info_col.add_child(t_lbl)
 
-	top_row.add_child(info_col)
+	info_chip.add_child(info_col)
+	top_row.add_child(info_chip)
 
 	# Other leader portrait (right side)
 	var other_portrait_col := VBoxContainer.new()
@@ -3673,12 +3710,15 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	vbox.add_child(top_row)
 	_add_separator(vbox)
 
-	# Two-column layout: Offers (left) | Demands (right)
+	# Two-column layout: Offers (left) | Demands (right). Columns are fixed
+	# width and centered — expand-fill made each option row stretch across
+	# half the (very wide) panel regardless of its content.
 	var columns_hbox := HBoxContainer.new()
-	columns_hbox.add_theme_constant_override("separation", 10)
+	columns_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	columns_hbox.add_theme_constant_override("separation", 40)
 
 	var offer_col := VBoxContainer.new()
-	offer_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	offer_col.custom_minimum_size = Vector2(430, 0)
 	offer_col.add_theme_constant_override("separation", 4)
 	var offer_header := Label.new()
 	offer_header.text = "OFFERS"
@@ -3688,7 +3728,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	columns_hbox.add_child(offer_col)
 
 	var demand_col := VBoxContainer.new()
-	demand_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	demand_col.custom_minimum_size = Vector2(430, 0)
 	demand_col.add_theme_constant_override("separation", 4)
 	var demand_header_lbl := Label.new()
 	demand_header_lbl.text = "DEMANDS"
@@ -3780,7 +3820,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 		# Grey box wrapper for each option
 		var option_panel := PanelContainer.new()
 		var option_style := StyleBoxFlat.new()
-		option_style.bg_color = Color(0.15, 0.14, 0.13, 0.5)
+		option_style.bg_color = Color(0.05, 0.04, 0.03, 0.68)
 		option_style.corner_radius_top_left = 3
 		option_style.corner_radius_top_right = 3
 		option_style.corner_radius_bottom_left = 3
@@ -4843,6 +4883,13 @@ func _show_diplomacy_result(target: StringName, message: String, show_threaten: 
 	vbox.add_theme_constant_override("separation", 8)
 	_diplomacy_result_panel.add_child(vbox)
 
+	# Text content sits on a dark chip for readability on the leather panel
+	var content_chip := _make_text_chip()
+	var chip_vbox := VBoxContainer.new()
+	chip_vbox.add_theme_constant_override("separation", 8)
+	content_chip.add_child(chip_vbox)
+	vbox.add_child(content_chip)
+
 	# Leader portrait + response line
 	var fd: FactionData = DataManager.get_faction(target)
 	var standing: int
@@ -4891,8 +4938,8 @@ func _show_diplomacy_result(target: StringName, message: String, show_threaten: 
 			resp_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			result_col.add_child(resp_lbl)
 		result_top.add_child(result_col)
-		vbox.add_child(result_top)
-		_add_separator(vbox)
+		chip_vbox.add_child(result_top)
+		_add_separator(chip_vbox)
 
 	var msg_label := Label.new()
 	msg_label.text = message
@@ -4900,7 +4947,7 @@ func _show_diplomacy_result(target: StringName, message: String, show_threaten: 
 	msg_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
 	msg_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vbox.add_child(msg_label)
+	chip_vbox.add_child(msg_label)
 
 	var btn_row := HBoxContainer.new()
 	btn_row.add_theme_constant_override("separation", 8)
@@ -5587,6 +5634,7 @@ class _RadialTechTree extends Control:
 	const NODE_RADIUS := 26.0
 	const TREE_CENTER := Vector2(750, 750)
 	const UNIVERSAL_RING_RADIUS := 120.0
+	var _uni_radius := UNIVERSAL_RING_RADIUS  # grows with universal tech count
 	var _zoom: float = 1.0
 	const ZOOM_MIN := 0.4
 	const ZOOM_MAX := 2.0
@@ -5701,12 +5749,16 @@ class _RadialTechTree extends Control:
 					var angle := base_angle + start_offset + float(ti) * spacing
 					_node_positions[data.id] = TREE_CENTER + Vector2(cos(angle) * radius, sin(angle) * radius)
 
-		# Universal techs in an inner ring (outside center emblem)
+		# Universal techs in an inner ring (outside center emblem). The ring
+		# grows with tech count so nodes don't collide and get shoved around
+		# by the overlap resolver (the old fixed 120px ring turned the tree
+		# center into a jumble).
 		var uni_count := universal_techs.size()
+		_uni_radius = maxf(UNIVERSAL_RING_RADIUS, float(uni_count) * (NODE_RADIUS * 3.2) / TAU)
 		for ui in uni_count:
 			var data: ResearchData = universal_techs[ui]
 			var angle := TAU * float(ui) / maxf(uni_count, 1) - PI / 2.0
-			_node_positions[data.id] = TREE_CENTER + Vector2(cos(angle) * UNIVERSAL_RING_RADIUS, sin(angle) * UNIVERSAL_RING_RADIUS)
+			_node_positions[data.id] = TREE_CENTER + Vector2(cos(angle) * _uni_radius, sin(angle) * _uni_radius)
 
 		# Build unlock node set (techs that gate buildings or units)
 		for research_id in _node_data:
@@ -5846,30 +5898,36 @@ class _RadialTechTree extends Control:
 
 		# Off-screen culling: parent tree_clip has clip_contents = true, so
 		# skipping fully-clipped nodes/edges changes no pixels. Grown to cover
-		# node circle + unlock glow + name labels (all within 86 px of center).
-		var cull_rect := Rect2(Vector2.ZERO, size).grow(NODE_RADIUS + 60.0)
+		# node circle + unlock glow + name labels.
+		var cull_rect := Rect2(Vector2.ZERO, size).grow((NODE_RADIUS + 60.0) * maxf(_zoom, 1.0))
 
-		# Tier guide circles
+		# Dark backdrop disc behind the whole tree — lifts lines and nodes off
+		# the busy leather texture
+		draw_circle(center_screen, (TIER_RADII[5] + 90.0) * _zoom, Color(0.05, 0.04, 0.03, 0.45))
+
+		# Tier guide circles (world-space radii — must scale with zoom)
 		for tier in [1, 2, 3, 4, 5]:
-			draw_arc(center_screen, TIER_RADII[tier], 0, TAU, 64, Color(0.18, 0.17, 0.2, 0.25), 1.0)
+			draw_arc(center_screen, TIER_RADII[tier] * _zoom, 0, TAU, 96, Color(0.45, 0.4, 0.32, 0.14), 1.5)
 
 		# Center emblem
-		draw_circle(center_screen, 32, Color(0.12, 0.11, 0.15))
-		draw_arc(center_screen, 32, 0, TAU, 24, Color(0.4, 0.38, 0.35), 1.5)
+		var emblem_r := 32.0 * _zoom
+		draw_circle(center_screen, emblem_r, Color(0.12, 0.11, 0.15))
+		draw_arc(center_screen, emblem_r, 0, TAU, 24, Color(0.62, 0.5, 0.3, 0.9), 2.0)
 		var faction_short: String = str(faction_id).substr(0, 3).to_upper()
-		_draw_outlined_string(font, center_screen - Vector2(12, -5), faction_short, HORIZONTAL_ALIGNMENT_CENTER, 24, 11, Color(0.8, 0.76, 0.65))
+		_draw_outlined_string(font, center_screen - Vector2(12, -5), faction_short, HORIZONTAL_ALIGNMENT_CENTER, 24, 11, Color(0.85, 0.78, 0.6))
 
 		# Branch labels at outer edge of each branch
-		var label_radius: float = TIER_RADII[5] + 40
+		var label_radius: float = TIER_RADII[5] + 50
 		for branch_name in _branch_angles:
 			var angle: float = _branch_angles[branch_name]
 			var label_pos := TREE_CENTER + Vector2(cos(angle) * label_radius, sin(angle) * label_radius)
 			var label_screen := _to_screen(label_pos)
 			var label_text: String = str(branch_name).replace("_", " ").capitalize()
-			_draw_outlined_string(font, label_screen - Vector2(50, 0), label_text, HORIZONTAL_ALIGNMENT_CENTER, 100, 10, Color(0.55, 0.52, 0.48, 0.8))
+			var bl_size := clampi(int(round(13.0 * _zoom)), 9, 18)
+			_draw_outlined_string(font, label_screen - Vector2(60, 0), label_text, HORIZONTAL_ALIGNMENT_CENTER, 120, bl_size, Color(0.78, 0.68, 0.45, 0.9))
 
 		# Universal ring label
-		_draw_outlined_string(font, _to_screen(TREE_CENTER + Vector2(-30, -(UNIVERSAL_RING_RADIUS + 20))), "Universal", HORIZONTAL_ALIGNMENT_CENTER, 60, 8, Color(0.45, 0.43, 0.4))
+		_draw_outlined_string(font, _to_screen(TREE_CENTER + Vector2(-30, -(_uni_radius + 20))), "Universal", HORIZONTAL_ALIGNMENT_CENTER, 60, clampi(int(round(9.0 * _zoom)), 8, 12), Color(0.6, 0.55, 0.45))
 
 		# Build glow path (completed chain to current research) — cached across
 		# frames, invalidated when research state changes
@@ -5910,29 +5968,43 @@ class _RadialTechTree extends Control:
 				var prereq_data: ResearchData = _node_data.get(prereq)
 				var is_cross: bool = prereq_data != null and prereq_data.tree_branch != data.tree_branch and data.tree_branch != &"" and prereq_data.tree_branch != &""
 
+				# Edge state drives color: researched chains read gold, reachable
+				# edges bright, locked edges muted but still clearly visible
+				var prereq_done: bool = fs.completed_research.has(prereq)
+				var tech_done: bool = fs.completed_research.has(research_id)
+
 				var line_color: Color
 				var line_width: float
+				var wscale := maxf(_zoom, 0.55)
 
 				if is_glow:
 					var pulse := 0.55 + 0.45 * sin(_pulse_time * 2.0)
 					line_color = Color(0.95, 0.85, 0.3, pulse)
-					line_width = 3.5
+					line_width = 4.0 * wscale
 				elif is_hover_path:
-					line_color = Color(0.4, 0.8, 0.95, 0.85)
-					line_width = 2.5
+					line_color = Color(0.4, 0.8, 0.95, 0.9)
+					line_width = 3.0 * wscale
 				elif is_hover_connected:
-					line_color = Color(0.8, 0.75, 0.6, 0.7)
-					line_width = 2.0
+					line_color = Color(0.85, 0.8, 0.62, 0.85)
+					line_width = 2.5 * wscale
+				elif tech_done and prereq_done:
+					line_color = Color(0.85, 0.7, 0.32, 0.95)
+					line_width = 3.5 * wscale
+				elif prereq_done:
+					line_color = Color(0.8, 0.74, 0.55, 0.9)
+					line_width = 3.0 * wscale
 				elif is_cross:
-					line_color = Color(0.35, 0.33, 0.3, 0.35)
-					line_width = 1.0
+					line_color = Color(0.55, 0.5, 0.4, 0.5)
+					line_width = 2.0 * wscale
 				else:
-					line_color = Color(0.3, 0.28, 0.25, 0.5)
-					line_width = 1.5
+					line_color = Color(0.6, 0.54, 0.42, 0.7)
+					line_width = 2.5 * wscale
 
 				if is_cross and not is_glow and not is_hover_path and not is_hover_connected:
 					_draw_dashed_line(from_screen, to_screen, line_color, line_width)
 				else:
+					# Dark understroke lifts the line off the leather backdrop
+					draw_line(from_screen, to_screen, Color(0.0, 0.0, 0.0, 0.45), line_width + 2.0)
 					draw_line(from_screen, to_screen, line_color, line_width)
 
 		# Draw nodes
@@ -5952,6 +6024,12 @@ class _RadialTechTree extends Control:
 					break
 			var can_afford := true
 
+			# Node size carries hierarchy: higher tiers are bigger, and the whole
+			# node scales with zoom so the layout stays proportionate (the old
+			# fixed 26px circles collided at low zoom).
+			var node_r := NODE_RADIUS * (0.78 + 0.09 * clampi(data.tier, 1, 5)) * _zoom
+			var ring_w := maxf(2.0, 3.0 * _zoom)
+
 			var node_color: Color
 			var border_color: Color
 			if is_completed:
@@ -5962,14 +6040,17 @@ class _RadialTechTree extends Control:
 				node_color = Color(0.9, 0.8, 0.3, pulse)
 				border_color = Color(0.85, 0.75, 0.2)
 			elif prereqs_met and can_afford:
-				node_color = Color(0.25, 0.65, 0.3)
-				border_color = cat_color
+				node_color = Color(0.22, 0.55, 0.28)
+				border_color = cat_color.lightened(0.15)
 			elif prereqs_met:
 				node_color = Color(0.55, 0.2, 0.2)
 				border_color = Color(0.7, 0.3, 0.3)
 			else:
-				node_color = Color(0.2, 0.18, 0.16)
-				border_color = Color(0.3, 0.28, 0.25)
+				# Locked: dark fill tinted toward the category so branches keep
+				# their identity (replaces the floating category dot)
+				node_color = Color(0.13, 0.12, 0.11).lerp(cat_color, 0.22)
+				border_color = cat_color.darkened(0.25)
+				border_color.a = 0.8
 
 			# Hover highlight
 			var is_connected: bool = _hover_connected_set.has(research_id)
@@ -5979,37 +6060,43 @@ class _RadialTechTree extends Control:
 			elif is_connected:
 				border_color = border_color.lightened(0.35)
 
-			draw_circle(pos, NODE_RADIUS, node_color)
-			draw_arc(pos, NODE_RADIUS, 0, TAU, 20, border_color, 2.5)
-
-			# Category dot
-			draw_circle(pos + Vector2(0, -NODE_RADIUS - 5), 3.5, cat_color)
+			# Soft drop shadow lifts the node off the backdrop
+			draw_circle(pos + Vector2(1.5, 2.5) * _zoom, node_r + 2.0 * _zoom, Color(0.0, 0.0, 0.0, 0.4))
+			draw_circle(pos, node_r, node_color)
+			draw_arc(pos, node_r, 0, TAU, 24, border_color, ring_w)
 
 			# Unlock glow for nodes that gate buildings/units
 			if _unlock_nodes.has(research_id) and not is_completed:
 				var glow_alpha := 0.3 + 0.2 * sin(_pulse_time * 2.5)
-				draw_arc(pos, NODE_RADIUS + 4, 0, TAU, 20, Color(0.9, 0.7, 0.2, glow_alpha), 2.0)
+				draw_arc(pos, node_r + 4.0 * _zoom, 0, TAU, 24, Color(0.9, 0.7, 0.2, glow_alpha), maxf(1.5, 2.0 * _zoom))
 				# Small star icon at top-right
-				var star_pos := pos + Vector2(NODE_RADIUS * 0.7, -NODE_RADIUS * 0.7)
-				draw_circle(star_pos, 4.0, Color(0.95, 0.8, 0.2, 0.85))
+				var star_pos := pos + Vector2(node_r * 0.7, -node_r * 0.7)
+				draw_circle(star_pos, 4.0 * _zoom, Color(0.95, 0.8, 0.2, 0.85))
 
-			# Name label — split long names into 2 lines
-			var name_text := data.display_name
-			var name_y := pos.y + NODE_RADIUS + 13
-			var label_color := Color(0.78, 0.75, 0.68)
-			if is_completed:
-				label_color = Color(0.85, 0.78, 0.4)
-			if name_text.length() > 13:
-				var mid := name_text.length() / 2
-				var split := name_text.find(" ", maxi(0, mid - 4))
-				if split == -1 or split > mid + 6:
-					split = mid
-				var line1 := name_text.substr(0, split).strip_edges()
-				var line2 := name_text.substr(split).strip_edges()
-				_draw_outlined_string(font, Vector2(pos.x - 48, name_y), line1, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, label_color)
-				_draw_outlined_string(font, Vector2(pos.x - 48, name_y + 12), line2, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, label_color)
-			else:
-				_draw_outlined_string(font, Vector2(pos.x - 48, name_y), name_text, HORIZONTAL_ALIGNMENT_CENTER, 96, 10, label_color)
+			# Name label — hidden at far zoom (hover still shows the tooltip),
+			# scaled with zoom otherwise. Completed/in-progress always labeled.
+			var show_label: bool = _zoom >= 0.55 or is_completed or is_in_progress or research_id == _hovered_id
+			if show_label:
+				var name_text := data.display_name
+				var fsize := clampi(int(round(11.0 * _zoom)), 8, 15)
+				var line_h := fsize + 2.0
+				var name_y := pos.y + node_r + line_h
+				var label_color := Color(0.88, 0.84, 0.74)
+				if is_completed:
+					label_color = Color(0.9, 0.8, 0.42)
+				elif not prereqs_met:
+					label_color = Color(0.72, 0.68, 0.6)
+				if name_text.length() > 13:
+					var mid := name_text.length() / 2
+					var split := name_text.find(" ", maxi(0, mid - 4))
+					if split == -1 or split > mid + 6:
+						split = mid
+					var line1 := name_text.substr(0, split).strip_edges()
+					var line2 := name_text.substr(split).strip_edges()
+					_draw_outlined_string(font, Vector2(pos.x - 48, name_y), line1, HORIZONTAL_ALIGNMENT_CENTER, 96, fsize, label_color)
+					_draw_outlined_string(font, Vector2(pos.x - 48, name_y + line_h), line2, HORIZONTAL_ALIGNMENT_CENTER, 96, fsize, label_color)
+				else:
+					_draw_outlined_string(font, Vector2(pos.x - 48, name_y), name_text, HORIZONTAL_ALIGNMENT_CENTER, 96, fsize, label_color)
 
 		# Tooltip near hovered node
 		if _hovered_id != &"" and _node_data.has(_hovered_id):
@@ -7071,14 +7158,15 @@ func _create_city_panel() -> void:
 	city_panel.name = "CityPanel"
 	city_panel.visible = false
 
-	# Position: right side of screen, nearly full height
+	# Position: flush against the right screen edge, below the top bar
 	city_panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	city_panel.anchor_left = 1.0
 	city_panel.anchor_right = 1.0
-	city_panel.anchor_top = 0.07
+	city_panel.anchor_top = 0.0
 	city_panel.anchor_bottom = 0.88
-	city_panel.offset_left = -380.0
-	city_panel.offset_right = -10.0
+	city_panel.offset_left = -370.0
+	city_panel.offset_top = 52.0
+	city_panel.offset_right = 0.0
 	city_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	city_panel.custom_minimum_size = Vector2(360, 0)
 
@@ -7089,11 +7177,18 @@ func _create_city_panel() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	city_panel.add_child(scroll)
 
+	# Content sits on a dark chip — text directly on the leather texture is
+	# hard to read (baseline rule, see docs/ui_style_guide.md)
+	var content_chip := _make_text_chip()
+	content_chip.name = "Chip"
+	content_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(content_chip)
+
 	var vbox := VBoxContainer.new()
 	vbox.name = "CityVBox"
 	vbox.add_theme_constant_override("separation", 8)
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(vbox)
+	content_chip.add_child(vbox)
 
 	add_child(city_panel)
 
@@ -7145,7 +7240,7 @@ func _show_city_panel(city_id: StringName) -> void:
 		tw.tween_property(city_panel, "modulate:a", 1.0, 0.2).set_ease(Tween.EASE_OUT)
 
 	var scroll: ScrollContainer = city_panel.get_child(0)
-	var vbox: VBoxContainer = scroll.get_node("CityVBox")
+	var vbox: VBoxContainer = scroll.get_node("Chip/CityVBox")
 
 	# Clear previous content
 	for child in vbox.get_children():
@@ -8715,11 +8810,11 @@ func _create_commander_panel() -> void:
 	commander_panel.name = "CommanderPanel"
 	commander_panel.visible = false
 
-	# Anchored top-left below top bar
+	# Anchored flush to the left screen edge, below the top bar
 	commander_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	commander_panel.offset_left = 10.0
-	commander_panel.offset_top = 54.0
-	commander_panel.offset_right = 290.0
+	commander_panel.offset_left = 0.0
+	commander_panel.offset_top = 52.0
+	commander_panel.offset_right = 280.0
 	commander_panel.offset_bottom = 450.0
 	commander_panel.custom_minimum_size = Vector2(280, 0)
 
@@ -8730,11 +8825,16 @@ func _create_commander_panel() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	commander_panel.add_child(scroll)
 
+	var cmd_chip := _make_text_chip()
+	cmd_chip.name = "Chip"
+	cmd_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(cmd_chip)
+
 	var vbox := VBoxContainer.new()
 	vbox.name = "CommanderVBox"
 	vbox.add_theme_constant_override("separation", 4)
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(vbox)
+	cmd_chip.add_child(vbox)
 
 	add_child(commander_panel)
 
@@ -8777,7 +8877,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 	var _cp_tw := create_tween()
 	_cp_tw.tween_property(commander_panel, "modulate:a", 1.0, 0.2)
 	var scroll: ScrollContainer = commander_panel.get_child(0)
-	var vbox: VBoxContainer = scroll.get_node("CommanderVBox")
+	var vbox: VBoxContainer = scroll.get_node("Chip/CommanderVBox")
 	for child in vbox.get_children():
 		vbox.remove_child(child)
 		child.queue_free()
