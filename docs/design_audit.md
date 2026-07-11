@@ -15,11 +15,21 @@ the "what's genuinely good" sections are just as real.*
   buildings gated behind faction techs (unlock stars now live), research queue
   with auto-advance (shift-click), UX batch 1 (dialog chip backdrops,
   _format_cost eliminated, economy screen icon rows, dilemma cost-buttons).
-- **P2: OPEN** — upgrade-tier behavior changes, per-faction exclusive building
-  forks, weight-class counter content, terrain gates for
-  Sunblessed/Forsaken/Shardhorde, Shardhorde rebalance + menu fill, tech-tree
-  pruning, settlement differentiation, price normalization, UX batch 2
-  (options panel, trade dialogs, battle panels, faction select).
+- **P2: DONE** — weight-class counters (polearms +vs heavy, archers +vs light,
+  raiders +vs stationary), terrain gates for Sunblessed/Forsaken/Shardhorde,
+  doctrine forks for all 11 factions (exclusive_group, capital-only), price
+  normalization (extractors ×1.6, prestige ×0.65), Shardhorde rescale + 8 new
+  buildings, 59 upgrade tiers gained behavior effects, settlement-only
+  building class (4 shared frontier buildings — first users of the shared
+  path), research times compressed (full tree ~910 → ~560 serial turns), UX
+  batch 2 (options skin, battle panels flush + button slots + chip results +
+  icon spoils, trade picker icons + counter-offer cost rows, faction-select
+  chip, ESC closes topmost overlay). Battle determinism baselines recaptured
+  after the intentional balance changes.
+- **Remaining (nice-to-have):** authored tech merging (times were compressed
+  instead — safe for saves), signature units using the spawn/damage-aura
+  systems, swarm cost-curve sanity pass, standing-tooltip chip styling,
+  hotkey hints, load-menu anchoring.
 
 ---
 
