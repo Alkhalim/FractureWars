@@ -15,5 +15,6 @@ income_bonus = {0: 8, 3: 5}
 population_growth_bonus = 3
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
+required_terrain = 7
 class_loyalty_bonus = {}
 upkeep_cost = {4: 2, 5: 3}

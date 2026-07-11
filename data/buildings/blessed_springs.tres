@@ -16,5 +16,6 @@ population_growth_bonus = 8
 unlocks_units = Array[StringName]([])
 upgrades_from = &"sacred_oasis"
 required_capital_level = 2
+required_terrain = 3
 class_loyalty_bonus = {"peasants": 3}
 upkeep_cost = {1: 3, 5: 5}
