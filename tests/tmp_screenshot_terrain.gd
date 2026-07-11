@@ -30,24 +30,19 @@ func _process(_delta: float) -> bool:
 		return false
 	if _frames == 40:
 		var gm: Node = root.get_node("/root/GameManager")
-		var hex_map = gm.state.hex_map
-		# Find the coord with the most mountain/desert/swamp/shardwaste tiles
-		# in its vicinity so the shot shows the reworked sets
+		# Focus the biggest city on the map so the new top-down town markers
+		# are front and center
 		var best := Vector2i(20, 15)
-		var best_score := -1
-		for coord in hex_map.tiles:
-			var t: int = hex_map.tiles[coord].terrain
-			if t != 2 and t != 3:
+		var best_lvl := -1
+		for cid in gm.state.cities:
+			var c = gm.state.cities[cid]
+			if c.is_settlement:
 				continue
-			var score := 0
-			for n in HexHelper.get_neighbors(coord):
-				var nt = hex_map.tiles.get(n)
-				if nt and (nt.terrain in [2, 3, 4, 7]):
-					score += 1
-			if score > best_score:
-				best_score = score
-				best = coord
-		print("FOCUS TILE: %s score %d" % [str(best), best_score])
+			var lvl: int = c.level + (3 if c.is_capital else 0)
+			if lvl > best_lvl:
+				best_lvl = lvl
+				best = c.hex_pos
+		print("FOCUS CITY TILE: %s" % str(best))
 		_campaign.set("_fog_of_war_enabled", false)
 		_campaign.set("_fog_dirty", true)
 		_focus = _campaign.call("_hex_to_pixel", best)
