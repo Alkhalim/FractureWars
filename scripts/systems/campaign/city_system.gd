@@ -1252,6 +1252,10 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 			var fstate: FactionState = GameManager.state.faction_states.get(parent_fid)
 			if fstate == null or not fstate.completed_research.has(building.requires_research):
 				continue
+		# Doctrine fork: if another building of the same exclusive_group exists
+		# (or is queued) ANYWHERE in the faction, this one is locked forever
+		if building.exclusive_group != &"" and _faction_has_exclusive_group(city.faction_id, building.exclusive_group, building_id):
+			continue
 		# Skip if city level too low
 		if city.level < building.required_capital_level:
 			continue
@@ -1280,6 +1284,27 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 			if city.buildings.has(building.upgrades_from):
 				result.append(building)
 	return result
+
+## True if any city of the faction owns (or is building) a DIFFERENT member of
+## the given exclusive doctrine group
+func _faction_has_exclusive_group(faction_id: StringName, group: StringName, except_building: StringName) -> bool:
+	for oc_id in GameManager.state.cities:
+		var oc: CityState = GameManager.state.cities[oc_id]
+		if oc.faction_id != faction_id:
+			continue
+		for bid in oc.buildings:
+			if bid == except_building:
+				continue
+			var bd: BuildingData = DataManager.get_building(bid)
+			if bd and bd.exclusive_group == group:
+				return true
+		for item in oc.build_queue:
+			if item.building_id == except_building:
+				continue
+			var qbd: BuildingData = DataManager.get_building(item.building_id)
+			if qbd and qbd.exclusive_group == group:
+				return true
+	return false
 
 func start_building(city_id: StringName, building_id: StringName, tile_pos: Vector2i = Vector2i(-1, -1)) -> bool:
 	var city: CityState = GameManager.state.cities.get(city_id)

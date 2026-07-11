@@ -16,6 +16,7 @@ population_growth_bonus = 8
 upgrades_from = &"radiant_temple"
 unlocks_units = Array[StringName]([&"sun_oracle"])
 required_capital_level = 3
+exclusive_group = &"solar_creed"
 requires_research = &"radiant_aura"
 class_loyalty_bonus = {"peasants": 2, "scholars": 5, "nobles": 3}
 special_effects = {"research_speed_bonus": 0.25}

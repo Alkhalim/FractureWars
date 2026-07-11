@@ -14,6 +14,7 @@ build_time = 4
 population_growth_bonus = 4
 unlocks_units = Array[StringName]([&"thunderwyrm"])
 required_capital_level = 3
+exclusive_group = &"storm_doctrine"
 requires_research = &"avalanche_tactics"
 upgrades_from = &"stormrider_eyrie"
 class_loyalty_bonus = {"nobles": 4, "peasants": -3}

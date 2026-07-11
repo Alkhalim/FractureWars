@@ -21,3 +21,4 @@ extends Resource
 @export var requires_capital: bool = false # If true, can only be built in the faction's capital city
 @export var special_effects: Dictionary = {} # Special gameplay effects (e.g. region_population_growth_bonus, army_movement_bonus, recruit_cost_discount_pct, etc.)
 @export var requires_research: StringName = &"" # Research ID required to unlock this building
+@export var exclusive_group: StringName = &"" # Doctrine fork: only ONE building per group can exist faction-wide

@@ -8130,6 +8130,14 @@ func _get_building_effects_summary(building: BuildingData, bbcode_icons := false
 			var ud := DataManager.get_unit(uid)
 			names.append(ud.display_name if ud else str(uid))
 		parts.append("Unlocks: " + ", ".join(names))
+	if building.exclusive_group != &"":
+		var rivals: Array[String] = []
+		for obid in DataManager.buildings:
+			var ob: BuildingData = DataManager.buildings[obid]
+			if ob.exclusive_group == building.exclusive_group and ob.id != building.id:
+				rivals.append(ob.display_name)
+		if not rivals.is_empty():
+			parts.append("DOCTRINE — permanently locks out: " + ", ".join(rivals))
 	return ", ".join(parts)
 
 static func _format_building_special_effect(key: String, value) -> String:

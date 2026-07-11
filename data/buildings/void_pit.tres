@@ -14,6 +14,7 @@ build_time = 4
 population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"void_berserker", &"bone_golem", &"shadow_wyrm", &"deathshriek_bat", &"dread_knight"])
 required_capital_level = 3
+exclusive_group = &"forsaken_path"
 requires_research = &"blighted_earth"
 upgrades_from = &"void_whisperers_den"
 class_loyalty_bonus = {"peasants": -4, "nobles": 3}

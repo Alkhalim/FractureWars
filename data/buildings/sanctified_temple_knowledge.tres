@@ -17,6 +17,7 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 3
+exclusive_group = &"imperial_creed"
 requires_research = &"emp_battle_mages"
 class_loyalty_bonus = {"peasants": -3, "artisans": 1, "scholars": 5, "nobles": -2}
 upgrades_from = &"temple_of_the_pantheon"

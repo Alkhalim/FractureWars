@@ -14,6 +14,7 @@ build_time = 4
 income_bonus = {0: 20, 2: 8}
 population_growth_bonus = 4
 required_capital_level = 3
+exclusive_group = &"glade_path"
 requires_research = &"gh_spirit_sight"
 upgrades_from = &"embassy_grove"
 class_loyalty_bonus = {"peasants": 2, "artisans": 2, "scholars": 4, "nobles": 5}

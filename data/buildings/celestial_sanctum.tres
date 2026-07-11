@@ -15,6 +15,7 @@ income_bonus = {2: 40}
 population_growth_bonus = 6
 unlocks_units = Array[StringName]([&"lunar_priestess", &"celestial_oracle"])
 required_capital_level = 3
+exclusive_group = &"lunar_doctrine"
 requires_research = &"celestial_insight"
 class_loyalty_bonus = {"scholars": 5, "nobles": 2}
 upgrades_from = &"lunar_observatory"
