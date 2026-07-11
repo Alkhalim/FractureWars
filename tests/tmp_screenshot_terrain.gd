@@ -34,6 +34,7 @@ func _process(_delta: float) -> bool:
 		# are front and center
 		var best := Vector2i(20, 15)
 		var best_lvl := -1
+		var best_city = null
 		for cid in gm.state.cities:
 			var c = gm.state.cities[cid]
 			if c.is_settlement:
@@ -42,7 +43,23 @@ func _process(_delta: float) -> bool:
 			if lvl > best_lvl:
 				best_lvl = lvl
 				best = c.hex_pos
+				best_city = c
 		print("FOCUS CITY TILE: %s" % str(best))
+		# Give the focus city a few buildings on neighbor tiles so building
+		# graphics + squiggly paths show up in the shot
+		if best_city:
+			var avail: Array = gm.city_system.get_available_buildings(best_city)
+			var neighbors: Array = HexHelper.get_neighbors(best_city.hex_pos)
+			var used_cats := {}
+			var ni := 0
+			for b in avail:
+				if ni >= 4 or used_cats.has(b.category):
+					continue
+				used_cats[b.category] = true
+				best_city.building_tiles[b.id] = neighbors[ni]
+				ni += 1
+			print("INJECTED BUILDINGS: %d" % ni)
+			_campaign.call("_create_building_tile_markers")
 		_campaign.set("_fog_of_war_enabled", false)
 		_campaign.set("_fog_dirty", true)
 		_focus = _campaign.call("_hex_to_pixel", best)

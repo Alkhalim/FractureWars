@@ -72,6 +72,8 @@ var _city_panel_open := false
 var _selected_city_id: StringName = &""
 var _elderbeast_markers: Dictionary = {} # beast_id -> Node2D
 var _building_tile_markers: Array[Node2D] = [] # building markers on hex tiles
+var _building_paths_node: Node2D = null # squiggly dirt paths city -> buildings
+var _marker_zoom_boost := 1.0 # zoom-out readability boost applied to markers
 
 # Click-cycling: cycle through multiple objects on the same hex
 var _last_clicked_hex := Vector2i(-1, -1)
@@ -296,6 +298,7 @@ func _process(delta: float) -> void:
 			_update_lod()
 			_update_close_lod()
 			_cull_hex_tiles()
+			_update_marker_zoom_scale(cam_zoom)
 
 # ── Hex geometry ──────────────────────────────────────────────
 
@@ -1756,6 +1759,47 @@ static func _scaled_pts(pts: PackedVector2Array, s: float, origin := Vector2.ZER
 		out.append(origin + (p - origin) * s)
 	return out
 
+var _rounded_hex_cache: Dictionary = {}
+
+## Hexagon (same flat-top orientation as the tiles) with rounded-off corners —
+## used for the ownership ring that hugs the inner side of the tile border
+func _rounded_hex_pts(radius: float, corner_r: float) -> PackedVector2Array:
+	var key := Vector2(radius, corner_r)
+	if _rounded_hex_cache.has(key):
+		return _rounded_hex_cache[key]
+	var pts := PackedVector2Array()
+	for i in 6:
+		var a := deg_to_rad(60.0 * i)
+		var c := Vector2(cos(a), sin(a)) * radius
+		var prev := Vector2(cos(a - deg_to_rad(60.0)), sin(a - deg_to_rad(60.0))) * radius
+		var next := Vector2(cos(a + deg_to_rad(60.0)), sin(a + deg_to_rad(60.0))) * radius
+		var p0 := c + (prev - c).normalized() * corner_r
+		var p1 := c + (next - c).normalized() * corner_r
+		for k in 4:
+			var t := float(k) / 3.0
+			pts.append(p0.lerp(c, t).lerp(c.lerp(p1, t), t))
+	_rounded_hex_cache[key] = pts
+	return pts
+
+## Ownership ring radius: just inside the tile's inner border
+const _CITY_RING_RADIUS := 33.0
+const _CITY_RING_CORNER := 6.5
+
+## Markers grow when the camera zooms out so they stay readable
+func _update_marker_zoom_scale(cam_zoom: float) -> void:
+	var boost := clampf(1.0 / maxf(cam_zoom, 0.001), 1.0, 2.0)
+	if is_equal_approx(boost, _marker_zoom_boost):
+		return
+	_marker_zoom_boost = boost
+	for d: Dictionary in [_city_markers, _army_markers]:
+		for k in d:
+			var m: Node2D = d[k]
+			if is_instance_valid(m):
+				m.scale = Vector2.ONE * m.get_meta("base_scale", 1.0) * boost
+	for m in _building_tile_markers:
+		if is_instance_valid(m):
+			m.scale = Vector2.ONE * m.get_meta("base_scale", 1.0) * boost
+
 ## Diplomatic relation color for marker base rings: blue = yours, green =
 ## allied, light green = friendly, red = at war/hostile, white = neutral.
 func _relation_ring_color(faction_id: StringName) -> Color:
@@ -1953,7 +1997,9 @@ func _town_style(culture: StringName) -> Dictionary:
 		&"skulloath":
 			return {"ground": Color(0.5, 0.43, 0.33), "roof": Color(0.44, 0.35, 0.27), "hut": "yurt", "wall": "palisade"}
 		&"gladehost":
-			return {"ground": Color(0.38, 0.45, 0.3), "roof": Color(0.32, 0.46, 0.24), "hut": "canopy", "wall": "hedge"}
+			# Dirt clearing + wooden lodges so the city stays visible against
+			# forest terrain (the great-tree landmark carries the tree identity)
+			return {"ground": Color(0.46, 0.39, 0.27), "roof": Color(0.55, 0.42, 0.26), "hut": "rect", "wall": "palisade"}
 		&"tainted_jade":
 			return {"ground": Color(0.42, 0.46, 0.38), "roof": Color(0.24, 0.5, 0.38), "hut": "pagoda", "wall": "square"}
 		&"moonspear":
@@ -2412,6 +2458,8 @@ func _create_army_marker(army: ArmyState) -> void:
 	sel_ring.visible = false
 	marker.add_child(sel_ring)
 
+	marker.set_meta("base_scale", 1.0)
+	marker.scale = Vector2.ONE * _marker_zoom_boost
 	army_markers_node.add_child(marker)
 	_army_markers[army.army_id] = marker
 
@@ -2444,12 +2492,13 @@ func _create_city_marker(city: CityState) -> void:
 		_marker_poly(marker, _ellipse_pts(Vector2(1.5, 2.0), R * 1.34, R * 1.12), Color(0, 0, 0, 0.25))
 		_draw_city_art(marker, culture, faction_color, city.is_capital, city.level)
 		if city.is_capital:
+			# Crown floats above the level badge at the ring's top
 			var crown := _marker_poly(marker, PackedVector2Array([
 				Vector2(-4.5, 0), Vector2(-4.5, -3.5), Vector2(-2.2, -1.4),
 				Vector2(0, -4.5), Vector2(2.2, -1.4), Vector2(4.5, -3.5), Vector2(4.5, 0)
 			]), Color(0.95, 0.85, 0.3))
-			crown.position = Vector2(0, -(R * 1.18 + 3.0))
-			crown.z_index = 1
+			crown.position = Vector2(0, -(_CITY_RING_RADIUS * 0.866 + 10.5))
+			crown.z_index = 2
 
 	# City level glow — scales with the footprint, larger for capitals
 	if city.faction_id == GameManager.state.player_faction_id:
@@ -2478,12 +2527,23 @@ func _create_city_marker(city: CityState) -> void:
 		glow_tween.tween_property(glow_outer, "modulate:a", 0.5, 2.0).set_trans(Tween.TRANS_SINE)
 		glow_tween.tween_property(glow_outer, "modulate:a", 1.0, 2.0).set_trans(Tween.TRANS_SINE)
 
-	# Level label — sits at the footprint's south-east edge in top-down view
+	# Level badge — a roundel sitting ON TOP of the ownership ring (12 o'clock)
+	var ring_col := _relation_ring_color(city.faction_id)
+	var badge_r := 5.2 if city.is_settlement else 6.4
+	var badge_pos := Vector2(0, -_CITY_RING_RADIUS * 0.866)
+	var badge := _marker_poly(marker, _make_circle(badge_r, 12), Color(0.1, 0.08, 0.06, 0.95))
+	badge.position = badge_pos
+	badge.z_index = 2
+	var badge_rim := _marker_line(marker, _make_circle(badge_r, 12), ring_col, 1.4, true)
+	badge_rim.position = badge_pos
+	badge_rim.z_index = 2
 	var label := Label.new()
 	label.text = str(city.level)
-	var label_offset := Vector2(6.5, -1) if city.is_settlement else Vector2(R * 0.85, R * 0.35 - 6.0)
-	label.position = label_offset
-	label.add_theme_font_size_override("font_size", 8 if city.is_settlement else 10)
+	label.position = badge_pos + Vector2(-8, -9)
+	label.custom_minimum_size = Vector2(16, 0)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.z_index = 2
+	label.add_theme_font_size_override("font_size", 9 if city.is_settlement else 10)
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	label.add_theme_constant_override("shadow_offset_x", 1)
@@ -2567,24 +2627,23 @@ func _create_city_marker(city: CityState) -> void:
 		var char_width := city_text.length() * 5.0 + 10.0
 		var plaque_w := maxf(char_width, 24.0)
 		plaque.size = Vector2(plaque_w, 14)
-		plaque.position = Vector2(-plaque_w * 0.5, R * 1.18 + 2.0)
+		plaque.position = Vector2(-plaque_w * 0.5, _CITY_RING_RADIUS * 0.866 + 3.0)
 		marker.add_child(plaque)
 
-	# Relation ring around the footprint. In top-down view nothing sits
-	# "behind" the structure, so the ring is a full ground circle now.
+	# Ownership ring: hugs the inner side of the tile border (rounded-off hex)
 	var outline := Line2D.new()
 	outline.name = "CityOutline"
-	outline.width = 2.0
-	outline.default_color = _relation_ring_color(city.faction_id)
-	var ring_rx := 11.5 if city.is_settlement else R * 1.42
-	var ring_ry := 9.4 if city.is_settlement else R * 1.2
-	outline.points = _ellipse_pts(Vector2.ZERO, ring_rx, ring_ry, 24)
+	outline.width = 2.2
+	outline.default_color = ring_col
+	outline.points = _rounded_hex_pts(_CITY_RING_RADIUS, _CITY_RING_CORNER)
 	outline.closed = true
 	outline.antialiased = true
 	outline.joint_mode = Line2D.LINE_JOINT_ROUND
 	outline.z_index = 1
 	marker.add_child(outline)
 
+	marker.set_meta("base_scale", 1.0)
+	marker.scale = Vector2.ONE * _marker_zoom_boost
 	city_markers_node.add_child(marker)
 	_city_markers[city.city_id] = marker
 
@@ -2602,112 +2661,168 @@ func _create_building_tile_markers() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	_building_tile_markers.clear()
+	if is_instance_valid(_building_paths_node):
+		_building_paths_node.queue_free()
+	# Squiggly dirt paths render beneath every marker (first child, same z)
+	_building_paths_node = Node2D.new()
+	_building_paths_node.name = "BuildingPaths"
+	city_markers_node.add_child(_building_paths_node)
+	city_markers_node.move_child(_building_paths_node, 0)
 
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
 		var faction_data: FactionData = DataManager.get_faction(city.faction_id)
 		var faction_color: Color = faction_data.color if faction_data else Color.WHITE
+		var city_px := _hex_to_pixel(city.hex_pos)
 
 		# Draw markers for completed buildings
 		for bid in city.building_tiles:
 			var tile_pos: Vector2i = city.building_tiles[bid]
 			var building: BuildingData = DataManager.get_building(bid)
+			_add_building_path(city_px, _hex_to_pixel(tile_pos))
 			_add_building_tile_marker(tile_pos, building, faction_color, false, city.faction_id)
 
 		# Draw markers for buildings under construction
 		for item in city.build_queue:
 			if item.has("tile_pos"):
 				var building: BuildingData = DataManager.get_building(item.building_id)
+				_add_building_path(city_px, _hex_to_pixel(item.tile_pos))
 				_add_building_tile_marker(item.tile_pos, building, faction_color, true, city.faction_id)
+
+## Realistically squiggly dirt path from the city footprint to a building pad.
+## World-position sine noise keeps it deterministic and organic.
+func _add_building_path(from: Vector2, to: Vector2) -> void:
+	var dirv := to - from
+	var lenv := dirv.length()
+	if lenv < 1.0:
+		return
+	var d := dirv / lenv
+	var perp := Vector2(-d.y, d.x)
+	var a := from + d * 15.0   # leave the town at its edge
+	var b := to - d * 8.0      # arrive at the building pad edge
+	var seg_len := (b - a).length()
+	var n := maxi(int(seg_len / 8.0), 6)
+	var pts := PackedVector2Array()
+	for i in n + 1:
+		var t := float(i) / float(n)
+		var base := a.lerp(b, t)
+		var wob := sin(base.x * 0.23 + base.y * 0.17) * 2.2 + sin(base.x * 0.07 - base.y * 0.11) * 3.0
+		pts.append(base + perp * wob * sin(t * PI))
+	var l := Line2D.new()
+	l.points = pts
+	l.width = 2.6
+	l.default_color = Color(0.42, 0.34, 0.24, 0.55)
+	l.antialiased = true
+	l.joint_mode = Line2D.LINE_JOINT_ROUND
+	l.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	l.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_building_paths_node.add_child(l)
+
+## Upgrade tier of a building (1 = base, 2/3 = upgraded versions) — drives the
+## visible progression of the tile graphic
+func _building_tier(building: BuildingData) -> int:
+	var tier := 1
+	var cur := building
+	while cur and cur.upgrades_from != &"" and tier < 3:
+		cur = DataManager.get_building(cur.upgrades_from)
+		tier += 1
+	return tier
 
 func _add_building_tile_marker(tile_pos: Vector2i, building: BuildingData, faction_color: Color, under_construction: bool, city_faction_id: StringName = &"") -> void:
 	var pixel_pos := _hex_to_pixel(tile_pos)
 	var marker := Node2D.new()
 	marker.position = pixel_pos
-	# Slightly larger to match the enlarged terrain tiles
-	marker.scale = Vector2(1.25, 1.25)
+	# Slightly larger to match the enlarged terrain tiles + zoom-out boost
+	marker.set_meta("base_scale", 1.25)
+	marker.scale = Vector2.ONE * 1.25 * _marker_zoom_boost
 
-	# Small building graphic per category — deliberately more modest than the
-	# city marker (which stays the visual anchor and the only one ringed).
-	# The roof carries the category color for at-a-glance reading; a small
-	# faction-color pennant marks ownership.
+	# Top-down building in the owning culture's shape language; the roof keeps
+	# the category color for at-a-glance reading, the tier grows the compound.
 	var cat: StringName = building.category if building else &"economic"
 	var cat_color: Color = BUILDING_CATEGORY_COLORS.get(cat, Color(0.5, 0.5, 0.5, 0.7))
 	cat_color.a = 1.0
+	var culture := _marker_culture(city_faction_id)
+	var st := _town_style(culture)
+	var ground: Color = st["ground"]
+	var hut: String = st["hut"]
+	var tier := _building_tier(building)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(building.id if building else &"b") * 53 + tile_pos.x * 7 + tile_pos.y * 13
+	var s := 2.7 + float(tier) * 0.55
 
-	# Ground shadow
-	_marker_poly(marker, _ellipse_pts(Vector2(0, 4), 7.0, 2.2), Color(0, 0, 0, 0.25))
+	# Cleared ground pad
+	_marker_poly(marker, _town_patch(rng, s * 2.7, s * 2.25), ground.darkened(0.22))
+	_marker_poly(marker, _town_patch(rng, s * 2.45, s * 2.05), ground)
 
+	# Main structure per category
 	match cat:
-		&"military":
-			# Barracks tent: wide low body + peaked category roof
-			_marker_poly(marker, _scaled_pts(PackedVector2Array([
-				Vector2(-6.5, 4), Vector2(6.5, 4), Vector2(0, -6.5)
-			]), 1.2, Vector2(0, 0.5)), _MARKER_OUTLINE)
-			_marker_poly(marker, PackedVector2Array([
-				Vector2(-6.5, 4), Vector2(6.5, 4), Vector2(0, -6.5)
-			]), cat_color.darkened(0.15))
-			_marker_line(marker, PackedVector2Array([Vector2(0, -6.5), Vector2(0, 4)]),
-				cat_color.darkened(0.45), 1.0)
-			_marker_poly(marker, PackedVector2Array([
-				Vector2(-1.4, 4), Vector2(1.4, 4), Vector2(0, 0.8)
-			]), Color(0.12, 0.09, 0.07))
 		&"defensive":
-			# Mini watchtower: tapered stone tower with crenellated top
-			_marker_poly(marker, _scaled_pts(PackedVector2Array([
-				Vector2(-3.4, 4), Vector2(3.4, 4), Vector2(2.6, -6), Vector2(-2.6, -6)
-			]), 1.25, Vector2(0, -0.5)), _MARKER_OUTLINE)
-			_marker_poly(marker, PackedVector2Array([
-				Vector2(-3.4, 4), Vector2(3.4, 4), Vector2(2.6, -6), Vector2(-2.6, -6)
-			]), _MARKER_STONE)
-			for tx: float in [-2.4, 0.0, 2.4]:
-				_marker_poly(marker, PackedVector2Array([
-					Vector2(tx - 0.8, -6), Vector2(tx + 0.8, -6),
-					Vector2(tx + 0.8, -7.8), Vector2(tx - 0.8, -7.8)
-				]), _MARKER_STONE)
-			_marker_line(marker, PackedVector2Array([Vector2(-2.6, -5.9), Vector2(2.6, -5.9)]),
-				cat_color, 1.1)
+			# Watchtower from above: stone drum, crenel teeth, category core
+			_marker_poly(marker, _ellipse_pts(Vector2.ZERO, s * 1.25, s * 1.25, 10), _MARKER_OUTLINE)
+			_marker_poly(marker, _ellipse_pts(Vector2.ZERO, s * 1.1, s * 1.1, 10), _MARKER_STONE)
+			for i in 6:
+				var a := TAU * float(i) / 6.0
+				_marker_poly(marker, _ellipse_pts(Vector2(cos(a), sin(a)) * s * 1.05, s * 0.22, s * 0.22, 5), _MARKER_STONE_LIGHT)
+			_marker_poly(marker, _ellipse_pts(Vector2.ZERO, s * 0.45, s * 0.45, 8), cat_color)
+			if tier >= 2:
+				# Second smaller tower joined by a wall stub
+				var tp := Vector2(s * 1.9, -s * 0.9)
+				_marker_line(marker, PackedVector2Array([Vector2.ZERO, tp]), _MARKER_STONE, 1.8)
+				_marker_poly(marker, _ellipse_pts(tp, s * 0.6, s * 0.6, 8), _MARKER_STONE)
+				_marker_poly(marker, _ellipse_pts(tp, s * 0.25, s * 0.25, 6), cat_color)
+		&"military":
+			_town_building(marker, rng, hut, ground, Vector2.ZERO, s, cat_color)
+			# Crossed spears emblem beside the hall
+			var ep := Vector2(-s * 1.7, s * 0.9)
+			_marker_line(marker, PackedVector2Array([ep + Vector2(-s * 0.5, s * 0.6), ep + Vector2(s * 0.5, -s * 0.6)]), Color(0.8, 0.76, 0.66), 1.0)
+			_marker_line(marker, PackedVector2Array([ep + Vector2(s * 0.5, s * 0.6), ep + Vector2(-s * 0.5, -s * 0.6)]), Color(0.8, 0.76, 0.66), 1.0)
+			if tier >= 2:
+				# Training yard: pale square with drill dots
+				var yp := Vector2(s * 1.8, s * 0.7)
+				_town_sq(marker, yp, s * 0.75, 0.0, ground.lightened(0.14))
+				for i in 3:
+					_marker_poly(marker, _ellipse_pts(yp + Vector2(float(i - 1) * s * 0.42, 0), s * 0.12, s * 0.12, 5), cat_color)
 		&"cultural":
-			# Small shrine: stone base + category-colored dome + gold finial
-			_marker_poly(marker, _scaled_pts(PackedVector2Array([
-				Vector2(-4.5, 4), Vector2(4.5, 4), Vector2(4.5, -1), Vector2(-4.5, -1)
-			]), 1.2, Vector2(0, 1.5)), _MARKER_OUTLINE)
-			_marker_poly(marker, PackedVector2Array([
-				Vector2(-4.5, 4), Vector2(4.5, 4), Vector2(4.5, -1), Vector2(-4.5, -1)
-			]), _MARKER_STONE_LIGHT)
-			_marker_poly(marker, _ellipse_arc_pts(Vector2(0, -1), 4.2, 5.6, PI, TAU, 10), cat_color)
-			_marker_poly(marker, _ellipse_pts(Vector2(0, -6.9), 0.9, 0.9, 6), _MARKER_GOLD)
+			_town_building(marker, rng, hut, ground, Vector2.ZERO, s, cat_color)
+			_marker_poly(marker, _ellipse_pts(Vector2.ZERO, s * 0.22, s * 0.22, 6), _MARKER_GOLD)
+			if tier >= 2:
+				# Processional dots leading to the shrine
+				for i in 4:
+					var a := TAU * float(i) / 4.0 + 0.4
+					_marker_poly(marker, _ellipse_pts(Vector2(cos(a), sin(a)) * s * 1.8, s * 0.16, s * 0.16, 5), _MARKER_GOLD)
 		_:
-			# Economic: barn — stone body + category-colored gable roof
-			_marker_poly(marker, _scaled_pts(PackedVector2Array([
-				Vector2(-5.5, 4), Vector2(5.5, 4), Vector2(5.5, -1.5), Vector2(-5.5, -1.5)
-			]), 1.2, Vector2(0, 1.2)), _MARKER_OUTLINE)
-			_marker_poly(marker, PackedVector2Array([
-				Vector2(-5.5, 4), Vector2(5.5, 4), Vector2(5.5, -1.5), Vector2(-5.5, -1.5)
-			]), _MARKER_STONE)
-			_marker_poly(marker, _scaled_pts(PackedVector2Array([
-				Vector2(-6.3, -1.5), Vector2(6.3, -1.5), Vector2(0, -7)
-			]), 1.12, Vector2(0, -3.5)), _MARKER_OUTLINE)
-			_marker_poly(marker, PackedVector2Array([
-				Vector2(-6.3, -1.5), Vector2(6.3, -1.5), Vector2(0, -7)
-			]), cat_color.darkened(0.1))
-			_marker_poly(marker, PackedVector2Array([
-				Vector2(-1.3, 4), Vector2(1.3, 4), Vector2(1.3, 1), Vector2(-1.3, 1)
-			]), Color(0.12, 0.09, 0.07))
+			# Economic: hall + field strips
+			_town_building(marker, rng, hut, ground, Vector2.ZERO, s, cat_color)
+			var fp := Vector2(s * 1.6, s * 1.0).rotated(rng.randf_range(-0.4, 0.4))
+			for i in 3:
+				var off := fp + Vector2(float(i) * s * 0.34 - s * 0.34, float(i) * s * 0.1)
+				_marker_line(marker, PackedVector2Array([off + Vector2(-s * 0.55, s * 0.3), off + Vector2(s * 0.55, -s * 0.3)]),
+					Color(0.62, 0.56, 0.32, 0.9), 1.1)
+			if tier >= 2:
+				# Storage annex
+				_town_building(marker, rng, hut, ground, Vector2(-s * 1.8, -s * 0.8), s * 0.55, cat_color.darkened(0.15))
+
+	# Tier 3: boundary fence around the compound (gap toward the path, south)
+	if tier >= 3:
+		var fence_n := 10
+		for i in fence_n:
+			var a := lerpf(PI * 0.5 + 0.5, PI * 0.5 - 0.5 + TAU, float(i) / float(fence_n - 1))
+			_marker_poly(marker, _ellipse_pts(Vector2(cos(a) * s * 2.5, sin(a) * s * 2.1), 0.55, 0.55, 5),
+				Color(0.36, 0.29, 0.21))
 
 	# Faction pennant (ownership at a glance)
-	_marker_line(marker, PackedVector2Array([Vector2(5.2, -3), Vector2(5.2, -9.5)]),
+	_marker_line(marker, PackedVector2Array([Vector2(s * 1.6, -s * 1.2), Vector2(s * 1.6, -s * 1.2 - 6.0)]),
 		Color(0.4, 0.3, 0.18), 1.0)
 	_marker_poly(marker, PackedVector2Array([
-		Vector2(5.2, -9.5), Vector2(8.4, -8.4), Vector2(5.2, -7.3)
+		Vector2(s * 1.6, -s * 1.2 - 6.0), Vector2(s * 1.6 + 3.2, -s * 1.2 - 5.0), Vector2(s * 1.6, -s * 1.2 - 4.0)
 	]), faction_color)
 
 	if under_construction:
 		# In progress: ghosted + scaffold cross-beams
 		marker.modulate = Color(1, 1, 1, 0.45)
-		_marker_line(marker, PackedVector2Array([Vector2(-5.5, 3.5), Vector2(5.5, -6)]),
+		_marker_line(marker, PackedVector2Array([Vector2(-s * 1.6, s * 1.3), Vector2(s * 1.6, -s * 1.3)]),
 			Color(0.75, 0.62, 0.35), 1.2)
-		_marker_line(marker, PackedVector2Array([Vector2(5.5, 3.5), Vector2(-5.5, -6)]),
+		_marker_line(marker, PackedVector2Array([Vector2(s * 1.6, s * 1.3), Vector2(-s * 1.6, -s * 1.3)]),
 			Color(0.75, 0.62, 0.35), 1.2)
 
 	marker.set_meta("hex_pos", tile_pos)
