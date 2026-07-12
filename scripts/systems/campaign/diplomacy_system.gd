@@ -1718,10 +1718,20 @@ func get_active_trade_routes() -> Array[Dictionary]:
 			routes.append(route)
 	return routes
 
+## Tiles already carrying trade traffic. Later routes get a hefty discount for
+## reusing them, so caravans share long corridors and only branch off near
+## their endpoints instead of each cutting its own line across the map.
+static var _route_traffic: Dictionary = {}
+static var _route_traffic_epoch: int = -1
+
 static func get_trade_route_hex_path(from: Vector2i, to: Vector2i) -> Array[Vector2i]:
-	## A* pathfinding for trade routes — avoids mountains and water tiles.
+	## A* pathfinding for trade routes — avoids mountains and water tiles and
+	## prefers existing roads and other routes' corridors.
 	if from == to:
 		return [from] as Array[Vector2i]
+	if _route_traffic_epoch != GameManager.city_topology_epoch:
+		_route_traffic.clear()
+		_route_traffic_epoch = GameManager.city_topology_epoch
 	var hex_map := GameManager.state.hex_map
 	if hex_map == null:
 		return [from, to] as Array[Vector2i]
@@ -1750,6 +1760,8 @@ static func get_trade_route_hex_path(from: Vector2i, to: Vector2i) -> Array[Vect
 				c = came_from[c]
 			path.append(from)
 			path.reverse()
+			for pc in path:
+				_route_traffic[pc] = int(_route_traffic.get(pc, 0)) + 1
 			return path
 		open.remove_at(best_idx)
 		closed[current] = true
@@ -1772,6 +1784,9 @@ static func get_trade_route_hex_path(from: Vector2i, to: Vector2i) -> Array[Vect
 					Enums.TerrainType.SHARD_WASTES: move_cost = 1.8
 				if tile.road_level > 0:
 					move_cost *= 0.6
+			# Strong pull toward corridors other caravans already use
+			if _route_traffic.has(neighbor):
+				move_cost *= 0.45
 			var tentative_g: float = g_cost[current] + move_cost
 			if tentative_g < g_cost.get(neighbor, INF):
 				came_from[neighbor] = current

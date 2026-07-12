@@ -34,7 +34,7 @@ const TERRAIN_COSTS := {
 	Enums.TerrainType.TUNDRA: 2.0,
 	Enums.TerrainType.SHARD_WASTES: 3.0,
 	Enums.TerrainType.WATER: INF,
-	Enums.TerrainType.JUNGLE: 2.7,
+	Enums.TerrainType.JUNGLE: 2.0,
 }
 
 func build_region_cache() -> void:

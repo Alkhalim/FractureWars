@@ -181,7 +181,9 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 
 	# Population food consumption: larger populations eat more
 	var province_pop := get_province_population(city)
-	var food_consumed := province_pop / 40
+	# Population eats less than it used to (pop/60): food income was being
+	# almost entirely swallowed by mouths to feed
+	var food_consumed := province_pop / 60
 	if food_consumed > 0 and income.has(Enums.ResourceType.FOOD):
 		income[Enums.ResourceType.FOOD] -= food_consumed
 	elif food_consumed > 0:
@@ -426,7 +428,7 @@ func _calculate_food_income(faction_id: StringName) -> int:
 			total_food += int(region.base_income[Enums.ResourceType.FOOD] * pop_mult)
 		# Food consumption (quartered rate)
 		var province_pop := get_province_population(city)
-		total_food -= province_pop / 40
+		total_food -= province_pop / 60
 	return total_food
 
 func _apply_starvation(faction_id: StringName) -> void:

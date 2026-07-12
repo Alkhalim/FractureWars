@@ -284,14 +284,15 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 	AudioManager.play_sfx(&"scroll_open")
 
 func _ai_wait() -> void:
-	# Batched yielding: yield infrequently to keep UI responsive without slowing AI
+	# Batched yielding: yield often enough that the window keeps painting (the
+	# old every-8th-call rate let whole AI factions run inside one frame, which
+	# read as a multi-second freeze)
 	_ai_wait_counter += 1
 	if skip_ai_turn:
-		if _ai_wait_counter % 16 == 0:
+		if _ai_wait_counter % 8 == 0:
 			await get_tree().process_frame
 		return
-	# Yield every 8th call — enough for UI responsiveness, avoids per-frame overhead
-	if _ai_wait_counter % 8 == 0:
+	if _ai_wait_counter % 3 == 0:
 		await get_tree().process_frame
 
 func start_game() -> void:
@@ -380,11 +381,16 @@ func _start_faction_turn() -> void:
 		_check_random_events(faction_id)
 		GameManager.diplomacy_system.generate_ai_offer_to_player()
 	else:
+		# Breathe between the heavy AI phases so each one lands in its own
+		# frame instead of stacking into a single long hitch
 		_ai_assign_commanders(faction_id)
 		_consolidate_ai_armies(faction_id)
+		await get_tree().process_frame
 		_execute_ai_city_management(faction_id)
+		await get_tree().process_frame
 		_execute_ai_settlement_building(faction_id)
 		GameManager.diplomacy_system.execute_ai_diplomacy(faction_id)
+		await get_tree().process_frame
 		GameManager.research_system.execute_ai_research(faction_id)
 		GameManager.research_system.execute_ai_socketing(faction_id)
 		if faction_id == &"empire":
@@ -902,7 +908,7 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 	var army_count := 0
 	for army in armies:
 		army_count += 1
-		if army_count % 6 == 0:
+		if army_count % 2 == 0:
 			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
@@ -957,7 +963,7 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 	var army_count := 0
 	for army in armies:
 		army_count += 1
-		if army_count % 6 == 0:
+		if army_count % 2 == 0:
 			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
@@ -1019,7 +1025,7 @@ func _execute_gladehost_ai(faction_id: StringName) -> void:
 	var army_count := 0
 	for army in armies:
 		army_count += 1
-		if army_count % 6 == 0:
+		if army_count % 2 == 0:
 			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
@@ -1098,7 +1104,7 @@ func _execute_tainted_jade_ai(faction_id: StringName) -> void:
 	var army_count := 0
 	for army in armies:
 		army_count += 1
-		if army_count % 6 == 0:
+		if army_count % 2 == 0:
 			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue
@@ -1183,7 +1189,7 @@ func _execute_shardhorde_ai() -> void:
 	var army_count := 0
 	for army in armies:
 		army_count += 1
-		if army_count % 6 == 0:
+		if army_count % 2 == 0:
 			await _ai_wait()
 		if army.movement_remaining <= 0:
 			continue

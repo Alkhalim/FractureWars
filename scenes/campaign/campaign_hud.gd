@@ -578,6 +578,12 @@ func _on_army_selected(army_id: StringName) -> void:
 			var card := _create_unit_card(unit, unit_data)
 			unit_list.add_child(card)
 
+	# Size the window to its content instead of a fixed 840x320 box: collapsed
+	# cards are ~46px, four per row, plus header/actions chrome
+	var rows: int = int(ceil(float(army.units.size()) / 4.0))
+	var content_h: int = 150 + maxi(rows, 1) * 52
+	army_panel.offset_top = -float(clampi(content_h, 190, 460))
+
 func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContainer:
 	var card := PanelContainer.new()
 	var card_style := StyleBoxFlat.new()
@@ -2628,29 +2634,31 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	row_style.corner_radius_bottom_left = 3
 	row_style.corner_radius_top_right = 3
 	row_style.corner_radius_bottom_right = 3
-	row_style.content_margin_left = 8.0
-	row_style.content_margin_top = 6.0
-	row_style.content_margin_right = 8.0
-	row_style.content_margin_bottom = 6.0
+	# Tight rows: thin padding, left-bound and full-width, so a full roster
+	# reads as a compact list instead of a column of fat centred cards
+	row_style.content_margin_left = 6.0
+	row_style.content_margin_top = 3.0
+	row_style.content_margin_right = 6.0
+	row_style.content_margin_bottom = 3.0
 	row_panel.add_theme_stylebox_override("panel", row_style)
-	row_panel.custom_minimum_size = Vector2(520, 0)
-	row_panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	row_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	var info_row := HBoxContainer.new()
-	info_row.add_theme_constant_override("separation", 8)
+	info_row.add_theme_constant_override("separation", 6)
 
 	# Faction color dot
 	var color_rect := ColorRect.new()
-	color_rect.custom_minimum_size = Vector2(14, 14)
+	color_rect.custom_minimum_size = Vector2(10, 10)
 	color_rect.color = fd.color
+	color_rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	info_row.add_child(color_rect)
 
 	# Faction name
 	var name_label := Label.new()
 	name_label.text = fd.display_name
-	name_label.custom_minimum_size = Vector2(140, 0)
+	name_label.custom_minimum_size = Vector2(130, 0)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.add_theme_font_size_override("font_size", 15)
+	name_label.add_theme_font_size_override("font_size", 13)
 	info_row.add_child(name_label)
 
 	# Treaty icons — small colored symbols showing active agreements
@@ -2708,7 +2716,7 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	# View button
 	var view_btn := Button.new()
 	view_btn.text = "View"
-	view_btn.custom_minimum_size = Vector2(50, 26)
+	view_btn.custom_minimum_size = Vector2(46, 22)
 	var fid: StringName = faction_id
 	view_btn.pressed.connect(func():
 		_diplo_detail_faction = fid
@@ -9157,9 +9165,10 @@ func _create_commander_panel() -> void:
 	commander_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	commander_panel.offset_left = 0.0
 	commander_panel.offset_top = 52.0
-	commander_panel.offset_right = 280.0
-	commander_panel.offset_bottom = 450.0
-	commander_panel.custom_minimum_size = Vector2(280, 0)
+	commander_panel.offset_right = 256.0
+	# Shorter: the general's card is a handful of rows, not a 400px column
+	commander_panel.offset_bottom = 372.0
+	commander_panel.custom_minimum_size = Vector2(256, 0)
 
 	commander_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 
@@ -11664,10 +11673,13 @@ func _execute_disband(army_id: StringName, unit_indices: Array[int]) -> void:
 
 	# If no units remain, destroy the army
 	if army.units.is_empty():
-		GameManager.remove_army(army_id)
+		GameManager.remove_army(army_id)  # emits army_destroyed -> campaign deselects
 		army_panel.visible = false
-		# Refresh campaign markers
-		var campaign: Node2D = get_parent().get_parent()
+		if commander_panel:
+			commander_panel.visible = false
+		var campaign: Node = get_tree().get_first_node_in_group("campaign")
+		if campaign == null:
+			campaign = get_parent().get_parent()
 		if campaign and campaign.has_method("_create_army_markers"):
 			campaign._create_army_markers()
 	else:

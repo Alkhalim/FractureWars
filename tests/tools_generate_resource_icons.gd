@@ -73,24 +73,31 @@ class _IconPainter extends Node2D:
 				Color(0.85, 0.86, 0.92, 0.8), 1.5, true)
 
 	func _i_tech() -> void:
-		# Unrolled scroll with rolled ends and a gold seal
+		# Arcane scroll lit from within by blue light, so research reads
+		# instantly apart from the warm gold/brown resources
+		for g in 4:
+			var gr := 30.0 - float(g) * 5.0
+			draw_colored_polygon(_ellipse(C, gr, gr, 16), Color(0.35, 0.65, 1.0, 0.09))
 		var body := PackedVector2Array([
 			C + Vector2(-13, -14), C + Vector2(13, -14), C + Vector2(13, 14), C + Vector2(-13, 14)
 		])
-		_outlined(body, Color(0.85, 0.78, 0.6), C)
+		_outlined(body, Color(0.72, 0.82, 0.95), C)
 		for ry in [-14.0, 14.0]:
 			var ro := C + Vector2(0, ry)
-			draw_colored_polygon(_ellipse(ro + Vector2(-14, 0), 4.5, 5.5, 10), Color(0.72, 0.64, 0.47))
+			draw_colored_polygon(_ellipse(ro + Vector2(-14, 0), 4.5, 5.5, 10), Color(0.5, 0.6, 0.75))
 			draw_colored_polygon(PackedVector2Array([
 				ro + Vector2(-14, -5.5), ro + Vector2(14, -5.5), ro + Vector2(14, 5.5), ro + Vector2(-14, 5.5)
-			]), Color(0.78, 0.7, 0.52))
-			draw_colored_polygon(_ellipse(ro + Vector2(14, 0), 4.5, 5.5, 10), Color(0.66, 0.58, 0.42))
-			draw_colored_polygon(_ellipse(ro + Vector2(14, 0), 2.2, 3.0, 8), Color(0.5, 0.44, 0.32))
+			]), Color(0.58, 0.68, 0.82))
+			draw_colored_polygon(_ellipse(ro + Vector2(14, 0), 4.5, 5.5, 10), Color(0.44, 0.54, 0.7))
+			draw_colored_polygon(_ellipse(ro + Vector2(14, 0), 2.2, 3.0, 8), Color(0.3, 0.4, 0.55))
+		# Glowing runes instead of ink lines
 		for i in 3:
 			var ly := -6.0 + float(i) * 6.0
-			draw_line(C + Vector2(-8, ly), C + Vector2(8, ly), Color(0.45, 0.4, 0.3, 0.8), 1.6)
-		draw_colored_polygon(_ellipse(C + Vector2(8, 10), 4.5, 4.5, 10), GOLD)
-		draw_polyline(_ellipse(C + Vector2(8, 10), 2.4, 2.4, 8), Color(0.7, 0.55, 0.2), 1.2, true)
+			draw_line(C + Vector2(-8, ly), C + Vector2(8, ly), Color(0.3, 0.65, 1.0, 0.95), 2.0)
+			draw_line(C + Vector2(-8, ly), C + Vector2(8, ly), Color(0.75, 0.92, 1.0, 0.85), 0.9)
+		# Bright arcane spark where the wax seal used to be
+		draw_colored_polygon(_ellipse(C + Vector2(8, 10), 5.5, 5.5, 12), Color(0.35, 0.7, 1.0, 0.5))
+		draw_colored_polygon(_ellipse(C + Vector2(8, 10), 3.0, 3.0, 10), Color(0.85, 0.95, 1.0))
 
 	func _i_food() -> void:
 		# Red meat steak — food had to leave the yellow family (gold is

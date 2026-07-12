@@ -1385,16 +1385,36 @@ class _MultiColorOverlayDrawNode extends Node2D:
 			draw_colored_polygon(entry[0], entry[1])
 
 class _CaravanDrawNode extends Node2D:
-	## Tiny trade cart, tinted by relation to the player (blue=yours,
-	## green=allied, white=neutral, red=enemy)
+	## Trade cart seen from ABOVE (like everything else on the map), tinted by
+	## relation to the player: blue = yours, green = allied, white = neutral,
+	## red = enemy. `heading` is set from its direction of travel each frame.
 	var tint := Color(0.92, 0.92, 0.92)
+	var heading := 0.0
 	func _draw() -> void:
-		draw_rect(Rect2(-4.5, -3.5, 9.0, 4.0), Color(0.4, 0.28, 0.16))
-		draw_rect(Rect2(-3.5, -6.0, 7.0, 3.0), tint.lerp(Color(0.92, 0.9, 0.82), 0.3))
-		draw_circle(Vector2(-2.5, 1.4), 1.7, Color(0.16, 0.13, 0.1))
-		draw_circle(Vector2(2.5, 1.4), 1.7, Color(0.16, 0.13, 0.1))
-		draw_circle(Vector2(-2.5, 1.4), 0.7, tint)
-		draw_circle(Vector2(2.5, 1.4), 0.7, tint)
+		var d := Vector2(cos(heading), sin(heading))
+		var p := Vector2(-d.y, d.x)
+		# Ground shadow
+		draw_colored_polygon(PackedVector2Array([
+			-d * 4.0 - p * 2.6 + Vector2(1, 1), d * 4.6 - p * 2.6 + Vector2(1, 1),
+			d * 4.6 + p * 2.6 + Vector2(1, 1), -d * 4.0 + p * 2.6 + Vector2(1, 1)
+		]), Color(0, 0, 0, 0.3))
+		# Draught animal at the front
+		draw_colored_polygon(PackedVector2Array([
+			d * 4.4 - p * 1.3, d * 7.4 - p * 0.9, d * 7.4 + p * 0.9, d * 4.4 + p * 1.3
+		]), Color(0.35, 0.26, 0.18))
+		# Wheels (dark discs on both flanks, seen from above)
+		for side: float in [-1.0, 1.0]:
+			draw_circle(d * 2.2 + p * 2.9 * side, 1.5, Color(0.14, 0.11, 0.09))
+			draw_circle(-d * 2.4 + p * 2.9 * side, 1.5, Color(0.14, 0.11, 0.09))
+		# Cart bed + canvas tilt roof (the bit you actually see from above)
+		draw_colored_polygon(PackedVector2Array([
+			-d * 4.0 - p * 2.4, d * 4.2 - p * 2.4, d * 4.2 + p * 2.4, -d * 4.0 + p * 2.4
+		]), Color(0.42, 0.3, 0.18))
+		draw_colored_polygon(PackedVector2Array([
+			-d * 3.2 - p * 1.9, d * 3.4 - p * 1.9, d * 3.4 + p * 1.9, -d * 3.2 + p * 1.9
+		]), Color(0.88, 0.85, 0.76))
+		# Relation stripe down the canvas
+		draw_line(-d * 3.2, d * 3.4, tint, 1.6)
 
 class _TradeRouteDrawNode extends Node2D:
 	var routes: Array = [] # Array of {points: PackedVector2Array, color: Color}
@@ -1404,9 +1424,11 @@ class _TradeRouteDrawNode extends Node2D:
 		for route in routes:
 			var pts: PackedVector2Array = route.points
 			var col: Color = route.color
-			# Packed-earth road bed beneath the relation-tinted dashes
+			# Packed-earth road bed beneath the relation-tinted dashes. Thin —
+			# many routes share the same corridors and a fat road turned the
+			# map into spaghetti.
 			if pts.size() >= 2:
-				draw_polyline(pts, Color(0.32, 0.25, 0.17, 0.7), 5.0, true)
+				draw_polyline(pts, Color(0.32, 0.25, 0.17, 0.55), 3.0, true)
 			for i in pts.size() - 1:
 				var a: Vector2 = pts[i]
 				var b: Vector2 = pts[i + 1]
@@ -1420,7 +1442,7 @@ class _TradeRouteDrawNode extends Node2D:
 					var chunk := dash_len if is_dash else gap_len
 					var end := minf(drawn + chunk, seg_len)
 					if is_dash:
-						draw_line(a + dir * drawn, a + dir * end, col, 2.0, true)
+						draw_line(a + dir * drawn, a + dir * end, col, 1.4, true)
 					drawn = end
 					is_dash = not is_dash
 
@@ -3900,6 +3922,12 @@ func _on_army_destroyed(army_id: StringName, _faction_id: StringName) -> void:
 	if marker:
 		marker.queue_free()
 		_army_markers.erase(army_id)
+	# A destroyed/disbanded army must never stay selected: the stale id left
+	# the reachable overlay and the move/commander paths pointing at a freed
+	# army, which crashed on the next click.
+	_selected_armies.erase(army_id)
+	if selected_army_id == army_id:
+		_deselect_all()
 
 func _on_region_ownership_changed(_region_id: StringName, _old: StringName, _new: StringName) -> void:
 	# Defer heavy visual work during AI turns — will be rebuilt on player turn start
@@ -5276,14 +5304,24 @@ func _process_trade_caravans(delta: float) -> void:
 		var target_dist := t * total_len
 		var accumulated := 0.0
 		var pos := pixel_path[0]
+		var seg_dir := Vector2.RIGHT
 		for j in pixel_path.size() - 1:
 			var seg_len := pixel_path[j].distance_to(pixel_path[j + 1])
 			if accumulated + seg_len >= target_dist:
 				var seg_t := (target_dist - accumulated) / seg_len if seg_len > 0 else 0.0
 				pos = pixel_path[j].lerp(pixel_path[j + 1], seg_t)
+				if seg_len > 0.01:
+					seg_dir = (pixel_path[j + 1] - pixel_path[j]) / seg_len
 				break
 			accumulated += seg_len
 		caravan.position = pos
+		# Point the (top-down) cart along its direction of travel — reversed on
+		# the return leg of the bounce
+		if data.progress > 1.0:
+			seg_dir = -seg_dir
+		if caravan.heading != seg_dir.angle():
+			caravan.heading = seg_dir.angle()
+			caravan.queue_redraw()
 		# Check fog visibility at caravan position
 		var caravan_hex := _pixel_to_hex(pos)
 		caravan.visible = _is_tile_visible(caravan_hex) or GameManager.explored_tiles.has(caravan_hex)
