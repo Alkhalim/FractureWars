@@ -15,6 +15,7 @@ income_bonus = {}
 population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"stormbow_raider", &"windrunner", &"thunder_axe"])
 required_capital_level = 2
+requires_research = &"berserker_rage"
 upgrades_from = &"warriors_longhouse"
 class_loyalty_bonus = {"peasants": -3, "nobles": 3}
 upkeep_cost = {0: 3, 1: 5}

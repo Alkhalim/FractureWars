@@ -15,6 +15,7 @@ income_bonus = {5: 42, 1: 8}
 population_growth_bonus = 6
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
+requires_research = &"deep_roots"
 special_effects = { "region_population_growth_bonus": 1 }
 upgrades_from = &"rootwood_lodge"
 class_loyalty_bonus = {"artisans": 2, "peasants": 1}

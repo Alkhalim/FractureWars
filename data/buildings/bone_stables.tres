@@ -16,5 +16,6 @@ population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"bone_cavalry", &"tomb_guard", &"bone_archer"])
 upgrades_from = &"seekers_lodge"
 required_capital_level = 2
+requires_research = &"sand_warriors"
 class_loyalty_bonus = {"peasants": -3, "nobles": 3}
 upkeep_cost = {0: 3, 1: 5}

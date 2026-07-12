@@ -16,6 +16,7 @@ population_growth_bonus = 6
 upgrades_from = &"sunfire_altar"
 unlocks_units = Array[StringName]([&"sunfire_mage", &"radiant_priest"])
 required_capital_level = 2
+requires_research = &"solar_prayer"
 class_loyalty_bonus = {"peasants": 2, "scholars": 3, "nobles": 2}
 special_effects = {"research_speed_bonus": 0.15}
 upkeep_cost = {0: 5, 5: 3}

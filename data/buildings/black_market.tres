@@ -15,6 +15,7 @@ income_bonus = {0: 60}
 population_growth_bonus = 6
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
+requires_research = &"pasture_mastery"
 special_effects = { "region_population_growth_bonus": 1 }
 upgrades_from = &"trade_post_skulloath"
 class_loyalty_bonus = {"artisans": 2, "nobles": 3, "peasants": -3}

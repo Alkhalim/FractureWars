@@ -17,6 +17,7 @@ recruit_speed_bonus = 1
 upgrades_from = &"wretched_pit"
 unlocks_units = Array[StringName]([&"dusksworn", &"nightrider", &"cursed_archer"])
 required_capital_level = 2
+requires_research = &"shadow_blades"
 class_loyalty_bonus = {"peasants": -4, "nobles": 3}
 special_effects = {"espionage_growth": 1}
 upkeep_cost = {1: 5, 5: 3}

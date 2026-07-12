@@ -15,6 +15,7 @@ income_bonus = {}
 population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"ember_crossbow", &"forge_warden"])
 required_capital_level = 2
+requires_research = &"cg_heat_shields"
 upgrades_from = &"cinder_watchtower"
 class_loyalty_bonus = {"peasants": -4, "nobles": 3}
 upkeep_cost = {0: 3, 1: 5}

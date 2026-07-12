@@ -17,6 +17,7 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([&"griffin", &"phoenix"])
 required_capital_level = 2
+requires_research = &"sacred_flame"
 required_terrain = -1
 class_loyalty_bonus = {}
 upgrades_from = &"sacred_aviary"

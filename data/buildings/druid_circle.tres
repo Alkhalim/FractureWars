@@ -15,6 +15,7 @@ income_bonus = {2: 28}
 population_growth_bonus = 3
 unlocks_units = Array[StringName]([&"dryad", &"wildwood_shaman", &"fae_enchanter"])
 required_capital_level = 2
+requires_research = &"elder_wisdom"
 upgrades_from = &"sacred_grove"
 class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 4, "nobles": 1}
 special_effects = {"research_speed_bonus": 0.15}
