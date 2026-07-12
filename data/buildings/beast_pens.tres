@@ -15,6 +15,6 @@ income_bonus = {}
 population_growth_bonus = 0
 unlocks_units = Array[StringName]([&"runebound_wyvern", &"bloodraven", &"steppe_mammoth"])
 required_capital_level = 2
-requires_research = &"horseback_archery"
+requires_research = &"nomad_resilience"
 class_loyalty_bonus = {"peasants": -2}
 upkeep_cost = {0: 3, 1: 5}

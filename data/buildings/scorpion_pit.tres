@@ -14,5 +14,6 @@ build_time = 2
 population_growth_bonus = 1
 unlocks_units = Array[StringName]([&"sand_scorpion"])
 required_capital_level = 1
+requires_research = &"cg_coal_mines"
 class_loyalty_bonus = {"peasants": 1}
 upkeep_cost = {0: 2, 1: 3}

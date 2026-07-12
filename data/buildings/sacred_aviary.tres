@@ -15,5 +15,6 @@ population_growth_bonus = 0
 unlocks_units = Array[StringName]([&"sacred_hawk"])
 upgrades_from = &"pilgrim_training_grounds"
 required_capital_level = 1
+requires_research = &"dawn_meditation"
 class_loyalty_bonus = {"peasants": 1}
 upkeep_cost = {0: 2, 1: 3}

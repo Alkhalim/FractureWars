@@ -5625,10 +5625,9 @@ class _RadialTechTree extends Control:
 	const TIER_RADII := [0, 230, 440, 670, 920, 1180]
 	const NODE_RADIUS := 26.0
 	const TREE_CENTER := Vector2(750, 750)
-	const UNIVERSAL_RING_RADIUS := 120.0
-	var _uni_radius := UNIVERSAL_RING_RADIUS  # grows with universal tech count
 	var _zoom: float = 1.0
-	const ZOOM_MIN := 0.4
+	var _zoom_fitted := false  # first draw fits the whole tree into the panel
+	const ZOOM_MIN := 0.2
 	const ZOOM_MAX := 2.0
 	const ZOOM_STEP := 0.1
 	const CAT_COLORS := {
@@ -5673,24 +5672,21 @@ class _RadialTechTree extends Control:
 		_branch_angles.clear()
 		_unlock_nodes.clear()
 
-		# Collect techs
+		# Collect techs — universal techs join the same ring system (they are
+		# researchable from turn 1, so they belong on the inner rings too)
 		var faction_techs: Array = []
-		var universal_techs: Array = []
 		for research_id in DataManager.research:
 			var data: ResearchData = DataManager.research[research_id]
-			if data.faction_id == faction_id:
+			if data.faction_id == faction_id or data.faction_id == &"":
 				faction_techs.append(data)
 				_node_data[research_id] = data
-			elif data.faction_id == &"":
-				universal_techs.append(data)
-				_node_data[research_id] = data
-			elif data.faction_id != &"" and data.faction_id != faction_id:
-				continue
 
-		# Group faction techs by branch
+		# Group techs by branch; universal techs get their own sector
 		var branches: Dictionary = {}
 		for data in faction_techs:
 			var branch: StringName = data.tree_branch if data.tree_branch != &"" else &"general"
+			if data.faction_id == &"":
+				branch = &"universal"
 			if not branches.has(branch):
 				branches[branch] = []
 			branches[branch].append(data)
@@ -5719,43 +5715,104 @@ class _RadialTechTree extends Control:
 			if not changed:
 				break
 
-		# Position faction techs radially by branch
+		# ── Radial tree layout ──
+		# Ring N = prerequisite depth N, so the techs you can research right
+		# now form the SMALLEST circle around the center. Each root owns an
+		# angular wedge and every child grows outward from its parent's angle,
+		# which keeps the connections short and radial instead of criss-crossed.
+		var by_depth: Dictionary = {} # depth -> Array[ResearchData]
+		for data in faction_techs:
+			var d: int = clampi(int(depth_map.get(data.id, 1)), 1, 5)
+			if not by_depth.has(d):
+				by_depth[d] = []
+			by_depth[d].append(data)
+
+		var angle_of: Dictionary = {} # research_id -> angle (radians)
+
+		# Primary-parent tree: each non-root hangs off its deepest prerequisite,
+		# so the graph becomes a tidy tree (extra prereqs still draw as edges)
+		var children: Dictionary = {}  # parent_id -> Array[ResearchData]
+		var cat_order := {&"military": 0, &"economy": 1, &"arcane": 2, &"logistics": 3}
+		var roots: Array = by_depth.get(1, [])
+		roots.sort_custom(func(a: ResearchData, b: ResearchData) -> bool:
+			var ca: int = cat_order.get(a.research_category, 4)
+			var cb: int = cat_order.get(b.research_category, 4)
+			if ca != cb:
+				return ca < cb
+			return str(a.id) < str(b.id))
+		for depth in [2, 3, 4, 5]:
+			for data in by_depth.get(depth, []):
+				var best_parent: StringName = &""
+				var best_depth := -1
+				for prereq in data.prerequisites:
+					var pd: int = int(depth_map.get(prereq, 0))
+					if pd > best_depth and pd < depth:
+						best_depth = pd
+						best_parent = prereq
+				if best_parent == &"":
+					# Orphan: attach to the first root of its own category
+					for r: ResearchData in roots:
+						if r.research_category == data.research_category:
+							best_parent = r.id
+							break
+					if best_parent == &"" and not roots.is_empty():
+						best_parent = roots[0].id
+				if not children.has(best_parent):
+					children[best_parent] = []
+				children[best_parent].append(data)
+
+		# Leaf weight of every subtree — wedges are shared proportionally, so a
+		# crowded branch gets more room instead of spilling into its neighbours
+		var weight: Dictionary = {}
+		for depth in [5, 4, 3, 2, 1]:
+			for data in by_depth.get(depth, []):
+				var w := 0
+				for child: ResearchData in children.get(data.id, []):
+					w += int(weight.get(child.id, 1))
+				weight[data.id] = maxi(w, 1)
+
+		# Recursive wedge subdivision, breadth-first from the roots
+		var total_w := 0
+		for r: ResearchData in roots:
+			total_w += int(weight.get(r.id, 1))
+		total_w = maxi(total_w, 1)
+		var queue: Array = []  # {data, wedge_start, wedge_size}
+		var cursor := -PI / 2.0
+		for r: ResearchData in roots:
+			var wedge: float = TAU * float(weight.get(r.id, 1)) / float(total_w)
+			queue.append({data = r, start = cursor, span = wedge})
+			cursor += wedge
+		while not queue.is_empty():
+			var item: Dictionary = queue.pop_front()
+			var data: ResearchData = item.data
+			var start: float = item.start
+			var span: float = item.span
+			var angle: float = start + span * 0.5
+			var depth: int = clampi(int(depth_map.get(data.id, 1)), 1, 5)
+			angle_of[data.id] = angle
+			_node_positions[data.id] = TREE_CENTER + Vector2(cos(angle), sin(angle)) * TIER_RADII[depth]
+			var kids: Array = children.get(data.id, [])
+			if kids.is_empty():
+				continue
+			var kids_w := 0
+			for k: ResearchData in kids:
+				kids_w += int(weight.get(k.id, 1))
+			kids_w = maxi(kids_w, 1)
+			var kcursor := start
+			for k: ResearchData in kids:
+				var kspan: float = span * float(weight.get(k.id, 1)) / float(kids_w)
+				queue.append({data = k, start = kcursor, span = kspan})
+				kcursor += kspan
+
+		# Branch labels sit at the mean angle of their branch's techs
 		for bi in branch_names.size():
 			var branch_name = branch_names[bi]
-			var branch_techs: Array = branches[branch_name]
-			var base_angle: float = -PI / 2.0 + float(bi) * branch_spacing
-			_branch_angles[branch_name] = base_angle
-
-			var tiers: Dictionary = {}
-			for data in branch_techs:
-				var effective_tier: int = clampi(depth_map.get(data.id, data.tier), 1, 5)
-				if not tiers.has(effective_tier):
-					tiers[effective_tier] = []
-				tiers[effective_tier].append(data)
-
-			for tier in tiers:
-				var tier_techs: Array = tiers[tier]
-				var radius: float = TIER_RADII[clampi(tier, 1, 5)]
-				var count := tier_techs.size()
-				var max_spread := branch_spacing * 0.88
-				var spacing := max_spread / maxf(count, 1)
-				var start_offset := -(count - 1) * spacing * 0.5
-
-				for ti in count:
-					var data: ResearchData = tier_techs[ti]
-					var angle := base_angle + start_offset + float(ti) * spacing
-					_node_positions[data.id] = TREE_CENTER + Vector2(cos(angle) * radius, sin(angle) * radius)
-
-		# Universal techs in an inner ring (outside center emblem). The ring
-		# grows with tech count so nodes don't collide and get shoved around
-		# by the overlap resolver (the old fixed 120px ring turned the tree
-		# center into a jumble).
-		var uni_count := universal_techs.size()
-		_uni_radius = maxf(UNIVERSAL_RING_RADIUS, float(uni_count) * (NODE_RADIUS * 3.2) / TAU)
-		for ui in uni_count:
-			var data: ResearchData = universal_techs[ui]
-			var angle := TAU * float(ui) / maxf(uni_count, 1) - PI / 2.0
-			_node_positions[data.id] = TREE_CENTER + Vector2(cos(angle) * _uni_radius, sin(angle) * _uni_radius)
+			var bsum := Vector2.ZERO
+			for data in branches[branch_name]:
+				if angle_of.has(data.id):
+					var ba: float = angle_of[data.id]
+					bsum += Vector2(cos(ba), sin(ba))
+			_branch_angles[branch_name] = bsum.angle() if bsum.length() > 0.001 else (-PI / 2.0 + float(bi) * branch_spacing)
 
 		# Build unlock node set (techs that gate buildings or units)
 		for research_id in _node_data:
@@ -5789,7 +5846,9 @@ class _RadialTechTree extends Control:
 			var radius := float(rkey) * 10.0
 			if ids.size() < 2 or radius < 1.0:
 				continue
-			var min_ang: float = (NODE_RADIUS * 3.1) / radius
+			# Gentle: the wedge subdivision already separates siblings; this
+			# only nudges apart nodes from different wedges that happen to meet
+			var min_ang: float = (NODE_RADIUS * 2.4) / radius
 			ids.sort_custom(func(a, b):
 				return (_node_positions[a] - TREE_CENTER).angle() < (_node_positions[b] - TREE_CENTER).angle())
 			var angles: Array[float] = []
@@ -5903,6 +5962,13 @@ class _RadialTechTree extends Control:
 	func _draw() -> void:
 		if not _positions_built:
 			_calculate_positions()
+		# Fit the whole tree into the panel on first draw so zooming all the
+		# way out always shows everything
+		if not _zoom_fitted and size.x > 10.0 and size.y > 10.0:
+			_zoom_fitted = true
+			var span := (TIER_RADII[5] + 110.0) * 2.0
+			_zoom = clampf(minf(size.x, size.y) / span, ZOOM_MIN, 1.0)
+			_view_offset = Vector2.ZERO
 		var center_screen := _to_screen(TREE_CENTER)
 		var font := ThemeDB.fallback_font
 		var fs: FactionState = GameManager.state.faction_states.get(player_faction_id)
@@ -5941,8 +6007,6 @@ class _RadialTechTree extends Control:
 			var bl_size := clampi(int(round(15.0 * _zoom)), 12, 22)
 			_draw_outlined_string(font, label_screen - Vector2(70, 0), label_text, HORIZONTAL_ALIGNMENT_CENTER, 140, bl_size, Color(0.88, 0.78, 0.5, 0.95))
 
-		# Universal ring label
-		_draw_outlined_string(font, _to_screen(TREE_CENTER + Vector2(-30, -(_uni_radius + 20))), "Universal", HORIZONTAL_ALIGNMENT_CENTER, 60, clampi(int(round(9.0 * _zoom)), 8, 12), Color(0.6, 0.55, 0.45))
 
 		# Build glow path (completed chain to current research) — cached across
 		# frames, invalidated when research state changes

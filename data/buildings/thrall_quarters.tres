@@ -15,5 +15,6 @@ income_bonus = {5: 10, 1: 5}
 population_growth_bonus = 3
 unlocks_units = Array[StringName]([&"thrall_swarm"])
 required_capital_level = 1
+requires_research = &"sacrificial_altars"
 class_loyalty_bonus = {"captives": -5}
 upkeep_cost = {0: 3}

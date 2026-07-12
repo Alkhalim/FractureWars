@@ -17,5 +17,6 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
+requires_research = &"provincial_order"
 special_effects = {"army_movement_bonus": 1.0}
 upkeep_cost = {1: 2, 5: 3}

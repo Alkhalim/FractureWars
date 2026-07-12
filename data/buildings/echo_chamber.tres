@@ -14,5 +14,5 @@ build_time = 3
 income_bonus = {2: 6, 4: 2}
 population_growth_bonus = 0
 required_capital_level = 2
-requires_research = &"shard_communion"
+requires_research = &"sh_crystal_scouts"
 special_effects = { "research_speed_bonus": 0.1 }

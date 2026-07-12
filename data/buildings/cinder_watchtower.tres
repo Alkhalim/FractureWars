@@ -15,5 +15,6 @@ income_bonus = {}
 population_growth_bonus = 2
 unlocks_units = Array[StringName]([&"cinderguard_warden", &"cinder_militia"])
 required_capital_level = 1
+requires_research = &"garrison_doctrine"
 class_loyalty_bonus = {"peasants": -3, "nobles": 2}
 upkeep_cost = {0: 2, 1: 3}

@@ -14,4 +14,4 @@ build_time = 3
 income_bonus = {3: 18}
 population_growth_bonus = 3
 required_capital_level = 2
-requires_research = &"crystal_growth"
+requires_research = &"crystal_carapace"

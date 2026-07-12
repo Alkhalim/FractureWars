@@ -17,6 +17,6 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([&"dracarii_riders", &"imperial_chariot"])
 required_capital_level = 2
-requires_research = &"imperial_drill"
+requires_research = &"emp_tax_collectors"
 upgrades_from = &"cohort_barracks"
 upkeep_cost = {0: 3, 1: 5}

@@ -18,6 +18,6 @@ recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 3
 special_effects = { "region_population_growth_bonus": 1 }
-requires_research = &"emp_tax_collectors"
+requires_research = &"emp_fortified_camps"
 upgrades_from = &"legionary_roads"
 upkeep_cost = {1: 5, 5: 8}

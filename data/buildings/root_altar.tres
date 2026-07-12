@@ -15,6 +15,7 @@ income_bonus = {2: 8}
 population_growth_bonus = 3
 unlocks_units = Array[StringName]([])
 required_capital_level = 1
+requires_research = &"tj_poison_blades"
 class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 2, "nobles": 1}
 special_effects = {"taint_generation": 1}
 upkeep_cost = {0: 3, 5: 2}
