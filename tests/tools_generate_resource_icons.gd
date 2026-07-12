@@ -93,23 +93,23 @@ class _IconPainter extends Node2D:
 		draw_polyline(_ellipse(C + Vector2(8, 10), 2.4, 2.4, 8), Color(0.7, 0.55, 0.2), 1.2, true)
 
 	func _i_food() -> void:
-		# Wheat sheaf: three bound stalks with grain heads
-		var tie := C + Vector2(0, 10)
-		for k in 3:
-			var a := -PI / 2.0 + float(k - 1) * 0.42
-			var dirv := Vector2(cos(a), sin(a))
-			var top := tie + dirv * 30.0
-			draw_line(tie, top, OUTLINE, 5.0)
-			draw_line(tie, top, Color(0.78, 0.62, 0.26), 3.0)
-			for g in 4:
-				var gp := tie + dirv * (16.0 + float(g) * 4.4)
-				var perp := Vector2(-dirv.y, dirv.x)
-				draw_colored_polygon(PackedVector2Array([
-					gp + perp * 3.6, gp + dirv * 5.0, gp - perp * 3.6, gp - dirv * 1.5
-				]), Color(0.88, 0.74, 0.34))
-		# Tie band
-		draw_line(tie + Vector2(-6, 0), tie + Vector2(6, 0), OUTLINE, 7.0)
-		draw_line(tie + Vector2(-5, 0), tie + Vector2(5, 0), Color(0.6, 0.44, 0.2), 4.0)
+		# Red meat steak — food had to leave the yellow family (gold is
+		# yellow, bread would collide with wood's brown, silver with iron)
+		var mc := C + Vector2(2, 3)
+		var body := _ellipse(mc, 21, 15, 18)
+		draw_colored_polygon(_scaled(body, 1.12, mc), OUTLINE)
+		draw_colored_polygon(body, Color(0.55, 0.12, 0.1))
+		draw_colored_polygon(_scaled(body, 0.78, mc), Color(0.8, 0.24, 0.19))
+		# Fat marbling: pale streaks
+		draw_line(mc + Vector2(-9, -3), mc + Vector2(8, 2), Color(0.95, 0.88, 0.8, 0.85), 2.4)
+		draw_line(mc + Vector2(-3, 6), mc + Vector2(9, 3), Color(0.95, 0.88, 0.8, 0.6), 1.8)
+		# Bone poking out top-left (classic T-bone read)
+		var bone_a := mc + Vector2(-14, -9)
+		var bone_b := mc + Vector2(-23, -18)
+		draw_line(bone_a, bone_b, OUTLINE, 9.0)
+		draw_line(bone_a, bone_b, Color(0.93, 0.9, 0.82), 5.5)
+		draw_circle(bone_b + Vector2(-2, -1), 3.6, Color(0.93, 0.9, 0.82))
+		draw_circle(bone_b + Vector2(2, -3.5), 3.2, Color(0.93, 0.9, 0.82))
 
 	func _i_shards() -> void:
 		# Faceted violet crystal with glow + companion shard
