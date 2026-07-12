@@ -1385,9 +1385,16 @@ class _MultiColorOverlayDrawNode extends Node2D:
 			draw_colored_polygon(entry[0], entry[1])
 
 class _CaravanDrawNode extends Node2D:
+	## Tiny trade cart, tinted by relation to the player (blue=yours,
+	## green=allied, white=neutral, red=enemy)
+	var tint := Color(0.92, 0.92, 0.92)
 	func _draw() -> void:
-		draw_circle(Vector2.ZERO, 3.5, Color(0.75, 0.55, 0.2, 0.9))
-		draw_circle(Vector2.ZERO, 2.0, Color(0.95, 0.8, 0.4, 0.95))
+		draw_rect(Rect2(-4.5, -3.5, 9.0, 4.0), Color(0.4, 0.28, 0.16))
+		draw_rect(Rect2(-3.5, -6.0, 7.0, 3.0), tint.lerp(Color(0.92, 0.9, 0.82), 0.3))
+		draw_circle(Vector2(-2.5, 1.4), 1.7, Color(0.16, 0.13, 0.1))
+		draw_circle(Vector2(2.5, 1.4), 1.7, Color(0.16, 0.13, 0.1))
+		draw_circle(Vector2(-2.5, 1.4), 0.7, tint)
+		draw_circle(Vector2(2.5, 1.4), 0.7, tint)
 
 class _TradeRouteDrawNode extends Node2D:
 	var routes: Array = [] # Array of {points: PackedVector2Array, color: Color}
@@ -1397,6 +1404,9 @@ class _TradeRouteDrawNode extends Node2D:
 		for route in routes:
 			var pts: PackedVector2Array = route.points
 			var col: Color = route.color
+			# Packed-earth road bed beneath the relation-tinted dashes
+			if pts.size() >= 2:
+				draw_polyline(pts, Color(0.32, 0.25, 0.17, 0.7), 5.0, true)
 			for i in pts.size() - 1:
 				var a: Vector2 = pts[i]
 				var b: Vector2 = pts[i + 1]
@@ -5101,7 +5111,7 @@ func _update_trade_routes() -> void:
 
 	_trade_route_draw_node = _TradeRouteDrawNode.new()
 	_trade_route_draw_node.z_index = 1
-	var route_color := Color(0.85, 0.7, 0.3, 0.5)
+	var player_id := GameManager.state.player_faction_id
 
 	for route in routes:
 		var hex_path := DiplomacySystem.get_trade_route_hex_path(route.city_a_hex, route.city_b_hex)
@@ -5118,11 +5128,23 @@ func _update_trade_routes() -> void:
 				visible_any = true
 		if not visible_any:
 			continue
-		_trade_route_draw_node.routes.append({points = pixel_path, color = route_color, faction_a = route.faction_a, faction_b = route.faction_b})
+		# Relation tint: blue = your route, green = an ally's, white = neutral,
+		# red = enemy trade (a tempting plunder target)
+		var tint := Color(0.92, 0.92, 0.92, 0.75)
+		if route.faction_a == player_id or route.faction_b == player_id:
+			tint = Color(0.45, 0.7, 1.0, 0.85)
+		elif GameManager.get_relation(player_id, route.faction_a) == Enums.FactionRelation.ALLIED \
+				or GameManager.get_relation(player_id, route.faction_b) == Enums.FactionRelation.ALLIED:
+			tint = Color(0.35, 0.9, 0.4, 0.85)
+		elif GameManager.get_relation(player_id, route.faction_a) == Enums.FactionRelation.WAR \
+				or GameManager.get_relation(player_id, route.faction_b) == Enums.FactionRelation.WAR:
+			tint = Color(0.95, 0.3, 0.25, 0.85)
+		_trade_route_draw_node.routes.append({points = pixel_path, color = tint, faction_a = route.faction_a, faction_b = route.faction_b})
 		_trade_route_data.append({pixel_path = pixel_path, progress = randf()})
 
-		# Create caravan sprite (small gold dot)
+		# Rolling cart, tinted like its route
 		var caravan := _CaravanDrawNode.new()
+		caravan.tint = Color(tint.r, tint.g, tint.b)
 		caravan.z_index = 2
 		$OverlayLayer.add_child(caravan)
 		_trade_caravans.append(caravan)

@@ -1551,14 +1551,17 @@ func demand_city(demander: StringName, target: StringName, city_id: StringName) 
 
 # ── Trade Route Interception ──────────────────────────────────
 
+## Factions that respect plunder (raider cultures) vs those that despise it
+const _RAIDER_PARENTS := [&"skulloath", &"shardhorde", &"forsaken"]
+const _MORAL_PARENTS := [&"gladehost", &"sunblessed", &"moonspear"]
+
 func _check_trade_interception(treaty: TreatyInstance, total_value: int) -> float:
-	## Checks if hostile armies block a trade route. Returns theft fraction (0.0 or 0.25).
-	## Intercepting faction gains gold equal to 25% of total trade value.
-	# Old code implicitly returned 0.0 for non-trade treaty types (the route
-	# list only contained trade treaties) — keep that exact behavior.
+	## Plunder: an army that ENDS its turn on a foreign, non-allied trade
+	## route diverts it — the owners lose 50% of the route's income and the
+	## plunderer pockets 1/3 of its value. Minor diplomatic offense scaled by
+	## the observers' morality (raiders respect it, the pious despise it).
 	if treaty.treaty_type != Enums.TreatyType.TRADE_DEAL and treaty.treaty_type != Enums.TreatyType.TRADE_RELATIONS:
 		return 0.0
-	# Compute only this treaty's route instead of all routes for all treaties.
 	var route_info := _compute_trade_route(treaty)
 	if route_info.is_empty():
 		return 0.0
@@ -1566,14 +1569,32 @@ func _check_trade_interception(treaty: TreatyInstance, total_value: int) -> floa
 	var interceptors := get_intercepting_armies(hex_path, treaty.faction_a, treaty.faction_b)
 	if interceptors.is_empty():
 		return 0.0
-	# First interceptor steals 25% as gold
-	var stolen_gold := maxi(1, int(float(total_value) * 0.25))
+	var stolen_gold := maxi(1, int(float(total_value) / 3.0))
 	var interceptor_faction: StringName = interceptors[0].faction_id
 	var fs_int: FactionState = GameManager.state.faction_states.get(interceptor_faction)
 	if fs_int:
 		fs_int.resources[0] = fs_int.resources.get(0, 0) + stolen_gold # 0 = GOLD
+	_apply_plunder_diplomacy(interceptor_faction, treaty.faction_a, treaty.faction_b)
 	EventBus.trade_intercepted.emit(interceptor_faction, treaty.treaty_id, stolen_gold)
-	return 0.25
+	return 0.5
+
+func _apply_plunder_diplomacy(plunderer: StringName, owner_a: StringName, owner_b: StringName) -> void:
+	for other_id in GameManager.state.faction_states:
+		if other_id == plunderer or GameManager.is_npc_faction(other_id):
+			continue
+		var ofs: FactionState = GameManager.state.faction_states[other_id]
+		if ofs.is_defeated:
+			continue
+		var other_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(other_id, other_id)
+		if other_id == owner_a or other_id == owner_b:
+			modify_standing(plunderer, other_id, -4, "Plundered our trade route")
+		elif GameManager.get_relation(other_id, owner_a) == Enums.FactionRelation.ALLIED \
+				or GameManager.get_relation(other_id, owner_b) == Enums.FactionRelation.ALLIED:
+			modify_standing(plunderer, other_id, -2, "Plundered an ally's trade route")
+		elif other_parent in _RAIDER_PARENTS:
+			modify_standing(plunderer, other_id, 1, "Takes what it wants by force")
+		elif other_parent in _MORAL_PARENTS:
+			modify_standing(plunderer, other_id, -2, "Common banditry")
 
 # ── Trade Route Visualization ─────────────────────────────────
 
@@ -1696,7 +1717,8 @@ static func get_trade_route_hex_path(from: Vector2i, to: Vector2i) -> Array[Vect
 	return [from, to] as Array[Vector2i]
 
 func get_intercepting_armies(route_path: Array[Vector2i], faction_a: StringName, faction_b: StringName) -> Array[Dictionary]:
-	## Returns hostile armies standing on trade route tiles.
+	## Armies parked on route tiles that plunder it: anyone EXCEPT the route
+	## owners and factions allied to either owner (you don't rob friends).
 	var interceptors: Array[Dictionary] = []
 	var route_set: Dictionary = {}
 	for coord in route_path:
@@ -1707,9 +1729,11 @@ func get_intercepting_armies(route_path: Array[Vector2i], faction_a: StringName,
 			continue
 		if not route_set.has(army.hex_pos):
 			continue
-		# Must be at war with at least one trade partner
+		if army.faction_id == faction_a or army.faction_id == faction_b:
+			continue
 		var rel_a := GameManager.get_relation(army.faction_id, faction_a)
 		var rel_b := GameManager.get_relation(army.faction_id, faction_b)
-		if rel_a == Enums.FactionRelation.WAR or rel_b == Enums.FactionRelation.WAR:
-			interceptors.append({army_id = army.army_id, faction_id = army.faction_id, hex_pos = army.hex_pos})
+		if rel_a == Enums.FactionRelation.ALLIED or rel_b == Enums.FactionRelation.ALLIED:
+			continue
+		interceptors.append({army_id = army.army_id, faction_id = army.faction_id, hex_pos = army.hex_pos})
 	return interceptors
