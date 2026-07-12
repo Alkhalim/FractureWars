@@ -178,8 +178,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	var def_bonus: int = cmd_bonuses.get("defense_bonus", 0)
 	# Research combat bonuses
 	var r_eff := GameManager.research_system.get_research_effects(ud.faction_id)
-	f.attack = ud.attack + atk_bonus + r_eff.get("unit_attack_bonus", 0)
-	f.defense = ud.melee_defense + def_bonus + r_eff.get("unit_defense_bonus", 0)
+	f.attack = ud.attack + atk_bonus
+	f.attack += int(f.attack * float(r_eff.get("unit_attack_pct", 0)) / 100.0)
+	f.defense = ud.melee_defense + def_bonus
+	f.defense += int(f.defense * float(r_eff.get("unit_defense_pct", 0)) / 100.0)
 
 	# Faction mechanic combat bonuses
 	var fs: FactionState = GameManager.state.faction_states.get(ud.faction_id)

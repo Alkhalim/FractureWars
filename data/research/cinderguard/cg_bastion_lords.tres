@@ -18,4 +18,4 @@ faction_id = &"cinderguard"
 tree_angle = 235.0
 tree_branch = &"garrison_duty"
 socket_realm = 2
-socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }
+socket_bonus = { "unit_attack_pct": 6, "unit_defense_pct": 6 }

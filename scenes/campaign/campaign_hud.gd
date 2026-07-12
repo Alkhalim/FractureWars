@@ -5760,10 +5760,10 @@ class _RadialTechTree extends Control:
 		# Convert technical effect keys into player-friendly descriptions
 		var sign := "+" if value > 0 else ""
 		match key:
-			"unit_attack_bonus": return "All units: %s%d Attack" % [sign, value]
-			"unit_defense_bonus": return "All units: %s%d Defense" % [sign, value]
+			"unit_attack_pct": return "All units: %s%d%% Attack" % [sign, value]
+			"unit_defense_pct": return "All units: %s%d%% Defense" % [sign, value]
 			"unit_speed_bonus": return "All units: %s%d Speed" % [sign, value]
-			"unit_hp_bonus": return "All units: %s%d Max HP" % [sign, value]
+			"unit_hp_pct": return "All units: %s%d%% Max HP" % [sign, value]
 			"unit_morale_bonus": return "All units: %s%d Morale" % [sign, value]
 			"income_gold_pct": return "Gold income: %s%d%%" % [sign, value]
 			"income_food_pct": return "Food income: %s%d%%" % [sign, value]

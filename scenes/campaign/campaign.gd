@@ -4010,10 +4010,10 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	var r_effects := GameManager.research_system.get_research_effects(player_fid)
 	if r_effects.size() > 0:
 		var r_parts: Array[String] = []
-		if r_effects.get("unit_attack_bonus", 0) != 0:
-			r_parts.append("ATK %+d (per entity)" % r_effects["unit_attack_bonus"])
-		if r_effects.get("unit_defense_bonus", 0) != 0:
-			r_parts.append("DEF %+d" % r_effects["unit_defense_bonus"])
+		if r_effects.get("unit_attack_pct", 0) != 0:
+			r_parts.append("ATK %+d%%" % r_effects["unit_attack_pct"])
+		if r_effects.get("unit_defense_pct", 0) != 0:
+			r_parts.append("DEF %+d%%" % r_effects["unit_defense_pct"])
 		if r_parts.size() > 0:
 			bonus_parts.append("Research: " + ", ".join(r_parts))
 

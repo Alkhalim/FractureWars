@@ -18,4 +18,4 @@ faction_id = &"thunderswarm"
 tree_angle = 240
 tree_branch = &"war_fury"
 socket_realm = 2
-socket_bonus = { "unit_attack_bonus": 2, "unit_defense_bonus": 1 }
+socket_bonus = { "unit_attack_pct": 4, "unit_defense_pct": 3 }

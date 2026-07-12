@@ -18,4 +18,4 @@ faction_id = &"sunblessed"
 tree_angle = 115.0
 tree_branch = &"pilgrimage"
 socket_realm = 2
-socket_bonus = { "unit_attack_bonus": 3, "unit_defense_bonus": 2 }
+socket_bonus = { "unit_attack_pct": 6, "unit_defense_pct": 6 }

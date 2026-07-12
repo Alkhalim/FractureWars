@@ -386,8 +386,12 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 
 	# Research combat bonuses
 	var r_eff := GameManager.research_system.get_research_effects(ud.faction_id)
-	f.attack = ud.attack + atk_bonus + r_eff.get("unit_attack_bonus", 0)
-	f.defense = ud.melee_defense + def_bonus + r_eff.get("unit_defense_bonus", 0)
+	# Research bonuses are PERCENTAGES of each unit's own base (readable and
+	# fair across a 15-150 attack range; flat +N was invisible on big units)
+	f.attack = ud.attack + atk_bonus
+	f.attack += int(f.attack * float(r_eff.get("unit_attack_pct", 0)) / 100.0)
+	f.defense = ud.melee_defense + def_bonus
+	f.defense += int(f.defense * float(r_eff.get("unit_defense_pct", 0)) / 100.0)
 	# Additional research effect keys
 	f.ranged_attack_bonus = r_eff.get("unit_ranged_bonus", 0)
 	f.flanking_damage_bonus = r_eff.get("flanking_damage_bonus", 0) / 100.0
@@ -786,9 +790,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	if vet_bonus > 0.0:
 		f.speed += int(float(f.speed) * vet_bonus)
 	f.attack_range = ud.attack_range
-	var hp_bonus: int = r_eff.get("unit_hp_bonus", 0)
-	f.max_hp = unit.current_hp + hp_bonus
-	f.current_hp = unit.current_hp + hp_bonus
+	# HP bonus as % of the squad pool (flat +15 on a 6000 HP squad was nothing)
+	var hp_extra: int = int(unit.current_hp * float(r_eff.get("unit_hp_pct", 0)) / 100.0)
+	f.max_hp = unit.current_hp + hp_extra
+	f.current_hp = unit.current_hp + hp_extra
 	f.move_speed = f.speed * BASE_MOVE_SPEED
 
 	if ud.hp_per_soldier > 0 and ud.squad_size > 1:
