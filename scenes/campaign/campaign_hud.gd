@@ -135,13 +135,20 @@ func _ready() -> void:
 	# Edge-anchored panels sit flush against the screen edges — small gaps
 	# between the gold frame and the screen border read as unfinished.
 	# The army panel docks directly beside the region info panel.
+	# Region info: flush to the bottom-left corner and only as large as its
+	# handful of lines needs (it was a 290x190 box holding six short rows)
 	region_panel.offset_left = 0
 	region_panel.offset_bottom = 0
+	region_panel.offset_top = -150
+	region_panel.offset_right = 232
 	army_panel.anchor_left = 0.0
 	army_panel.anchor_right = 0.0
-	army_panel.offset_left = 302.0
-	army_panel.offset_right = 1142.0
+	army_panel.offset_left = 232.0
+	army_panel.offset_right = 1072.0
 	army_panel.offset_bottom = 0
+	# Collapsed unit cards are half-height, so four fit per row
+	var unit_grid: GridContainer = army_panel.get_node("VBox/UnitScroll/UnitGrid")
+	unit_grid.columns = 4
 
 	# Wire up army panel close button
 	var army_close_btn: Button = army_panel.get_node("VBox/HeaderRow/CloseButton")
@@ -723,7 +730,13 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 	if unit_data.attack_range > 1:
 		_add_stat_label(stat_grid, "RNG", str(unit_data.attack_range), Color(0.8, 0.7, 0.4))
 
-	stats_vbox.add_child(stat_grid)
+	# Detail rows (stats + tags) stay COLLAPSED until the card is hovered, so a
+	# big army fits in the panel without scrolling; hovering expands one card.
+	var details := VBoxContainer.new()
+	details.name = "Details"
+	details.add_theme_constant_override("separation", 2)
+	details.visible = false
+	details.add_child(stat_grid)
 
 	# Tags row
 	if unit_data.tags.size() > 0:
@@ -736,7 +749,17 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 			var tag_color: Color = TAG_COLORS.get(tag, Color(0.5, 0.5, 0.5))
 			tag_label.add_theme_color_override("font_color", tag_color.lightened(0.4))
 			tags_hbox.add_child(tag_label)
-		stats_vbox.add_child(tags_hbox)
+		details.add_child(tags_hbox)
+	stats_vbox.add_child(details)
+
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.mouse_entered.connect(func():
+		details.visible = true
+		portrait_container.custom_minimum_size = Vector2(44, 56))
+	card.mouse_exited.connect(func():
+		details.visible = false
+		portrait_container.custom_minimum_size = Vector2(30, 30))
+	portrait_container.custom_minimum_size = Vector2(30, 30)
 
 	hbox.add_child(stats_vbox)
 
@@ -2332,12 +2355,20 @@ func _create_diplomacy_panel() -> void:
 	_diplomacy_panel.clip_contents = true
 	_diplomacy_panel.add_theme_stylebox_override("panel", _create_panel_style())
 
+	# Two columns: the faction list stays left-bound, and the empty right half
+	# now holds a world map of everything you have explored
+	var columns := HBoxContainer.new()
+	columns.name = "Columns"
+	columns.add_theme_constant_override("separation", 14)
+	_diplomacy_panel.add_child(columns)
+
 	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(780, 0)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.clip_contents = true
-	_diplomacy_panel.add_child(scroll)
+	columns.add_child(scroll)
 
 	var vbox := VBoxContainer.new()
 	vbox.name = "DiplomacyVBox"
@@ -2345,7 +2376,113 @@ func _create_diplomacy_panel() -> void:
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(vbox)
 
+	var map_chip := _make_text_chip()
+	map_chip.name = "MapChip"
+	map_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	map_chip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	columns.add_child(map_chip)
+
+	_diplo_world_map = _DiploWorldMap.new()
+	_diplo_world_map.name = "WorldMap"
+	_diplo_world_map.hud_ref = self
+	_diplo_world_map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_diplo_world_map.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map_chip.add_child(_diplo_world_map)
+
 	add_child(_diplomacy_panel)
+
+var _diplo_world_map: Control = null
+
+## Political map of the explored world shown beside the faction list. Reveals
+## nothing new: unexplored tiles stay dark. Hover highlights a faction's
+## territory, clicking opens its detail page (with the diplomacy actions).
+class _DiploWorldMap extends Control:
+	var hud_ref: Control
+	var _hover_faction: StringName = &""
+	var _cell := Vector2.ZERO
+	var _origin := Vector2.ZERO
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func _layout() -> void:
+		var w := float(HexMapData.MAP_WIDTH)
+		var h := float(HexMapData.MAP_HEIGHT)
+		var s := minf(size.x / w, size.y / h)
+		_cell = Vector2(s, s)
+		_origin = (size - Vector2(w * s, h * s)) * 0.5
+
+	func _tile_at(pos: Vector2) -> Vector2i:
+		if _cell.x <= 0.0:
+			return Vector2i(-1, -1)
+		var rel := pos - _origin
+		return Vector2i(int(rel.x / _cell.x), int(rel.y / _cell.y))
+
+	func _owner_at(coord: Vector2i) -> StringName:
+		var hex_map = GameManager.state.hex_map
+		if hex_map == null:
+			return &""
+		var tile = hex_map.tiles.get(coord)
+		return tile.owner_faction if tile else &""
+
+	func _draw() -> void:
+		_layout()
+		var hex_map = GameManager.state.hex_map
+		if hex_map == null or _cell.x <= 0.0:
+			return
+		var player_id := GameManager.state.player_faction_id
+		draw_rect(Rect2(_origin, Vector2(HexMapData.MAP_WIDTH * _cell.x, HexMapData.MAP_HEIGHT * _cell.y)),
+			Color(0.06, 0.05, 0.05, 0.9))
+		for coord in hex_map.tiles:
+			if not GameManager.explored_tiles.has(coord):
+				continue  # never reveal anything the player has not seen
+			var tile = hex_map.tiles[coord]
+			var col: Color
+			var owner: StringName = tile.owner_faction
+			if owner != &"":
+				var fd: FactionData = DataManager.get_faction(owner)
+				col = fd.color if fd else Color(0.6, 0.6, 0.6)
+				if _hover_faction != &"" and owner != _hover_faction:
+					col = col.darkened(0.55)
+				col.a = 0.95
+			else:
+				col = Color(0.3, 0.3, 0.28, 0.55) if tile.terrain != Enums.TerrainType.WATER else Color(0.16, 0.22, 0.34, 0.7)
+			var p := _origin + Vector2(float(coord.x) * _cell.x, float(coord.y) * _cell.y)
+			draw_rect(Rect2(p, _cell), col)
+		# Your own capital marker
+		for city_id in GameManager.state.cities:
+			var city: CityState = GameManager.state.cities[city_id]
+			if not GameManager.explored_tiles.has(city.hex_pos):
+				continue
+			if city.faction_id != player_id and not city.is_capital:
+				continue
+			var cp := _origin + Vector2(float(city.hex_pos.x) * _cell.x, float(city.hex_pos.y) * _cell.y) + _cell * 0.5
+			draw_circle(cp, maxf(2.0, _cell.x * 0.8), Color(0.05, 0.04, 0.03, 0.9))
+			draw_circle(cp, maxf(1.4, _cell.x * 0.55), Color(0.95, 0.85, 0.35) if city.is_capital else Color(0.9, 0.9, 0.9))
+		# Hovered faction name
+		if _hover_faction != &"":
+			var fd2: FactionData = DataManager.get_faction(_hover_faction)
+			var nm: String = fd2.display_name if fd2 else String(_hover_faction)
+			var font := ThemeDB.fallback_font
+			draw_string_outline(font, Vector2(8, size.y - 10), nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 3, Color(0, 0, 0, 0.9))
+			draw_string(font, Vector2(8, size.y - 10), nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 15,
+				fd2.color if fd2 else Color.WHITE)
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseMotion:
+			var coord := _tile_at(event.position)
+			var owner := &"" if not GameManager.explored_tiles.has(coord) else _owner_at(coord)
+			if owner != _hover_faction:
+				_hover_faction = owner
+				queue_redraw()
+		elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			if _hover_faction != &"" and _hover_faction != GameManager.state.player_faction_id and hud_ref:
+				AudioManager.play_sfx(&"ui_click")
+				hud_ref._open_diplo_faction_detail(_hover_faction)
+
+func _open_diplo_faction_detail(faction_id: StringName) -> void:
+	_diplo_detail_faction = faction_id
+	_refresh_diplomacy_panel()
 
 func _hide_game_panels_for_overlay() -> void:
 	_hidden_army_panel = army_panel.visible
@@ -2397,10 +2534,11 @@ const RELATION_COLORS := {
 }
 
 func _refresh_diplomacy_panel() -> void:
-	var scroll: ScrollContainer = _diplomacy_panel.get_child(0)
-	var vbox: VBoxContainer = scroll.get_node("DiplomacyVBox")
+	var vbox: VBoxContainer = _diplomacy_panel.get_node("Columns/Scroll/DiplomacyVBox")
 	for child in vbox.get_children():
 		child.queue_free()
+	if _diplo_world_map:
+		_diplo_world_map.queue_redraw()
 
 	# If viewing a faction detail, show that instead
 	if _diplo_detail_faction != &"":
@@ -2409,10 +2547,10 @@ func _refresh_diplomacy_panel() -> void:
 
 	_create_panel_header(vbox, "Diplomacy", _diplomacy_panel)
 
-	# Tab buttons
+	# Tab buttons (left-bound with the rest of the list)
 	var tab_row := HBoxContainer.new()
 	tab_row.add_theme_constant_override("separation", 4)
-	tab_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	tab_row.alignment = BoxContainer.ALIGNMENT_BEGIN
 	var tab_names := ["Major Factions", "Minor Factions", "Independent Cities"]
 	for i in tab_names.size():
 		var tab_btn := Button.new()
@@ -6555,10 +6693,18 @@ func _create_policies_panel() -> void:
 	_policies_panel.clip_contents = true
 	_policies_panel.add_theme_stylebox_override("panel", _create_panel_style())
 
+	# Dark chip fills the window so no senate text sits on raw leather
+	var chip := _make_text_chip()
+	chip.name = "Chip"
+	chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chip.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_policies_panel.add_child(chip)
+
 	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_policies_panel.add_child(scroll)
+	chip.add_child(scroll)
 
 	var vbox := VBoxContainer.new()
 	vbox.name = "PoliciesVBox"
@@ -6582,8 +6728,7 @@ func _toggle_policies_panel() -> void:
 		tw.tween_property(_policies_panel, "modulate:a", 1.0, 0.2)
 
 func _refresh_policies_panel() -> void:
-	var scroll: ScrollContainer = _policies_panel.get_child(0)
-	var vbox: VBoxContainer = scroll.get_node("PoliciesVBox")
+	var vbox: VBoxContainer = _policies_panel.get_node("Chip/Scroll/PoliciesVBox")
 	for child in vbox.get_children():
 		child.queue_free()
 
@@ -6750,8 +6895,11 @@ func _refresh_policies_panel() -> void:
 			var data: PolicyData = DataManager.get_policy(active_in_cat)
 			if data:
 				var row := HBoxContainer.new()
+				row.add_theme_constant_override("separation", 12)
 				var info := VBoxContainer.new()
-				info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				# Deliberately NOT expanding: the action button must sit right
+				# next to the policy it belongs to, not drift to the far edge
+				info.custom_minimum_size = Vector2(420, 0)
 				var p_name := Label.new()
 				p_name.text = data.display_name + " [ACTIVE]"
 				p_name.add_theme_font_size_override("font_size", 12)
@@ -6771,6 +6919,9 @@ func _refresh_policies_panel() -> void:
 					GameManager.policy_system.revoke_policy(player_id, pid)
 					_refresh_policies_panel())
 				row.add_child(revoke_btn)
+				var rspacer := Control.new()
+				rspacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(rspacer)
 				vbox.add_child(row)
 
 		# Available policies in this category
@@ -6784,8 +6935,9 @@ func _refresh_policies_panel() -> void:
 				continue
 
 			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 12)
 			var info := VBoxContainer.new()
-			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			info.custom_minimum_size = Vector2(420, 0)
 			var p_name := Label.new()
 			p_name.text = data.display_name
 			p_name.add_theme_font_size_override("font_size", 12)
@@ -6833,6 +6985,9 @@ func _refresh_policies_panel() -> void:
 				GameManager.policy_system.enact_policy(player_id, pid)
 				_refresh_policies_panel())
 			row.add_child(enact_btn)
+			var espacer := Control.new()
+			espacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(espacer)
 			vbox.add_child(row)
 
 		_add_separator(vbox)
@@ -9008,23 +9163,25 @@ func _create_commander_panel() -> void:
 
 	commander_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	commander_panel.add_child(scroll)
-
+	# Chip is the panel's direct child so it FILLS the window (inside a
+	# ScrollContainer it only ever grew to the height of its text)
 	var cmd_chip := _make_text_chip()
 	cmd_chip.name = "Chip"
 	cmd_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	# Chip fills the whole window, not just its text's height
 	cmd_chip.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.add_child(cmd_chip)
+	commander_panel.add_child(cmd_chip)
+
+	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	cmd_chip.add_child(scroll)
 
 	var vbox := VBoxContainer.new()
 	vbox.name = "CommanderVBox"
 	vbox.add_theme_constant_override("separation", 4)
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cmd_chip.add_child(vbox)
+	scroll.add_child(vbox)
 
 	add_child(commander_panel)
 
@@ -9066,8 +9223,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 	commander_panel.modulate = Color(1, 1, 1, 0)
 	var _cp_tw := create_tween()
 	_cp_tw.tween_property(commander_panel, "modulate:a", 1.0, 0.2)
-	var scroll: ScrollContainer = commander_panel.get_child(0)
-	var vbox: VBoxContainer = scroll.get_node("Chip/CommanderVBox")
+	var vbox: VBoxContainer = commander_panel.get_node("Chip/Scroll/CommanderVBox")
 	for child in vbox.get_children():
 		vbox.remove_child(child)
 		child.queue_free()
