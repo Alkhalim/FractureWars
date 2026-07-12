@@ -309,6 +309,12 @@ func _start_faction_turn() -> void:
 	var faction_id := faction_order[current_faction_index]
 	is_player_turn = (faction_id == GameManager.state.player_faction_id)
 	_ai_wait_counter = 0
+	if is_player_turn:
+		is_processing_round = false
+	else:
+		# Yield at least once per AI faction: keeps the window pumping OS
+		# messages (no "not responding") and lets the busy overlay repaint
+		await get_tree().process_frame
 
 	# Refresh caches for this faction's turn
 	GameManager.movement_system.refresh_caches()
@@ -396,9 +402,15 @@ func _start_faction_turn() -> void:
 		else:
 			_execute_ai_turn(faction_id)
 
+## True while the AI round is being processed — blocks re-entrant end-turn
+## presses (click-spamming during the busy phase could corrupt the faction
+## index or stack multiple round advances)
+var is_processing_round := false
+
 func _on_end_turn_pressed() -> void:
-	if not is_player_turn:
+	if not is_player_turn or is_processing_round:
 		return
+	is_processing_round = true
 	_end_current_faction_turn()
 
 func _end_current_faction_turn() -> void:

@@ -2679,19 +2679,19 @@ func _create_building_tile_markers() -> void:
 		for bid in city.building_tiles:
 			var tile_pos: Vector2i = city.building_tiles[bid]
 			var building: BuildingData = DataManager.get_building(bid)
-			_add_building_path(city_px, _hex_to_pixel(tile_pos))
+			_add_building_path(city_px, _hex_to_pixel(tile_pos), city.faction_id, tile_pos)
 			_add_building_tile_marker(tile_pos, building, faction_color, false, city.faction_id)
 
 		# Draw markers for buildings under construction
 		for item in city.build_queue:
 			if item.has("tile_pos"):
 				var building: BuildingData = DataManager.get_building(item.building_id)
-				_add_building_path(city_px, _hex_to_pixel(item.tile_pos))
+				_add_building_path(city_px, _hex_to_pixel(item.tile_pos), city.faction_id, item.tile_pos)
 				_add_building_tile_marker(item.tile_pos, building, faction_color, true, city.faction_id)
 
 ## Realistically squiggly dirt path from the city footprint to a building pad.
 ## World-position sine noise keeps it deterministic and organic.
-func _add_building_path(from: Vector2, to: Vector2) -> void:
+func _add_building_path(from: Vector2, to: Vector2, faction_id: StringName = &"", bhex: Vector2i = Vector2i(-1, -1)) -> void:
 	var dirv := to - from
 	var lenv := dirv.length()
 	if lenv < 1.0:
@@ -2716,6 +2716,8 @@ func _add_building_path(from: Vector2, to: Vector2) -> void:
 	l.joint_mode = Line2D.LINE_JOINT_ROUND
 	l.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	l.end_cap_mode = Line2D.LINE_CAP_ROUND
+	l.set_meta("faction_id", faction_id)
+	l.set_meta("hex_pos", bhex)
 	_building_paths_node.add_child(l)
 
 ## Upgrade tier of a building (1 = base, 2/3 = upgraded versions) — drives the
@@ -5406,6 +5408,20 @@ func _update_fog_of_war() -> void:
 				bmarker.modulate = Color(0.5, 0.5, 0.5, 0.6)
 			else:
 				bmarker.visible = false
+
+	# Building paths follow the same fog rules as the building they lead to —
+	# a road must never betray an unspotted city or building
+	if is_instance_valid(_building_paths_node):
+		for pline in _building_paths_node.get_children():
+			var pfaction: StringName = pline.get_meta("faction_id", &"")
+			if pfaction == player_id:
+				pline.visible = true
+				continue
+			var phex: Vector2i = pline.get_meta("hex_pos", Vector2i(-1, -1))
+			var p_in_los: bool = bool(_visible_tile_cache.get(phex, false)) if _fog_of_war_enabled else true
+			var p_explored := GameManager.explored_tiles.has(phex)
+			pline.visible = p_in_los or p_explored
+			pline.modulate = Color.WHITE if p_in_los else Color(0.5, 0.5, 0.5, 0.6)
 
 	# Show/hide elderbeast markers — only in current LOS
 	for beast_id in _elderbeast_markers:

@@ -164,6 +164,10 @@ func _ready() -> void:
 var _pause_panel: PanelContainer
 
 func _unhandled_input(event: InputEvent) -> void:
+	# While the AI round runs, swallow hotkeys too (saves/loads mid-round
+	# would corrupt the faction index)
+	if _turn_busy_overlay and _turn_busy_overlay.visible:
+		return
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_F5:
 			GameManager.save_game(1)
@@ -278,8 +282,53 @@ func _toggle_pause_menu() -> void:
 	)
 	vbox.add_child(main_menu_btn)
 
+var _turn_busy_overlay: Control = null
+
+## Full-screen input blocker + "Calculating turn" notice shown while the AI
+## round processes — prevents the click-spam that froze/crashed the game
+func _show_turn_busy_overlay() -> void:
+	if _turn_busy_overlay == null:
+		_turn_busy_overlay = Control.new()
+		_turn_busy_overlay.name = "TurnBusyOverlay"
+		_turn_busy_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_turn_busy_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+		var dim := ColorRect.new()
+		dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+		dim.color = Color(0, 0, 0, 0.25)
+		dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_turn_busy_overlay.add_child(dim)
+		var chip := _make_text_chip()
+		chip.set_anchors_preset(Control.PRESET_CENTER)
+		chip.anchor_left = 0.5
+		chip.anchor_right = 0.5
+		chip.anchor_top = 0.5
+		chip.anchor_bottom = 0.5
+		chip.offset_left = -130
+		chip.offset_right = 130
+		chip.offset_top = -28
+		chip.offset_bottom = 28
+		chip.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		chip.grow_vertical = Control.GROW_DIRECTION_BOTH
+		var lbl := Label.new()
+		lbl.name = "BusyLabel"
+		lbl.text = "Calculating turn…"
+		lbl.add_theme_font_size_override("font_size", 17)
+		lbl.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		chip.add_child(lbl)
+		_turn_busy_overlay.add_child(chip)
+		add_child(_turn_busy_overlay)
+	_turn_busy_overlay.move_to_front()
+	_turn_busy_overlay.visible = true
+
+func _hide_turn_busy_overlay() -> void:
+	if _turn_busy_overlay:
+		_turn_busy_overlay.visible = false
+
 func _on_end_turn() -> void:
-	if TurnManager.is_player_turn:
+	if TurnManager.is_player_turn and not TurnManager.is_processing_round:
+		_show_turn_busy_overlay()
 		EventBus.end_turn_pressed.emit()
 
 func _update_top_bar() -> void:
@@ -1004,6 +1053,8 @@ func _on_turn_started(_turn: int, _faction_id: StringName) -> void:
 	_update_top_bar()
 	_update_resource_display()
 	end_turn_button.disabled = not TurnManager.is_player_turn
+	if TurnManager.is_player_turn:
+		_hide_turn_busy_overlay()
 	# Show/hide AI speed controls
 	var ai_visible := not TurnManager.is_player_turn
 	if _skip_ai_btn:
@@ -2197,6 +2248,24 @@ func _make_close_button(callback: Callable, btn_size: Vector2 = Vector2(30, 30))
 
 ## Dark translucent backing panel — put text content on this instead of
 ## directly on the leather panel texture.
+## Skins an OptionButton's popup to the game language (vanilla PopupMenu is
+## grey/white and clashes with everything)
+func _style_option_popup(ob: OptionButton) -> void:
+	var pm := ob.get_popup()
+	var pstyle := StyleBoxFlat.new()
+	pstyle.bg_color = Color(0.08, 0.07, 0.1, 0.97)
+	pstyle.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	pstyle.set_border_width_all(1)
+	pstyle.set_corner_radius_all(4)
+	pstyle.set_content_margin_all(4)
+	pm.add_theme_stylebox_override("panel", pstyle)
+	var hstyle := StyleBoxFlat.new()
+	hstyle.bg_color = Color(0.78, 0.62, 0.32, 0.25)
+	hstyle.set_corner_radius_all(3)
+	pm.add_theme_stylebox_override("hover", hstyle)
+	pm.add_theme_color_override("font_color", Color(0.88, 0.84, 0.74))
+	pm.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.8))
+
 func _make_text_chip_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.05, 0.04, 0.03, 0.72)
@@ -3722,6 +3791,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			give_lbl.custom_minimum_size = Vector2(70, 0)
 			give_row.add_child(give_lbl)
 			var give_res := OptionButton.new()
+			_style_option_popup(give_res)
 			for entry in trade_res_entries:
 				give_res.add_icon_item(GameManager.get_resource_icon(entry.id), entry.name, entry.id)
 			give_res.custom_minimum_size = Vector2(90, 0)
@@ -3751,6 +3821,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			recv_lbl.custom_minimum_size = Vector2(70, 0)
 			recv_row.add_child(recv_lbl)
 			var recv_res := OptionButton.new()
+			_style_option_popup(recv_res)
 			for entry in trade_res_entries:
 				recv_res.add_icon_item(GameManager.get_resource_icon(entry.id), entry.name, entry.id)
 			recv_res.custom_minimum_size = Vector2(90, 0)
@@ -3837,6 +3908,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				g_res_lbl.custom_minimum_size = Vector2(70, 0)
 				g_res_row.add_child(g_res_lbl)
 				var g_res_opt := OptionButton.new()
+				_style_option_popup(g_res_opt)
 				for entry in trade_res_entries:
 					g_res_opt.add_icon_item(GameManager.get_resource_icon(entry.id), entry.name, entry.id)
 				g_res_opt.custom_minimum_size = Vector2(90, 0)
@@ -3943,6 +4015,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			d_res_lbl.custom_minimum_size = Vector2(70, 0)
 			d_res_row.add_child(d_res_lbl)
 			var d_res_opt := OptionButton.new()
+			_style_option_popup(d_res_opt)
 			for entry in trade_res_entries:
 				d_res_opt.add_item(entry.name, entry.id)
 			d_res_opt.custom_minimum_size = Vector2(90, 0)
@@ -3995,6 +4068,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			oc_lbl.custom_minimum_size = Vector2(70, 0)
 			oc_row.add_child(oc_lbl)
 			var oc_opt := OptionButton.new()
+			_style_option_popup(oc_opt)
 			oc_opt.custom_minimum_size = Vector2(180, 0)
 			var oc_cities: Array = []
 			if player_fs:
@@ -4031,6 +4105,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 			dc_lbl.custom_minimum_size = Vector2(70, 0)
 			dc_row.add_child(dc_lbl)
 			var dc_opt := OptionButton.new()
+			_style_option_popup(dc_opt)
 			dc_opt.custom_minimum_size = Vector2(180, 0)
 			var target_fs: FactionState = GameManager.state.faction_states.get(faction_id)
 			var dc_cities: Array = []
@@ -4610,6 +4685,7 @@ func _on_diplomacy_open_gift(target: StringName) -> void:
 		res_lbl.add_theme_font_size_override("font_size", 12)
 		vbox.add_child(res_lbl)
 		var res_option := OptionButton.new()
+		_style_option_popup(res_option)
 		res_option.name = "GiftRes"
 		for entry in gift_res_entries:
 			res_option.add_item(entry.name, entry.id)
@@ -4895,6 +4971,7 @@ func _on_diplomacy_open_trade(target: StringName) -> void:
 	offer_row.add_theme_constant_override("separation", 6)
 	vbox.add_child(offer_row)
 	var give_res_option := OptionButton.new()
+	_style_option_popup(give_res_option)
 	give_res_option.name = "GiveRes"
 	for entry in trade_res_entries:
 		give_res_option.add_item(entry.name, entry.id)
@@ -4918,6 +4995,7 @@ func _on_diplomacy_open_trade(target: StringName) -> void:
 	recv_row.add_theme_constant_override("separation", 6)
 	vbox.add_child(recv_row)
 	var recv_res_option := OptionButton.new()
+	_style_option_popup(recv_res_option)
 	recv_res_option.name = "RecvRes"
 	for entry in trade_res_entries:
 		recv_res_option.add_item(entry.name, entry.id)
@@ -8149,7 +8227,8 @@ func _get_building_effects_summary(building: BuildingData, bbcode_icons := false
 	if building.population_growth_bonus > 0:
 		parts.append("+%d Growth" % building.population_growth_bonus)
 	if building.defense_bonus > 0:
-		parts.append("+%d Def" % building.defense_bonus)
+		# Fortification = harder to siege + defensive structures on the battle map
+		parts.append("+%d Fortification" % building.defense_bonus)
 	for se_key in building.special_effects:
 		parts.append(_format_building_special_effect(se_key, building.special_effects[se_key]))
 	if building.unlocks_units.size() > 0:
@@ -8188,7 +8267,7 @@ static func _format_building_special_effect(key: String, value) -> String:
 		"imperial_authority_bonus": return "+%d Imperial Authority" % [int(value)]
 		"lunar_phase_tech_bonus": return "+%d Lunar Phase Tech Bonus" % [int(value)]
 		"recruit_cost_discount_pct": return "-%d%% Recruit Costs" % [int(value)]
-		"garrison_strength_bonus": return "+%d%% Garrison Strength" % [int(value)]
+		"garrison_strength_bonus": return "+%d Garrison Militia" % [int(float(value) * 10)]
 		"commander_xp_bonus": return "+%d%% Commander XP" % [int(value)]
 		"diplomacy_standing_bonus": return "+%d Diplomacy Standing/turn" % [int(value)]
 		"region_population_growth_bonus": return "+%d Regional Growth" % [int(value)]
@@ -8814,6 +8893,8 @@ func _create_commander_panel() -> void:
 	var cmd_chip := _make_text_chip()
 	cmd_chip.name = "Chip"
 	cmd_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Chip fills the whole window, not just its text's height
+	cmd_chip.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.add_child(cmd_chip)
 
 	var vbox := VBoxContainer.new()
@@ -8901,6 +8982,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 				vbox.add_child(assign_label)
 
 				var dropdown := OptionButton.new()
+				_style_option_popup(dropdown)
 				dropdown.add_theme_font_size_override("font_size", 12)
 				dropdown.custom_minimum_size = Vector2(200, 28)
 				dropdown.add_item("-- Select --")
@@ -9498,7 +9580,10 @@ func _show_follower_assign_panel(commander: CommanderState, army_id: StringName)
 	_item_swap_panel.add_theme_stylebox_override("panel", style)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(260, 0)
+	# Height must track content or the PanelContainer collapses to a sliver
+	# (this was the "narrow empty assign window" bug)
+	var est_h := 60 + fs.follower_storage.size() * 72
+	scroll.custom_minimum_size = Vector2(260, minf(420, est_h))
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_item_swap_panel.add_child(scroll)

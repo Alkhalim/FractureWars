@@ -85,7 +85,7 @@ const _BTN_REGION := Rect2(140, 325, 1287, 314)   # Visible button area, 3px ble
 const _BTN_MARGIN := 24                            # Border thickness in cropped region
 const _FRAME_REGION := Rect2(76, 99, 1360, 731)   # Gold frame + 40px glow on all sides
 const _FRAME_TEX_MARGIN := Vector4(86, 84, 59, 53) # L T R B — glow + gold border + bevel
-const _FRAME_EXPAND := Vector4(46, 44, 45, 45)    # L T R B — measured so the gold border sits exactly on the panel edge (flush panels touch the screen border)
+const _FRAME_EXPAND := Vector4(80, 76, 56, 33)    # L T R B — alpha-scanned so the SOLID gold border lands exactly on the panel rect edge (flush panels truly touch the screen border)
 const _FRAME_CONTENT := Vector4(66, 62, 48, 42)   # L T R B — text padding inside border
 const _NOTIF_REGION := Rect2(160, 29, 1214, 827)  # Columns/eagle + 30px glow
 const _NOTIF_TEX_MARGIN := Vector4(89, 188, 89, 83) # L T R B — columns + eagle + medallion
@@ -1262,6 +1262,39 @@ func _init_shardhorde_armies(_occupied_tiles: Dictionary = {}) -> void:
 		beast2.commander.is_elderbeast = true
 		raider.commander = beast2.commander
 		raider.commander_name = beast2.commander.name
+
+	# Shardhorde MINOR hordes: nomadic with no cities, so without a starting
+	# warband they were "defeated" on turn 1 before ever acting
+	var minor_hordes := {
+		&"icebound": [&"frost_swarmling", &"frost_swarmling", &"ice_hunter", &"war_yak"],
+		&"splinterbrood": [&"splinter_drone", &"splinter_drone", &"shard_swarm", &"splinter_spitter"],
+	}
+	for horde_id in minor_hordes:
+		if not state.faction_states.has(horde_id):
+			continue
+		var spawn := _find_minor_horde_spawn(horde_id)
+		var warband := _create_army(horde_id, spawn, minor_hordes[horde_id])
+		warband.commander = _create_commander(horde_id)
+		warband.commander_name = warband.commander.name
+		state.armies[warband.army_id] = warband
+
+## Spawn point for a nomadic minor horde: a shard-wastes tile far from player
+## start if possible, otherwise a map-quadrant fallback
+func _find_minor_horde_spawn(horde_id: StringName) -> Vector2i:
+	var candidates: Array[Vector2i] = []
+	for coord in state.hex_map.tiles:
+		var tile = state.hex_map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.SHARD_WASTES:
+			candidates.append(coord)
+	if candidates.is_empty():
+		for coord in state.hex_map.tiles:
+			var tile = state.hex_map.tiles[coord]
+			if tile.terrain != Enums.TerrainType.WATER and tile.terrain != Enums.TerrainType.MOUNTAINS:
+				candidates.append(coord)
+	if candidates.is_empty():
+		return Vector2i(HexMapData.MAP_WIDTH / 2, HexMapData.MAP_HEIGHT / 2)
+	# Deterministic per horde: hash the id into the candidate list
+	return candidates[absi(hash(horde_id)) % candidates.size()]
 
 func _find_unoccupied_spawn(center: Vector2i, occupied_tiles: Dictionary) -> Vector2i:
 	# Build set of city hexes to avoid spawning armies inside cities
