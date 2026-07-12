@@ -2124,6 +2124,10 @@ func _town_building(marker: Node2D, rng: RandomNumberGenerator, hut: String, gro
 			_marker_poly(marker, PackedVector2Array([pos - hl - hw, pos + hl - hw, pos + hl, pos - hl]), roof.lightened(0.12))
 			_marker_poly(marker, PackedVector2Array([pos - hl, pos + hl, pos + hl + hw, pos - hl + hw]), roof.darkened(0.16))
 			_marker_line(marker, PackedVector2Array([pos - hl, pos + hl]), roof.darkened(0.35), 0.7)
+			# Chimney + skylight detail on larger roofs
+			if s >= 2.4:
+				_marker_poly(marker, _ellipse_pts(pos - hl * 0.55 - hw * 0.4, s * 0.22, s * 0.22, 6), Color(0.3, 0.26, 0.22))
+				_marker_poly(marker, _ellipse_pts(pos + hl * 0.45 - hw * 0.35, s * 0.16, s * 0.16, 5), roof.lightened(0.3))
 
 ## Curtain wall ring with a south gate gap; style decides the material
 func _town_wall(marker: Node2D, style: String, R: float, level: int) -> void:
@@ -2387,6 +2391,15 @@ func _draw_city_art(marker: Node2D, culture: StringName, fc: Color, is_capital: 
 	_marker_line(marker, PackedVector2Array([Vector2(0, R * 1.1), Vector2(0, plaza_r * 0.4)]),
 		ground.darkened(0.18), 2.4)
 	_marker_poly(marker, _ellipse_pts(Vector2.ZERO, plaza_r + 1.6, plaza_r + 1.3, 12), ground.lightened(0.1))
+	# Market clutter on the plaza edge from level 2 (crates and barrels)
+	if level >= 2:
+		for i in 2 + level / 2:
+			var ca := rng.randf() * TAU
+			var cp := Vector2(cos(ca), sin(ca)) * (plaza_r * 0.75)
+			if i % 2 == 0:
+				_town_sq(marker, cp, 1.1, ca, Color(0.5, 0.38, 0.24))
+			else:
+				_marker_poly(marker, _ellipse_pts(cp, 1.2, 1.2, 6), Color(0.44, 0.32, 0.2))
 	# Buildings around the plaza (a second outer ring from level 4); the
 	# south corridor stays clear so the road reads
 	var count: int = [3, 5, 7, 9, 11][clampi(level, 1, 5) - 1]
@@ -2730,6 +2743,76 @@ func _add_building_path(from: Vector2, to: Vector2, faction_id: StringName = &""
 	l.set_meta("hex_pos", bhex)
 	_building_paths_node.add_child(l)
 
+## Small keyword-derived symbol stamped beside the structure. This is what
+## makes each building TYPE visually unique without hand-authoring 248 sprites.
+func _building_emblem(marker: Node2D, building: BuildingData, s: float, rng: RandomNumberGenerator) -> void:
+	if building == null:
+		return
+	var key := String(building.id)
+	var ep := Vector2(s * 1.5, s * 1.3)  # emblem pad, SE of the structure
+	if key.contains("forge") or key.contains("smelt") or key.contains("foundry") or key.contains("kiln") or key.contains("workshop"):
+		# Anvil + ember glow
+		_marker_poly(marker, PackedVector2Array([
+			ep + Vector2(-2.6, 0.4), ep + Vector2(2.8, 0.4), ep + Vector2(1.8, -1.4), ep + Vector2(-1.4, -1.4)
+		]), Color(0.2, 0.18, 0.17))
+		_marker_poly(marker, _ellipse_pts(ep + Vector2(0, 1.4), 1.6, 0.7, 6), Color(0.95, 0.5, 0.15, 0.8))
+	elif key.contains("market") or key.contains("bazaar") or key.contains("trade") or key.contains("exchange") or key.contains("emporium") or key.contains("caravansary"):
+		# Striped stall awning
+		_marker_poly(marker, PackedVector2Array([
+			ep + Vector2(-2.8, -1.8), ep + Vector2(2.8, -1.8), ep + Vector2(2.8, 1.8), ep + Vector2(-2.8, 1.8)
+		]), Color(0.85, 0.82, 0.72))
+		for k in 2:
+			var sx := -1.7 + float(k) * 2.2
+			_marker_poly(marker, PackedVector2Array([
+				ep + Vector2(sx, -1.8), ep + Vector2(sx + 1.1, -1.8), ep + Vector2(sx + 1.1, 1.8), ep + Vector2(sx, 1.8)
+			]), Color(0.75, 0.28, 0.22))
+	elif key.contains("temple") or key.contains("shrine") or key.contains("altar") or key.contains("sanctum") or key.contains("cathedral") or key.contains("court"):
+		# Gold finial star
+		for i in 4:
+			var a := TAU * float(i) / 4.0 + PI / 4.0
+			_marker_line(marker, PackedVector2Array([ep, ep + Vector2(cos(a), sin(a)) * 2.6]), _MARKER_GOLD, 1.2)
+		_marker_poly(marker, _ellipse_pts(ep, 1.1, 1.1, 6), _MARKER_GOLD)
+	elif key.contains("farm") or key.contains("orchard") or key.contains("grove") or key.contains("garden") or key.contains("pasture") or key.contains("ranch") or key.contains("harvest") or key.contains("field"):
+		# Green sprout row
+		for k in 3:
+			var sp := ep + Vector2(float(k - 1) * 2.2, rng.randf_range(-0.6, 0.6))
+			_marker_poly(marker, _ellipse_pts(sp, 1.0, 1.0, 6), Color(0.35, 0.55, 0.25))
+			_marker_line(marker, PackedVector2Array([sp, sp + Vector2(0, 1.6)]), Color(0.3, 0.42, 0.2), 0.8)
+	elif key.contains("mine") or key.contains("quarry") or key.contains("pit") or key.contains("vein"):
+		# Rock pile
+		_marker_poly(marker, _ellipse_pts(ep + Vector2(-1.2, 0.4), 1.6, 1.3, 7), _MARKER_STONE)
+		_marker_poly(marker, _ellipse_pts(ep + Vector2(1.3, 0.6), 1.3, 1.0, 7), _MARKER_STONE_LIGHT)
+		_marker_poly(marker, _ellipse_pts(ep + Vector2(0.2, -0.9), 1.1, 0.9, 7), _MARKER_STONE)
+	elif key.contains("academ") or key.contains("librar") or key.contains("scriptorium") or key.contains("codex") or key.contains("observ") or key.contains("scholar") or key.contains("lodge"):
+		# Open book
+		_marker_poly(marker, PackedVector2Array([
+			ep + Vector2(-2.6, -1.2), ep + Vector2(-0.2, -0.6), ep + Vector2(-0.2, 1.6), ep + Vector2(-2.6, 1.0)
+		]), Color(0.9, 0.87, 0.78))
+		_marker_poly(marker, PackedVector2Array([
+			ep + Vector2(2.6, -1.2), ep + Vector2(0.2, -0.6), ep + Vector2(0.2, 1.6), ep + Vector2(2.6, 1.0)
+		]), Color(0.82, 0.79, 0.7))
+	elif key.contains("pens") or key.contains("stable") or key.contains("roost") or key.contains("lair") or key.contains("aviary") or key.contains("den") or key.contains("kennel") or key.contains("hatchery"):
+		# Paw print
+		_marker_poly(marker, _ellipse_pts(ep + Vector2(0, 0.6), 1.3, 1.1, 7), Color(0.25, 0.2, 0.16))
+		for k in 3:
+			var a := -PI * 0.75 + float(k) * PI * 0.25
+			_marker_poly(marker, _ellipse_pts(ep + Vector2(cos(a), sin(a)) * 1.9, 0.55, 0.55, 5), Color(0.25, 0.2, 0.16))
+	elif key.contains("well") or key.contains("spring") or key.contains("oasis") or key.contains("cistern") or key.contains("canal"):
+		# Water droplet
+		_marker_poly(marker, _ellipse_pts(ep + Vector2(0, 0.5), 1.5, 1.5, 8), Color(0.35, 0.55, 0.8))
+		_marker_poly(marker, PackedVector2Array([ep + Vector2(-1.1, 0.1), ep + Vector2(0, -2.2), ep + Vector2(1.1, 0.1)]), Color(0.35, 0.55, 0.8))
+	elif key.contains("wall") or key.contains("bastion") or key.contains("rampart") or key.contains("fortress") or key.contains("citadel") or key.contains("barricade"):
+		# Crenellated wall stub
+		_marker_poly(marker, PackedVector2Array([
+			ep + Vector2(-2.6, 1.4), ep + Vector2(2.6, 1.4), ep + Vector2(2.6, -0.6), ep + Vector2(-2.6, -0.6)
+		]), _MARKER_STONE)
+		for k in 3:
+			var tx := -1.8 + float(k) * 1.8
+			_marker_poly(marker, PackedVector2Array([
+				ep + Vector2(tx - 0.5, -0.6), ep + Vector2(tx + 0.5, -0.6), ep + Vector2(tx + 0.5, -1.6), ep + Vector2(tx - 0.5, -1.6)
+			]), _MARKER_STONE_LIGHT)
+	# (no match: the structure + roof shade variation already carry identity)
+
 ## Upgrade tier of a building (1 = base, 2/3 = upgraded versions) — drives the
 ## visible progression of the tile graphic
 func _building_tier(building: BuildingData) -> int:
@@ -2761,6 +2844,11 @@ func _add_building_tile_marker(tile_pos: Vector2i, building: BuildingData, facti
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(building.id if building else &"b") * 53 + tile_pos.x * 7 + tile_pos.y * 13
 	var s := 2.7 + float(tier) * 0.55
+	# Per-building-TYPE identity: stable hash drives a lightness shift on the
+	# category roof, so two different buildings of the same category read as
+	# different structures on the map
+	var id_hash: int = absi(hash(building.id if building else &"b"))
+	cat_color = cat_color.lightened(float(id_hash % 5) * 0.05 - 0.1)
 
 	# Cleared ground pad
 	_marker_poly(marker, _town_patch(rng, s * 2.7, s * 2.25), ground.darkened(0.22))
@@ -2821,6 +2909,11 @@ func _add_building_tile_marker(tile_pos: Vector2i, building: BuildingData, facti
 			var a := lerpf(PI * 0.5 + 0.5, PI * 0.5 - 0.5 + TAU, float(i) / float(fence_n - 1))
 			_marker_poly(marker, _ellipse_pts(Vector2(cos(a) * s * 2.5, sin(a) * s * 2.1), 0.55, 0.55, 5),
 				Color(0.36, 0.29, 0.21))
+
+	# Trade-sign emblem: a small symbol derived from the building's NAME so
+	# every building type is recognizable at a glance (forge anvil, market
+	# awning, shrine finial, farm sprouts, mine rocks, book, paw, droplet...)
+	_building_emblem(marker, building, s, rng)
 
 	# Faction pennant (ownership at a glance)
 	_marker_line(marker, PackedVector2Array([Vector2(s * 1.6, -s * 1.2), Vector2(s * 1.6, -s * 1.2 - 6.0)]),
