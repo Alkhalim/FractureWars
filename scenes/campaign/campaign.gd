@@ -5294,13 +5294,13 @@ func _rebuild_visible_tile_cache() -> void:
 	var player_id := GameManager.state.player_faction_id
 	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
 
-	# Cache allied factions
+	# Vision sharing: allies only by default — mere friendliness no longer
+	# reveals whole empires. Others require an explicit Share Vision treaty.
 	var allied_factions: Dictionary = {}
 	for faction_id in DataManager.factions:
 		if faction_id == player_id:
 			continue
-		var rel := GameManager.get_relation(player_id, faction_id)
-		if rel == Enums.FactionRelation.FRIENDLY or rel == Enums.FactionRelation.ALLIED:
+		if GameManager.diplomacy_system.has_shared_vision(player_id, faction_id):
 			allied_factions[faction_id] = true
 
 	# Mark all player-owned and ally-owned tiles visible

@@ -2644,6 +2644,11 @@ func _build_treaty_icons(player_id: StringName, faction_id: StringName) -> HBoxC
 				icon.add_theme_color_override("font_color", Color(0.5, 0.85, 0.7))
 				var fp_turns_str := "%d turns left" % treaty.turns_remaining if treaty.turns_remaining > 0 else "permanent"
 				tooltip_lines.append("Free Passage (%s)" % fp_turns_str)
+			Enums.TreatyType.SHARE_VISION:
+				icon.text = "V"
+				icon.add_theme_color_override("font_color", Color(0.6, 0.75, 0.95))
+				var sv_turns_str := "%d turns left" % treaty.turns_remaining if treaty.turns_remaining > 0 else "permanent"
+				tooltip_lines.append("Shared Vision (%s)" % sv_turns_str)
 			Enums.TreatyType.TRIBUTARY:
 				icon.text = "$"
 				icon.add_theme_color_override("font_color", Color(0.9, 0.6, 0.2))
@@ -3707,6 +3712,10 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 					break
 		if not has_fp:
 			offers.append({id = "free_passage", label = "Free Passage"})
+	# Share Vision: exchange maps (allies always share; others need the treaty)
+	if relation != Enums.FactionRelation.WAR and relation != Enums.FactionRelation.ALLIED:
+		if not GameManager.diplomacy_system.has_shared_vision(player_id, faction_id):
+			offers.append({id = "share_vision", label = "Share Vision"})
 	# Tributary / gift / shard / city offers
 	var diplo_ratio := GameManager.diplomacy_system.get_strength_ratio(player_id, faction_id)
 	if diplo_ratio < 0.7 or relation == Enums.FactionRelation.WAR:
@@ -3722,6 +3731,8 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	var their_tribute := GameManager.diplomacy_system.get_tributary_gold_amount(faction_id)
 	offers.append({id = "demand_tributary", label = "Demand Tributary (~%d gold/turn)" % their_tribute, needs_ratio = 1.3})
 	offers.append({id = "demand_resources", label = "Demand Resources", needs_ratio = 1.0})
+	offers.append({id = "demand_vision", label = "Demand Vision", needs_ratio = 1.5})
+	offers.append({id = "demand_passage", label = "Demand Military Access", needs_ratio = 1.5})
 	offers.append({id = "demand_city", label = "Demand City", needs_ratio = 2.5})
 
 	var trade_res_entries := [
@@ -4224,6 +4235,12 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 						tooltip_lines.append("Non-Aggression: Easier than alliance, needs decent standing")
 					"free_passage":
 						tooltip_lines.append("Free Passage: Requires positive standing, trade helps")
+					"share_vision":
+						tooltip_lines.append("Share Vision: Exchange maps — needs a warm relationship")
+					"demand_vision":
+						tooltip_lines.append("Demand Vision: Extort their maps — requires military dominance")
+					"demand_passage":
+						tooltip_lines.append("Demand Military Access: Extort passage — requires military dominance")
 					"demand_tributary":
 						tooltip_lines.append("Demand Tributary: Requires military dominance")
 					"offer_tributary":
@@ -4324,6 +4341,14 @@ func _calculate_combined_likelihood(player_id: StringName, target_id: StringName
 				var base := 60.0
 				base += clampf(standing * 0.5, -20, 25)
 				total_chance += clampf(base, 10, 95)
+			"share_vision":
+				var base := 40.0
+				base += clampf(standing * 0.5, -25, 30)
+				total_chance += clampf(base, 5, 90)
+			"demand_vision", "demand_passage":
+				var base := 15.0
+				base += clampf((ratio - 1.5) * 35.0, -25, 45)
+				total_chance += clampf(base, 2, 85)
 			"demand_tributary":
 				var base := 10.0
 				base += clampf((ratio - 1.5) * 40.0, -30, 50)
@@ -4507,6 +4532,15 @@ func _execute_combined_offers(target: StringName) -> void:
 					"free_passage":
 						var result := GameManager.diplomacy_system.propose_free_passage(player_id, target)
 						results.append("Free Passage: " + result.reason)
+					"share_vision":
+						var result := GameManager.diplomacy_system.propose_share_vision(player_id, target)
+						results.append("Share Vision: " + result.reason)
+					"demand_vision":
+						var result := GameManager.diplomacy_system.demand_treaty(player_id, target, "vision")
+						results.append("Demand Vision: " + result.reason)
+					"demand_passage":
+						var result := GameManager.diplomacy_system.demand_treaty(player_id, target, "passage")
+						results.append("Demand Military Access: " + result.reason)
 					"demand_tributary":
 						var result := GameManager.diplomacy_system.demand_tributary(player_id, target)
 						results.append("Demand Tributary: " + result.reason)

@@ -985,8 +985,8 @@ func _calculate_sweetener_counter(proposer: StringName, target: StringName, scor
 	## The AI demands the resource they need most, or an item from the player's storage.
 	## Greedy factions demand more. Returns {type, resource_type, amount} or {type, item_id, item_name} or empty.
 	var standing := get_standing(proposer, target)
-	if standing < -50:
-		return {}  # Too hostile to negotiate
+	if standing < -65:
+		return {}  # Too hostile to negotiate (relaxed: the AI prefers haggling)
 	var greed := _get_faction_greed(target)
 	var deficit := absf(score)
 	# Check if an item demand makes sense (greedy factions with high deficit)
@@ -1028,8 +1028,9 @@ func _calculate_counter_offer(proposer: StringName, target: StringName, give_res
 	## Generate a counter-offer the AI would accept.
 	## Returns empty dictionary if standing is too low or no reasonable counter exists.
 	var standing := get_standing(proposer, target)
-	# No counteroffers if standing is very low or the faction hates the proposer
-	if standing < -40:
+	# No counteroffers only when relations are truly poisoned — the AI would
+	# rather haggle than flatly refuse (more counter-offers, per playtest)
+	if standing < -60:
 		return {}
 	# Calculate what the AI would require: the worse the standing, the more they demand
 	# At standing 0 the AI wants ~1.3x value; at standing -30 they want ~1.66x
@@ -1451,6 +1452,71 @@ func propose_free_passage(proposer: StringName, target: StringName, force_accept
 	if not fp_counter.is_empty():
 		return {accepted = false, reason = "They want gold to grant passage.", counter_offer = fp_counter}
 	return {accepted = false, reason = "They see no benefit in granting free passage"}
+
+# ── Shared Vision ──────────────────────────────────────────
+
+## True if the two factions see each other's territory: allies always do,
+## otherwise an explicit SHARE_VISION treaty is required (mere friendliness
+## no longer reveals whole empires)
+func has_shared_vision(faction_a: StringName, faction_b: StringName) -> bool:
+	if faction_a == faction_b:
+		return true
+	if GameManager.get_relation(faction_a, faction_b) == Enums.FactionRelation.ALLIED:
+		return true
+	for treaty_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+		if t.treaty_type == Enums.TreatyType.SHARE_VISION:
+			if (t.faction_a == faction_a and t.faction_b == faction_b) or \
+			   (t.faction_a == faction_b and t.faction_b == faction_a):
+				return true
+	return false
+
+func propose_share_vision(proposer: StringName, target: StringName, force_accept: bool = false) -> Dictionary:
+	var relation := GameManager.get_relation(proposer, target)
+	if not force_accept and relation == Enums.FactionRelation.WAR:
+		return {accepted = false, reason = "Cannot share vision during war"}
+	if has_shared_vision(proposer, target):
+		return {accepted = false, reason = "Vision already shared"}
+	var standing := get_standing(proposer, target)
+	# Vision is intimate: needs a warmer relationship than passage
+	var score := standing * 0.3 - 20.0
+	if relation == Enums.FactionRelation.FRIENDLY:
+		score += 10.0
+	if score > 0 or force_accept:
+		modify_standing(proposer, target, 4, "Vision shared")
+		var treaty := TreatyInstance.new()
+		treaty.treaty_id = GameManager.state.generate_id()
+		treaty.treaty_type = Enums.TreatyType.SHARE_VISION
+		treaty.faction_a = proposer
+		treaty.faction_b = target
+		treaty.turns_remaining = 15
+		GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+		EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.SHARE_VISION, proposer, target)
+		return {accepted = true, reason = "They open their maps to you"}
+	var sv_counter := _calculate_sweetener_counter(proposer, target, score, "share_vision")
+	if not sv_counter.is_empty():
+		return {accepted = false, reason = "They want compensation for their maps.", counter_offer = sv_counter}
+	return {accepted = false, reason = "They keep their maps to themselves"}
+
+## Demand vision or passage: extracted by military dominance instead of
+## goodwill. Souring but effective when you are clearly stronger.
+func demand_treaty(demander: StringName, target: StringName, kind: String) -> Dictionary:
+	var ratio := get_strength_ratio(demander, target)
+	if ratio < 1.5:
+		return {accepted = false, reason = "They do not fear your armies"}
+	var standing := get_standing(demander, target)
+	var score := (ratio - 1.5) * 25.0 + standing * 0.05 - 15.0
+	if score <= 0:
+		return {accepted = false, reason = "They refuse your demand"}
+	modify_standing(demander, target, -8, "Coerced by demand")
+	match kind:
+		"vision":
+			if has_shared_vision(demander, target):
+				return {accepted = false, reason = "Vision already shared"}
+			return propose_share_vision(demander, target, true)
+		"passage":
+			return propose_free_passage(demander, target, true)
+	return {accepted = false, reason = "Unknown demand"}
 
 # ── City Transfer ──────────────────────────────────────────
 
