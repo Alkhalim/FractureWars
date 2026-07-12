@@ -5588,7 +5588,7 @@ class _RadialTechTree extends Control:
 	var _glow_cache_research_id: StringName = &"__unset__"
 	var _glow_cache_completed_count: int = -1
 
-	const TIER_RADII := [0, 200, 360, 540, 740, 960]
+	const TIER_RADII := [0, 230, 440, 670, 920, 1180]
 	const NODE_RADIUS := 26.0
 	const TREE_CENTER := Vector2(750, 750)
 	const UNIVERSAL_RING_RADIUS := 120.0
@@ -5666,26 +5666,31 @@ class _RadialTechTree extends Control:
 		var num_branches := maxi(branch_names.size(), 1)
 		var branch_spacing := TAU / float(num_branches)
 
+		# Global prerequisite depth over ALL faction techs, relaxed to a fixed
+		# point. The old single pass depended on iteration order: a tech seen
+		# before its prereq collapsed to depth 1, which crushed entire chains
+		# into the inner rings (the "tight chaotic" tree).
+		var depth_map: Dictionary = {} # research_id -> int
+		for data in faction_techs:
+			depth_map[data.id] = 1
+		for _dpass in 10:
+			var changed := false
+			for data in faction_techs:
+				var d := 1
+				for prereq in data.prerequisites:
+					d = maxi(d, int(depth_map.get(prereq, 0)) + 1)
+				if d != int(depth_map[data.id]):
+					depth_map[data.id] = d
+					changed = true
+			if not changed:
+				break
+
 		# Position faction techs radially by branch
-		# Sort techs so no-prerequisite techs are in tier 1 ring regardless of data tier
 		for bi in branch_names.size():
 			var branch_name = branch_names[bi]
 			var branch_techs: Array = branches[branch_name]
 			var base_angle: float = -PI / 2.0 + float(bi) * branch_spacing
 			_branch_angles[branch_name] = base_angle
-
-			# Group by effective tier: no-prerequisite techs go to tier 1, others use their tier
-			# Also build a depth map for techs based on prerequisite chains
-			var depth_map: Dictionary = {} # research_id -> int
-			for data in branch_techs:
-				if data.prerequisites.is_empty():
-					depth_map[data.id] = 1
-				else:
-					# Calculate depth from prerequisite chain
-					var max_prereq_depth := 0
-					for prereq in data.prerequisites:
-						max_prereq_depth = maxi(max_prereq_depth, depth_map.get(prereq, 0))
-					depth_map[data.id] = max_prereq_depth + 1
 
 			var tiers: Dictionary = {}
 			for data in branch_techs:
@@ -5698,7 +5703,7 @@ class _RadialTechTree extends Control:
 				var tier_techs: Array = tiers[tier]
 				var radius: float = TIER_RADII[clampi(tier, 1, 5)]
 				var count := tier_techs.size()
-				var max_spread := branch_spacing * 0.70
+				var max_spread := branch_spacing * 0.88
 				var spacing := max_spread / maxf(count, 1)
 				var start_offset := -(count - 1) * spacing * 0.5
 
@@ -5735,22 +5740,41 @@ class _RadialTechTree extends Control:
 		_positions_built = true
 
 	func _resolve_overlaps() -> void:
-		var min_dist := NODE_RADIUS * 3.5
-		var ids: Array = _node_positions.keys()
-		for _pass in 16:
-			var moved := false
-			for i in ids.size():
-				for j in range(i + 1, ids.size()):
-					var pos_a: Vector2 = _node_positions[ids[i]]
-					var pos_b: Vector2 = _node_positions[ids[j]]
-					var dist := pos_a.distance_to(pos_b)
-					if dist < min_dist and dist > 0.01:
-						var push := (pos_b - pos_a).normalized() * (min_dist - dist) * 0.75
-						_node_positions[ids[i]] = pos_a - push
-						_node_positions[ids[j]] = pos_b + push
+		# Ring-constrained relaxation: nodes keep their EXACT tier radius and
+		# only their angles spread apart. The old free 2D resolver shoved
+		# nodes off their rings and turned the tree into a starburst jumble.
+		var rings: Dictionary = {} # rounded radius bucket -> Array of ids
+		for id in _node_positions:
+			var offset: Vector2 = _node_positions[id] - TREE_CENTER
+			var rkey := int(round(offset.length() / 10.0))
+			if not rings.has(rkey):
+				rings[rkey] = []
+			rings[rkey].append(id)
+		for rkey in rings:
+			var ids: Array = rings[rkey]
+			var radius := float(rkey) * 10.0
+			if ids.size() < 2 or radius < 1.0:
+				continue
+			var min_ang: float = (NODE_RADIUS * 3.1) / radius
+			ids.sort_custom(func(a, b):
+				return (_node_positions[a] - TREE_CENTER).angle() < (_node_positions[b] - TREE_CENTER).angle())
+			var angles: Array[float] = []
+			for id in ids:
+				angles.append((_node_positions[id] - TREE_CENTER).angle())
+			for _pass in 24:
+				var moved := false
+				for i in ids.size():
+					var j := (i + 1) % ids.size()
+					var d: float = angles[j] - angles[i] if j > i else angles[j] + TAU - angles[i]
+					if d < min_ang:
+						var push := (min_ang - d) * 0.5
+						angles[i] -= push
+						angles[j] += push
 						moved = true
-			if not moved:
-				break
+				if not moved:
+					break
+			for i in ids.size():
+				_node_positions[ids[i]] = TREE_CENTER + Vector2(cos(angles[i]), sin(angles[i])) * radius
 
 	func _draw_outlined_string(font_res: Font, pos: Vector2, text: String, alignment: HorizontalAlignment, width: float, font_size: int, color: Color, outline_color: Color = Color(0, 0, 0, 0.9), outline_size: int = 2) -> void:
 		draw_string_outline(font_res, pos, text, alignment, width, font_size, outline_size, outline_color)
@@ -5878,9 +5902,10 @@ class _RadialTechTree extends Control:
 			var angle: float = _branch_angles[branch_name]
 			var label_pos := TREE_CENTER + Vector2(cos(angle) * label_radius, sin(angle) * label_radius)
 			var label_screen := _to_screen(label_pos)
-			var label_text: String = str(branch_name).replace("_", " ").capitalize()
-			var bl_size := clampi(int(round(13.0 * _zoom)), 9, 18)
-			_draw_outlined_string(font, label_screen - Vector2(60, 0), label_text, HORIZONTAL_ALIGNMENT_CENTER, 120, bl_size, Color(0.78, 0.68, 0.45, 0.9))
+			var label_text: String = str(branch_name).replace("_", " ").to_upper()
+			# Branch names stay readable at every zoom — they're the map key
+			var bl_size := clampi(int(round(15.0 * _zoom)), 12, 22)
+			_draw_outlined_string(font, label_screen - Vector2(70, 0), label_text, HORIZONTAL_ALIGNMENT_CENTER, 140, bl_size, Color(0.88, 0.78, 0.5, 0.95))
 
 		# Universal ring label
 		_draw_outlined_string(font, _to_screen(TREE_CENTER + Vector2(-30, -(_uni_radius + 20))), "Universal", HORIZONTAL_ALIGNMENT_CENTER, 60, clampi(int(round(9.0 * _zoom)), 8, 12), Color(0.6, 0.55, 0.45))
