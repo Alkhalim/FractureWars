@@ -207,6 +207,34 @@ found broken in the earlier design audit. This is worth a dedicated look.
 
 ---
 
+## Limitations — and a bug found while hitting them
+
+**Every number in this document is measured**, but they come from turn-1 economy
+snapshots across all factions, the static building/unit tables, and the feedback
+loops read out of code. The *long-horizon* trajectories (turn 30/50/70 snowball
+vs. collapse curves) are **not** in here, because the headless AI-vs-AI runs
+stall out — and the reason is itself worth knowing:
+
+> **`battle_initiated` is consumed by exactly one listener: `campaign.gd:193`
+> (the campaign *scene*).** Nothing in the autoload layer resolves a battle. So
+> whenever two armies meet with no campaign scene present, the battle is never
+> fought, both armies survive on the same tile, and the AI re-attacks the same
+> tile every turn forever. Headless simulation therefore grinds to a halt around
+> the time the first armies make contact (~turn 20–25).
+
+In the shipped game the scene is always present, so this isn't a player-facing
+bug today — but it means **battle resolution is coupled to the UI scene**, which
+(a) makes the game untestable at the balance level without a UI, and (b) is a
+latent hazard: any moment the campaign scene isn't listening (scene transitions,
+future auto-resolve, headless multiplayer/server play), armies silently get
+stuck instead of fighting.
+
+**Recommendation:** move battle resolution into an autoload/system with an
+`auto_resolve(attacker, defender)` path, and have the campaign scene *opt in* to
+showing it. That single change unlocks proper long-horizon balance simulation —
+at which point the trajectory questions (who snowballs, who collapses, when) can
+be answered empirically rather than analytically.
+
 ## Reproducing this
 
 ```
@@ -214,4 +242,5 @@ godot --headless --path . -s res://tests/tmp_econ_sim.gd -- <seed> <turns>
 ```
 Prints a CSV of every faction's gold/food/iron/wood/tech, cities, settlements,
 armies, units, population, upkeep, income, net income, average loyalty and
-defeat status for every round of a fully AI-driven game.
+defeat status for every round of a fully AI-driven game. Usable up to first
+army contact (see limitations above).
