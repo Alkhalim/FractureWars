@@ -207,33 +207,22 @@ found broken in the earlier design audit. This is worth a dedicated look.
 
 ---
 
-## Limitations — and a bug found while hitting them
+## Long-horizon simulation — now unblocked
 
-**Every number in this document is measured**, but they come from turn-1 economy
-snapshots across all factions, the static building/unit tables, and the feedback
-loops read out of code. The *long-horizon* trajectories (turn 30/50/70 snowball
-vs. collapse curves) are **not** in here, because the headless AI-vs-AI runs
-stall out — and the reason is itself worth knowing:
+The original version of this audit could only measure turn-1 snapshots, because
+headless AI-vs-AI games stalled the moment two armies met: **`battle_initiated`
+had exactly one listener, `campaign.gd` (the scene)**, so with no scene present a
+battle was never resolved, both armies survived on the same tile, and the AI
+re-attacked it forever.
 
-> **`battle_initiated` is consumed by exactly one listener: `campaign.gd:193`
-> (the campaign *scene*).** Nothing in the autoload layer resolves a battle. So
-> whenever two armies meet with no campaign scene present, the battle is never
-> fought, both armies survive on the same tile, and the AI re-attacks the same
-> tile every turn forever. Headless simulation therefore grinds to a halt around
-> the time the first armies make contact (~turn 20–25).
-
-In the shipped game the scene is always present, so this isn't a player-facing
-bug today — but it means **battle resolution is coupled to the UI scene**, which
-(a) makes the game untestable at the balance level without a UI, and (b) is a
-latent hazard: any moment the campaign scene isn't listening (scene transitions,
-future auto-resolve, headless multiplayer/server play), armies silently get
-stuck instead of fighting.
-
-**Recommendation:** move battle resolution into an autoload/system with an
-`auto_resolve(attacker, defender)` path, and have the campaign scene *opt in* to
-showing it. That single change unlocks proper long-horizon balance simulation —
-at which point the trajectory questions (who snowballs, who collapses, when) can
-be answered empirically rather than analytically.
+**That coupling has since been fixed.** Battle resolution now lives in a
+`BattleResolver` autoload (`scripts/systems/battle/battle_resolver.gd`); the
+campaign scene merely opts in to showing the player dialog/report while it is
+on-screen. Headless AI-vs-AI games now run to completion — a 40-turn all-AI
+game resolves cleanly with armies lost, cities changing hands, and factions
+eliminated. This means the trajectory questions (who snowballs, who collapses,
+when) *can* now be answered empirically; a follow-up pass with 60–100-turn runs
+across seeds is the natural next step.
 
 ## Reproducing this
 

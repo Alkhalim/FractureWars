@@ -9,6 +9,7 @@ const DEFAULT_TURNS := 70
 var _gm: Node
 var _tm: Node
 var _dm: Node
+var _eb: Node
 var _turns := DEFAULT_TURNS
 var _seed := 1
 var _done := false
@@ -27,6 +28,7 @@ func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
 	_tm = root.get_node("/root/TurnManager")
 	_dm = root.get_node("/root/DataManager")
+	_eb = root.get_node("/root/EventBus")
 	_gm._is_transitioning = true
 	_gm.new_game(&"empire", false)
 	_gm._is_transitioning = false
@@ -96,4 +98,10 @@ func _process(_delta: float) -> bool:
 		_log_round()
 	if turn > _turns:
 		quit()
+		return false
+	# The observer faction sits at faction_order[0] and is treated as a PLAYER
+	# turn, so the turn cycle waits for an end-turn that no human will send.
+	# Pump it here so the all-AI game actually advances.
+	if _tm.is_player_turn:
+		_eb.end_turn_pressed.emit()
 	return false

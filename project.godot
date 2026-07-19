@@ -28,6 +28,7 @@ DataManager="*res://scripts/autoloads/data_manager.gd"
 GameManager="*res://scripts/autoloads/game_manager.gd"
 TurnManager="*res://scripts/autoloads/turn_manager.gd"
 CommanderSystem="*res://scripts/systems/campaign/commander_system.gd"
+BattleResolver="*res://scripts/systems/battle/battle_resolver.gd"
 AudioManager="*res://scripts/autoloads/audio_manager.gd"
 
 [display]

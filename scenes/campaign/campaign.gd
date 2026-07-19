@@ -190,7 +190,11 @@ func _ready() -> void:
 	EventBus.army_moved.connect(_on_army_moved)
 	EventBus.army_destroyed.connect(_on_army_destroyed)
 	EventBus.region_ownership_changed.connect(_on_region_ownership_changed)
-	EventBus.battle_initiated.connect(_on_battle_initiated)
+	# Battle resolution lives in the BattleResolver autoload now. This scene only
+	# opts in to the player dialog + report while it is on-screen.
+	BattleResolver.ui_active = true
+	EventBus.battle_player_prompt.connect(_on_battle_player_prompt)
+	EventBus.battle_auto_resolved.connect(_on_battle_auto_resolved)
 	EventBus.turn_started.connect(_on_turn_started)
 	EventBus.shardfall_occurred.connect(_on_shardfall_occurred)
 	EventBus.city_captured.connect(_on_city_captured)
@@ -3939,57 +3943,28 @@ func _on_region_ownership_changed(_region_id: StringName, _old: StringName, _new
 	_fog_dirty = true
 	_minimap_terrain_dirty = true
 
-func _on_battle_initiated(attacker_id: StringName, defender_id: StringName, hex_pos: Vector2i) -> void:
+func _exit_tree() -> void:
+	# No campaign UI once this scene leaves — battles auto-resolve headlessly.
+	BattleResolver.ui_active = false
+
+## Player army met an enemy while this scene is on-screen — BattleResolver has
+## already merged garrison reinforcements and now asks us to prompt the player.
+func _on_battle_player_prompt(attacker_id: StringName, defender_id: StringName, hex_pos: Vector2i) -> void:
 	var attacker_army: ArmyState = GameManager.state.armies.get(attacker_id)
 	var defender_army: ArmyState = GameManager.state.armies.get(defender_id)
 	if attacker_army == null or defender_army == null:
 		return
-
-	# Garrison reinforcements: if defender is in their own/allied city, merge garrison units
-	_merge_garrison_reinforcements(defender_army, hex_pos)
-	# Also check attacker (if attacker is in their own city — rare but possible)
-	_merge_garrison_reinforcements(attacker_army, hex_pos)
-
-	# AI vs AI: always auto-resolve silently
-	var player_fid := GameManager.state.player_faction_id
-	if attacker_army.faction_id != player_fid and defender_army.faction_id != player_fid:
-		_auto_resolve_battle(attacker_id, defender_id, hex_pos)
-		return
-
-	# Player involved: show battle choice dialog
 	_pending_battle_attacker_id = attacker_id
 	_pending_battle_defender_id = defender_id
 	_pending_battle_hex = hex_pos
 	_show_battle_dialog(attacker_army, defender_army)
 
-## Merge garrison units from a city into a defending army
-func _merge_garrison_reinforcements(army: ArmyState, hex_pos: Vector2i) -> void:
-	if army.is_garrison:
-		return  # Garrison armies don't merge with themselves
-	var city_at := GameManager.city_system.get_city_at_hex(hex_pos)
-	if city_at == null:
-		return
-	# City must be owned by the army's faction or allied
-	if city_at.faction_id != army.faction_id:
-		var relation := GameManager.get_relation(city_at.faction_id, army.faction_id)
-		if relation != Enums.FactionRelation.ALLIED:
-			return
-	# Generate garrison units and add to army
-	var garrison_comp: Array = GameManager.city_system._get_garrison_composition(city_at)
-	var reinforcement_count := 0
-	for entry in garrison_comp:
-		var uid: StringName = entry.unit_id
-		var unit_data := DataManager.get_unit(uid)
-		if unit_data == null:
-			continue
-		for i in entry.count:
-			var instance := UnitInstance.new()
-			instance.init_from_data(unit_data, GameManager.state.generate_id())
-			army.units.append(instance)
-			reinforcement_count += 1
-	# Store count so we can strip them back out after battle
-	if reinforcement_count > 0:
-		army.set_meta("garrison_reinforcement_count", reinforcement_count)
+## BattleResolver finished an auto-resolved battle. Refresh markers and, if the
+## player was involved, show the battle report.
+func _on_battle_auto_resolved(report: Dictionary) -> void:
+	_create_army_markers()
+	if not report.is_empty():
+		_show_battle_report(report)
 
 func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> void:
 	if _battle_dialog:
@@ -4207,317 +4182,7 @@ func _on_battle_dialog_auto() -> void:
 	if _battle_dialog:
 		_battle_dialog.queue_free()
 		_battle_dialog = null
-	_auto_resolve_battle(_pending_battle_attacker_id, _pending_battle_defender_id, _pending_battle_hex)
-
-func _auto_resolve_battle(attacker_id: StringName, defender_id: StringName, hex_pos: Vector2i) -> void:
-	var attacker_army: ArmyState = GameManager.state.armies.get(attacker_id)
-	var defender_army: ArmyState = GameManager.state.armies.get(defender_id)
-	if attacker_army == null or defender_army == null:
-		return
-
-	# Snapshot HP before battle for report
-	var atk_snapshot: Array[Dictionary] = []
-	for unit in attacker_army.units:
-		var ud := DataManager.get_unit(unit.unit_data_id)
-		atk_snapshot.append({
-			"name": ud.display_name if ud else str(unit.unit_data_id),
-			"hp_before": unit.current_hp,
-			"max_hp": ud.max_hp if ud else unit.current_hp,
-		})
-	var def_snapshot: Array[Dictionary] = []
-	for unit in defender_army.units:
-		var ud := DataManager.get_unit(unit.unit_data_id)
-		def_snapshot.append({
-			"name": ud.display_name if ud else str(unit.unit_data_id),
-			"hp_before": unit.current_hp,
-			"max_hp": ud.max_hp if ud else unit.current_hp,
-		})
-
-	# Calculate commander bonuses for both sides
-	var atk_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(attacker_army.commander)
-	var def_cmd_bonuses := CommanderSystem.get_commander_army_bonuses(defender_army.commander)
-	# Apply camp building bonuses (Sunblessed Sunfire Forge etc.)
-	_apply_camp_building_bonuses(attacker_army, atk_cmd_bonuses)
-	_apply_camp_building_bonuses(defender_army, def_cmd_bonuses)
-
-	# Snapshot army strengths before battle (for loot and XP calculation)
-	var atk_strength_pre := attacker_army.get_total_strength()
-	var def_strength_pre := defender_army.get_total_strength()
-
-	# Create V2 headless battle simulation
-	var campaign_terrain := Enums.TerrainType.PLAINS
-	if GameManager.state and GameManager.state.hex_map:
-		var tile := GameManager.state.hex_map.get_tile(hex_pos)
-		if tile:
-			campaign_terrain = tile.terrain
-
-	var sim := BattleSimulatorV2.new()
-	sim.compute_grid_size(attacker_army, defender_army)
-	var terrain := BattleTerrainGen.generate(campaign_terrain, hex_pos.x * 1000 + hex_pos.y, sim.grid_width, sim.grid_height)
-	sim.setup_terrain(terrain)
-	sim.setup_attacker_formations(attacker_army, atk_cmd_bonuses)
-	sim.setup_defender_formations(defender_army, def_cmd_bonuses)
-	sim.assign_ai_orders_both_sides()
-
-	# Run simulation to completion
-	for tick in range(sim.max_ticks):
-		sim.simulate_tick()
-		if sim.is_finished:
-			break
-
-	# Apply results
-	var atk_survivors := sim.get_surviving_formations(0)
-	var def_survivors := sim.get_surviving_formations(1)
-
-	_apply_auto_battle_results(attacker_army, atk_survivors)
-	_apply_auto_battle_results(defender_army, def_survivors)
-
-	# Elderbeast recovery: if a beast's escort army lost, apply recovery mechanic
-	for side_army in [attacker_army, defender_army]:
-		if side_army.elderbeast_id != &"":
-			_handle_elderbeast_battle_aftermath(side_army)
-
-	# Grant veterancy XP to surviving units
-	_grant_auto_veterancy_xp(attacker_army, atk_survivors, def_strength_pre)
-	_grant_auto_veterancy_xp(defender_army, def_survivors, atk_strength_pre)
-
-	var atk_alive := atk_survivors.size() > 0 or attacker_army.elderbeast_id != &""
-	var def_alive := def_survivors.size() > 0 or defender_army.elderbeast_id != &""
-
-	# Build HP after data for report
-	var atk_hp_after: Dictionary = {} # index -> hp
-	for bu in atk_survivors:
-		for i in atk_snapshot.size():
-			if i < attacker_army.units.size() and attacker_army.units[i].instance_id == bu.instance_id:
-				atk_hp_after[i] = bu.current_hp
-	var def_hp_after: Dictionary = {}
-	for bu in def_survivors:
-		for i in def_snapshot.size():
-			if i < defender_army.units.size() and defender_army.units[i].instance_id == bu.instance_id:
-				def_hp_after[i] = bu.current_hp
-
-	# Award captives
-	var winner_side := sim.winner_side
-	if winner_side >= 0:
-		var winner_faction := attacker_army.faction_id if winner_side == 0 else defender_army.faction_id
-		var winner_captives: int = sim.captives.get(winner_side, 0)
-		if winner_captives > 0:
-			var wfs: FactionState = GameManager.state.faction_states.get(winner_faction)
-			if wfs:
-				wfs.resources[Enums.ResourceType.CAPTIVES] = wfs.resources.get(Enums.ResourceType.CAPTIVES, 0) + winner_captives
-
-	if not def_alive:
-		# Mark garrison as defeated so it doesn't respawn at full strength
-		if defender_army.is_garrison:
-			var garrison_city := GameManager.city_system.get_city_at_hex(hex_pos)
-			if garrison_city:
-				garrison_city.garrison_defeated_turn = GameManager.state.current_turn
-				garrison_city.garrison_hp_ratio = 0.0
-		GameManager.remove_army(defender_id)
-
-	# Garrison assault: check if attacker won (morale/routing victory counts)
-	var garrison_retreat := false
-	var def_faction_id := defender_army.faction_id
-	if defender_army.is_garrison and def_alive:
-		var attacker_won_garrison := (winner_side == 0 and atk_alive)
-		if attacker_won_garrison:
-			# Attacker won — garrison overrun, treat as destroyed
-			var garrison_city := GameManager.city_system.get_city_at_hex(hex_pos)
-			if garrison_city:
-				garrison_city.garrison_defeated_turn = GameManager.state.current_turn
-				garrison_city.garrison_hp_ratio = 0.0
-			GameManager.remove_army(defender_id)
-			def_alive = false
-		else:
-			# Attacker failed to defeat garrison — retreat with survivors or die
-			GameManager.remove_army(defender_id) # garrison regenerates next attack
-			def_alive = false
-			if atk_alive:
-				# Retreat attacker 1 tile back from the city
-				var retreat_hex := _find_retreat_hex(attacker_army, hex_pos)
-				if retreat_hex != Vector2i(-1, -1):
-					attacker_army.hex_pos = retreat_hex
-					GameManager.movement_system.invalidate_positions()
-				attacker_army.movement_remaining = 0.0
-				attacker_army.battle_exhausted = true
-				garrison_retreat = true
-				# Persist garrison damage — surviving garrison spawns with reduced HP
-				var garrison_city := GameManager.city_system.get_city_at_hex(hex_pos)
-				if garrison_city:
-					var total_max := 0
-					var total_current := 0
-					for unit in defender_army.units:
-						var data := DataManager.get_unit(unit.unit_data_id)
-						if data:
-							total_max += data.max_hp
-						total_current += unit.current_hp
-					if total_max > 0:
-						garrison_city.garrison_hp_ratio = clampf(float(total_current) / float(total_max), 0.01, 1.0)
-			else:
-				GameManager.remove_army(attacker_id)
-	elif not atk_alive:
-		GameManager.remove_army(attacker_id)
-
-	# Remove surviving garrison armies (they regenerate on next attack)
-	if def_alive and defender_army.is_garrison:
-		GameManager.remove_army(defender_id)
-		def_alive = false
-
-	# Stalemate: both armies survive — separate and exhaust
-	if atk_alive and def_alive:
-		attacker_army.battle_exhausted = true
-		attacker_army.movement_remaining = 0.0
-		defender_army.battle_exhausted = true
-		defender_army.movement_remaining = 0.0
-		_separate_armies_stalemate(attacker_army, defender_army)
-
-	# Handle siege consequences (same as manual battle)
-	if atk_alive and not def_alive and not garrison_retreat:
-		attacker_army.hex_pos = hex_pos
-		GameManager.movement_system.invalidate_positions()
-		attacker_army.battle_exhausted = true
-		attacker_army.movement_remaining = 0.0
-		EventBus.battle_resolved.emit(attacker_army.faction_id, hex_pos)
-		GameManager.diplomacy_system._apply_hostile_action_ripple(attacker_army.faction_id, def_faction_id, 5)
-		var city_at := GameManager.city_system.get_city_at_hex(hex_pos)
-		if city_at and city_at.faction_id != attacker_army.faction_id:
-			GameManager.city_system.start_siege(city_at.city_id, attacker_army.faction_id)
-		elif city_at and city_at.faction_id == attacker_army.faction_id and city_at.is_under_siege:
-			GameManager.city_system.break_siege(city_at.city_id)
-	elif garrison_retreat:
-		EventBus.battle_resolved.emit(def_faction_id, hex_pos)
-		GameManager.diplomacy_system._apply_hostile_action_ripple(def_faction_id, attacker_army.faction_id, 5)
-	elif def_alive and not atk_alive:
-		EventBus.battle_resolved.emit(defender_army.faction_id, hex_pos)
-		GameManager.diplomacy_system._apply_hostile_action_ripple(defender_army.faction_id, attacker_army.faction_id, 5)
-		var city_at := GameManager.city_system.get_city_at_hex(hex_pos)
-		if city_at and city_at.faction_id == defender_army.faction_id and city_at.is_under_siege:
-			GameManager.city_system.break_siege(city_at.city_id)
-
-	# Build battle context for context-aware skill selection
-	var base_ctx: Array[StringName] = []
-	var ctx_tile := GameManager.state.hex_map.get_tile(hex_pos)
-	if ctx_tile:
-		base_ctx.append(StringName("terrain_" + Enums.TerrainType.keys()[ctx_tile.terrain].to_lower()))
-	if GameManager.city_system.get_city_at_hex(hex_pos):
-		base_ctx.append(&"in_city")
-
-	# Collect used and faced unit tags from both sides
-	var unit_tag_types := ["cavalry", "ranged", "mage", "infantry", "beast", "monster", "construct"]
-	var atk_used_tags: Dictionary = {}
-	var def_faced_tags: Dictionary = {}
-	for f in sim.attacker_formations:
-		for tag in f.tags:
-			if tag in unit_tag_types:
-				atk_used_tags[tag] = true
-	for f in sim.defender_formations:
-		for tag in f.tags:
-			if tag in unit_tag_types:
-				def_faced_tags[tag] = true
-	var def_used_tags: Dictionary = {}
-	var atk_faced_tags: Dictionary = {}
-	for f in sim.defender_formations:
-		for tag in f.tags:
-			if tag in unit_tag_types:
-				def_used_tags[tag] = true
-	for f in sim.attacker_formations:
-		for tag in f.tags:
-			if tag in unit_tag_types:
-				atk_faced_tags[tag] = true
-
-	var atk_ctx: Array[StringName] = base_ctx.duplicate()
-	atk_ctx.append(&"was_attacker")
-	atk_ctx.append(&"battle_won" if atk_alive else &"battle_lost")
-	atk_ctx.append(StringName("enemy_" + defender_army.faction_id))
-	for tag in def_faced_tags:
-		atk_ctx.append(StringName("faced_" + tag))
-	for tag in atk_used_tags:
-		atk_ctx.append(StringName("used_" + tag))
-
-	var def_ctx: Array[StringName] = base_ctx.duplicate()
-	def_ctx.append(&"was_defender")
-	def_ctx.append(&"battle_won" if def_alive else &"battle_lost")
-	def_ctx.append(StringName("enemy_" + attacker_army.faction_id))
-	for tag in atk_faced_tags:
-		def_ctx.append(StringName("faced_" + tag))
-	for tag in def_used_tags:
-		def_ctx.append(StringName("used_" + tag))
-
-	# Commander XP and item drops (use pre-battle strengths)
-	if attacker_army.commander:
-		CommanderSystem.grant_battle_xp(attacker_army.commander, def_strength_pre, atk_alive, atk_ctx)
-		var atk_trait_changes := CommanderSystem.evaluate_traits(attacker_army.commander, atk_ctx)
-		for change in atk_trait_changes:
-			EventBus.commander_trait_changed.emit(attacker_army.commander, change.action, change.trait_id)
-		if atk_alive and not def_alive:
-			CommanderSystem.apply_item_drop(attacker_army.commander, defender_army.faction_id)
-	if defender_army.commander:
-		CommanderSystem.grant_battle_xp(defender_army.commander, atk_strength_pre, def_alive, def_ctx)
-		var def_trait_changes := CommanderSystem.evaluate_traits(defender_army.commander, def_ctx)
-		for change in def_trait_changes:
-			EventBus.commander_trait_changed.emit(defender_army.commander, change.action, change.trait_id)
-		if def_alive and not atk_alive:
-			CommanderSystem.apply_item_drop(defender_army.commander, attacker_army.faction_id)
-
-	# Battle loot for the winner
-	var _loot_gold := 0
-	var _loot_iron := 0
-	var _loot_captives := 0
-	if atk_alive and not def_alive:
-		_loot_gold = int(sqrt(def_strength_pre) * 1.26)
-		_loot_iron = int(sqrt(def_strength_pre) * 0.31)
-		var wfs: FactionState = GameManager.state.faction_states.get(attacker_army.faction_id)
-		if wfs:
-			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + _loot_gold
-			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + _loot_iron
-	elif def_alive and not atk_alive:
-		_loot_gold = int(sqrt(atk_strength_pre) * 1.26)
-		_loot_iron = int(sqrt(atk_strength_pre) * 0.31)
-		var wfs: FactionState = GameManager.state.faction_states.get(defender_army.faction_id)
-		if wfs:
-			wfs.resources[Enums.ResourceType.GOLD] = wfs.resources.get(Enums.ResourceType.GOLD, 0) + _loot_gold
-			wfs.resources[Enums.ResourceType.IRON] = wfs.resources.get(Enums.ResourceType.IRON, 0) + _loot_iron
-
-	# Faction mechanic: Thunderswarm storm fury rises from battles
-	for fid in [attacker_army.faction_id, defender_army.faction_id]:
-		if fid == &"thunderswarm":
-			var tfs: FactionState = GameManager.state.faction_states.get(fid)
-			if tfs:
-				tfs.storm_fury = mini(tfs.storm_fury + 15, 100)
-
-	# Faction mechanic: Sunblessed solar faith changes from battle results
-	for battle_pair in [[attacker_army.faction_id, atk_alive], [defender_army.faction_id, def_alive]]:
-		if battle_pair[0] == &"sunblessed":
-			var sfs: FactionState = GameManager.state.faction_states.get(battle_pair[0])
-			if sfs:
-				if battle_pair[1]:
-					sfs.solar_faith = mini(sfs.solar_faith + 10, 100)
-				else:
-					sfs.solar_faith = maxi(sfs.solar_faith - 15, 0)
-
-	# Show battle report for player-involved battles
-	var player_fid := GameManager.state.player_faction_id
-	var player_involved := attacker_army.faction_id == player_fid or defender_army.faction_id == player_fid
-	if player_involved:
-		var player_won := (attacker_army.faction_id == player_fid and atk_alive and not def_alive) or \
-			(defender_army.faction_id == player_fid and def_alive and not atk_alive)
-		var report := {
-			"atk_faction": attacker_army.faction_id,
-			"def_faction": defender_army.faction_id,
-			"atk_snapshot": atk_snapshot,
-			"def_snapshot": def_snapshot,
-			"atk_hp_after": atk_hp_after,
-			"def_hp_after": def_hp_after,
-			"atk_alive": atk_alive,
-			"def_alive": def_alive,
-			"captives": sim.captives.get(0 if attacker_army.faction_id == player_fid else 1, 0) if player_won else 0,
-			"loot_gold": _loot_gold if player_won else 0,
-			"loot_iron": _loot_iron if player_won else 0,
-		}
-		_show_battle_report(report)
-
-	# Refresh visuals
-	_create_army_markers()
+	BattleResolver.auto_resolve(_pending_battle_attacker_id, _pending_battle_defender_id, _pending_battle_hex)
 
 func _execute_retreat(attacker_id: StringName, defender_id: StringName, hex_pos: Vector2i) -> void:
 	var player_fid := GameManager.state.player_faction_id
@@ -4675,97 +4340,6 @@ func _show_retreat_report(army: ArmyState, losses: int, from_hex: Vector2i, to_h
 
 	_battle_report_panel.add_child(vbox)
 	$UILayer/HUD.add_child(_battle_report_panel)
-
-func _apply_camp_building_bonuses(army: ArmyState, cmd_bonuses: Dictionary) -> void:
-	if army.camp_city_id == &"":
-		return
-	var camp_city: CityState = GameManager.state.cities.get(army.camp_city_id)
-	if camp_city == null:
-		return
-	for bid in camp_city.buildings:
-		var bdata: BuildingData = DataManager.get_building(bid)
-		if bdata and bdata.special_effects.has("army_attack_bonus"):
-			cmd_bonuses["attack_bonus"] = cmd_bonuses.get("attack_bonus", 0) + int(bdata.special_effects["army_attack_bonus"])
-
-func _apply_auto_battle_results(army: ArmyState, survivors: Array[BattleSimulatorV2.BattleFormation]) -> void:
-	var surviving_ids: Dictionary = {}
-	for f in survivors:
-		surviving_ids[f.instance_id] = f.current_hp
-
-	var updated_units: Array[UnitInstance] = []
-	for unit in army.units:
-		if surviving_ids.has(unit.instance_id):
-			unit.current_hp = surviving_ids[unit.instance_id]
-			updated_units.append(unit)
-	army.units = updated_units
-
-func _handle_elderbeast_battle_aftermath(army: ArmyState) -> void:
-	var beast: ElderbeastState = GameManager.state.elderbeasts.get(army.elderbeast_id)
-	if beast == null:
-		return
-	# Check if beast unit survived in the army
-	var beast_alive := false
-	for unit in army.units:
-		if unit.instance_id == beast.unit_instance_id:
-			beast.hp = unit.current_hp
-			beast_alive = true
-			break
-	if beast_alive:
-		return
-	# Beast unit was killed — check recovery eligibility
-	var other_units_alive := army.units.size() > 0
-	if other_units_alive and not beast.is_injured():
-		# Recovery: beast flees with 1 HP and becomes injured for 3 turns
-		beast.hp = 1
-		beast.injured_turns = 3
-		beast.movement_remaining = 0.0
-		# Re-add beast unit to army at 1 HP
-		var unit_data := DataManager.get_unit(beast.get_unit_data_id())
-		if unit_data:
-			var instance := UnitInstance.new()
-			instance.instance_id = beast.unit_instance_id
-			instance.unit_data_id = unit_data.id
-			instance.current_hp = 1
-			army.units.insert(0, instance)
-		# Spawn emergency escort units (2 basic crystal swarmlings)
-		var swarmling_data := DataManager.get_unit(&"crystal_swarmling")
-		if swarmling_data:
-			for i in 2:
-				var escort := UnitInstance.new()
-				escort.instance_id = StringName("emergency_%s_%d" % [beast.beast_id, i])
-				escort.unit_data_id = &"crystal_swarmling"
-				escort.current_hp = swarmling_data.max_hp
-				army.units.append(escort)
-	else:
-		# Beast dies permanently (already injured, or entire army wiped)
-		beast.hp = 0
-		GameManager.state.elderbeasts.erase(beast.beast_id)
-		EventBus.elderbeast_destroyed.emit(beast.beast_id, beast.faction_id)
-		army.elderbeast_id = &""
-
-func _grant_auto_veterancy_xp(army: ArmyState, survivors: Array[BattleSimulatorV2.BattleFormation], enemy_strength: int) -> void:
-	var formation_damage: Dictionary = {} # instance_id -> damage_dealt
-	for f in survivors:
-		formation_damage[f.instance_id] = f.damage_dealt
-	var base_xp := 8 + mini(enemy_strength / 50, 20)
-	for unit in army.units:
-		var dmg: int = formation_damage.get(unit.instance_id, 0)
-		var damage_bonus := mini(dmg / 40, 10)
-		unit.grant_xp(base_xp + damage_bonus)
-
-func _separate_armies_stalemate(attacker: ArmyState, defender: ArmyState) -> void:
-	# Defender stays at battle hex, attacker retreats to adjacent tile
-	var battle_hex := defender.hex_pos
-	var retreat_hex := _find_retreat_hex(attacker, battle_hex)
-	if retreat_hex != Vector2i(-1, -1):
-		attacker.hex_pos = retreat_hex
-		GameManager.movement_system.invalidate_positions()
-	else:
-		# No valid retreat tile — push defender instead as fallback
-		var def_retreat := _find_retreat_hex(defender, attacker.hex_pos)
-		if def_retreat != Vector2i(-1, -1):
-			defender.hex_pos = def_retreat
-			GameManager.movement_system.invalidate_positions()
 
 func _flash_turn_transition() -> void:
 	var fade := ColorRect.new()

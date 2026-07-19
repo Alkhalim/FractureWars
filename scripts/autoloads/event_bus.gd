@@ -19,6 +19,12 @@ signal army_destroyed(army_id: StringName, faction_id: StringName)
 # Battle signals
 signal battle_initiated(attacker_army_id: StringName, defender_army_id: StringName, hex_pos: Vector2i)
 signal battle_resolved(winner_faction: StringName, hex_pos: Vector2i)
+# Emitted by BattleResolver when a player army meets an enemy and a UI is
+# present, so the campaign scene can show its fight/auto/retreat dialog.
+signal battle_player_prompt(attacker_army_id: StringName, defender_army_id: StringName, hex_pos: Vector2i)
+# Emitted by BattleResolver after an auto-resolved battle. `report` is empty
+# for AI-vs-AI battles, or a populated dict when the player was involved.
+signal battle_auto_resolved(report: Dictionary)
 
 # Shard signals
 signal shardfall_occurred(shard_id: StringName, hex_pos: Vector2i, realm: Enums.Realm)
