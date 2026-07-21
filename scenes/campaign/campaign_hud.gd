@@ -110,6 +110,7 @@ func _ready() -> void:
 	EventBus.commander_item_full.connect(_on_commander_item_full)
 	EventBus.commander_trait_changed.connect(_on_commander_trait_changed)
 	EventBus.random_event_triggered.connect(_on_random_event_triggered)
+	EventBus.units_deserted.connect(_on_units_deserted)
 	EventBus.shard_claimed.connect(_on_shard_claimed)
 	EventBus.forsaken_offer.connect(_on_forsaken_offer_received)
 	EventBus.senate_dilemma.connect(_on_senate_dilemma_received)
@@ -972,26 +973,44 @@ func _add_stat_label(parent: HBoxContainer, stat_name: String, value: String, co
 
 ## Estimate DPS for a unit based on its type, squad size, and attack speed.
 ## Factors in ammo limits (archers) and mana slowdown (mages) for realistic sustained DPS.
+## Offensive throughput estimate that MIRRORS battle_simulator_v3, so the card
+## number ranks units the way they actually fight. The old formula ignored the
+## simulator's contact model and under-rated big single monsters by ~30x (a
+## mammoth showed 200 while the engine deals ~7200) and mis-ranked cavalry vs
+## infantry. Key mechanics reproduced: percentage armor mitigation against a
+## reference target, single large entities CLEAVE (contact_cap = radius/2.5),
+## multi-entity squads are limited to their frontline-in-contact, and
+## ranged/mage throughput is discounted for ammo/mana limits.
+const _DPS_REF_DEF := 22.0        # reference target melee_defense
+const _DPS_MELEE_RATE := 2.0      # sim TICK_SCALE reference (continuous melee)
+
 static func estimate_unit_dps(ud: UnitData) -> float:
-	if ud.tags.has("mage"):
-		# Mages: infinite ammo but mana-limited. Average cooldown over full mana drain:
-		# First 50% mana: base cooldown (12 ticks). Last 50%: avg 1.9x cooldown (~23 ticks).
-		# Weighted average: ~15 ticks effective cooldown over sustained fight
-		var avg_cooldown := 15.0
-		return ud.squad_size * ud.attack * 0.6 * 0.7 * (10.0 / avg_cooldown)
-	if ud.tags.has("ranged"):
-		# Archers: 7 volleys then depleted. Show sustained DPS over a ~70 tick fight
-		# (7 volleys * 7 tick cooldown = 49 ticks of fire, then 0 for remainder)
-		var volleys := 7.0
-		var fight_duration := 70.0  # ~7 second reference fight
-		var effective_rate := volleys / fight_duration * 10.0
-		return ud.squad_size * ud.attack * 0.6 * 0.8 * effective_rate
-	# Melee: continuous damage at TICK_SCALE(0.2) * 10 ticks/sec = 2x attack per entity
+	# Per-hit damage after percentage armor mitigation vs a reference target
+	# (matches the sim's atk^2/(atk + def*0.5))
+	var atk := float(ud.attack)
+	var per_hit := atk * atk / maxf(atk + _DPS_REF_DEF * 0.5, 1.0)
+
+	# Contacts in a tick — the piece the old formula got wrong
+	var contacts: float
 	if ud.squad_size <= 1:
-		return ud.attack * 2.0
-	# Multi-entity melee: assume ~35% squad in frontline contact (proximity-weighted)
-	var frontline := ceili(ud.squad_size * 0.35)
-	return frontline * ud.attack * 2.0
+		if ud.tags.has("monster") or ud.tags.has("beast"):
+			contacts = 24.0 / 2.5   # large single entity cleaves (radius 24)
+		elif ud.tags.has("construct"):
+			contacts = 27.0 / 2.5   # marching bastion etc (radius 27)
+		else:
+			contacts = 1.0
+	else:
+		# Frontline in contact, capped like the sim's per-formation sample
+		contacts = minf(float(ud.squad_size), 24.0) * 0.85
+
+	# Firing uptime: melee is continuous; ranged/mage are ammo/mana limited
+	var uptime := 1.0
+	if ud.tags.has("mage"):
+		uptime = 0.42
+	elif ud.tags.has("ranged"):
+		uptime = 0.62
+
+	return per_hit * contacts * uptime * _DPS_MELEE_RATE
 
 # ── Star Rating System ─────────────────────────────────────────────
 # Cached percentile tables (computed once, cleared on scene reload)
@@ -11837,6 +11856,17 @@ func _check_advisor_messages() -> void:
 	# Show the first advisor message as a toast
 	if messages.size() > 0:
 		_show_advisor_toast(messages[0])
+
+func _on_units_deserted(faction_id: StringName, unit_names: Array, count: int) -> void:
+	if faction_id != GameManager.state.player_faction_id:
+		return
+	var lead := String(unit_names[0]) if unit_names.size() > 0 else "Soldiers"
+	var msg: String
+	if count == 1:
+		msg = "Unpaid: %s deserted! Your treasury is in the red." % lead
+	else:
+		msg = "Unpaid: %d units deserted (incl. %s)! Your treasury is in the red." % [count, lead]
+	_show_advisor_toast(msg)
 
 func _show_advisor_toast(text: String) -> void:
 	if _advisor_toast:

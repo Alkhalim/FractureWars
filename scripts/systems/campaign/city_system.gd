@@ -797,9 +797,13 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 	var r_eff := GameManager.research_system.get_research_effects(faction_id)
 	var upkeep_red_pct: float = float(r_eff.get("upkeep_reduction_pct", 0)) / 100.0
 
+	# Field units that draw gold upkeep, so bankruptcy desertion can pick the
+	# most expensive ones first. Garrisons and elderbeasts are exempt.
+	var desertion_candidates: Array = []
 	for army: ArmyState in GameManager.get_faction_armies(faction_id):
 		# Terrain upkeep modifier (jungle/desert/wastes etc.)
 		var terrain_mult: float = TurnManager.get_terrain_upkeep_modifier(army)
+		var can_desert: bool = not army.is_garrison and army.elderbeast_id == &""
 		# Unit upkeep
 		for unit in army.units:
 			var unit_data := DataManager.get_unit(unit.unit_data_id)
@@ -815,6 +819,8 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 						cost = int(cost * 0.80)
 					elif res_type == Enums.ResourceType.GOLD:
 						cost = int(cost * 0.80)
+						if can_desert and cost > 0:
+							desertion_candidates.append({"army": army, "unit": unit, "gold": cost})
 					fs.resources[res_type] -= cost
 		# Commander upkeep (only while assigned to army; skip for elderbeast armies)
 		if army.commander != null and army.elderbeast_id == &"":
@@ -825,10 +831,12 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 					fs.resources[res_type] -= cost
 
 	# Building upkeep: deduct per-building costs from faction resources
+	var has_city := false
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
 		if city.faction_id != faction_id:
 			continue
+		has_city = true
 		for building_id in city.buildings:
 			var bld: BuildingData = DataManager.get_building(building_id)
 			if bld == null:
@@ -840,6 +848,52 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 					cost = int(cost * (1.0 - upkeep_red_pct))
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= cost
+
+	# Bankruptcy desertion: if the treasury is in the red after upkeep AND the
+	# standing army costs more gold than the economy earns, the highest-paid
+	# soldiers desert until the army is affordable again. This trims an
+	# over-recruited army down to what income supports instead of leaving the
+	# faction in a silent, permanent negative-gold softlock. Deserters' unpaid
+	# wages are credited back. See docs/economy_audit.md §1.
+	# City-less nomads (Shardhorde/Sunblessed) are exempt — their zero-gold
+	# economy is a separate structural issue, not an over-recruit.
+	if has_city and fs.resources.get(Enums.ResourceType.GOLD, 0) < 0 and not desertion_candidates.is_empty():
+		_desert_unpaid_units(faction_id, fs, desertion_candidates)
+
+## Removes the most expensive field units until the army's gold upkeep no longer
+## exceeds the faction's gold income ("desert until income balances"), crediting
+## back each deserter's unpaid wages. Does nothing if the army is already
+## affordable (the deficit is then building/commander-driven, not the army).
+func _desert_unpaid_units(faction_id: StringName, fs: FactionState, candidates: Array) -> void:
+	var gold_income: int = GameManager.diplomacy_system.get_faction_resource_income(faction_id, Enums.ResourceType.GOLD)
+	var army_gold_upkeep := 0
+	for entry in candidates:
+		army_gold_upkeep += int(entry["gold"])
+	if army_gold_upkeep <= gold_income:
+		return  # army is affordable; the shortfall isn't the army's fault
+
+	candidates.sort_custom(func(a, b): return a["gold"] > b["gold"])
+	var deserted_names: Array = []
+	var emptied_armies: Array[StringName] = []
+	for entry in candidates:
+		if army_gold_upkeep <= gold_income:
+			break
+		var army: ArmyState = entry["army"]
+		var unit: UnitInstance = entry["unit"]
+		var idx := army.units.find(unit)
+		if idx == -1:
+			continue
+		army.units.remove_at(idx)
+		army_gold_upkeep -= int(entry["gold"])
+		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + int(entry["gold"])
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		deserted_names.append(ud.display_name if ud else String(unit.unit_data_id))
+		if army.units.is_empty() and not emptied_armies.has(army.army_id):
+			emptied_armies.append(army.army_id)
+	for army_id in emptied_armies:
+		GameManager.remove_army(army_id)
+	if not deserted_names.is_empty():
+		EventBus.units_deserted.emit(faction_id, deserted_names, deserted_names.size())
 
 func get_building_upkeep(building: BuildingData) -> Dictionary:
 	if not building.upkeep_cost.is_empty():

@@ -63,6 +63,9 @@ signal army_retreated(army_id: StringName, from_hex: Vector2i, to_hex: Vector2i,
 # Revolt signals
 signal revolt_triggered(city_id: StringName, faction_id: StringName)
 
+# Bankruptcy: unpaid units desert when the treasury goes negative
+signal units_deserted(faction_id: StringName, unit_names: Array, count: int)
+
 # Diplomacy signals
 signal diplomacy_action(action_type: int, faction_a: StringName, faction_b: StringName)
 signal treaty_created(treaty_id: StringName, treaty_type: int, faction_a: StringName, faction_b: StringName)

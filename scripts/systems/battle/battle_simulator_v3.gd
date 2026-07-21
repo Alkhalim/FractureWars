@@ -40,7 +40,8 @@ const MANA_COST_SPELL := 18.0           # Per spell cast
 const MANA_REGEN := 0.4                 # Per tick (permanent)
 
 # Ammo system
-const AMMO_PER_ENTITY := 7             # Volleys per archer
+const AMMO_PER_ENTITY := 5             # Volleys per archer (nerfed 7->5: archers were
+                                       # best-value in 10/11 factions with near-zero losses)
 
 # Deploy zones
 const DEPLOY_BOTTOM_Y := 900.0  # Attacker zone: y 900-1200
