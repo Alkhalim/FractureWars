@@ -192,3 +192,79 @@ godot --headless --path . -s res://tests/tmp_econ_sim.gd -- <seed> <turns>
 ```
 Caveat: late turns in a snowballed game are compute-heavy (many battles/round),
 so 80-turn all-AI games take several minutes each; run seeds in parallel.
+
+---
+
+## Bounded siege-capture: conquest resolution results (July 2026)
+
+*Follow-up after implementing the bounded siege-pressure meter (`city_system.gd`
+`SIEGE_*` constants + `_process_sieges`/`award_siege_*`/`_capture_city`) — the
+fix this document's "highest-leverage thing to fix" called for. Method: 3
+fully-AI games (seeds 12345, 23456, 34567), 60 turns each, run headless via a
+purpose-built `tests/tmp_siege_capture_sim.gd` that hooks `EventBus.city_captured`
+/ `siege_started` / `siege_broken` in addition to the per-turn city counts
+`tmp_econ_sim.gd` already logs.*
+
+**Before:** effectively 0 combat captures. This document's original finding
+(6 games, seeds 1–6, 68–80 turns) measured net *major-faction* city count
+moving only −2 to +4 per whole game, "almost entirely factions absorbing
+independent cities or founding settlements — not taking each other's cities."
+Sieges started and stalled forever; the front never moved.
+
+**After:** conquest resolves. Across the 3 games:
+
+| seed | siege_started | siege_broken | city_captured | max faction cities | max share of 81 world cities |
+|---|---|---|---|---|---|
+| 12345 | 6 | 2 | **7** | cinderguard = 3 | 3.7% |
+| 23456 | 8 | 1 | **6** | gladehost = 4 | 4.9% |
+| 34567 | 8 | 4 | **5** | gladehost = 3 | 3.7% |
+
+18 total captures across 3×60-turn games vs. ~0 before. Most started sieges
+now complete rather than stalemating indefinitely, and no faction is close to
+running away with the map (max share stayed under 5% of all 81 cities in the
+world in every game — well short of anything resembling a snowball).
+
+**What's actually changing hands, by capture type** (breakdown of the 18):
+- **13/18** — a faction (major or minor) sieges down an `independent`-held
+  city's garrison and annexes it by force. This is new: previously,
+  independent cities mostly joined factions peacefully via
+  `_independent_city_joins` (adjacent standing ≥ 40, fires `city_joined`, not
+  `city_captured`); now forced annexation via siege is also a live path.
+- **4/18** — a loyalty-collapse revolt (`revolt_triggered` → city besieged by
+  an internal `&"rebels"` army) resolves to completion instead of sitting
+  under siege forever. Forsaken lost 2 cities this way, Gorgonic Cult and
+  Crimson Legion lost 1 each.
+- **0/18** — no clean major-vs-major territorial conquest (one major faction
+  taking another major faction's city) was observed in this 3-seed, 60-turn
+  sample. The mechanic fires correctly whenever a siege is sustained to
+  threshold; majors just didn't sustain a siege on a rival major's
+  well-garrisoned city to completion within 60 turns in these runs. Worth
+  re-checking at 80+ turns or with more seeds before concluding this never
+  happens — not a constants problem, an AI-commitment question.
+
+**Recommendation: keep `SIEGE_*` constants as shipped.** Cities now change
+hands (18 vs ~0), and there is no runaway (max share 3.7–4.9%, unchanged
+order-of-magnitude from the pre-feature "static map" territory numbers in the
+table above). No evidence in this sample calls for raising fill/lowering decay
+(captures aren't stalling — most started sieges complete) or the reverse
+(nothing snowballs). Current values: `SIEGE_FILL_BASE=0.75`,
+`SIEGE_OVERRUN_BONUS=2.0`, `SIEGE_RELIEF_WIN=1.0`, `SIEGE_RELIEF_STALEMATE=0.4`,
+`SIEGE_POINTWIN_GAP=0.25`, `SIEGE_DECAY_ABSENT=1.0`, `SIEGE_RELIEF_LOSS=2.0`,
+`SIEGE_BESIEGER_ATTRITION=0.025`, `SIEGE_GARRISON_ATTRITION=0.09` — unchanged
+from Tasks 1–7.
+
+**Determinism check:** `tests/test_battle_determinism.gd` currently reports
+`FINGERPRINT MISMATCH`, but it is unrelated to this feature. Root-caused to
+commit `6bd9103` ("balance: bankruptcy desertion, correct unit-card DPS, nerf
+archer sustain", predates the siege epic) changing `AMMO_PER_ENTITY` (7→5) in
+`battle_simulator_v3.gd` and `melee_defense` (−30%) on 53 ranged units'
+`.tres` files — including `bloodraven` (skulloath), `imperial_crossbow`
+(empire), and `hawk_scout` (gladehost), the exact factions/units the
+determinism fixture fights — without regenerating `tests/baselines/`
+afterward. The siege feature's only battle-path edit (`battle_resolver.gd`,
+commit `584aa7c`) runs strictly after the sim finishes, touches no RNG, and
+isn't even exercised by the determinism harness (it instantiates
+`battle_simulator_v2/v3.gd` directly, bypassing `battle_resolver.gd`
+entirely). Baselines were not regenerated as part of this task, per
+instructions; someone should recapture them in a follow-up once `6bd9103`'s
+stat changes are confirmed final.
