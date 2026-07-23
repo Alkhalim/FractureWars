@@ -32,11 +32,18 @@ func _run() -> void:
 	_gm.movement_system.invalidate_positions()
 
 	_check(_tm._army_is_holding_siege(sieger), "AI recognizes an army holding a siege")
-	var pos_before: Vector2i = sieger.hex_pos
 	sieger.movement_remaining = 2.0
-	# The AI army loop must leave a siege-holding army in place.
-	_tm._maybe_hold_siege_or_retarget(sieger, &"skulloath")
-	_check(sieger.hex_pos == pos_before, "AI keeps a besieging army on the city")
+	# The AI army loop must leave a siege-holding army in place: the function
+	# should report the hold (return true) and zero movement so the caller's
+	# `continue` actually skips retargeting this turn.
+	var held: bool = _tm._maybe_hold_siege_or_retarget(sieger, &"skulloath")
+	_check(held, "hold returns true for an army besieging an enemy city")
+	_check(sieger.movement_remaining == 0.0, "hold zeroes movement so the AI loop's continue skips retargeting")
+
+	# _nearest_own_siege_hex should locate the besieged city for the besieging
+	# faction, and report "none" ((-1,-1)) for a faction with no active siege.
+	_check(_tm._nearest_own_siege_hex(ecity.hex_pos + Vector2i(4, 0), &"skulloath") == ecity.hex_pos, "nearest own siege hex finds the besieged city")
+	_check(_tm._nearest_own_siege_hex(ecity.hex_pos, &"empire") == Vector2i(-1, -1), "no own siege -> (-1,-1)")
 
 	if _fails == 0:
 		print("SIEGE TEST PASSED")
