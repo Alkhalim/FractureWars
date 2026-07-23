@@ -640,6 +640,26 @@ func _army_siege_weight(army: ArmyState) -> float:
 		total += _unit_siege_factor(DataManager.get_unit(unit.unit_data_id))
 	return total / float(army.units.size())
 
+func add_siege_pressure(city: CityState, amount: float) -> void:
+	if city == null or not city.is_under_siege:
+		return
+	city.siege_turns = maxf(0.0, city.siege_turns + amount)
+	EventBus.siege_progress_changed.emit(city.city_id, city.siege_turns, get_siege_threshold(city))
+
+func award_siege_overrun(city: CityState) -> void:
+	add_siege_pressure(city, SIEGE_OVERRUN_BONUS)
+
+func award_siege_battle(city: CityState, besieger_alive: bool, enemy_alive: bool, besieger_frac: float, enemy_frac: float) -> void:
+	if besieger_alive and not enemy_alive:
+		add_siege_pressure(city, SIEGE_RELIEF_WIN)
+	elif besieger_alive and enemy_alive:
+		if besieger_frac - enemy_frac >= SIEGE_POINTWIN_GAP:
+			add_siege_pressure(city, SIEGE_RELIEF_WIN)
+		else:
+			add_siege_pressure(city, SIEGE_RELIEF_STALEMATE)
+	elif not besieger_alive:
+		add_siege_pressure(city, -SIEGE_RELIEF_LOSS)
+
 func _process_sieges(faction_id: StringName) -> void:
 	# Process sieges where this faction's cities are being besieged
 	# (siege_turns increment at the start of the besieging faction's turn)
