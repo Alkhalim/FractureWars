@@ -147,6 +147,31 @@ func _run() -> void:
 	else:
 		print("NOTE: no independent city to script an assault; skipping smoke check")
 
+	# Leaving a besieged hex must NOT instantly end the siege.
+	var dcity: CityState = null
+	for cid in _gm.state.cities:
+		var c: CityState = _gm.state.cities[cid]
+		if c.faction_id == &"empire":
+			dcity = c
+			break
+	dcity.is_under_siege = true
+	dcity.siege_faction = &"skulloath"
+	dcity.siege_turns = 3.0
+	var leaver := _make_army(&"skulloath", [&"legionary"], dcity.hex_pos)
+	_gm.state.armies[leaver.army_id] = leaver
+	_gm.movement_system.invalidate_positions()
+	# Call the departure check while army is still at the besieged hex.
+	# This simulates the call in move_army() before the position update.
+	_gm._check_siege_departure(leaver)
+	# Now move the army away
+	leaver.hex_pos = dcity.hex_pos + Vector2i(1, 0)
+	_gm.movement_system.invalidate_positions()
+	_check(dcity.is_under_siege, "departure does not instantly break the siege")
+	_check(abs(dcity.siege_turns - 3.0) < 0.001, "departure leaves pressure intact (decay handles it later)")
+	dcity.is_under_siege = false
+	dcity.siege_faction = &""
+	dcity.siege_turns = 0.0
+
 	if _fails == 0:
 		print("SIEGE TEST PASSED")
 		quit(0)

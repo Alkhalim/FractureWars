@@ -2290,21 +2290,10 @@ func move_army_along_path(army_id: StringName, path: Array[Vector2i]) -> void:
 				state.hex_map.invalidate_region_owner(region_tile.region_id)
 
 func _check_siege_departure(army: ArmyState) -> void:
-	# If this army was besieging a city and is now leaving, check if any other
-	# friendly army remains. If not, break siege.
-	var city_at := city_system.get_city_at_hex(army.hex_pos)
-	if city_at == null or not city_at.is_under_siege:
-		return
-	if city_at.siege_faction != army.faction_id:
-		return
-	# Check if any OTHER friendly army remains at this hex
-	var other_present := false
-	for a: ArmyState in get_armies_at_tile(army.hex_pos):
-		if a.army_id != army.army_id and a.faction_id == army.faction_id:
-			other_present = true
-			break
-	if not other_present:
-		city_system.break_siege(city_at.city_id)
+	# Pressure model: leaving does NOT end the siege. If no besieger remains,
+	# _process_sieges decays the pressure and lifts the siege at zero. This keeps
+	# a determined attacker able to step out and back without restarting.
+	pass
 
 func _try_claim_shard(hex_pos: Vector2i, faction_id: StringName) -> void:
 	# Block claiming if shard guardian army still alive at this hex
