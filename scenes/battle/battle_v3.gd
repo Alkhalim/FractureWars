@@ -2266,6 +2266,21 @@ func _show_result() -> void:
 	sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
 	vbox.add_child(sep)
 
+	# Siege notice: a winning attacker at an enemy city lays siege on Continue
+	# (start_siege runs in _apply_battle_results, after this screen). Say so
+	# plainly — a costly assault win leaves the army parked on the city, which
+	# otherwise reads as "stuck after losing".
+	if player_won and is_player_attacker:
+		var besieged_city := GameManager.city_system.get_city_at_hex(battle_hex_pos)
+		if besieged_city and besieged_city.faction_id != attacker_faction_id:
+			var siege_note := Label.new()
+			siege_note.text = "⚔ You have stormed the walls — your army now lays siege to %s.\nKeep it here; the city falls after a few turns under siege." % besieged_city.get_display_name()
+			siege_note.add_theme_font_size_override("font_size", 13)
+			siege_note.add_theme_color_override("font_color", Color(0.95, 0.8, 0.35))
+			siege_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			siege_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			vbox.add_child(siege_note)
+
 	# Roster report scrolls so long armies never overflow the fixed panel
 	var report_scroll := ScrollContainer.new()
 	report_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
