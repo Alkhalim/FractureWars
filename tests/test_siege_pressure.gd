@@ -121,6 +121,32 @@ func _run() -> void:
 	_check(tcity.faction_id == &"skulloath", "city captured at threshold")
 	_check(not tcity.is_under_siege, "siege cleared after capture")
 
+	# Scripted garrison assault: overwhelming attacker overruns a garrison,
+	# starting a siege with >= overrun pressure.
+	var vcity: CityState = null
+	for cid in _gm.state.cities:
+		var c: CityState = _gm.state.cities[cid]
+		if c.faction_id == &"independent":
+			vcity = c
+			break
+	if vcity != null:
+		vcity.is_under_siege = false
+		vcity.siege_turns = 0.0
+		vcity.garrison_hp_ratio = 1.0
+		var garrison: ArmyState = _cs.create_garrison_army(vcity)
+		_gm.state.armies[garrison.army_id] = garrison
+		# Overwhelming attacker: many elite units.
+		var atk := _make_army(&"empire", [&"elite_legionaries", &"elite_legionaries", &"elite_legionaries", &"elite_legionaries", &"marching_bastion"], vcity.hex_pos)
+		_gm.state.armies[atk.army_id] = atk
+		_gm.movement_system.invalidate_positions()
+		var _br: Node = root.get_node("/root/BattleResolver")
+		_br.auto_resolve(atk.army_id, garrison.army_id, vcity.hex_pos)
+		_check(vcity.is_under_siege, "scripted assault started a siege")
+		_check(vcity.siege_faction == &"empire", "besieger is the attacker")
+		_check(vcity.siege_turns >= _cs.SIEGE_OVERRUN_BONUS - 0.001, "overrun awarded pressure (%f)" % vcity.siege_turns)
+	else:
+		print("NOTE: no independent city to script an assault; skipping smoke check")
+
 	if _fails == 0:
 		print("SIEGE TEST PASSED")
 		quit(0)

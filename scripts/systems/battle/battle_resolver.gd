@@ -218,6 +218,9 @@ func auto_resolve(attacker_id: StringName, defender_id: StringName, hex_pos: Vec
 		var city_at := GameManager.city_system.get_city_at_hex(hex_pos)
 		if city_at and city_at.faction_id != attacker_army.faction_id:
 			GameManager.city_system.start_siege(city_at.city_id, attacker_army.faction_id)
+			# Overrunning the garrison is a decisive assault win.
+			if defender_army.is_garrison and city_at.is_under_siege:
+				GameManager.city_system.award_siege_overrun(city_at)
 		elif city_at and city_at.faction_id == attacker_army.faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
 	elif garrison_retreat:
@@ -229,6 +232,23 @@ func auto_resolve(attacker_id: StringName, defender_id: StringName, hex_pos: Vec
 		var city_at := GameManager.city_system.get_city_at_hex(hex_pos)
 		if city_at and city_at.faction_id == defender_army.faction_id and city_at.is_under_siege:
 			GameManager.city_system.break_siege(city_at.city_id)
+
+	# Siege pressure from a field battle fought on a besieged city hex.
+	# Excludes garrison assaults (handled above); handles both "besieger attacks
+	# relief on the hex" and "relief attacks besieger on the hex".
+	var siege_city := GameManager.city_system.get_city_at_hex(hex_pos)
+	if siege_city and siege_city.is_under_siege and not attacker_army.is_garrison and not defender_army.is_garrison:
+		var besieger_fid := siege_city.siege_faction
+		var besieger_is_atk := attacker_army.faction_id == besieger_fid
+		var besieger_is_def := defender_army.faction_id == besieger_fid
+		if besieger_is_atk or besieger_is_def:
+			var besieger_alive := atk_alive if besieger_is_atk else def_alive
+			var enemy_alive := def_alive if besieger_is_atk else atk_alive
+			var atk_frac := float(attacker_army.get_total_strength()) / maxf(1.0, float(atk_strength_pre))
+			var def_frac := float(defender_army.get_total_strength()) / maxf(1.0, float(def_strength_pre))
+			var besieger_frac := atk_frac if besieger_is_atk else def_frac
+			var enemy_frac := def_frac if besieger_is_atk else atk_frac
+			GameManager.city_system.award_siege_battle(siege_city, besieger_alive, enemy_alive, besieger_frac, enemy_frac)
 
 	# Build battle context for context-aware skill selection
 	var base_ctx: Array[StringName] = []
