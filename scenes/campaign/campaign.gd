@@ -200,6 +200,10 @@ func _ready() -> void:
 	EventBus.city_captured.connect(_on_city_captured)
 	EventBus.siege_started.connect(_on_siege_started)
 	EventBus.siege_broken.connect(_on_siege_broken)
+	EventBus.siege_progress_changed.connect(_on_siege_badge_update)
+	EventBus.siege_started.connect(func(cid, _f): _refresh_siege_badge(cid))
+	EventBus.siege_broken.connect(func(cid): _refresh_siege_badge(cid))
+	EventBus.city_captured.connect(func(cid, _o, _n): _refresh_siege_badge(cid))
 	EventBus.building_completed.connect(_on_building_completed)
 	EventBus.building_demolished.connect(_on_building_demolished)
 	EventBus.unit_recruited.connect(_on_unit_recruited)
@@ -4520,6 +4524,35 @@ func _on_siege_broken(city_id: StringName) -> void:
 	_city_markers_dirty = true
 	if TurnManager.is_player_turn:
 		_refresh_city_markers()
+
+func _on_siege_badge_update(city_id: StringName, _pressure: float, _threshold: int) -> void:
+	_refresh_siege_badge(city_id)
+
+func _refresh_siege_badge(city_id: StringName) -> void:
+	var marker: Node2D = _city_markers.get(city_id)
+	if marker == null:
+		return
+	var badge: Label = marker.get_node_or_null("SiegeBadge")
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null or not city.is_under_siege:
+		if badge:
+			badge.queue_free()
+		return
+	if badge == null:
+		badge = Label.new()
+		badge.name = "SiegeBadge"
+		badge.add_theme_font_size_override("font_size", 20)
+		badge.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+		badge.add_theme_color_override("font_outline_color", Color(0.4, 0.03, 0.02))
+		badge.add_theme_constant_override("outline_size", 6)
+		badge.z_index = 5
+		# Offset up-and-right of the level badge / capital crown (which sit
+		# centered around x=0, y=-29 to -43) so the two don't overlap.
+		badge.position = Vector2(10, -46)
+		marker.add_child(badge)
+	var threshold := GameManager.city_system.get_siege_threshold(city)
+	var falls_in := int(ceil(maxf(0.0, float(threshold) - city.siege_turns)))
+	badge.text = "⚔%d" % falls_in
 
 func _on_building_completed(city_id: StringName, building_id: StringName) -> void:
 	_invalidate_city_action_cache()

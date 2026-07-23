@@ -72,6 +72,8 @@ var _pending_level_up_commander: CommanderState
 var _pending_event_data: Dictionary
 var _loyalty_panel: PanelContainer
 var _loyalty_panel_city_id: StringName = &""
+var _shown_city_id: StringName = &""
+var _siege_warned: Dictionary = {}   # city_id -> true (capture-imminent toast fired once)
 var _class_hover_tooltip: PanelContainer
 var _diplomacy_panel: PanelContainer
 var _policies_panel: PanelContainer
@@ -117,6 +119,8 @@ func _ready() -> void:
 	EventBus.research_completed.connect(_on_research_completed)
 	EventBus.game_over.connect(_on_game_over)
 	EventBus.siege_choice_needed.connect(_on_siege_choice_needed)
+	EventBus.siege_progress_changed.connect(_on_siege_progress_changed)
+	EventBus.siege_started.connect(_on_siege_started_toast)
 	EventBus.ai_diplomacy_offer.connect(_show_ai_diplomacy_offer)
 	EventBus.diplomacy_action.connect(_on_diplomacy_action)
 	EventBus.treaty_created.connect(_on_treaty_created)
@@ -7551,6 +7555,7 @@ func _show_city_panel(city_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null:
 		return
+	_shown_city_id = city_id
 
 	var is_player_city := city.faction_id == GameManager.state.player_faction_id
 	# Only animate fade-in if the panel wasn't already visible (skip on refresh)
@@ -7727,17 +7732,27 @@ func _show_city_panel(city_id: StringName) -> void:
 		found_btn.pressed.connect(_on_found_settlement_pressed.bind(city_id))
 		vbox.add_child(found_btn)
 
-	# Siege status
+	# Siege status — pressure meter
 	if city.is_under_siege:
-		var siege_label := Label.new()
 		var attacker := DataManager.get_faction(city.siege_faction)
 		var aname := attacker.display_name if attacker else str(city.siege_faction)
-		var siege_threshold := 5 if city.buildings.has(&"steppe_watchtower") else 4
-		var turns_remaining := int(ceil(maxf(0.0, float(siege_threshold) - city.siege_turns)))
-		siege_label.text = "UNDER SIEGE by %s (%d/%d - %d remaining)" % [aname, int(city.siege_turns), siege_threshold, turns_remaining]
+		var siege_threshold := GameManager.city_system.get_siege_threshold(city)
+		var frac := clampf(city.siege_turns / float(maxi(1, siege_threshold)), 0.0, 1.0)
+		var falls_in := int(ceil(maxf(0.0, float(siege_threshold) - city.siege_turns)))
+
+		var siege_label := Label.new()
+		siege_label.text = "UNDER SIEGE by %s — falls in ~%d turn%s" % [aname, falls_in, "" if falls_in == 1 else "s"]
 		siege_label.add_theme_font_size_override("font_size", 13)
 		siege_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
 		vbox.add_child(siege_label)
+
+		var bar := ProgressBar.new()
+		bar.min_value = 0.0
+		bar.max_value = 1.0
+		bar.value = frac
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(280, 14)
+		vbox.add_child(bar)
 
 	_add_separator(vbox)
 
@@ -7922,6 +7937,7 @@ func _show_city_panel(city_id: StringName) -> void:
 func _hide_city_panel() -> void:
 	if city_panel:
 		city_panel.visible = false
+	_shown_city_id = &""
 	_on_loyalty_panel_close()
 
 func _on_city_panel_close() -> void:
@@ -10550,6 +10566,30 @@ func _on_ai_offer_response(from_faction: StringName, offer_type: StringName, acc
 # ── Skulloath Siege Choice ──────────────────────────────────
 
 var _siege_choice_dialog: PanelContainer
+
+func _on_siege_progress_changed(city_id: StringName, pressure: float, threshold: int) -> void:
+	# Rebuild the panel if it's showing this city.
+	if _shown_city_id == city_id and city_panel and city_panel.visible:
+		_show_city_panel(city_id)
+	# Capture-imminent toast (once per siege), for player-relevant cities.
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return
+	var pf := GameManager.state.player_faction_id
+	var relevant := city.faction_id == pf or city.siege_faction == pf
+	if relevant and pressure >= float(threshold) - 1.0 and not _siege_warned.has(city_id):
+		_siege_warned[city_id] = true
+		_show_advisor_toast("%s will fall next turn!" % city.get_display_name())
+	elif pressure < float(threshold) - 1.0:
+		_siege_warned.erase(city_id)
+
+func _on_siege_started_toast(city_id: StringName, faction_id: StringName) -> void:
+	var city: CityState = GameManager.state.cities.get(city_id)
+	if city == null:
+		return
+	var pf := GameManager.state.player_faction_id
+	if city.faction_id == pf or faction_id == pf:
+		_show_advisor_toast("Siege begun at %s" % city.get_display_name())
 
 func _on_siege_choice_needed(city_id: StringName, _faction_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(city_id)
