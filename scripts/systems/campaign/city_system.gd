@@ -661,8 +661,8 @@ func award_siege_battle(city: CityState, besieger_alive: bool, enemy_alive: bool
 		add_siege_pressure(city, -SIEGE_RELIEF_LOSS)
 
 func _process_sieges(faction_id: StringName) -> void:
-	# Process sieges where this faction's cities are being besieged
-	# (siege_turns increment at the start of the besieging faction's turn)
+	# Pressure model: fill while the besieger holds the hex, decay when absent.
+	# Runs on the besieging faction's turn (siege_faction == faction_id).
 	for city_id in GameManager.state.cities:
 		var city: CityState = GameManager.state.cities[city_id]
 		if not city.is_under_siege:
@@ -670,36 +670,57 @@ func _process_sieges(faction_id: StringName) -> void:
 		if city.siege_faction != faction_id:
 			continue
 
-		city.siege_turns += 1
+		var besiegers := _besiegers_present(city)
 
-		# Jungle Traps: besieging armies take attrition damage each siege turn
+		if besiegers.is_empty():
+			# No one holding the siege — drain, and lift at zero.
+			city.siege_turns = maxf(0.0, city.siege_turns - SIEGE_DECAY_ABSENT)
+			if city.siege_turns <= 0.0:
+				break_siege(city.city_id)
+			else:
+				EventBus.siege_progress_changed.emit(city.city_id, city.siege_turns, get_siege_threshold(city))
+			continue
+
+		# Fill scaled by the best besieging army's composition.
+		var weight := 0.0
+		for a: ArmyState in besiegers:
+			weight = maxf(weight, _army_siege_weight(a))
+		city.siege_turns += SIEGE_FILL_BASE * weight
+
+		# Attrition: besieged garrison suffers more than the besieger.
+		_apply_besieger_attrition(besiegers)
+		city.garrison_hp_ratio = maxf(0.0, city.garrison_hp_ratio - SIEGE_GARRISON_ATTRITION)
+
+		# Jungle Traps: extra besieger attrition (existing building behavior).
 		if city.buildings.has(&"jungle_traps"):
-			for army: ArmyState in GameManager.get_armies_at_tile(city.hex_pos):
-				if army.faction_id == faction_id:
-					for unit in army.units:
-						var ud := DataManager.get_unit(unit.unit_data_id)
-						if ud:
-							unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * 0.05))
+			for army: ArmyState in besiegers:
+				for unit in army.units:
+					var ud := DataManager.get_unit(unit.unit_data_id)
+					if ud:
+						unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * 0.05))
 
-		# Steppe Watchtower: extends siege time by 1 (requires 5 turns instead of 4)
-		var siege_threshold := 4
-		if city.buildings.has(&"steppe_watchtower"):
-			siege_threshold = 5
-		# Research: defense_bonus and city_defense_pct increase siege threshold
-		var def_parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
-		var def_r_eff := GameManager.research_system.get_research_effects(def_parent_fid)
-		var research_def: int = def_r_eff.get("defense_bonus", 0)
-		var city_def_pct: int = def_r_eff.get("city_defense_pct", 0)
-		if research_def >= 5 or city_def_pct >= 15:
-			siege_threshold += 1
-		if research_def >= 10 or city_def_pct >= 30:
-			siege_threshold += 1
-		if city.siege_turns >= siege_threshold:
-			# Skulloath player gets a choice: capture, loot, or raze
+		EventBus.siege_progress_changed.emit(city.city_id, city.siege_turns, get_siege_threshold(city))
+
+		if city.siege_turns >= get_siege_threshold(city):
+			# Skulloath player gets a choice: capture, loot, or raze.
 			if faction_id == &"skulloath" and faction_id == GameManager.state.player_faction_id:
 				EventBus.siege_choice_needed.emit(city.city_id, faction_id)
 			else:
 				_capture_city(city)
+
+func _besiegers_present(city: CityState) -> Array:
+	var out: Array = []
+	for a: ArmyState in GameManager.get_armies_at_tile(city.hex_pos):
+		if a.faction_id == city.siege_faction and not a.is_garrison:
+			out.append(a)
+	return out
+
+func _apply_besieger_attrition(besiegers: Array) -> void:
+	for army: ArmyState in besiegers:
+		for unit in army.units:
+			var ud := DataManager.get_unit(unit.unit_data_id)
+			if ud:
+				unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * SIEGE_BESIEGER_ATTRITION))
 
 func _capture_city(city: CityState) -> void:
 	var old_owner := city.faction_id

@@ -70,6 +70,57 @@ func _run() -> void:
 	any_city.siege_faction = &""
 	any_city.siege_turns = 0.0
 
+	# Full siege tick: besieger present fills by base*weight; garrison declines.
+	var tcity: CityState = null
+	for cid in _gm.state.cities:
+		var c: CityState = _gm.state.cities[cid]
+		if c.faction_id == &"empire":
+			tcity = c
+			break
+	tcity.is_under_siege = true
+	tcity.siege_faction = &"skulloath"
+	tcity.siege_turns = 0.0
+	tcity.garrison_hp_ratio = 1.0
+
+	var besieger := _make_army(&"skulloath", [&"legionary"], tcity.hex_pos)
+	_gm.state.armies[besieger.army_id] = besieger
+	_gm.movement_system.invalidate_positions()
+
+	_cs._process_sieges(&"skulloath")
+	_check(abs(tcity.siege_turns - _cs.SIEGE_FILL_BASE) < 0.001, "present infantry fills by base (%f)" % tcity.siege_turns)
+	_check(tcity.garrison_hp_ratio < 1.0, "besieged garrison declines while sieged")
+
+	# One more present tick so accumulated pressure (1.5) can survive a single
+	# absence decay (1.0) without hitting 0 -- SIEGE_FILL_BASE (0.75) times a
+	# baseline weight of 1.0 is below SIEGE_DECAY_ABSENT (1.0), so a lone fill
+	# tick can never outlast one decay tick; needed for the "stays active"
+	# check below to be meaningful. See task-3-report.md for details.
+	_cs._process_sieges(&"skulloath")
+
+	# Besieger leaves -> next tick decays; still under siege until it hits 0.
+	_gm.state.armies.erase(besieger.army_id)
+	_gm.movement_system.invalidate_positions()
+	var before := tcity.siege_turns
+	_cs._process_sieges(&"skulloath")
+	_check(tcity.siege_turns < before, "absent besieger decays pressure")
+	_check(tcity.is_under_siege, "siege stays active while pressure > 0")
+
+	# Decay all the way to 0 lifts the siege.
+	tcity.siege_turns = 0.5
+	_cs._process_sieges(&"skulloath")
+	_check(not tcity.is_under_siege, "siege lifts when pressure reaches 0")
+
+	# Reaching threshold captures the city for the besieger.
+	tcity.is_under_siege = true
+	tcity.siege_faction = &"skulloath"
+	tcity.siege_turns = float(_cs.get_siege_threshold(tcity))
+	var besieger2 := _make_army(&"skulloath", [&"legionary"], tcity.hex_pos)
+	_gm.state.armies[besieger2.army_id] = besieger2
+	_gm.movement_system.invalidate_positions()
+	_cs._process_sieges(&"skulloath")
+	_check(tcity.faction_id == &"skulloath", "city captured at threshold")
+	_check(not tcity.is_under_siege, "siege cleared after capture")
+
 	if _fails == 0:
 		print("SIEGE TEST PASSED")
 		quit(0)
