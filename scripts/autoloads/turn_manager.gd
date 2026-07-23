@@ -903,6 +903,35 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 
 # ── Empire/Default AI (Defend + Expand) ──────────────────────
 
+func _army_is_holding_siege(army: ArmyState) -> bool:
+	var city := GameManager.city_system.get_city_at_hex(army.hex_pos)
+	if city == null or not city.is_under_siege:
+		return false
+	if city.siege_faction != army.faction_id or city.faction_id == army.faction_id:
+		return false
+	return GameManager.city_system._army_siege_weight(army) > 0.0
+
+# Returns true if the army was left in place holding a siege (caller should skip
+# re-targeting it this turn); false if it is free to act.
+func _maybe_hold_siege_or_retarget(army: ArmyState, faction_id: StringName) -> bool:
+	if _army_is_holding_siege(army):
+		army.movement_remaining = 0.0
+		return true
+	return false
+
+func _nearest_own_siege_hex(from: Vector2i, faction_id: StringName) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := 1 << 30
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if not city.is_under_siege or city.siege_faction != faction_id:
+			continue
+		var d := HexHelper.hex_distance(from, city.hex_pos)
+		if d < best_d:
+			best_d = d
+			best = city.hex_pos
+	return best
+
 func _execute_ai_turn(faction_id: StringName) -> void:
 	var armies := GameManager.get_faction_armies(faction_id)
 	var army_count := 0
@@ -911,6 +940,9 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 		if army_count % 2 == 0:
 			await _ai_wait()
 		if army.movement_remaining <= 0:
+			continue
+
+		if _maybe_hold_siege_or_retarget(army, faction_id):
 			continue
 
 		# Don't attack with tiny armies
@@ -937,6 +969,11 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 				target_hex = _find_nearest_independent_city_hex(army.hex_pos, faction_id)
 		if target_hex == Vector2i(-1, -1):
 			continue
+
+		# Prefer finishing an in-progress siege over opening a new front.
+		var ongoing := _nearest_own_siege_hex(army.hex_pos, faction_id)
+		if ongoing != Vector2i(-1, -1):
+			target_hex = ongoing
 
 		_ai_move_army_safe(army, target_hex, faction_id)
 		if not GameManager.state.armies.has(army.army_id):
@@ -966,6 +1003,9 @@ func _execute_skulloath_ai(faction_id: StringName) -> void:
 		if army_count % 2 == 0:
 			await _ai_wait()
 		if army.movement_remaining <= 0:
+			continue
+
+		if _maybe_hold_siege_or_retarget(army, faction_id):
 			continue
 
 		# Small armies (< 3 units) retreat to nearest friendly city
