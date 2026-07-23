@@ -10584,6 +10584,7 @@ func _on_siege_progress_changed(city_id: StringName, pressure: float, threshold:
 		_siege_warned.erase(city_id)
 
 func _on_siege_started_toast(city_id: StringName, faction_id: StringName) -> void:
+	_siege_warned.erase(city_id)
 	var city: CityState = GameManager.state.cities.get(city_id)
 	if city == null:
 		return
