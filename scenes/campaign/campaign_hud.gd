@@ -2203,7 +2203,7 @@ func _refresh_economy_panel() -> void:
 		if city.is_under_siege:
 			var siege_note := Label.new()
 			var st := 5 if city.buildings.has(&"steppe_watchtower") else 4
-			var sr := maxi(0, st - city.siege_turns)
+			var sr := int(ceil(maxf(0.0, float(st) - city.siege_turns)))
 			siege_note.text = "    (BESIEGED - no income, %d turns remaining)" % sr
 			siege_note.add_theme_font_size_override("font_size", 11)
 			siege_note.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
@@ -7733,8 +7733,8 @@ func _show_city_panel(city_id: StringName) -> void:
 		var attacker := DataManager.get_faction(city.siege_faction)
 		var aname := attacker.display_name if attacker else str(city.siege_faction)
 		var siege_threshold := 5 if city.buildings.has(&"steppe_watchtower") else 4
-		var turns_remaining := maxi(0, siege_threshold - city.siege_turns)
-		siege_label.text = "UNDER SIEGE by %s (Turn %d/%d - %d remaining)" % [aname, city.siege_turns, siege_threshold, turns_remaining]
+		var turns_remaining := int(ceil(maxf(0.0, float(siege_threshold) - city.siege_turns)))
+		siege_label.text = "UNDER SIEGE by %s (%d/%d - %d remaining)" % [aname, int(city.siege_turns), siege_threshold, turns_remaining]
 		siege_label.add_theme_font_size_override("font_size", 13)
 		siege_label.add_theme_color_override("font_color", Color(0.9, 0.25, 0.2))
 		vbox.add_child(siege_label)

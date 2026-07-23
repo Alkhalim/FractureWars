@@ -15,7 +15,7 @@ extends Resource
 @export var recruit_queue: Array[Dictionary] = [] # [{unit_data_id, turns_remaining}]
 @export var is_under_siege: bool = false
 @export var siege_faction: StringName = &""
-@export var siege_turns: int = 0
+@export var siege_turns: float = 0.0 # Accumulated siege pressure (was an int turn counter)
 @export var is_capital: bool = false
 @export var is_settlement: bool = false
 @export var can_found_settlement: bool = false

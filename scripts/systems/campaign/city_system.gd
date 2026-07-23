@@ -591,6 +591,55 @@ func _spawn_recruited_unit(city: CityState, unit_data_id: StringName, faction_id
 		GameManager.state.armies[army.army_id] = army
 		EventBus.unit_recruited.emit(city.city_id, unit_data_id, army.army_id)
 
+# ── Siege pressure model ─────────────────────────────────────
+# siege_turns is accumulated pressure (float) vs get_siege_threshold(city).
+const SIEGE_FILL_BASE := 0.75          # infantry-army blockade fill per turn
+const SIEGE_FACTOR_ENGINE := 1.8       # construct / tiles>=4 (batters walls)
+const SIEGE_FACTOR_HEAVY := 1.3        # heavy / monster / beast
+const SIEGE_FACTOR_BASE := 1.0         # infantry / ranged baseline
+const SIEGE_FACTOR_LIGHT := 0.5        # light / fast raiders
+const SIEGE_OVERRUN_BONUS := 2.0       # garrison overrun (decisive)
+const SIEGE_RELIEF_WIN := 1.0          # besieger wins a relief battle on the hex
+const SIEGE_RELIEF_STALEMATE := 0.4    # both survive, roughly even
+const SIEGE_POINTWIN_GAP := 0.25       # strength-fraction gap that counts as a point win
+const SIEGE_DECAY_ABSENT := 1.0        # drain per turn when no besieger present
+const SIEGE_RELIEF_LOSS := 2.0         # drain when a relief army beats the besieger
+const SIEGE_BESIEGER_ATTRITION := 0.025 # 2.5% max_hp/turn to besieging units
+const SIEGE_GARRISON_ATTRITION := 0.09  # 9%/turn garrison_hp_ratio decline (besieged suffer more)
+
+func get_siege_threshold(city: CityState) -> int:
+	var t := 4
+	if city.buildings.has(&"steppe_watchtower"):
+		t = 5
+	var parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
+	var eff := GameManager.research_system.get_research_effects(parent)
+	var rdef: int = eff.get("defense_bonus", 0)
+	var cpct: int = eff.get("city_defense_pct", 0)
+	if rdef >= 5 or cpct >= 15:
+		t += 1
+	if rdef >= 10 or cpct >= 30:
+		t += 1
+	return t
+
+func _unit_siege_factor(ud: UnitData) -> float:
+	if ud == null:
+		return SIEGE_FACTOR_BASE
+	if ud.tags.has("construct") or ud.tiles_per_entity >= 4:
+		return SIEGE_FACTOR_ENGINE
+	if ud.tags.has("heavy") or ud.tags.has("monster") or ud.tags.has("beast"):
+		return SIEGE_FACTOR_HEAVY
+	if ud.tags.has("light") or ud.tags.has("fast"):
+		return SIEGE_FACTOR_LIGHT
+	return SIEGE_FACTOR_BASE
+
+func _army_siege_weight(army: ArmyState) -> float:
+	if army == null or army.units.is_empty():
+		return 0.0
+	var total := 0.0
+	for unit in army.units:
+		total += _unit_siege_factor(DataManager.get_unit(unit.unit_data_id))
+	return total / float(army.units.size())
+
 func _process_sieges(faction_id: StringName) -> void:
 	# Process sieges where this faction's cities are being besieged
 	# (siege_turns increment at the start of the besieging faction's turn)
