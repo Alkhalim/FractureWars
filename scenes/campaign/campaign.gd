@@ -2613,6 +2613,7 @@ func _create_city_marker(city: CityState) -> void:
 
 	if city.is_under_siege:
 		_animate_siege_ring(siege_ring)
+		_refresh_siege_bar(marker, city)
 
 	# Construction indicator (hammer symbol, visible when building something)
 	var is_constructing := not city.build_queue.is_empty()
@@ -4376,7 +4377,10 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 		_refresh_faction_borders()
 		_create_army_markers()
 		_create_elderbeast_markers()
-		_fog_dirty = true
+		# Apply fog SYNCHRONOUSLY here: the markers were just recreated (visible by
+		# default), so a deferred fog pass would let fogged enemy armies flash for a
+		# frame at turn start before being hidden. Run it now, before this frame draws.
+		_update_fog_of_war()
 		_update_trade_routes()
 		_minimap_dirty = true
 		if selected_army_id != &"":
@@ -4537,6 +4541,9 @@ func _refresh_siege_badge(city_id: StringName) -> void:
 	if city == null or not city.is_under_siege:
 		if badge:
 			badge.queue_free()
+		var stale_bar := marker.get_node_or_null("SiegeBar")
+		if stale_bar:
+			stale_bar.queue_free()
 		return
 	if badge == null:
 		badge = Label.new()
@@ -4553,6 +4560,46 @@ func _refresh_siege_badge(city_id: StringName) -> void:
 	var threshold := GameManager.city_system.get_siege_threshold(city)
 	var falls_in := int(ceil(maxf(0.0, float(threshold) - city.siege_turns)))
 	badge.text = "⚔%d" % falls_in
+	_refresh_siege_bar(marker, city)
+
+## Small siege-progress bar under a besieged city marker (mirrors the city-panel
+## bar). Created inline like SiegeRing so it survives marker rebuilds; the fill
+## width tracks siege pressure / threshold. Uses Polygon2D (Node2D-native).
+func _refresh_siege_bar(marker: Node2D, city: CityState) -> void:
+	const BAR_W := 30.0
+	const BAR_H := 5.0
+	var bar: Node2D = marker.get_node_or_null("SiegeBar")
+	if not city.is_under_siege:
+		if bar:
+			bar.queue_free()
+		return
+	if bar == null:
+		bar = Node2D.new()
+		bar.name = "SiegeBar"
+		bar.z_index = 5
+		# Centered horizontally, sitting just below the city marker.
+		bar.position = Vector2(-BAR_W * 0.5, 15.0)
+		var bg := Polygon2D.new()
+		bg.name = "BG"
+		bg.polygon = PackedVector2Array([
+			Vector2(-1, -1), Vector2(BAR_W + 1, -1),
+			Vector2(BAR_W + 1, BAR_H + 1), Vector2(-1, BAR_H + 1)])
+		bg.color = Color(0.08, 0.05, 0.04, 0.9)
+		bar.add_child(bg)
+		var fill := Polygon2D.new()
+		fill.name = "Fill"
+		fill.color = Color(0.9, 0.25, 0.2)
+		bar.add_child(fill)
+		marker.add_child(bar)
+	var threshold := GameManager.city_system.get_siege_threshold(city)
+	var frac := clampf(city.siege_turns / float(maxi(1, threshold)), 0.0, 1.0)
+	var w := BAR_W * frac
+	var fill_node: Polygon2D = bar.get_node("Fill")
+	if w <= 0.0:
+		fill_node.polygon = PackedVector2Array()
+	else:
+		fill_node.polygon = PackedVector2Array([
+			Vector2(0, 0), Vector2(w, 0), Vector2(w, BAR_H), Vector2(0, BAR_H)])
 
 func _on_building_completed(city_id: StringName, building_id: StringName) -> void:
 	_invalidate_city_action_cache()
