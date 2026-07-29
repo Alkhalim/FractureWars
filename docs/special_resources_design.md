@@ -185,11 +185,43 @@ These reuse existing mechanic hooks — no new systems.
 
 ## Phasing
 
-1. **MVP** — bounty scatter + corner icons + proximity claims + resource-bar
+1. **MVP — IMPLEMENTED 2026-07-29** (see tests/test_bounty_system.gd) —
+   bounty scatter + corner icons + proximity claims + resource-bar
    list. (No new buildings; immediate "settle toward resources" gameplay.)
 2. **Phase 2** — specials with extractors + Access leases + AI valuation.
 3. **Phase 3** — Landmarks: unique tiles/art, unique shared buildings,
    neutral-city adjacency, war-goal weighting, affinity flagship effects.
+
+### Phase 1 implementation notes
+
+`BountySystem.BOUNTY_TYPES` (`scripts/systems/campaign/bounty_system.gd`)
+ships all 22 bounty types with real terrain/spacing scatter, radius-2 claim
+resolution, corner icons + tooltips, and the resource-bar list — but 11 of
+the 22 have design-doc effects that don't have a hook to plug into yet.
+Those entries carry a `deferred` string (the intended rule) plus a
+provisional `income` stand-in so the bounty still matters economically
+until Phase 1.5 wires up the real mechanic:
+
+| Bounty | Deferred effect kind | Provisional stand-in |
+|---|---|---|
+| `herb_meadows` | army healing (+25% in region) | +4 Food |
+| `pearl_beds` | gift value (+20% on gold gifts) | +6 Gold |
+| `marble` | build cost (-15% cultural buildings) | +6 Gold |
+| `granite` | build speed (+20% in region cities) | +4 Iron |
+| `basalt_columns` | defensive-building cost (-20%) | +4 Iron |
+| `obsidian_flows` | unit attack (+1 for units recruited here) | +4 Iron |
+| `crystal_springs` | population growth (+2 in region cities) | +3 Gold |
+| `clay_pits` | build cost, wood component (-15%) | +5 Wood |
+| `peat_bogs` | building upkeep (-10% in region) | +6 Wood |
+| `furs` | army upkeep, tundra (-10%) | +5 Gold |
+| `dye_gardens` | trade-only gold (counts toward trade deals only) | +8 Gold |
+
+None of these are blocking for MVP — every bounty already produces a real,
+claimable income/loyalty/recruit-discount effect. Phase 1.5 should replace
+each stand-in with its documented rule once the relevant hook exists
+(healing modifier, gift-value modifier, per-category build cost/speed
+modifiers, upkeep modifiers, population-growth modifier, unit-attack
+modifier, trade-only income flag).
 
 ## Risks / open questions
 
