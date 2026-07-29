@@ -3628,16 +3628,16 @@ func _process_skulloath_corruption(fs: FactionState) -> void:
 					city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 1, -100, 100)
 
 	# Captive conversion (scales with corruption)
+	# Bloodsalt: +% captive conversion (affinity: skulloath/tainted_jade doubled)
+	var bloodsalt_mod := SpecialResourceSystem.modifier_strength(fs.faction_data_id, &"bloodsalt")
 	if fs.corruption >= 81 and captives > 0:
 		var converted := mini(captives, 6)
 		fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
-		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + converted * 10
-		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + converted / 2
+		fs.resources[Enums.ResourceType.FOOD] = fs.resources.get(Enums.ResourceType.FOOD, 0) + int(converted * 10 * (1.0 + bloodsalt_mod))
+		fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + int(converted / 2 * (1.0 + bloodsalt_mod))
 	elif fs.corruption >= 61 and captives > 0:
 		var converted := mini(captives, 4)
 		fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
-		# Bloodsalt: +% captive conversion (affinity: skulloath/tainted_jade doubled)
-		var bloodsalt_mod := SpecialResourceSystem.modifier_strength(fs.faction_data_id, &"bloodsalt")
 		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + int(converted * 6 * (1.0 + bloodsalt_mod))
 
 	# Traditional food bonus (applied as faction-wide)
