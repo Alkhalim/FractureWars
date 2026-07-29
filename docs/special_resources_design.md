@@ -1,59 +1,85 @@
 # Special Regional Resources — Design Proposal
 
-*Drafted 2026-07-29. Status: proposal, not implemented.*
+*Drafted 2026-07-29, revised same day after design review. Status: proposal,
+not implemented.*
 
 ## Goal
 
 Give parts of the map a distinct economic identity beyond terrain art: rare
-resources that exist only in certain regions, so that owning (or trading with
-whoever owns) a region *matters*. Three payoffs:
+resources that exist only in certain places, so that owning (or trading with
+whoever owns) a location *matters*. Three payoffs:
 
-1. **Regional identity** — "the Moonsilver mountains", "the Spice plains"
-   become places with names players remember and fight over.
-2. **Trade & diplomacy content** — asymmetric scarcity creates genuine reasons
-   to trade, lease access, embargo, or declare war. Today trade is
-   resource-for-resource arbitrage; special resources add *things only one
-   neighbor has*.
-3. **Faction goals** — each faction has an affinity resource that superpowers
-   its mechanic, giving every AI (and player) a natural territorial ambition
-   that reinforces its playstyle.
+1. **Regional identity** — "the Moonsilver mountains", "the Dragonbone
+   flats" become places with names players remember and fight over.
+2. **Trade & diplomacy content** — asymmetric scarcity creates genuine
+   reasons to trade, lease access, embargo, or declare war.
+3. **Faction goals** — affinity resources superpower faction mechanics,
+   giving every AI (and player) a natural territorial ambition.
 
 ## What we already have to build on
 
-- Regions with income dicts and completion bonuses (`data/regions/*.tres`,
-  `game_manager.change_region_owner`).
-- Terrain gating for buildings (`required_terrain`, e.g. Blessed Springs
-  requires desert) — precedent for "this only exists here".
-- Shard Wastes as terrain-bound value (essence trickle, Ivoryscar relic power)
-  — the proof that location-bound economy works in this game.
-- A deep trade/diplomacy layer: trade deals with duration, gifts with
-  faction-specific gift-tag preferences, counter-offers, greed, "most needed
-  resource" valuation (`diplomacy_system.gd`) — ready to price new goods.
+- Terrain gating for buildings (`required_terrain`) — precedent for "this
+  only exists here".
+- Shard Wastes as terrain-bound value — proof that location-bound economy
+  works in this game.
+- A deep trade/diplomacy layer (deals with duration, gift preferences,
+  counter-offers, greed, "most needed resource" valuation) ready to price
+  new goods.
 - `special_effects` on buildings — the modifier plumbing already exists.
+- Settlement founding with income preview — the natural place to surface
+  "this spot claims these resources".
 
-## Two-tier resource roster
+## Three categories
 
-Two tiers with different jobs. **Bounty resources** are common, multi-terrain
-goods (orchards, marble, wild horses...) that make ordinary regions feel
-individually useful and feed a commodity trade economy. **Special resources**
-are rare, flavor-locked deposits with unique rules — they stand out precisely
-*because* the map is already sprinkled with mundane bounties. Ratio ~1.5
-bounty deposits for every special deposit on the map.
+| | **Bounties** | **Specials** (faction-affinity) | **Landmarks** (name TBD — alternatives: Marvels, Primeval Sites, Wonders) |
+|---|---|---|---|
+| Types in roster | 22 | 8 | 7 |
+| Per map | 4-8 deposits each (~60-70% of types spawn) | 1-3 deposits each (affinity ones guaranteed reachable) | **exactly 5 spawn, max 1 per type** |
+| Visual | small icon in the **top-right corner of the terrain tile**, tooltip on hover | deposit art overlay per resource (shared style) | **replaces the terrain tile entirely; unique hand-made art per Landmark** |
+| Placement | terrain-appropriate, spread widely | narrow terrain bands | terrain-fitting, **roughly evenly distributed across the map**, each **adjacent to a neutral/independent city** at spawn |
+| How you get it | **proximity claim**: a city or settlement within radius 2 claims it automatically | own the region + build its Extractor in a region city | conquer/befriend your way to it + build its **unique dedicated building on the tile itself** |
+| Building | none (zero micromanagement) | Extractor variant (T2, faction-agnostic) | one **unique building per Landmark, shared across all factions**; it is the *only* thing buildable on that tile |
+| Effect budget | one small numeric bonus | yield + identity modifier; doubled for affinity faction | one strong unique rule each |
+| Trade | boosts normal resource income → feeds existing trade deals | exclusive Access lease (new treaty) | Access lease, high AI valuation |
 
-Design rules per tier:
+### Claim rule for bounties (single-owner guarantee)
 
-- **Bounty**: 4-8 deposits each per map, 2+ valid terrains, exactly one small
-  numeric bonus (no unique rules), any faction benefits equally. Tradeable as
-  plain volume (they mostly boost existing resource incomes).
-- **Special**: 1-3 deposits each, narrow terrain, a unique identity rule; the
-  8 faction-affinity ones double for their faction. Tradeable only via
-  exclusive Access leases → diplomacy content.
-- **Not every type spawns every map**: roll ~60-70% of each tier's roster at
-  map-gen, so campaigns differ ("this world has no Moonsilver at all").
+A bounty belongs to the **nearest owned city or settlement within radius 2**
+(ties: lower city id wins, deterministic). Since settlements can only be
+founded outside radius-3 of existing cities (`city_system.gd` founding rule),
+two cities can rarely contest the same tile; the nearest-city rule resolves
+the border cases so **one bounty is always claimed by exactly one city**.
+Losing the city (conquest, razing) releases the claim to the new owner /
+nobody.
+
+The **settlement placement UI** lists every bounty/special/Landmark the new
+site would claim (extends the existing settlement income preview), making
+"settle toward resources" a visible decision.
+
+### The Landmarks in detail
+
+Spawning next to neutral cities does two things: the early map has visible
+prizes guarded by someone, and independent-city diplomacy (defection at
+standing ≥40) becomes a peaceful route to a Landmark. Their unique building
+is the only structure allowed on the tile, is identical for all factions, and
+starts the resource's effect once built (build cost ~T3-equivalent).
+
+| Landmark | Terrain it replaces | Unique building | Unique rule |
+|---|---|---|---|
+| **Dragonbone Fields** | Desert / Shard Wastes | Dragonbone Digsite | -15% recruit cost for `monster`/`beast` faction-wide; units recruited in this region gain +1 fear radius |
+| **Everfrost Core** | Tundra | Rimeheart Bore | Owner's armies immune to winter penalties; +10% defense in own territory during winter |
+| **Sungold Vein** | Mountains / Desert | Sungold Mine | +15 gold/turn, but -2 noble loyalty in the claiming city (greed) — a tradeoff prize |
+| **Worldroot Nexus** | Jungle / Forest | Rootwarden Enclave | Armies in the region heal double; +1 population growth in adjacent regions |
+| **Voidglass Rift** | Shard Wastes / Swamp | Rift Stabilizer | +3 shard essence/turn, +10% arcane research; -1 loyalty region-wide (whispers) |
+| **Titan Forge-Ruin** | Mountains | Reforged Foundry | `construct` units cost -25% faction-wide and start at Trained veterancy |
+| **Leyline Well** | any realm-influenced tile | Attunement Circle | Socketed crystal bonuses count +50% stronger for the owner |
+
+Each map rolls 5 of the 7 — every campaign is missing two Landmarks, so no
+fixed "always rush X" meta.
 
 ### Tier 1 — Bounty resources (22 types, common, not flavor-locked)
 
-| Resource | Terrains | Bonus (region owner) |
+| Resource | Terrains | Bonus (claiming city's owner) |
 |---|---|---|
 | Orchards | Plains, Forest | +6 food |
 | Grain Basin | Plains, Wetlands | +10 food |
@@ -78,12 +104,12 @@ Design rules per tier:
 | Peat Bogs | Swamp, Wetlands | -10% building upkeep in region |
 | Dye Gardens | Jungle, Coastal | +8 gold from trade deals only |
 
-### Tier 2 — Special resources (15 types, rare, identity-defining)
+### Tier 2 — Specials (8 faction-affinity types)
 
-The 8 **faction-affinity** specials (affinity faction gets the modifier
-doubled, plus a flagship effect at 2+ deposits — see below):
+Affinity faction gets the modifier doubled, plus a flagship effect at 2+
+deposits (see below).
 
-| Resource | Terrain | Base yield/turn | Identity modifier (region owner) | Affinity |
+| Resource | Terrain | Base yield/turn | Identity modifier (owner) | Affinity |
 |---|---|---|---|---|
 | **Moonsilver** | Tundra / Mountains | +6 iron | -10% recruit cost for `heavy` units | Moonspear |
 | **Sunstone** | Desert | +6 gold | +5% cultural building income | Sunblessed |
@@ -94,68 +120,46 @@ doubled, plus a flagship effect at 2+ deposits — see below):
 | **Bloodsalt** | Swamp / Wetlands | +4 food | +25% captive conversion rates | Skulloath / Tainted Jade |
 | **Stormcrystal** | Mountains | +4 tech | +5% army speed | Thunderswarm |
 
-Plus 7 **neutral specials** — powerful, unaligned, everyone wants them
-(these are the "special specials" that headline a map):
-
-| Resource | Terrain | Unique rule |
-|---|---|---|
-| **Dragonbone Fields** | Desert / Shard Wastes | -15% recruit cost for `monster`/`beast`; units recruited here gain +1 fear radius |
-| **Everfrost Core** | Tundra | Region armies immune to winter penalties; +10% defense in own territory during winter |
-| **Sungold Vein** | Mountains / Desert | +15 gold/turn, but -2 noble loyalty in region cities (greed) — a tradeoff deposit |
-| **Worldroot Nexus** | Jungle / Forest | Armies in region heal double; +1 population growth in adjacent regions too |
-| **Voidglass Rift** | Shard Wastes / Swamp | +3 shard essence, +10% arcane research; -1 loyalty region-wide (whispers) |
-| **Titan Forge-Ruin** | Mountains | `construct` units here cost -25% and start at Trained veterancy |
-| **Leyline Well** | any tile with realm influence | Socketed crystal bonuses of the owner count +50% stronger |
-
 Numbers are placeholders scaled to early income (~25-40 gold/turn): a bounty
-should read as "nice region", a special as "strong region worth a war"
-(~15-25% swing in its niche), never a game-winner.
+should read as "nice city spot", a special as "strong region", a Landmark as
+"worth a war" — never a game-winner (~15-25% swing in its niche).
 
-## Mechanics
+## UI
 
-### Placement (map generation)
-- New pass in `map_generator.gd` after terrain: roll the map's roster
-  (~60-70% of each tier's types), then place deposits biased by terrain.
-  Bounties: 4-8 deposits each, loose spacing. Specials: 1-3 each, wide
-  minimum distance. Overall mix ≈ 1.5 bounty deposits per special deposit.
-- Fairness rule: **each major faction's starting area is within ~2 regions of
-  at least one bounty, and every affinity special that spawned is reachable
-  by its faction (not across the entire map).**
-- Data: `region.region_resource: StringName` (empty = none) + a `tier` flag +
-  one marked hex tile inside the region for the map icon. Save-compatible
-  (defaults empty). One resource per region max — a region IS its resource.
+- **Bounty tiles**: small icon in the tile's top-right corner; hovering shows
+  name, bonus, and claiming city (or "Unclaimed — settle within 2 tiles").
+- **Landmark tiles**: full-tile unique art replaces the terrain; hover shows
+  the rule + build state of its unique building.
+- **Resource bar**: a new **"Special Resources" icon** next to the seven core
+  resources. Clicking/hovering lists everything the player currently holds —
+  claimed bounties, extracted specials, built Landmarks — plus anything
+  gained via Access leases (marked "via trade with X" and lease turns
+  remaining).
+- **Settlement founding**: the placement preview lists all resources the new
+  settlement would claim.
+- **Diplomacy panel**: deposit icons on the world map; Access-lease line in
+  faction detail ("Leased: Moonsilver access, 12 turns").
 
-### Ownership & extraction
-- Owning the region grants the yield/bonus automatically — bounties need
-  nothing else (zero-friction: common goods should not add micromanagement).
-- **Specials only**: a T2 **Extractor** building (one flavored variant per
-  special: Moonsilver Mine, Spice Terraces, Dragonbone Digsite...), buildable
-  only in a city of that region, doubles the base yield and unlocks the
-  *Access lease* (below). Uses existing `required_terrain`-style gating plus
-  a new `requires_region_resource` field on BuildingData.
+## Trade & diplomacy hooks
 
-### Trade & diplomacy hooks
-1. **Bounty regions feed normal trade**: their yields raise plain resource
-   incomes, so the existing trade-deal system automatically gets more volume
-   and more asymmetry (the orchard-rich neighbor really does have spare food).
-   No new mechanics needed for tier 1.
-2. **Resource Access deal** (specials only; new treaty type alongside trade
-   deals): the owner leases the *identity modifier* (not the yield) to a
-   partner for gold/turn, duration-limited like current trade deals. Requires
-   an Extractor. One lessee per deposit — exclusivity makes deals competitive.
-3. **AI valuation**: extend `_get_faction_most_needed_resource` /greed logic —
-   an AI missing its affinity resource values access deals at 1.5-2x and
-   weights gift/counter-offer math accordingly.
-4. **Embargo lever**: cancelling an access deal mid-war already falls out of
-   existing treaty-breaking rules; add a standing penalty when cancelled
-   without war ("trade betrayal").
+1. **Bounties feed normal trade**: their yields raise plain resource incomes,
+   so the existing trade-deal system automatically gets more volume and more
+   asymmetry. No new mechanics for tier 1.
+2. **Resource Access deal** (specials + Landmarks; new treaty type): the
+   owner leases the *identity modifier / rule* (not the yield) for gold/turn,
+   duration-limited like current trade deals. One lessee per deposit —
+   exclusivity makes deals competitive.
+3. **AI valuation**: extend `_get_faction_most_needed_resource`/greed logic —
+   an AI missing its affinity resource values access at 1.5-2x; every AI
+   values Landmark access highly.
+4. **Embargo lever**: cancelling an access deal without war costs standing
+   ("trade betrayal"); at war it falls out of existing treaty-breaking rules.
 5. **War goals**: in the AI war score (`diplomacy_system.gd:1251`), add
-   `+10 if target owns a deposit of my affinity resource` — wars start over
-   resources, visibly.
-6. **Region tooltips/diplomacy UI**: deposit icon + "Access: leased to X"
-   line; the diplomacy world map (right panel) can tint deposit regions.
+   `+10 if target owns a deposit of my affinity resource; +8 per Landmark` —
+   wars visibly start over resources.
 
-### Faction affinity payoffs (the flavor layer)
+## Faction affinity payoffs (the flavor layer)
+
 Affinity doubles the identity modifier and, at 2+ affinity deposits owned,
 unlocks one flagship effect per faction (examples):
 - Moonspear: Silverguard/Lunar Crusader upkeep -25%.
@@ -168,33 +172,37 @@ These reuse existing mechanic hooks — no new systems.
 
 | Area | File | Change |
 |---|---|---|
-| Data | `scripts/core/region_data` / hex tile | `special_resource` field + marked tile |
-| Placement | `scripts/utils/map_generator.gd` | deposit pass + fairness rule |
-| Income | `scripts/systems/campaign/city_system.gd` | region yield + modifier hooks |
-| Buildings | `scripts/resources/building_data.gd` + `data/buildings/` | `requires_region_resource`, 15 extractor variants (specials only) |
-| Diplomacy | `scripts/systems/campaign/diplomacy_system.gd` | access-deal treaty, AI valuation, war-score term |
-| AI | `scripts/autoloads/turn_manager.gd` | expansion targeting weight toward affinity deposits |
-| UI | `campaign_hud.gd` (region overview, diplomacy panel), map icons | icons, tooltips, deal UI |
+| Data | hex tile / region data | `region_resource` + `resource_tier` fields; Landmark tile type overrides terrain |
+| Placement | `scripts/utils/map_generator.gd` | roster roll, bounty scatter, special bands, Landmark pass (5 of 7, max 1 each, even spread, adjacent to independent cities) |
+| Claiming | `scripts/systems/campaign/city_system.gd` | nearest-city-within-2 claim resolution on found/conquer/raze; settlement preview additions |
+| Income | `city_system.gd` | claimed-bounty bonuses, special yields, Landmark rules |
+| Buildings | `building_data.gd` + `data/buildings/` | `requires_region_resource`; 8 extractor variants; 7 unique Landmark buildings (faction_id empty = shared) |
+| Diplomacy | `diplomacy_system.gd` | Access-lease treaty, AI valuation, war-score terms |
+| AI | `turn_manager.gd` | expansion/settling weight toward unclaimed bounties and affinity deposits |
+| UI | `campaign_hud.gd`, tile renderer | corner icons + tooltips, Landmark tile art, resource-bar "Special Resources" list, founding preview |
+| Art | `assets/sprites/campaign_map_v2/` | 7 unique Landmark tiles, 22 bounty corner icons, 8 deposit overlays |
 | Save | serialize new fields (defaults keep old saves loading) |
 
 ## Phasing
 
-1. **MVP** — placement + map icons + base yields + region tooltip. (Pure
-   economy; no new UI flows.) Immediately creates "rich regions".
-2. **Phase 2** — extractor buildings + Resource Access deals + AI valuation.
-   This is where trade/diplomacy depth lands.
-3. **Phase 3** — faction affinities, flagship effects, war-goal weighting,
-   diplomacy-map tinting.
+1. **MVP** — bounty scatter + corner icons + proximity claims + resource-bar
+   list. (No new buildings; immediate "settle toward resources" gameplay.)
+2. **Phase 2** — specials with extractors + Access leases + AI valuation.
+3. **Phase 3** — Landmarks: unique tiles/art, unique shared buildings,
+   neutral-city adjacency, war-goal weighting, affinity flagship effects.
 
 ## Risks / open questions
 
-- **Balance**: identity modifiers stack with faction mechanics — cap total
-  swing per niche (~25%) and keep yields linear.
-- **Map fairness**: the fairness rule needs testing across map sizes; a
-  faction spawning far from its affinity resource should be a *goal*, not a
-  death sentence (hence base yields are generic resources anyone can use).
-- **UI surface**: the access-deal flow adds one more diplomacy verb — reuse
-  the existing trade-dialog skeleton to keep cost down.
-- **Do independents own deposits?** Yes — independent cities on deposits
-  become prized diplomatic targets (defection at standing ≥40 already exists,
-  which becomes a peaceful route to a deposit).
+- **Category name** for the Landmarks tier — current candidates: Landmarks,
+  Marvels, Primeval Sites, Wonders. Needs a decision before UI strings.
+- **Balance**: modifiers stack with faction mechanics — cap total swing per
+  niche (~25%) and keep yields linear.
+- **Art cost**: 7 unique tiles + 22 icons + 8 overlays is the largest asset
+  ask in the proposal; tile art can reuse the generated-tile pipeline
+  (`tests/tools_generate_terrain_tiles.gd`) for consistency.
+- **Landmark adjacency**: "next to a neutral city" needs a fallback when map
+  gen places few independents (spawn the independent city *with* the
+  Landmark in that case).
+- **Claim radius**: spec says 2-3; radius 2 is the safe default given the
+  radius-3 founding exclusion guarantees single claimants in almost all
+  layouts — needs playtesting on small maps.
