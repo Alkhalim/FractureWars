@@ -699,6 +699,12 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		&"gladehost": [&"ranger_outpost", &"harvest_clearing", &"rootwood_lodge", &"sacred_grove", &"seasonal_shrine", &"grove_ironworks", &"forest_market", &"embassy_grove", &"living_fortress", &"beastkeepers_glade"],
 		&"tainted_jade": [&"serpent_pit", &"vine_shelter", &"jade_forge", &"root_altar", &"thrall_quarters", &"jade_market", &"jungle_traps", &"taint_suppressor", &"hunting_ground"],
 		&"shardhorde": [&"crystal_nursery", &"shard_conduit", &"crystal_forge", &"shard_harvester", &"chitin_walls"],
+		&"moonspear": [&"sentinel_hall", &"frost_pastures", &"silver_vein", &"moon_shrine", &"starlight_market", &"frost_kennels", &"pilgrims_rest", &"frost_walls"],
+		&"sunblessed": [&"pilgrim_training_grounds", &"pilgrim_gardens", &"sunfire_altar", &"sunfire_forge", &"golden_bazaar", &"sacred_oasis", &"sacred_aviary", &"sacred_ward"],
+		&"thunderswarm": [&"warriors_longhouse", &"highland_terrace", &"thunderpeak_mine", &"lightning_shrine", &"windtrade_post", &"storm_kennels", &"mountain_watchtower"],
+		&"cinderguard": [&"cinder_watchtower", &"oasis_farm", &"cinder_mine", &"sandstone_walls", &"ember_shrine", &"desert_bazaar", &"scorpion_pit"],
+		&"forsaken": [&"wretched_pit", &"scavenger_camp", &"scrap_pit", &"black_alley_market", &"crypt_court", &"thrall_quarters", &"makeshift_barricades"],
+		&"ivoryscar": [&"seekers_lodge", &"dust_fields", &"bone_quarry", &"relic_shrine", &"caravan_depot", &"relic_workshop", &"ancestor_crypt", &"bone_palisade"],
 	}
 	var priority_list: Array = faction_build_priorities.get(faction_id, [])
 	if priority_list.is_empty():
@@ -782,6 +788,23 @@ func _compute_ai_recruit_census(faction_id: StringName) -> Dictionary:
 
 	return {tag_counts = tag_counts, total_units = total_units, max_enemy_units = max_enemy_units}
 
+# Faction identity weights for AI recruiting: units carrying these tags score
+# higher, so AI stacks visibly reflect each faction's flavor (raider cavalry,
+# undead swarms, missile zealots...) instead of one generic attack+defense pick.
+# Keyed by PARENT faction — minors inherit their parent's doctrine.
+const FACTION_RECRUIT_TAG_WEIGHTS := {
+	&"empire": {"heavy": 15, "infantry": 8},
+	&"skulloath": {"cavalry": 20, "fast": 8},
+	&"forsaken": {"swarm": 15, "undead": 12, "flying": 6},
+	&"sunblessed": {"ranged": 15, "flying": 8, "monster": 8},
+	&"moonspear": {"heavy": 12, "ranged": 8},
+	&"cinderguard": {"heavy": 15, "desertstrider": 8},
+	&"thunderswarm": {"flying": 15, "fast": 10},
+	&"gladehost": {"support": 10, "beast": 8, "ranged": 6},
+	&"ivoryscar": {"undead": 12, "heavy": 10},
+	&"tainted_jade": {"junglestrider": 10, "swarm": 8, "mage": 6},
+}
+
 func _ai_recruit_with_composition(city: CityState, faction_id: StringName, census: Dictionary) -> void:
 	var tag_counts: Dictionary = census.tag_counts
 	var total_units: int = census.total_units
@@ -804,6 +827,8 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName, censu
 			needed_tag = "cavalry"
 
 	# Find best unit matching the needed tag (walk upgrade chain for inherited unlocks)
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var identity_weights: Dictionary = FACTION_RECRUIT_TAG_WEIGHTS.get(parent_fid, {})
 	var best_unit_id: StringName = &""
 	var best_score := 0
 	for building_id in city.buildings:
@@ -819,6 +844,10 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName, censu
 				var score := udata.attack + udata.get_avg_defense()
 				if udata.tags.has(needed_tag):
 					score += 20
+				# Faction identity: favor units that match the faction's doctrine
+				for w_tag in identity_weights:
+					if udata.tags.has(w_tag):
+						score += identity_weights[w_tag]
 				if score > best_score:
 					best_score = score
 					best_unit_id = uid
@@ -932,8 +961,83 @@ func _nearest_own_siege_hex(from: Vector2i, faction_id: StringName) -> Vector2i:
 			best = city.hex_pos
 	return best
 
+## Faction posture for the shared army loop. Keys on the PARENT faction so
+## minor factions inherit their parent's doctrine. Postures:
+##  "normal"    — generic attack-nearest behavior
+##  "defensive" — hunt intruders in own lands, otherwise garrison cities
+##  "pilgrim"   — Sunblessed at peace: park armies near friendly foreign
+##                cities to farm faith/wisdom proximity (their core mechanic)
+func _ai_army_posture(faction_id: StringName) -> String:
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null and parent_fid != faction_id:
+		fs = GameManager.state.faction_states.get(parent_fid)
+	if fs == null:
+		return "normal"
+	match parent_fid:
+		&"thunderswarm":
+			# Ride the fury: only take the field while the storm buff is live
+			if fs.storm_fury < 30:
+				return "defensive"
+		&"moonspear":
+			# Strike under the New/Waxing moon, hold under Full/Waning
+			if fs.lunar_phase >= 2:
+				return "defensive"
+		&"cinderguard":
+			# Fortress doctrine until the forges swing to war production
+			if fs.border_vigilance < 60:
+				return "defensive"
+		&"ivoryscar":
+			# Turtle until relic power or the Pyramid makes the tomb legions strong
+			if fs.relic_power < 30 and not fs.pyramid_restored:
+				return "defensive"
+		&"sunblessed":
+			if not _faction_has_any_war(faction_id):
+				return "pilgrim"
+	return "normal"
+
+func _faction_has_any_war(faction_id: StringName) -> bool:
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id:
+			continue
+		if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.WAR:
+			return true
+	return false
+
+## Pilgrim posture target: nearest foreign city worth teaching at (standing
+## >= 20 matches the wisdom-farm threshold; fall back to any non-hostile).
+## Returns the CITY hex — callers must stop at distance 2, never enter it.
+func _find_pilgrimage_city_hex(from: Vector2i, faction_id: StringName) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := 1 << 30
+	var best_fallback := Vector2i(-1, -1)
+	var best_fallback_d := 1 << 30
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id == faction_id or city.faction_id == &"independent":
+			continue
+		if GameManager.get_relation(faction_id, city.faction_id) == Enums.FactionRelation.WAR:
+			continue
+		var d := HexHelper.hex_distance(from, city.hex_pos)
+		var standing := GameManager.diplomacy_system.get_standing(faction_id, city.faction_id)
+		if standing >= 20:
+			if d < best_d:
+				best_d = d
+				best = city.hex_pos
+		elif standing >= 0 and d < best_fallback_d:
+			best_fallback_d = d
+			best_fallback = city.hex_pos
+	return best if best != Vector2i(-1, -1) else best_fallback
+
 func _execute_ai_turn(faction_id: StringName) -> void:
 	var armies := GameManager.get_faction_armies(faction_id)
+	var posture := _ai_army_posture(faction_id)
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	# Empire doctrine: legions consolidate into larger stacks before marching
+	var min_attack_size := 5 if parent_fid == &"empire" else 3
+	var intruder := Vector2i(-1, -1)
+	if posture == "defensive":
+		intruder = _find_nearest_intruder(faction_id, 3)
 	var army_count := 0
 	for army in armies:
 		army_count += 1
@@ -945,8 +1049,38 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 		if _maybe_hold_siege_or_retarget(army, faction_id):
 			continue
 
+		# Defensive posture: repel intruders, otherwise garrison the nearest city
+		if posture == "defensive":
+			if intruder != Vector2i(-1, -1) and army.units.size() >= 3:
+				_ai_move_army_safe(army, intruder, faction_id)
+			else:
+				_move_to_nearest_city(army, faction_id)
+			if not GameManager.state.armies.has(army.army_id):
+				continue
+			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+				return
+			continue
+
+		# Pilgrim posture: walk toward friendly foreign cities and hold at
+		# distance 2 — solar_faith/wisdom grow from army proximity
+		if posture == "pilgrim":
+			var pilgrim_city := _find_pilgrimage_city_hex(army.hex_pos, faction_id)
+			if pilgrim_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, pilgrim_city) > 2:
+				# Aim for a tile beside the city, never the city hex itself
+				var approach := pilgrim_city
+				for n in HexHelper.get_neighbors(pilgrim_city):
+					if HexHelper.hex_distance(army.hex_pos, n) < HexHelper.hex_distance(army.hex_pos, approach):
+						approach = n
+				if approach != pilgrim_city:
+					_ai_move_army_safe(army, approach, faction_id)
+			if not GameManager.state.armies.has(army.army_id):
+				continue
+			if GameManager.current_phase != Enums.GamePhase.CAMPAIGN:
+				return
+			continue
+
 		# Don't attack with tiny armies
-		if army.units.size() < 3:
+		if army.units.size() < min_attack_size:
 			# Move toward nearest friendly city to consolidate
 			var nearest_city := _find_nearest_faction_city(army.hex_pos, faction_id)
 			if nearest_city != Vector2i(-1, -1) and HexHelper.hex_distance(army.hex_pos, nearest_city) > 1:
@@ -957,8 +1091,21 @@ func _execute_ai_turn(faction_id: StringName) -> void:
 					return
 			continue
 
-		# Find target: enemy armies first, then enemy regions
-		var target_hex := _find_nearest_enemy_army_hex(army.hex_pos, faction_id)
+		# Find target: enemy armies first, then enemy regions.
+		# Empire marches on territory; Forsaken only picks fights it can win.
+		var target_hex := Vector2i(-1, -1)
+		if parent_fid == &"empire":
+			target_hex = _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
+			if target_hex == Vector2i(-1, -1):
+				target_hex = _find_nearest_enemy_army_hex(army.hex_pos, faction_id)
+		elif parent_fid == &"forsaken":
+			target_hex = _find_nearest_enemy_army_hex(army.hex_pos, faction_id)
+			if target_hex != Vector2i(-1, -1):
+				var prey: ArmyState = GameManager.get_army_at_tile(target_hex)
+				if prey and prey.units.size() >= army.units.size():
+					target_hex = _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
+		else:
+			target_hex = _find_nearest_enemy_army_hex(army.hex_pos, faction_id)
 		if target_hex == Vector2i(-1, -1):
 			target_hex = _find_nearest_enemy_region_hex(army.hex_pos, faction_id)
 		if target_hex == Vector2i(-1, -1):
