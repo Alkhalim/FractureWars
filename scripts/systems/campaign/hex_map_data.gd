@@ -23,6 +23,7 @@ class TileState:
 	var realm_influence: Enums.Realm = Enums.Realm.MORTAL
 	var development_level: int = 0 # 0-3
 	var owner_faction: StringName = &""
+	var bounty_id: StringName = &"" # tier-1 bounty resource on this tile (special_resources_design)
 
 const TERRAIN_COSTS := {
 	Enums.TerrainType.PLAINS: 1.2,
