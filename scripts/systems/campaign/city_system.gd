@@ -254,6 +254,11 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	if cmd_gold_bonus > 0:
 		income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + cmd_gold_bonus
 
+	# Claimed tier-1 bounty resources (special_resources_design)
+	var bounty_income := BountySystem.income_bonus_for_city(city)
+	for b_res in bounty_income:
+		income[b_res] = income.get(b_res, 0) + bounty_income[b_res]
+
 	# Apply region/faction-wide building effects
 	apply_region_effects(income, city)
 
@@ -1554,6 +1559,7 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 	var recruit_parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
 	var recruit_r_eff := GameManager.research_system.get_research_effects(recruit_parent_fid)
 	total_discount_pct += recruit_r_eff.get("recruitment_cost_reduction", 0)
+	total_discount_pct += BountySystem.recruit_discount_for(city, unit_data)
 	if total_discount_pct > 0:
 		for res_type in adjusted_recruit:
 			adjusted_recruit[res_type] = int(adjusted_recruit[res_type] * (100 - total_discount_pct) / 100.0)

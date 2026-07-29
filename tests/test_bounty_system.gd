@@ -112,6 +112,36 @@ func _run() -> void:
 		_check(BountySystem.claimant_for(far) == &"", "distance 3 is out of claim range")
 		map2.get_tile(far).bounty_id = &""
 
+	# ── Economy hooks ──
+	map2.get_tile(spot).bounty_id = &"orchards"
+	var inc_with: Dictionary = _gm.city_system.calculate_city_income(home)
+	map2.get_tile(spot).bounty_id = &""
+	var inc_without: Dictionary = _gm.city_system.calculate_city_income(home)
+	_check(inc_with.get(3, 0) - inc_without.get(3, 0) == 6, "orchards adds +6 food to city income")
+
+	# Note: home's claim radius may already contain naturally-scattered bounties
+	# (e.g. another wild_horses or honey_apiaries deposit), so these checks use
+	# before/after deltas at `spot` rather than raw totals — same trick as the
+	# income check above.
+	map2.get_tile(spot).bounty_id = &"wild_horses"
+	var cav_ud := UnitData.new()
+	cav_ud.tags = ["cavalry", "melee"]
+	var inf_ud := UnitData.new()
+	inf_ud.tags = ["infantry", "melee"]
+	var disc_cav_with := BountySystem.recruit_discount_for(home, cav_ud)
+	var disc_inf_with := BountySystem.recruit_discount_for(home, inf_ud)
+	map2.get_tile(spot).bounty_id = &""
+	var disc_cav_without := BountySystem.recruit_discount_for(home, cav_ud)
+	var disc_inf_without := BountySystem.recruit_discount_for(home, inf_ud)
+	_check(disc_cav_with - disc_cav_without == 10, "wild horses discount cavalry 10%")
+	_check(disc_inf_with - disc_inf_without == 0, "no discount for infantry")
+
+	map2.get_tile(spot).bounty_id = &"vineyards"
+	var loy_with: Dictionary = BountySystem.loyalty_bonus_for_city(home)
+	map2.get_tile(spot).bounty_id = &""
+	var loy_without: Dictionary = BountySystem.loyalty_bonus_for_city(home)
+	_check(int(loy_with.get("peasants", 0)) - int(loy_without.get("peasants", 0)) == 1, "vineyards grant +1 peasant loyalty")
+
 	if _fails == 0:
 		print("BOUNTY TEST PASSED")
 		quit(0)

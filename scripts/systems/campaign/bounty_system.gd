@@ -162,3 +162,32 @@ static func describe(type_id: StringName) -> String:
 	for tag in def.get("recruit_discount", {}):
 		parts.append("-%d%% %s recruit cost" % [def.recruit_discount[tag], String(tag)])
 	return ", ".join(parts)
+
+## Flat resource income granted by this city's claimed bounties (ResourceType int -> int).
+static func income_bonus_for_city(city: CityState) -> Dictionary:
+	var total := {}
+	for hex in claimed_bounties_for_city(city):
+		var def: Dictionary = BOUNTY_TYPES.get(GameManager.state.hex_map.get_tile(hex).bounty_id, {})
+		for res_type in def.get("income", {}):
+			total[res_type] = total.get(res_type, 0) + def.income[res_type]
+	return total
+
+## Per-class loyalty bonus granted by this city's claimed bounties (class String -> int).
+static func loyalty_bonus_for_city(city: CityState) -> Dictionary:
+	var total := {}
+	for hex in claimed_bounties_for_city(city):
+		var def: Dictionary = BOUNTY_TYPES.get(GameManager.state.hex_map.get_tile(hex).bounty_id, {})
+		for cls in def.get("loyalty", {}):
+			total[String(cls)] = total.get(String(cls), 0) + def.loyalty[cls]
+	return total
+
+## Recruit-cost discount percent for a unit, from this city's claimed bounties whose
+## recruit_discount tags match one of the unit's tags.
+static func recruit_discount_for(city: CityState, ud: UnitData) -> int:
+	var total := 0
+	for hex in claimed_bounties_for_city(city):
+		var def: Dictionary = BOUNTY_TYPES.get(GameManager.state.hex_map.get_tile(hex).bounty_id, {})
+		for tag in def.get("recruit_discount", {}):
+			if ud.tags.has(String(tag)):
+				total += def.recruit_discount[tag]
+	return total

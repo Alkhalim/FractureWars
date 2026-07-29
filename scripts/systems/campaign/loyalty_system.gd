@@ -315,6 +315,21 @@ static func _get_active_modifiers(city: CityState, faction_id: StringName) -> Ar
 			var label_text: String = category_labels.get(cat, cat.capitalize() + " Buildings")
 			result.append({label = label_text, weights = bw, multiplier = 1})
 
+	# Claimed bounty resources (e.g. Vineyards, Honey Apiaries)
+	var bounty_loyalty := BountySystem.loyalty_bonus_for_city(city)
+	if not bounty_loyalty.is_empty():
+		result.append({
+			label = "Bounty resources",
+			weights = {
+				peasants = bounty_loyalty.get("peasants", 0),
+				artisans = bounty_loyalty.get("artisans", 0),
+				scholars = bounty_loyalty.get("scholars", 0),
+				nobles = bounty_loyalty.get("nobles", 0),
+				captives = 0,
+			},
+			multiplier = 1,
+		})
+
 	# Building special_effects: region_loyalty_bonus / morale_bonus
 	var loyalty_bonus_total := 0
 	for city_in_prov_2 in get_province_cities(region_id, faction_id):
