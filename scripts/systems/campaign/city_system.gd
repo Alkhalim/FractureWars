@@ -117,8 +117,8 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 	if trade_bonus > 0 and income.has(Enums.ResourceType.GOLD):
 		var trade_count := 0
 		if GameManager.diplomacy_system:
-			for tid in GameManager.state.diplomacy.treaties:
-				var treaty = GameManager.state.diplomacy.treaties[tid]
+			for tid in GameManager.state.diplomacy_state.treaties:
+				var treaty = GameManager.state.diplomacy_state.treaties[tid]
 				if treaty.treaty_type == Enums.TreatyType.TRADE_DEAL or treaty.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
 					if treaty.faction_a == faction_id or treaty.faction_b == faction_id:
 						trade_count += 1

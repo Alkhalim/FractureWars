@@ -727,6 +727,21 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		# Build buildings using upgrade-aware system
 		if city.build_queue.is_empty():
 			var available := GameManager.city_system.get_available_buildings(city)
+
+			# Resource-lease economy: claim an unclaimed extractor in this city's
+			# region before falling back to the faction's generic build priorities,
+			# so AI factions actually feed the lease market.
+			var special_id := SpecialResourceSystem.special_in_region(city.region_id)
+			if special_id != &"" and not SpecialResourceSystem.region_has_extractor(city.region_id):
+				var extractor_id: StringName = SpecialResourceSystem.SPECIAL_TYPES[special_id].extractor_id
+				var extractor_available := false
+				for b in available:
+					if b.id == extractor_id:
+						extractor_available = true
+						break
+				if extractor_available and GameManager.city_system.start_building(city_id, extractor_id):
+					continue
+
 			if available.size() > 0:
 				var built := false
 				for priority_id in priority_list:

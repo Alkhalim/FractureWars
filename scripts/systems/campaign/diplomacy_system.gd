@@ -316,6 +316,8 @@ func propose_trade(proposer: StringName, target: StringName, give_res: int, give
 ## specials are worth more, and the lessee must be able to sustain payment.
 ## Used by both propose_resource_lease and would_accept_proposal's "resource_lease" case.
 func _evaluate_lease_as_lessee(lessee: StringName, special_id: StringName, gold_per_turn: int) -> bool:
+	if not SpecialResourceSystem.SPECIAL_TYPES.has(special_id):
+		return false
 	var affinity: bool = GameManager.MINOR_FACTION_PARENTS.get(lessee, lessee) in SpecialResourceSystem.SPECIAL_TYPES[special_id].affinity
 	var max_pay := 20 if affinity else 12
 	if gold_per_turn > max_pay:
@@ -706,7 +708,8 @@ func process_treaties(faction_id: StringName) -> void:
 			var owner_fs: FactionState = GameManager.state.faction_states.get(treaty.faction_a)
 			var still_extracted: bool = treaty.terms.get("special_id", &"") in SpecialResourceSystem.extracted_specials_of_faction(treaty.faction_a)
 			if lessee_fs == null or owner_fs == null or lessee_fs.resources.get(Enums.ResourceType.GOLD, 0) < pay or not still_extracted:
-				to_expire.append(treaty_id) # defaulted or supply lost -> lease ends
+				if not to_expire.has(treaty_id):
+					to_expire.append(treaty_id) # defaulted or supply lost -> lease ends
 			else:
 				lessee_fs.resources[Enums.ResourceType.GOLD] -= pay
 				owner_fs.resources[Enums.ResourceType.GOLD] = owner_fs.resources.get(Enums.ResourceType.GOLD, 0) + pay
@@ -725,7 +728,7 @@ func process_treaties(faction_id: StringName) -> void:
 		# Decrement duration
 		if treaty.turns_remaining > 0:
 			treaty.turns_remaining -= 1
-			if treaty.turns_remaining <= 0:
+			if treaty.turns_remaining <= 0 and not to_expire.has(treaty_id):
 				to_expire.append(treaty_id)
 	# Expire finished treaties
 	for treaty_id in to_expire:
