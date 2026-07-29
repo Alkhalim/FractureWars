@@ -30,6 +30,17 @@ func _run() -> void:
 		var c: int = counts.get(type_id, 0)
 		_check(c >= 1 and c <= 3, "type %s spawns 1-3 times (got %d)" % [type_id, c])
 
+	# ── Demo map must also guarantee all 8 types ──
+	_gm.new_game(&"empire", true)
+	var demo_counts := {}
+	for coord in _gm.state.hex_map.tiles:
+		var t = _gm.state.hex_map.tiles[coord]
+		if t.special_id != &"":
+			demo_counts[t.special_id] = demo_counts.get(t.special_id, 0) + 1
+	for type_id in SpecialResourceSystem.SPECIAL_TYPES:
+		_check(demo_counts.get(type_id, 0) >= 1, "demo map spawns type %s" % type_id)
+	_gm.new_game(&"empire")
+
 	# ── Determinism ──
 	var fp := _fingerprint(map)
 	_gm.new_game(&"empire")

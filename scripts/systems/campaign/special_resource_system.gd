@@ -41,9 +41,14 @@ static func scatter_specials(map: HexMapData) -> void:
 		var type_id: StringName = type_ids[t_idx]
 		var def: Dictionary = SPECIAL_TYPES[type_id]
 		var start := _hash(t_idx * 101 + 13, 4242) % coords.size()
-		for k in coords.size():
-			var coord: Vector2i = coords[(start + k) % coords.size()]
-			if _try_place(map, coord, type_id, def, placed):
+		var placed_one := false
+		for spacing in [MIN_SPACING, 6, 4, 2]:
+			for k in coords.size():
+				var coord: Vector2i = coords[(start + k) % coords.size()]
+				if _try_place(map, coord, type_id, def, placed, spacing):
+					placed_one = true
+					break
+			if placed_one:
 				break
 	# Pass 2: hash-gated extra deposits up to MAX_PER_TYPE.
 	var counts := {}
@@ -60,7 +65,7 @@ static func scatter_specials(map: HexMapData) -> void:
 		if _try_place(map, coord, type_id, SPECIAL_TYPES[type_id], placed):
 			counts[type_id] = counts.get(type_id, 0) + 1
 
-static func _try_place(map: HexMapData, coord: Vector2i, type_id: StringName, def: Dictionary, placed: Array[Vector2i]) -> bool:
+static func _try_place(map: HexMapData, coord: Vector2i, type_id: StringName, def: Dictionary, placed: Array[Vector2i], spacing: int = MIN_SPACING) -> bool:
 	var tile: HexMapData.TileState = map.tiles[coord]
 	if tile.terrain == Enums.TerrainType.WATER or tile.special_id != &"":
 		return false
@@ -69,7 +74,7 @@ static func _try_place(map: HexMapData, coord: Vector2i, type_id: StringName, de
 	if not (int(tile.terrain) in def.terrains):
 		return false
 	for p in placed:
-		if HexHelper.hex_distance(coord, p) < MIN_SPACING:
+		if HexHelper.hex_distance(coord, p) < spacing:
 			return false
 	tile.special_id = type_id
 	placed.append(coord)
