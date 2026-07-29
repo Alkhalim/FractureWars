@@ -65,6 +65,66 @@ static func scatter_specials(map: HexMapData) -> void:
 		if _try_place(map, coord, type_id, SPECIAL_TYPES[type_id], placed):
 			counts[type_id] = counts.get(type_id, 0) + 1
 
+static func deposits_in_region(region_id: StringName) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var map = GameManager.state.hex_map
+	if map == null or region_id == &"":
+		return result
+	for coord in map.get_region_tiles(region_id):
+		var tile = map.get_tile(coord)
+		if tile and tile.special_id != &"":
+			result.append(coord)
+	return result
+
+static func special_in_region(region_id: StringName) -> StringName:
+	var deps := deposits_in_region(region_id)
+	if deps.is_empty():
+		return &""
+	return GameManager.state.hex_map.get_tile(deps[0]).special_id
+
+static func region_has_extractor(region_id: StringName) -> bool:
+	var special: StringName = special_in_region(region_id)
+	if special == &"":
+		return false
+	var extractor_id: StringName = SPECIAL_TYPES[special].extractor_id
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.region_id == region_id and city.buildings.has(extractor_id):
+			return true
+	return false
+
+## One entry per extracted deposit-region; duplicates count (flagship effects).
+static func extracted_specials_of_faction(faction_id: StringName) -> Array[StringName]:
+	var result: Array[StringName] = []
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return result
+	for region_id in fs.owned_regions:
+		var special: StringName = special_in_region(region_id)
+		if special != &"" and region_has_extractor(region_id):
+			result.append(special)
+	return result
+
+## Task 5 replaces the lease stub with real treaty lookups.
+static func _lease_grants(_faction_id: StringName, _special_id: StringName) -> bool:
+	return false
+
+static func has_modifier(faction_id: StringName, special_id: StringName) -> bool:
+	if special_id in extracted_specials_of_faction(faction_id):
+		return true
+	return _lease_grants(faction_id, special_id)
+
+static func modifier_strength(faction_id: StringName, special_id: StringName) -> float:
+	if not has_modifier(faction_id, special_id):
+		return 0.0
+	var def: Dictionary = SPECIAL_TYPES[special_id]
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	return def.strength * 2.0 if parent_fid in def.affinity else def.strength
+
+static func describe(special_id: StringName) -> String:
+	var def: Dictionary = SPECIAL_TYPES.get(special_id, {})
+	return def.get("modifier_text", "") if not def.is_empty() else ""
+
 static func _try_place(map: HexMapData, coord: Vector2i, type_id: StringName, def: Dictionary, placed: Array[Vector2i], spacing: int = MIN_SPACING) -> bool:
 	var tile: HexMapData.TileState = map.tiles[coord]
 	if tile.terrain == Enums.TerrainType.WATER or tile.special_id != &"":

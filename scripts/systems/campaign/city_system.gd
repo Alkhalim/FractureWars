@@ -1403,6 +1403,10 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 			var fstate: FactionState = GameManager.state.faction_states.get(parent_fid)
 			if fstate == null or not fstate.completed_research.has(building.requires_research):
 				continue
+		# Extractors: only buildable where the city's region holds the deposit
+		if building.requires_region_resource != &"":
+			if SpecialResourceSystem.special_in_region(city.region_id) != building.requires_region_resource:
+				continue
 		# Doctrine fork: if another building of the same exclusive_group exists
 		# (or is queued) ANYWHERE in the faction, this one is locked forever
 		if building.exclusive_group != &"" and _faction_has_exclusive_group(city.faction_id, building.exclusive_group, building_id):
@@ -1492,6 +1496,10 @@ func start_building(city_id: StringName, building_id: StringName, tile_pos: Vect
 				return false
 	if building.requires_capital and not city.is_capital:
 		return false
+	# Extractors: only buildable where the city's region holds the deposit
+	if building.requires_region_resource != &"":
+		if SpecialResourceSystem.special_in_region(city.region_id) != building.requires_region_resource:
+			return false
 	if city.buildings.has(building_id):
 		return false
 	for item in city.build_queue:

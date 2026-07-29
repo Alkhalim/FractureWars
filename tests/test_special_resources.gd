@@ -62,6 +62,72 @@ func _run() -> void:
 			any = true
 	_check(not any, "old saves without special_id load empty")
 
+	# ── Region/extractor plumbing ──
+	_gm.new_game(&"empire")
+	var map3 = _gm.state.hex_map
+	# Find any special deposit and its region
+	var dep_hex := Vector2i(-1, -1)
+	for coord in map3.tiles:
+		if map3.tiles[coord].special_id != &"":
+			dep_hex = coord
+			break
+	var dep_tile = map3.get_tile(dep_hex)
+	var dep_type: StringName = dep_tile.special_id
+	var dep_region: StringName = dep_tile.region_id
+	_check(SpecialResourceSystem.special_in_region(dep_region) == dep_type, "special_in_region finds the deposit")
+	_check(not SpecialResourceSystem.region_has_extractor(dep_region), "no extractor at game start")
+
+	# Craft: give the player a city in that region with the extractor built
+	var pcity: CityState = null
+	for cid in _gm.state.cities:
+		if _gm.state.cities[cid].faction_id == &"empire":
+			pcity = _gm.state.cities[cid]
+			break
+	var old_region := pcity.region_id
+	pcity.region_id = dep_region
+	var extractor_id: StringName = SpecialResourceSystem.SPECIAL_TYPES[dep_type].extractor_id
+	pcity.buildings.append(extractor_id)
+	# Extractors require capital level 2; meet that gate too.
+	pcity.level = maxi(pcity.level, 2)
+	# Make empire the region owner: set all region tiles' owner
+	for rc in map3.get_region_tiles(dep_region):
+		map3.get_tile(rc).owner_faction = &"empire"
+	map3._region_owner_cache.clear()
+	# Raw tile-ownership writes bypass the normal conquest path, which is what
+	# keeps FactionState.owned_regions in sync; mirror that bookkeeping here.
+	var pfs: FactionState = _gm.state.faction_states[&"empire"]
+	if dep_region not in pfs.owned_regions:
+		pfs.owned_regions.append(dep_region)
+	_check(SpecialResourceSystem.region_has_extractor(dep_region), "extractor detected in region city")
+	_check(dep_type in SpecialResourceSystem.extracted_specials_of_faction(&"empire"), "faction extracts the special")
+	_check(SpecialResourceSystem.has_modifier(&"empire", dep_type), "has_modifier true when extracted")
+	var base_strength: float = SpecialResourceSystem.SPECIAL_TYPES[dep_type].strength
+	var expect := base_strength * 2.0 if &"empire" in SpecialResourceSystem.SPECIAL_TYPES[dep_type].affinity else base_strength
+	_check(is_equal_approx(SpecialResourceSystem.modifier_strength(&"empire", dep_type), expect), "modifier_strength respects affinity doubling")
+	_check(SpecialResourceSystem.modifier_strength(&"skulloath", dep_type) == 0.0, "no modifier without extraction")
+	# Extractor gating: available only in the deposit's region
+	var avail: Array[BuildingData] = _gm.city_system.get_available_buildings(pcity)
+	var found_extractor := false
+	for b in avail:
+		if b.id == extractor_id:
+			found_extractor = true
+	# Already built -> not offered again; remove and re-check availability
+	pcity.buildings.erase(extractor_id)
+	avail = _gm.city_system.get_available_buildings(pcity)
+	for b in avail:
+		if b.id == extractor_id:
+			found_extractor = true
+	_check(found_extractor, "extractor offered in deposit region")
+	pcity.region_id = old_region
+	avail = _gm.city_system.get_available_buildings(pcity)
+	var offered_outside := false
+	for b in avail:
+		if b.id == extractor_id:
+			offered_outside = true
+	_check(not offered_outside, "extractor NOT offered outside deposit region")
+	pcity.region_id = dep_region
+	pcity.buildings.append(extractor_id)
+
 	if _fails == 0:
 		print("SPECIALS TEST PASSED")
 		quit(0)

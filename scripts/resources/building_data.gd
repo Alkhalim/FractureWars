@@ -23,3 +23,4 @@ extends Resource
 @export var requires_research: StringName = &"" # Research ID required to unlock this building
 @export var exclusive_group: StringName = &"" # Doctrine fork: only ONE building per group can exist faction-wide
 @export var settlement_only: bool = false # If true, can only be built in settlements (frontier structures)
+@export var requires_region_resource: StringName = &"" # tier-2 Special deposit required in the city's region

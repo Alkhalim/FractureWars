@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"extractor_heartwood"
+display_name = "Heartwood Lodge"
+description = "Woodcutters work in rhythm with the grove's oldest trees, taking only what the forest offers back."
+faction_id = &""
+category = &"economic"
+build_cost = {0: 120, 1: 40}
+build_time = 3
+income_bonus = {5: 16}
+required_capital_level = 2
+requires_region_resource = &"heartwood"
+upkeep_cost = {0: 3}
