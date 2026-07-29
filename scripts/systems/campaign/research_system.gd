@@ -195,6 +195,12 @@ func _get_faction_research_speed_bonus(faction_id: StringName) -> float:
 	# Research: research_speed_bonus from completed research (fractional accumulation)
 	var r_eff := get_research_effects(faction_id)
 	total += float(r_eff.get("research_speed_bonus", 0)) / 100.0
+	# Sunblessed Wisdom: scholars accelerate research — up to +50% at 200 wisdom
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	if parent_fid == &"sunblessed":
+		var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+		if fs and fs.wisdom > 0:
+			total += float(fs.wisdom) / 400.0
 	return total
 
 func _invalidate_cache(faction_id: StringName) -> void:

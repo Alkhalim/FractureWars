@@ -41,7 +41,7 @@ const MANA_REGEN := 0.4                 # Per tick (permanent)
 
 # Ammo system
 const AMMO_PER_ENTITY := 5             # Volleys per archer (nerfed 7->5: archers were
-                                       # best-value in 10/11 factions with near-zero losses)
+									   # best-value in 10/11 factions with near-zero losses)
 
 # Deploy zones
 const DEPLOY_BOTTOM_Y := 900.0  # Attacker zone: y 900-1200
@@ -94,6 +94,7 @@ var _battle_hex_pos: Vector2i = Vector2i.ZERO
 var _campaign_terrain: Enums.TerrainType = Enums.TerrainType.PLAINS
 var _battle_realm: int = -1  # Enums.Realm of the battle tile's region (-1 = unknown)
 var _is_city_battle: bool = false
+var _battle_city_id: StringName = &""  # city on the battle hex (for city-shield mechanics)
 var _defense_meta: Dictionary = {} # tower_positions, siege_positions from defensive buildings
 var spatial_grid: Dictionary = {}  # Vector2i -> Array[BattleFormationV3]
 
@@ -293,7 +294,9 @@ func setup_terrain(campaign_terrain: Enums.TerrainType, hex_pos: Vector2i) -> vo
 		var btile = GameManager.state.hex_map.get_tile(hex_pos)
 		if btile:
 			_battle_realm = btile.realm_influence
-	_is_city_battle = GameManager.city_system.get_city_at_hex(hex_pos) != null
+	var hex_city: CityState = GameManager.city_system.get_city_at_hex(hex_pos)
+	_is_city_battle = hex_city != null
+	_battle_city_id = hex_city.city_id if hex_city else &""
 	terrain_grid_w = ceili(FIELD_WIDTH / terrain_cell_size)
 	terrain_grid_h = ceili(FIELD_HEIGHT / terrain_cell_size)
 	var seed_val := hex_pos.x * 1000 + hex_pos.y
@@ -566,6 +569,9 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			if _campaign_terrain == Enums.TerrainType.MOUNTAINS:
 				f.attack += 3
 				f.defense += 2
+			# Thunder Wall ability: +8 defense while defending the warded city
+			if side == 1 and fs.storm_wall_turns > 0 and _battle_city_id != &"" and _battle_city_id == fs.storm_wall_city:
+				f.defense += 8
 			# Research: storm_fury_attack_scaling (+X% attack per 10 fury)
 			var ts_scaling: int = r_eff.get("storm_fury_attack_scaling", 0)
 			if ts_scaling > 0 and fs.storm_fury > 0:
@@ -624,6 +630,9 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			# Pyramid >= 25: +2 defense to all (applied in city system too)
 			if fs.pyramid_restoration >= 25:
 				f.defense += 2
+			# Relic Defense expedition choice: +3 defense in city battles for 3 turns
+			if side == 1 and _is_city_battle and int(fs.leader_bonuses.get("relic_defense_turns", 0)) > 0:
+				f.defense += 3
 			# Desert/Wastes terrain: home advantage
 			if _campaign_terrain == Enums.TerrainType.DESERT or _campaign_terrain == Enums.TerrainType.SHARD_WASTES:
 				f.defense += 2

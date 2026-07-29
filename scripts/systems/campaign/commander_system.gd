@@ -203,6 +203,8 @@ func get_commander_army_bonuses(commander: CommanderState) -> Dictionary:
 	}
 	if commander == null:
 		return bonuses
+	if commander.wounded_turns > 0:
+		return bonuses # Wounded commanders grant nothing until recovered
 	for skill_id in commander.skill_levels:
 		var level: int = commander.skill_levels[skill_id]
 		var effects := _get_effects_for_id(skill_id)

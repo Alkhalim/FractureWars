@@ -1616,6 +1616,9 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 	# Cache unit data lookups to avoid repeated DataManager calls for the same unit type
 	var _unit_cache: Dictionary = {} # unit_data_id -> UnitData
 	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
+		# Wounded commanders recover one turn at a time
+		if army.commander and army.commander.wounded_turns > 0:
+			army.commander.wounded_turns -= 1
 
 		var city_at := GameManager.city_system.get_city_at_hex(army.hex_pos)
 		var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
@@ -4553,10 +4556,12 @@ func _apply_dragon_damage(fs: FactionState, target_id: StringName) -> void:
 	fs.border_vigilance = clampi(fs.border_vigilance - 5, 0, 100)
 
 # ── Forsaken: Espionage Network ──────────────────────────
-# Grows from regions + espionage buildings. Now has MUCH stronger effects:
-# 10+: fog bypass. 15+: ambush bonus in battle.
-# 20+: sabotage (steal gold + damage buildings). 25+: steal research.
-# 30+: border city loyalty erosion. 40+: commander wounding chance.
+# Grows from regions + espionage buildings. Threshold effects:
+# 10+: enemy capitals revealed through fog (at-war, player only).
+# 15+: ambush attack/speed bonus when attacking + passive tech income.
+# 20+: steal gold op. 25+: steal research op. 30+: border loyalty erosion op.
+# 35+: sabotage op (destroys a construction in progress).
+# 40+: 30% chance per op to wound an enemy commander (3 turns, no bonuses).
 # Sabotage has cooldown and detection risk (caught = standing penalty).
 
 func _process_forsaken_espionage(fs: FactionState) -> void:
@@ -4588,6 +4593,30 @@ func _process_forsaken_espionage(fs: FactionState) -> void:
 	if fs.espionage_sabotage_cooldown > 0:
 		fs.espionage_sabotage_cooldown -= 1
 
+	# ── 10+ Espionage: agents reveal enemy capitals (player fog only) ──
+	if fs.espionage_network >= 10 and fs.faction_data_id == GameManager.state.player_faction_id:
+		for other_id in GameManager.state.faction_states:
+			if other_id == fs.faction_data_id or GameManager.is_npc_faction(other_id):
+				continue
+			if GameManager.get_relation(fs.faction_data_id, other_id) != Enums.FactionRelation.WAR:
+				continue
+			var other_fs_cap: FactionState = GameManager.state.faction_states[other_id]
+			for cap_cid in other_fs_cap.owned_cities:
+				var cap_city: CityState = GameManager.state.cities.get(cap_cid)
+				if cap_city == null or not cap_city.is_capital:
+					continue
+				# Reveal the capital and a radius-2 ring around it
+				var frontier: Array[Vector2i] = [cap_city.hex_pos]
+				GameManager.explored_tiles[cap_city.hex_pos] = true
+				for _ring in 2:
+					var next_frontier: Array[Vector2i] = []
+					for fcoord in frontier:
+						for ncoord in HexHelper.get_neighbors(fcoord):
+							if not GameManager.explored_tiles.has(ncoord):
+								GameManager.explored_tiles[ncoord] = true
+								next_frontier.append(ncoord)
+					frontier = next_frontier
+
 	# ── 20+ Espionage: Major sabotage operations ──
 	if fs.espionage_network >= 20 and fs.espionage_sabotage_cooldown <= 0:
 		var best_target: StringName = &""
@@ -4618,6 +4647,8 @@ func _process_forsaken_espionage(fs: FactionState) -> void:
 					choices.insert(1, {"label": "Steal Research", "description": "Copy %s's research archives. 15%% detection risk." % tname, "effect": "spy_tech"})
 				if fs.espionage_network >= 30:
 					choices.insert(2, {"label": "Undermine Loyalty", "description": "Agitate %s's border cities (-3 loyalty). 25%% detection risk." % tname, "effect": "spy_loyalty"})
+				if fs.espionage_network >= 35:
+					choices.insert(3, {"label": "Sabotage Structures", "description": "Destroy %s's construction in progress. 25%% detection risk." % tname, "effect": "spy_sabotage"})
 				EventBus.dilemma_triggered.emit(fs.faction_data_id, "espionage_op", {
 					"title": "Shadow Operations (Network: %d)" % fs.espionage_network,
 					"description": "Your handlers await orders. Target of opportunity: %s." % tname,
@@ -4630,6 +4661,8 @@ func _process_forsaken_espionage(fs: FactionState) -> void:
 					_apply_espionage_operation(fs, "spy_tech", best_target)
 				if fs.espionage_network >= 30:
 					_apply_espionage_operation(fs, "spy_loyalty", best_target)
+				if fs.espionage_network >= 35:
+					_apply_espionage_operation(fs, "spy_sabotage", best_target)
 			fs.espionage_sabotage_cooldown = 2 # Every 2 turns
 
 	# Passive tech income from intelligence gathering
@@ -4668,12 +4701,37 @@ func _apply_espionage_operation(fs: FactionState, op: String, target: StringName
 								c.class_loyalty[cls] = clampi(c.class_loyalty[cls] - 3, -100, 100)
 						break
 			detection = 0.25
+		"spy_sabotage":
+			# Destroy the target's most advanced construction in progress
+			var sab_city: CityState = null
+			for c_id2 in enemy_fs.owned_cities:
+				var c2: CityState = GameManager.state.cities.get(c_id2)
+				if c2 and not c2.build_queue.is_empty():
+					if sab_city == null or c2.level > sab_city.level:
+						sab_city = c2
+			if sab_city:
+				var sab_item: Dictionary = sab_city.build_queue[0]
+				sab_city.build_queue.remove_at(0)
+				var sab_bd: BuildingData = DataManager.get_building(sab_item.get("building_id", &""))
+				var sab_name: String = sab_bd.display_name if sab_bd else "a structure"
+				turn_log.append({type = "army", text = "Saboteurs destroyed %s under construction in %s!" % [sab_name, sab_city.get_display_name()]})
+			detection = 0.25
 		"spy_lielow":
 			# Mend cover: recover standing with factions that caught your agents
 			for caught_id in fs.espionage_caught_by:
 				GameManager.diplomacy_system.modify_standing(fs.faction_data_id, caught_id, 2, "Spies lie low")
 			fs.espionage_caught_by.clear()
 			return
+	# 40+ network: master assassins — chance to wound an enemy commander during any op
+	if fs.espionage_network >= 40 and randf() < 0.30:
+		var wound_candidates: Array = []
+		for e_army: ArmyState in GameManager.get_faction_armies(target):
+			if e_army.commander and e_army.commander.wounded_turns <= 0 and not e_army.commander.is_elderbeast:
+				wound_candidates.append(e_army.commander)
+		if not wound_candidates.is_empty():
+			var wounded: CommanderState = wound_candidates[randi() % wound_candidates.size()]
+			wounded.wounded_turns = 3
+			turn_log.append({type = "army", text = "%s was wounded by shadow agents (no command bonuses for 3 turns)" % wounded.name})
 	if randf() < detection:
 		fs.espionage_caught_by.append(target)
 		for other_id in GameManager.state.faction_states:
@@ -4690,6 +4748,11 @@ func _apply_espionage_operation(fs: FactionState, op: String, target: StringName
 # Relic Expedition dilemma every 5 turns gives player active choices.
 
 func _process_ivoryscar_relics(fs: FactionState) -> void:
+	# Relic Defense (expedition choice): tick down the 3-turn city-defense ward
+	var relic_def_turns: int = int(fs.leader_bonuses.get("relic_defense_turns", 0))
+	if relic_def_turns > 0:
+		fs.leader_bonuses["relic_defense_turns"] = relic_def_turns - 1
+
 	# Relic power from shard wastes + shards
 	var wastes_count := 0
 	for region_id in fs.owned_regions:
@@ -5022,8 +5085,10 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 				fs.solar_faith = mini(fs.solar_faith + int(bdata.special_effects["solar_faith_income"]), 100)
 
 # ── Sunblessed: Wisdom & Teaching ─────────────────────────
-# Wisdom grows near allied cities. Much stronger: tech, diplomacy, educator aura.
-# High wisdom unlocks: research cost reduction, ally tech sharing, cultural victory progress.
+# Wisdom grows near allied cities. Effects: tech income (+1 per 8, cap +12),
+# diplomacy standing (+1/+2/+3 at 25/40/60), educator aura (ally +4 tech,
+# +2 loyalty, +1 standing), and research speed (+wisdom/400, up to +50% —
+# applied in research_system._get_faction_research_speed_bonus).
 
 func _apply_golden_age(fs: FactionState, fid: StringName, effect: String) -> void:
 	match effect:
