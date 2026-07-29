@@ -220,6 +220,50 @@ func _run() -> void:
 	_check(e_gained > 20, "saffron receiver banks inflated gold (got %d)" % e_gained)
 	_gm.state.diplomacy_state.treaties.erase(t.treaty_id)
 
+	# ── Resource lease lifecycle ──
+	_gm.new_game(&"empire")
+	var map4 = _gm.state.hex_map
+	var dhex := Vector2i(-1, -1)
+	for coord in map4.tiles:
+		if map4.tiles[coord].special_id != &"":
+			dhex = coord
+			break
+	var dtile = map4.get_tile(dhex)
+	var dtype: StringName = dtile.special_id
+	var dregion: StringName = dtile.region_id
+	var owner_city: CityState = null
+	for cid in _gm.state.cities:
+		if _gm.state.cities[cid].faction_id == &"empire":
+			owner_city = _gm.state.cities[cid]
+			break
+	owner_city.region_id = dregion
+	owner_city.buildings.append(SpecialResourceSystem.SPECIAL_TYPES[dtype].extractor_id)
+	for rc in map4.get_region_tiles(dregion):
+		map4.get_tile(rc).owner_faction = &"empire"
+	map4._region_owner_cache.clear()
+	var efs: FactionState = _gm.state.faction_states[&"empire"]
+	if not (dregion in efs.owned_regions):
+		efs.owned_regions.append(dregion)
+
+	var res: Dictionary = _gm.diplomacy_system.propose_resource_lease(&"empire", &"gladehost", dtype, 10, 8)
+	_check(res.accepted, "AI lessee accepts a cheap lease of a useful special (reason: %s)" % res.get("reason", ""))
+	_check(SpecialResourceSystem.has_modifier(&"gladehost", dtype), "lease grants the modifier to the lessee")
+	_check(SpecialResourceSystem.lease_for_special(&"empire", dtype) != null, "lease registered for exclusivity")
+	var res2: Dictionary = _gm.diplomacy_system.propose_resource_lease(&"empire", &"moonspear", dtype, 10, 8)
+	_check(not res2.accepted, "second lease of same special rejected (exclusive)")
+
+	# Tick: lessee pays owner gold_per_turn
+	var gl_fs: FactionState = _gm.state.faction_states[&"gladehost"]
+	var e_gold: int = efs.resources.get(0, 0)
+	var g_gold: int = gl_fs.resources.get(0, 0)
+	_gm.diplomacy_system.process_treaties(&"empire")
+	_check(efs.resources.get(0, 0) == e_gold + 10, "owner received lease payment")
+	_check(gl_fs.resources.get(0, 0) == g_gold - 10, "lessee paid lease payment")
+
+	# War cancels the lease
+	_gm.diplomacy_system.declare_war(&"empire", &"gladehost")
+	_check(not SpecialResourceSystem.has_modifier(&"gladehost", dtype), "war cancels the lease")
+
 	if _fails == 0:
 		print("SPECIALS TEST PASSED")
 		quit(0)

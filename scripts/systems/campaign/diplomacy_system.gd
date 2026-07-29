@@ -312,6 +312,52 @@ func propose_trade(proposer: StringName, target: StringName, give_res: int, give
 		return {accepted = false, reason = "They find the terms unfavorable, but propose a counter-offer.", counter_offer = counter}
 	return {accepted = false, reason = "They find the terms unfavorable"}
 
+## Shared AI valuation for the lessee side of a resource lease: affinity
+## specials are worth more, and the lessee must be able to sustain payment.
+## Used by both propose_resource_lease and would_accept_proposal's "resource_lease" case.
+func _evaluate_lease_as_lessee(lessee: StringName, special_id: StringName, gold_per_turn: int) -> bool:
+	var affinity: bool = GameManager.MINOR_FACTION_PARENTS.get(lessee, lessee) in SpecialResourceSystem.SPECIAL_TYPES[special_id].affinity
+	var max_pay := 20 if affinity else 12
+	if gold_per_turn > max_pay:
+		return false
+	var lessee_fs: FactionState = GameManager.state.faction_states.get(lessee)
+	if lessee_fs == null or lessee_fs.resources.get(Enums.ResourceType.GOLD, 0) < gold_per_turn * 3:
+		return false
+	return true
+
+## Owner leases a Special's modifier to lessee for gold_per_turn, exclusive.
+## Evaluation only runs for the DECIDING AI party: the lessee (if AI) decides
+## whether to take the lease; if the lessee is the player, the AI owner
+## decides whether to lease it out (Task 6 wires the player-as-lessee UI to this).
+func propose_resource_lease(owner: StringName, lessee: StringName, special_id: StringName, gold_per_turn: int, duration: int) -> Dictionary:
+	if GameManager.get_relation(owner, lessee) == Enums.FactionRelation.WAR:
+		return {accepted = false, reason = "At war."}
+	if not (special_id in SpecialResourceSystem.extracted_specials_of_faction(owner)):
+		return {accepted = false, reason = "Owner does not extract this resource."}
+	if SpecialResourceSystem.lease_for_special(owner, special_id) != null:
+		return {accepted = false, reason = "Already leased to another faction."}
+	if lessee != GameManager.state.player_faction_id:
+		if not _evaluate_lease_as_lessee(lessee, special_id, gold_per_turn):
+			return {accepted = false, reason = "Not interested in this lease."}
+	elif owner != GameManager.state.player_faction_id:
+		# AI owner deciding whether to lease out to the player.
+		var standing := get_standing(owner, lessee)
+		var min_pay := 8 + int(_get_faction_greed(owner) * 4.0)
+		if gold_per_turn < min_pay or standing < 0:
+			return {accepted = false, reason = "They want more for this lease."}
+	var treaty := TreatyInstance.new()
+	treaty.treaty_id = GameManager.state.generate_id()
+	treaty.treaty_type = Enums.TreatyType.RESOURCE_LEASE
+	treaty.faction_a = owner
+	treaty.faction_b = lessee
+	treaty.turns_remaining = duration
+	treaty.terms = {special_id = special_id, gold_per_turn = gold_per_turn}
+	GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+	invalidate_free_passage_cache()
+	modify_standing(owner, lessee, 3, "Resource lease")
+	EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.RESOURCE_LEASE, owner, lessee)
+	return {accepted = true, reason = "Lease agreed."}
+
 func gift_resources(from: StringName, to: StringName, res_type: int, amount: int) -> bool:
 	var from_fs: FactionState = GameManager.state.faction_states.get(from)
 	var to_fs: FactionState = GameManager.state.faction_states.get(to)
@@ -654,6 +700,16 @@ func process_treaties(faction_id: StringName) -> void:
 			_execute_trade(treaty)
 		elif treaty.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
 			_execute_trade_relations(treaty)
+		elif treaty.treaty_type == Enums.TreatyType.RESOURCE_LEASE:
+			var pay: int = treaty.terms.get("gold_per_turn", 0)
+			var lessee_fs: FactionState = GameManager.state.faction_states.get(treaty.faction_b)
+			var owner_fs: FactionState = GameManager.state.faction_states.get(treaty.faction_a)
+			var still_extracted: bool = treaty.terms.get("special_id", &"") in SpecialResourceSystem.extracted_specials_of_faction(treaty.faction_a)
+			if lessee_fs == null or owner_fs == null or lessee_fs.resources.get(Enums.ResourceType.GOLD, 0) < pay or not still_extracted:
+				to_expire.append(treaty_id) # defaulted or supply lost -> lease ends
+			else:
+				lessee_fs.resources[Enums.ResourceType.GOLD] -= pay
+				owner_fs.resources[Enums.ResourceType.GOLD] = owner_fs.resources.get(Enums.ResourceType.GOLD, 0) + pay
 		# Tributary: transfer gold each turn
 		if treaty.treaty_type == Enums.TreatyType.TRIBUTARY:
 			var overlord_fs: FactionState = GameManager.state.faction_states.get(treaty.faction_a)
@@ -853,6 +909,8 @@ func break_treaty(breaker: StringName, treaty_id: StringName) -> void:
 			standing_penalty = -20
 		Enums.TreatyType.TRIBUTARY:
 			standing_penalty = -10
+		Enums.TreatyType.RESOURCE_LEASE:
+			standing_penalty = -10
 	modify_standing(breaker, other, standing_penalty, "Broke %s" % _treaty_type_name(treaty.treaty_type))
 	# Reputation penalty with ALL factions for being dishonorable
 	for fid in GameManager.state.faction_states:
@@ -874,6 +932,7 @@ func _treaty_type_name(treaty_type: int) -> String:
 		Enums.TreatyType.TRADE_RELATIONS: return "Trade Relations"
 		Enums.TreatyType.NON_AGGRESSION_PACT: return "Non-Aggression Pact"
 		Enums.TreatyType.TRIBUTARY: return "Tributary Agreement"
+		Enums.TreatyType.RESOURCE_LEASE: return "Resource Lease"
 	return "Treaty"
 
 # ── AI Evaluation ───────────────────────────────────────────
@@ -1141,6 +1200,13 @@ func would_accept_proposal(proposer: StringName, target: StringName, proposal_ty
 			if not nc.is_empty():
 				return {accepted = false, counter_offer = nc}
 			return {accepted = false}
+		"resource_lease":
+			var relation := GameManager.get_relation(proposer, target)
+			if relation == Enums.FactionRelation.WAR:
+				return {accepted = false}
+			var rl_special: StringName = params.get("special_id", &"")
+			var rl_pay: int = params.get("gold_per_turn", 0)
+			return {accepted = _evaluate_lease_as_lessee(target, rl_special, rl_pay)}
 		"demand_tributary":
 			var ratio := get_strength_ratio(proposer, target)
 			var standing := get_standing(proposer, target)
@@ -1261,6 +1327,10 @@ func _execute_ai_diplomacy_inner(faction_id: StringName) -> void:
 			var standing := get_standing(faction_id, other_id)
 			var strength_ratio := get_strength_ratio(faction_id, other_id)
 			var war_score: float = aggression * 40.0 + turn_factor * 20.0 + (strength_ratio - 1.0) * 25.0 - float(standing) * 0.5
+			# Covet deposits of our affinity Special that the target extracts
+			for aff_special in _affinity_specials_of(faction_id):
+				if aff_special in SpecialResourceSystem.extracted_specials_of_faction(other_id):
+					war_score += 10.0
 			# Forsaken culture requires overwhelming advantage (1.5x strength)
 			var min_strength: float = 1.5 if is_forsaken_culture else 0.8
 			if war_score > 30.0 and strength_ratio >= min_strength:
@@ -1304,6 +1374,30 @@ func _execute_ai_diplomacy_inner(faction_id: StringName) -> void:
 			var standing := get_standing(faction_id, other_id)
 			if standing >= 30:
 				propose_alliance(faction_id, other_id)
+
+	# Seek a lease of our affinity special if someone else extracts it
+	# (AI -> AI only; the player is never auto-approached to lease something out —
+	# that direction stays player-initiated via UI, per propose_resource_lease's
+	# owner-side AI check).
+	for aff_special in _affinity_specials_of(faction_id):
+		if SpecialResourceSystem.has_modifier(faction_id, aff_special):
+			continue
+		for other_fid in GameManager.state.faction_states:
+			if other_fid == faction_id or other_fid == GameManager.state.player_faction_id:
+				continue
+			if aff_special in SpecialResourceSystem.extracted_specials_of_faction(other_fid) \
+					and SpecialResourceSystem.lease_for_special(other_fid, aff_special) == null \
+					and GameManager.get_relation(faction_id, other_fid) != Enums.FactionRelation.WAR:
+				propose_resource_lease(other_fid, faction_id, aff_special, 14, 10)
+				break
+
+func _affinity_specials_of(faction_id: StringName) -> Array[StringName]:
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var result: Array[StringName] = []
+	for special_id in SpecialResourceSystem.SPECIAL_TYPES:
+		if parent_fid in SpecialResourceSystem.SPECIAL_TYPES[special_id].affinity:
+			result.append(special_id)
+	return result
 
 # ── AI Offer to Player ──────────────────────────────────────
 

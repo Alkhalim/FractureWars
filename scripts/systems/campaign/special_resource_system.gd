@@ -105,9 +105,32 @@ static func extracted_specials_of_faction(faction_id: StringName) -> Array[Strin
 			result.append(special)
 	return result
 
-## Task 5 replaces the lease stub with real treaty lookups.
-static func _lease_grants(_faction_id: StringName, _special_id: StringName) -> bool:
+static func _lease_grants(faction_id: StringName, special_id: StringName) -> bool:
+	for t_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[t_id]
+		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.faction_b == faction_id \
+				and t.terms.get("special_id", &"") == special_id:
+			return true
 	return false
+
+## The active lease treaty for a special the owner extracts (or null). Used to
+## enforce exclusivity — a deposit can only be leased to one faction at a time.
+static func lease_for_special(owner: StringName, special_id: StringName) -> TreatyInstance:
+	for t_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[t_id]
+		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.faction_a == owner \
+				and t.terms.get("special_id", &"") == special_id:
+			return t
+	return null
+
+## Specials leased INTO faction_id from other factions, for UI display.
+static func leased_in_specials(faction_id: StringName) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for t_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[t_id]
+		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.faction_b == faction_id:
+			result.append({special_id = t.terms.get("special_id", &""), from = t.faction_a, turns_remaining = t.turns_remaining})
+	return result
 
 static func has_modifier(faction_id: StringName, special_id: StringName) -> bool:
 	if special_id in extracted_specials_of_faction(faction_id):
