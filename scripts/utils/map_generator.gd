@@ -117,6 +117,7 @@ static func generate_demo_hex_map(regions: Dictionary) -> HexMapData:
 	_create_wetland_bridges(map)
 	_assign_realm_influence(map, demo_regions)
 	_fix_terrain_pockets(map)
+	SpecialResourceSystem.scatter_specials(map)  # tier-2 rare deposits; first pick over bounties
 	BountySystem.scatter_bounties(map)  # tier-1 resources; terrain is final here
 
 	_active_seeds = {}
@@ -158,6 +159,7 @@ static func generate_hex_map(regions: Dictionary) -> HexMapData:
 	# 8. Fix terrain pockets
 	_fix_terrain_pockets(map)
 
+	SpecialResourceSystem.scatter_specials(map)  # tier-2 rare deposits; first pick over bounties
 	BountySystem.scatter_bounties(map)  # tier-1 resources; terrain is final here
 
 	return map

@@ -51,6 +51,7 @@ func serialize_hex_map() -> void:
 			"development_level": tile.development_level,
 			"owner_faction": str(tile.owner_faction),
 			"bounty_id": str(tile.bounty_id),
+			"special_id": str(tile.special_id),
 		}
 	hex_map_data = data
 
@@ -70,5 +71,6 @@ func deserialize_hex_map() -> void:
 		tile.development_level = tile_data.get("development_level", 0)
 		tile.owner_faction = StringName(tile_data.get("owner_faction", ""))
 		tile.bounty_id = StringName(tile_data.get("bounty_id", ""))
+		tile.special_id = StringName(tile_data.get("special_id", ""))
 		hex_map.tiles[coord] = tile
 	hex_map_data = {} # Clear serialized data to save memory
