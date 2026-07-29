@@ -123,5 +123,79 @@ func _process(_delta: float) -> bool:
 		var img2 := root.get_viewport().get_texture().get_image()
 		img2.save_png("user://win_bounty_bar.png")
 		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_bounty_bar.png"))
+
+	# ── Phase 3: settlement founding preview lists claimable bounties ──────
+	if _frames == 62:
+		var gm: Node = root.get_node("/root/GameManager")
+		var capital: CityState = null
+		for city_id in gm.state.cities:
+			var city: CityState = gm.state.cities[city_id]
+			if city.faction_id == gm.state.player_faction_id and city.is_capital:
+				capital = city
+				break
+		if capital == null:
+			print("WARNING: no player capital found for settle-preview phase")
+		else:
+			# Populate _settlement_valid_tiles first, then hunt for a valid tile
+			# that has an unclaimed, bounty-free land hex within CLAIM_RADIUS (2)
+			# of it — craft the bounty there so the chosen valid tile actually
+			# claims it (exercises the real _show_settlement_preview render path
+			# rather than the early-return fallback).
+			_campaign.call("_on_settlement_placement_requested", capital.city_id)
+			var valid_tiles = _campaign.get("_settlement_valid_tiles")
+			var map = gm.state.hex_map
+			var settle_hex := Vector2i(-9999, -9999)
+			var bounty_coord := Vector2i(-9999, -9999)
+			if valid_tiles:
+				for v in valid_tiles:
+					for dx in range(-2, 3):
+						for dy in range(-2, 3):
+							var cand := Vector2i(v.x + dx, v.y + dy)
+							if HexHelper.hex_distance(v, cand) > 2:
+								continue
+							var ctile = map.get_tile(cand)
+							if ctile == null or ctile.terrain == Enums.TerrainType.WATER:
+								continue
+							if ctile.bounty_id != &"":
+								continue
+							if BountySystem.claimant_for(cand) != &"":
+								continue
+							settle_hex = v
+							bounty_coord = cand
+							break
+						if bounty_coord != Vector2i(-9999, -9999):
+							break
+					if bounty_coord != Vector2i(-9999, -9999):
+						break
+			var found_valid := bounty_coord != Vector2i(-9999, -9999)
+			if not found_valid:
+				# Fallback per brief: exercise the function even without a
+				# guaranteed intersection (won't render a panel, but confirms
+				# no crash / compile error along this path).
+				print("WARNING: no valid-tile/bounty intersection found; using fallback hex")
+				settle_hex = capital.hex_pos
+				for coord in map.tiles:
+					var tile = map.tiles[coord]
+					if tile.terrain == Enums.TerrainType.WATER or tile.bounty_id != &"":
+						continue
+					var d := HexHelper.hex_distance(capital.hex_pos, coord)
+					if d < 4 or d > 6:
+						continue
+					bounty_coord = coord
+					break
+			if bounty_coord != Vector2i(-9999, -9999):
+				map.get_tile(bounty_coord).bounty_id = &"orchards"
+			print("SETTLE-PREVIEW BOUNTY CRAFTED AT: ", bounty_coord, " claimant=[", BountySystem.claimant_for(bounty_coord), "]")
+			print("SETTLE-PREVIEW TILE: ", settle_hex, " in_valid_set=", found_valid)
+			var cam: Camera2D = _campaign.get("camera")
+			if cam:
+				cam.position = _campaign.call("_hex_to_pixel", settle_hex)
+				cam.zoom = Vector2(1.5, 1.5)
+			_campaign.call("_show_settlement_preview", settle_hex)
+
+	if _frames == 64:
+		var img3 := root.get_viewport().get_texture().get_image()
+		img3.save_png("user://win_settle_preview.png")
+		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_settle_preview.png"))
 		quit()
 	return false

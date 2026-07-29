@@ -142,6 +142,17 @@ func _run() -> void:
 	var loy_without: Dictionary = BountySystem.loyalty_bonus_for_city(home)
 	_check(int(loy_with.get("peasants", 0)) - int(loy_without.get("peasants", 0)) == 1, "vineyards grant +1 peasant loyalty")
 
+	# ── Founding preview query ──
+	map2.get_tile(spot).bounty_id = &"orchards"
+	var near_settle := Vector2i(home.hex_pos.x, home.hex_pos.y)  # settling AT the city is impossible, but the query is position-based
+	var claimable: Array = BountySystem.bounties_claimable_at(spot)  # standing on the bounty
+	var self_found := false
+	for entry in claimable:
+		if entry.hex == spot:
+			self_found = true
+	_check(self_found, "bounties_claimable_at sees an adjacent bounty (distance 0 beats the existing claimant at 2)")
+	map2.get_tile(spot).bounty_id = &""
+
 	if _fails == 0:
 		print("BOUNTY TEST PASSED")
 		quit(0)

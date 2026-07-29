@@ -5544,6 +5544,21 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 			vbox.add_child(rlabel)
 			total_value += income[res_type]
 
+	# Bounty resources this settlement would claim (special_resources_design)
+	var claimable := BountySystem.bounties_claimable_at(hex_coord)
+	if not claimable.is_empty():
+		var b_header := Label.new()
+		b_header.text = "Claims resources:"
+		b_header.add_theme_font_size_override("font_size", 11)
+		b_header.add_theme_color_override("font_color", Color(0.72, 0.85, 0.55))
+		vbox.add_child(b_header)
+		for entry in claimable:
+			var b_lbl := Label.new()
+			b_lbl.text = "  %s (%s)" % [entry.name, BountySystem.describe(entry.id)]
+			b_lbl.add_theme_font_size_override("font_size", 11)
+			b_lbl.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+			vbox.add_child(b_lbl)
+
 	var total_label := Label.new()
 	total_label.text = "Total: %d resources/turn" % total_value
 	total_label.add_theme_font_size_override("font_size", 11)

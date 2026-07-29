@@ -147,6 +147,31 @@ static func bounties_of_faction(faction_id: StringName) -> Array[Dictionary]:
 			})
 	return result
 
+## Bounties a NEW city founded at hex_pos would claim: within CLAIM_RADIUS and
+## either unclaimed or strictly closer to hex_pos than to the current claimant.
+static func bounties_claimable_at(hex_pos: Vector2i) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var map = GameManager.state.hex_map
+	if map == null:
+		return result
+	for dx in range(-CLAIM_RADIUS - 1, CLAIM_RADIUS + 2):
+		for dy in range(-CLAIM_RADIUS - 1, CLAIM_RADIUS + 2):
+			var h := Vector2i(hex_pos.x + dx, hex_pos.y + dy)
+			var d := HexHelper.hex_distance(hex_pos, h)
+			if d > CLAIM_RADIUS:
+				continue
+			var tile = map.get_tile(h)
+			if tile == null or tile.bounty_id == &"":
+				continue
+			var current := claimant_for(h)
+			if current == &"":
+				result.append({id = tile.bounty_id, name = BOUNTY_TYPES[tile.bounty_id].name, hex = h})
+			else:
+				var cur_city: CityState = GameManager.state.cities.get(current)
+				if cur_city and d < HexHelper.hex_distance(cur_city.hex_pos, h):
+					result.append({id = tile.bounty_id, name = BOUNTY_TYPES[tile.bounty_id].name, hex = h})
+	return result
+
 const _RES_NAMES := {0: "Gold", 1: "Iron", 2: "Technology", 3: "Food", 4: "Shard Essence", 5: "Wood", 6: "Captives"}
 
 ## Human-readable one-line bonus text for tooltips.
