@@ -58,6 +58,60 @@ func _run() -> void:
 			any_bounty = true
 	_check(not any_bounty, "old saves without bounty_id load with empty bounties")
 
+	# ── Claim resolution ──
+	_gm.new_game(&"empire")
+	var map2 = _gm.state.hex_map
+	var pid: StringName = &"empire"
+	var home: CityState = null
+	for cid in _gm.state.cities:
+		if _gm.state.cities[cid].faction_id == pid:
+			home = _gm.state.cities[cid]
+			break
+	# Craft a bounty 2 tiles from home on a land tile
+	var spot := Vector2i(-1, -1)
+	for dx in range(-3, 4):
+		for dy in range(-3, 4):
+			var h2 := Vector2i(home.hex_pos.x + dx, home.hex_pos.y + dy)
+			if HexHelper.hex_distance(home.hex_pos, h2) == 2:
+				var t2 = map2.get_tile(h2)
+				if t2 and t2.terrain != Enums.TerrainType.WATER and t2.bounty_id == &"":
+					spot = h2
+					break
+		if spot != Vector2i(-1, -1):
+			break
+	map2.get_tile(spot).bounty_id = &"orchards"
+	_check(BountySystem.claimant_for(spot) == home.city_id, "city claims bounty at distance 2")
+	_check(spot in BountySystem.claimed_bounties_for_city(home), "claimed_bounties_for_city finds it")
+	var listing: Array = BountySystem.bounties_of_faction(pid)
+	var found_listing := false
+	for entry in listing:
+		if entry.hex == spot and entry.id == &"orchards":
+			found_listing = true
+	_check(found_listing, "bounties_of_faction lists the claim")
+	_check(BountySystem.describe(&"orchards").contains("Food"), "describe() names the bonus")
+	# Distance 3 → unclaimed
+	map2.get_tile(spot).bounty_id = &""
+	var far := Vector2i(-1, -1)
+	for dx in range(-4, 5):
+		for dy in range(-4, 5):
+			var h3 := Vector2i(home.hex_pos.x + dx, home.hex_pos.y + dy)
+			if HexHelper.hex_distance(home.hex_pos, h3) == 3:
+				var t3 = map2.get_tile(h3)
+				if t3 and t3.terrain != Enums.TerrainType.WATER and t3.bounty_id == &"":
+					var other_claim := false
+					for cid2 in _gm.state.cities:
+						if HexHelper.hex_distance(_gm.state.cities[cid2].hex_pos, h3) <= 2:
+							other_claim = true
+					if not other_claim:
+						far = h3
+						break
+		if far != Vector2i(-1, -1):
+			break
+	if far != Vector2i(-1, -1):
+		map2.get_tile(far).bounty_id = &"orchards"
+		_check(BountySystem.claimant_for(far) == &"", "distance 3 is out of claim range")
+		map2.get_tile(far).bounty_id = &""
+
 	if _fails == 0:
 		print("BOUNTY TEST PASSED")
 		quit(0)

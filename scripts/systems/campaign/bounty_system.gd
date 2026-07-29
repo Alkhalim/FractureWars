@@ -97,3 +97,68 @@ static func _has_water_neighbor(map: HexMapData, coord: Vector2i) -> bool:
 		if t and t.terrain == Enums.TerrainType.WATER:
 			return true
 	return false
+
+## Nearest city within CLAIM_RADIUS claims a bounty; ties break by city_id.
+static func claimant_for(bounty_hex: Vector2i) -> StringName:
+	var best_id: StringName = &""
+	var best_d := 99
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		var d := HexHelper.hex_distance(city.hex_pos, bounty_hex)
+		if d > CLAIM_RADIUS:
+			continue
+		if d < best_d or (d == best_d and String(city_id) < String(best_id)):
+			best_d = d
+			best_id = city_id
+	return best_id
+
+static func claimed_bounties_for_city(city: CityState) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var map = GameManager.state.hex_map
+	if map == null:
+		return result
+	for dx in range(-CLAIM_RADIUS - 1, CLAIM_RADIUS + 2):
+		for dy in range(-CLAIM_RADIUS - 1, CLAIM_RADIUS + 2):
+			var h := Vector2i(city.hex_pos.x + dx, city.hex_pos.y + dy)
+			if HexHelper.hex_distance(city.hex_pos, h) > CLAIM_RADIUS:
+				continue
+			var tile = map.get_tile(h)
+			if tile and tile.bounty_id != &"" and claimant_for(h) == city.city_id:
+				result.append(h)
+	return result
+
+## For the HUD holdings list: every bounty claimed by any of the faction's cities.
+static func bounties_of_faction(faction_id: StringName) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var map = GameManager.state.hex_map
+	if map == null:
+		return result
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id != faction_id:
+			continue
+		for hex in claimed_bounties_for_city(city):
+			var tile = map.get_tile(hex)
+			result.append({
+				id = tile.bounty_id,
+				name = BOUNTY_TYPES[tile.bounty_id].name,
+				hex = hex,
+				city_id = city_id,
+			})
+	return result
+
+const _RES_NAMES := {0: "Gold", 1: "Iron", 2: "Technology", 3: "Food", 4: "Shard Essence", 5: "Wood", 6: "Captives"}
+
+## Human-readable one-line bonus text for tooltips.
+static func describe(type_id: StringName) -> String:
+	var def: Dictionary = BOUNTY_TYPES.get(type_id, {})
+	if def.is_empty():
+		return ""
+	var parts: PackedStringArray = []
+	for res_type in def.get("income", {}):
+		parts.append("+%d %s" % [def.income[res_type], _RES_NAMES.get(res_type, "?")])
+	for cls in def.get("loyalty", {}):
+		parts.append("+%d %s loyalty" % [def.loyalty[cls], String(cls)])
+	for tag in def.get("recruit_discount", {}):
+		parts.append("-%d%% %s recruit cost" % [def.recruit_discount[tag], String(tag)])
+	return ", ".join(parts)
