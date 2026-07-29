@@ -104,6 +104,10 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * (gold_pct + all_pct) / 100.0)
 	if food_pct + all_pct != 0 and income.has(Enums.ResourceType.FOOD):
 		income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * (food_pct + all_pct) / 100.0)
+	# Heartwood: +% food income (special_resources_design)
+	var heart_mod := SpecialResourceSystem.modifier_strength(faction_id, &"heartwood")
+	if heart_mod > 0.0 and income.has(Enums.ResourceType.FOOD):
+		income[Enums.ResourceType.FOOD] = int(income[Enums.ResourceType.FOOD] * (1.0 + heart_mod))
 	if iron_pct + all_pct != 0 and income.has(Enums.ResourceType.IRON):
 		income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * (iron_pct + all_pct) / 100.0)
 	if wood_pct + all_pct != 0 and income.has(Enums.ResourceType.WOOD):
@@ -240,6 +244,11 @@ func calculate_city_income(city: CityState) -> Dictionary:
 			bonus = int(float(bonus) * captive_mult)
 			# Lower normal building income by 15%
 			bonus = int(float(bonus) * BUILDING_INCOME_MULTIPLIER)
+			# Sunstone: +% income from cultural buildings (special_resources_design)
+			if building.category == &"cultural":
+				var sun_mod := SpecialResourceSystem.modifier_strength(city.faction_id, &"sunstone")
+				if sun_mod > 0.0:
+					bonus = int(bonus * (1.0 + sun_mod))
 			if income.has(res_type):
 				income[res_type] += bonus
 			else:
@@ -1568,6 +1577,8 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 	var recruit_r_eff := GameManager.research_system.get_research_effects(recruit_parent_fid)
 	total_discount_pct += recruit_r_eff.get("recruitment_cost_reduction", 0)
 	total_discount_pct += BountySystem.recruit_discount_for(city, unit_data)
+	# Moonsilver: heavy-unit recruit discount (special_resources_design)
+	total_discount_pct += SpecialResourceSystem.recruit_discount_for(city.faction_id, unit_data)
 	if total_discount_pct > 0:
 		for res_type in adjusted_recruit:
 			adjusted_recruit[res_type] = int(adjusted_recruit[res_type] * (100 - total_discount_pct) / 100.0)

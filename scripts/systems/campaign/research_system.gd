@@ -86,6 +86,12 @@ func process_research(faction_id: StringName) -> void:
 	fs.research_progress += 1
 	# Culture building research speed bonus: accumulate fractional progress
 	var bonus := _get_faction_research_speed_bonus(faction_id)
+	# Shardglass: +% progress on arcane techs (fractional accumulation, folded into
+	# the same accumulator/drain as the culture bonus above so it never gets stuck)
+	if data.research_category == &"arcane":
+		var glass_mod := SpecialResourceSystem.modifier_strength(faction_id, &"shardglass")
+		if glass_mod > 0.0:
+			bonus += glass_mod
 	if bonus > 0.0:
 		fs.research_speed_accumulator += bonus
 		while fs.research_speed_accumulator >= 1.0:

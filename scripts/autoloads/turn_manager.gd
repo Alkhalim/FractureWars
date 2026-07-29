@@ -3636,7 +3636,9 @@ func _process_skulloath_corruption(fs: FactionState) -> void:
 	elif fs.corruption >= 61 and captives > 0:
 		var converted := mini(captives, 4)
 		fs.resources[Enums.ResourceType.CAPTIVES] = captives - converted
-		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + converted * 6
+		# Bloodsalt: +% captive conversion (affinity: skulloath/tainted_jade doubled)
+		var bloodsalt_mod := SpecialResourceSystem.modifier_strength(fs.faction_data_id, &"bloodsalt")
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + int(converted * 6 * (1.0 + bloodsalt_mod))
 
 	# Traditional food bonus (applied as faction-wide)
 	if fs.corruption <= 20:
@@ -3737,6 +3739,8 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 		var processed := mini(captives / 5, 3)
 		# Building special_effects: captive_conversion_rate amplifies resource output
 		var conv_rate := _sum_building_special_effect(fs, "captive_conversion_rate")
+		# Bloodsalt: +% captive conversion (affinity: skulloath/tainted_jade doubled)
+		conv_rate += SpecialResourceSystem.modifier_strength(fs.faction_data_id, &"bloodsalt")
 		var camp_mult := 1.0 + conv_rate if conv_rate > 0.0 else (2.0 if has_captive_camp else 1.0)
 		fs.resources[Enums.ResourceType.CAPTIVES] = captives - processed * 5
 		fs.taint_power += processed * 3

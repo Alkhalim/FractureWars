@@ -121,6 +121,12 @@ static func modifier_strength(faction_id: StringName, special_id: StringName) ->
 	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 	return def.strength * 2.0 if parent_fid in def.affinity else def.strength
 
+## Moonsilver: percentage discount for heavy-tagged units (int pct).
+static func recruit_discount_for(faction_id: StringName, ud: UnitData) -> int:
+	if not ud.tags.has("heavy"):
+		return 0
+	return int(modifier_strength(faction_id, &"moonsilver"))
+
 static func describe(special_id: StringName) -> String:
 	var def: Dictionary = SPECIAL_TYPES.get(special_id, {})
 	return def.get("modifier_text", "") if not def.is_empty() else ""

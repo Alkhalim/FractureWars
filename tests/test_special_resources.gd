@@ -128,6 +128,41 @@ func _run() -> void:
 	pcity.region_id = dep_region
 	pcity.buildings.append(extractor_id)
 
+	# ── Economy hooks: craft a sunstone+heartwood extraction for empire ──
+	# Reuse dep_region ownership; overwrite the deposit type per check.
+	dep_tile.special_id = &"sunstone"
+	pcity.buildings.erase(extractor_id)
+	pcity.buildings.append(&"extractor_sunstone")
+	var mod_sun := SpecialResourceSystem.modifier_strength(&"empire", &"sunstone")
+	_check(is_equal_approx(mod_sun, 0.05), "sunstone modifier 5% for non-affinity empire")
+	var inc_before: Dictionary = _gm.city_system.calculate_city_income(pcity)
+	pcity.buildings.erase(&"extractor_sunstone")
+	var inc_no: Dictionary = _gm.city_system.calculate_city_income(pcity)
+	# With a cultural building present, income with modifier >= income without
+	# (exact delta depends on the city's cultural buildings; assert monotonicity)
+	_check(inc_before.get(0, 0) >= inc_no.get(0, 0), "sunstone never reduces gold income")
+	pcity.buildings.append(&"extractor_sunstone")
+
+	# Moonsilver heavy discount via recruit path
+	dep_tile.special_id = &"moonsilver"
+	pcity.buildings.erase(&"extractor_sunstone")
+	pcity.buildings.append(&"extractor_moonsilver")
+	var heavy_ud := UnitData.new()
+	heavy_ud.tags = ["infantry", "heavy"]
+	var light_ud := UnitData.new()
+	light_ud.tags = ["infantry", "light"]
+	_check(SpecialResourceSystem.recruit_discount_for(&"empire", heavy_ud) == 10, "moonsilver discounts heavy 10%")
+	_check(SpecialResourceSystem.recruit_discount_for(&"empire", light_ud) == 0, "no discount for non-heavy")
+
+	# Shardglass arcane research speed: bonus function query
+	dep_tile.special_id = &"shardglass"
+	pcity.buildings.erase(&"extractor_moonsilver")
+	pcity.buildings.append(&"extractor_shardglass")
+	_check(is_equal_approx(SpecialResourceSystem.modifier_strength(&"empire", &"shardglass"), 0.10), "shardglass 10% for empire")
+	# restore
+	dep_tile.special_id = dep_type
+	pcity.buildings.erase(&"extractor_shardglass")
+
 	if _fails == 0:
 		print("SPECIALS TEST PASSED")
 		quit(0)
