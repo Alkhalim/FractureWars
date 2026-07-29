@@ -31,7 +31,7 @@ whoever owns) a location *matters*. Three payoffs:
 
 ## Three categories
 
-| | **Bounties** | **Specials** (faction-affinity) | **Landmarks** (name TBD — alternatives: Marvels, Primeval Sites, Wonders) |
+| | **Bounties** | **Specials** (faction-affinity) | **Landmarks** (name confirmed 2026-07-29) |
 |---|---|---|---|
 | Types in roster | 22 | 8 | 7 |
 | Per map | 4-8 deposits each (~60-70% of types spawn) | 1-3 deposits each (affinity ones guaranteed reachable) | **exactly 5 spawn, max 1 per type** |
@@ -225,8 +225,8 @@ modifier, trade-only income flag).
 
 ## Risks / open questions
 
-- **Category name** for the Landmarks tier — current candidates: Landmarks,
-  Marvels, Primeval Sites, Wonders. Needs a decision before UI strings.
+- ~~**Category name** for the Landmarks tier~~ — DECIDED 2026-07-29:
+  **Landmarks**.
 - **Balance**: modifiers stack with faction mechanics — cap total swing per
   niche (~25%) and keep yields linear.
 - **Art cost**: 7 unique tiles + 22 icons + 8 overlays is the largest asset
