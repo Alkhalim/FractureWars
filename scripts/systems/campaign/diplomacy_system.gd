@@ -740,9 +740,21 @@ func _execute_trade(treaty: TreatyInstance) -> void:
 		recv_amt = maxi(1, int(float(recv_amt) * (1.0 - theft_pct)))
 	# Trade deals are guaranteed transfers — both sides always pay the agreed amount
 	# (resources can go negative, representing trade debt that is covered by future income)
-	fs_a.resources[give_res] = fs_a.resources.get(give_res, 0) - give_amt
+	var give_amt_paid := give_amt
+	var recv_amt_paid := recv_amt
+	# Saffron Reeds: +% gold received from trade deals — the receiver of a GOLD
+	# leg gets the inflated amount; the giver still pays only the base amount.
+	if give_res == Enums.ResourceType.GOLD:
+		var saff_b := SpecialResourceSystem.modifier_strength(treaty.faction_b, &"saffron_reeds")
+		if saff_b > 0.0:
+			give_amt = int(give_amt * (1.0 + saff_b))
+	if recv_res == Enums.ResourceType.GOLD:
+		var saff_a := SpecialResourceSystem.modifier_strength(treaty.faction_a, &"saffron_reeds")
+		if saff_a > 0.0:
+			recv_amt = int(recv_amt * (1.0 + saff_a))
+	fs_a.resources[give_res] = fs_a.resources.get(give_res, 0) - give_amt_paid
 	fs_b.resources[give_res] = fs_b.resources.get(give_res, 0) + give_amt
-	fs_b.resources[recv_res] = fs_b.resources.get(recv_res, 0) - recv_amt
+	fs_b.resources[recv_res] = fs_b.resources.get(recv_res, 0) - recv_amt_paid
 	fs_a.resources[recv_res] = fs_a.resources.get(recv_res, 0) + recv_amt
 
 func propose_non_aggression(proposer: StringName, target: StringName, force_accept: bool = false) -> Dictionary:

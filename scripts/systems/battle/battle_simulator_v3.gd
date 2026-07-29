@@ -670,6 +670,13 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			if fs.espionage_network >= 30:
 				f.base_morale += 5 # Confidence from knowing enemy positions
 
+		# ── Deepiron (tier-2 Special): +% defense when fighting in own territory ──
+		var deep_mod := SpecialResourceSystem.modifier_strength(ud.faction_id, &"deepiron")
+		if deep_mod > 0.0:
+			var own_tile = GameManager.state.hex_map.get_tile(_battle_hex_pos) if GameManager.state.hex_map else null
+			if own_tile and own_tile.owner_faction == ud.faction_id:
+				f.defense += int(f.defense * deep_mod)
+
 	# Empire anti-mage war mages: Empire mage units deal extra damage to enemy mages
 	if parent_fid == &"empire" and ud.tags.has("mage"):
 		f.vs_attack_bonuses["mage"] = f.vs_attack_bonuses.get("mage", 0) + 5

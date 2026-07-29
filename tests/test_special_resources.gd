@@ -163,6 +163,21 @@ func _run() -> void:
 	dep_tile.special_id = dep_type
 	pcity.buildings.erase(&"extractor_shardglass")
 
+	# ── Stormcrystal movement + saffron trade hooks (query-level) ──
+	dep_tile.special_id = &"stormcrystal"
+	pcity.buildings.append(&"extractor_stormcrystal")
+	_check(is_equal_approx(SpecialResourceSystem.modifier_strength(&"empire", &"stormcrystal"), 0.05), "stormcrystal 5%")
+	dep_tile.special_id = &"saffron_reeds"
+	pcity.buildings.erase(&"extractor_stormcrystal")
+	pcity.buildings.append(&"extractor_saffron")
+	_check(is_equal_approx(SpecialResourceSystem.modifier_strength(&"empire", &"saffron_reeds"), 0.30), "saffron 15% doubled for empire affinity")
+	pcity.buildings.erase(&"extractor_saffron")
+	dep_tile.special_id = dep_type
+	# Deepiron inert at fresh state (battle-determinism guard)
+	_gm.new_game(&"empire")
+	for f_id in _gm.state.faction_states:
+		_check(SpecialResourceSystem.extracted_specials_of_faction(f_id).is_empty(), "fresh game: no faction extracts anything (%s)" % f_id)
+
 	if _fails == 0:
 		print("SPECIALS TEST PASSED")
 		quit(0)

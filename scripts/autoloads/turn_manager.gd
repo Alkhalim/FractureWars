@@ -357,6 +357,10 @@ func _start_faction_turn() -> void:
 			army.movement_remaining = 0.0 # Camped armies cannot move
 		else:
 			army.movement_remaining = army.get_max_movement()
+			# Stormcrystal: +% army movement
+			var storm_mod := SpecialResourceSystem.modifier_strength(faction_id, &"stormcrystal")
+			if storm_mod > 0.0:
+				army.movement_remaining *= (1.0 + storm_mod)
 			# Road bonus: +0.6 MP per road level
 			var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
 			if tile and tile.road_level >= 1:
