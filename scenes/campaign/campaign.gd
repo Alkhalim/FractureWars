@@ -5497,7 +5497,8 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 		return
 
 	var income := GameManager.city_system.calculate_settlement_income_preview(hex_coord)
-	if income.is_empty():
+	var claimable := BountySystem.bounties_claimable_at(hex_coord)
+	if income.is_empty() and claimable.is_empty():
 		return
 
 	var resource_names := ["Gold", "Iron", "Technology", "Food", "Shards", "Wood"]
@@ -5545,7 +5546,6 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 			total_value += income[res_type]
 
 	# Bounty resources this settlement would claim (special_resources_design)
-	var claimable := BountySystem.bounties_claimable_at(hex_coord)
 	if not claimable.is_empty():
 		var b_header := Label.new()
 		b_header.text = "Claims resources:"
