@@ -55,6 +55,8 @@ var _resource_items: Dictionary = {} # resource_type -> {amount_label, income_la
 var _resource_tooltip: PanelContainer
 var shard_label: Label
 var shard_tooltip: PanelContainer
+var bounty_bar_label: Label
+var _bounty_bar_tooltip: PanelContainer
 var _faction_mechanic_label: Label
 var commander_panel: PanelContainer
 var economy_panel: PanelContainer
@@ -161,6 +163,7 @@ func _ready() -> void:
 
 	_create_resource_bar()
 	_create_shard_display()
+	_create_bounty_bar_label()
 	_create_economy_panel()
 	_create_city_panel()
 	_create_commander_panel()
@@ -1693,6 +1696,7 @@ func _update_resource_display() -> void:
 
 	# Update shard display
 	_update_shard_display()
+	_update_bounty_bar_display()
 
 	# Update faction mechanic display
 	_update_faction_mechanic_display(fs)
@@ -9127,6 +9131,77 @@ func _on_shard_label_gui_input(event: InputEvent) -> void:
 		_show_shard_reserve_dialog()
 
 var _shard_reserve_dialog: PanelContainer = null
+
+# ── Bounty Bar Display ────────────────────────────────────────
+
+func _create_bounty_bar_label() -> void:
+	bounty_bar_label = Label.new()
+	bounty_bar_label.name = "BountyBarLabel"
+	bounty_bar_label.add_theme_font_size_override("font_size", 13)
+	bounty_bar_label.add_theme_color_override("font_color", Color(0.72, 0.85, 0.55))
+	bounty_bar_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	bounty_bar_label.mouse_entered.connect(_on_bounty_bar_hover)
+	bounty_bar_label.mouse_exited.connect(func():
+		if _bounty_bar_tooltip:
+			_bounty_bar_tooltip.visible = false)
+
+	var hbox: HBoxContainer = $TopBar/HBoxContainer
+	var spacer := hbox.get_node("Spacer")
+	hbox.add_child(bounty_bar_label)
+	hbox.move_child(bounty_bar_label, spacer.get_index())
+
+	# Create tooltip panel (hidden)
+	_bounty_bar_tooltip = PanelContainer.new()
+	_bounty_bar_tooltip.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.72, 0.85, 0.55, 0.6)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 8.0
+	style.content_margin_top = 6.0
+	style.content_margin_right = 8.0
+	style.content_margin_bottom = 6.0
+	_bounty_bar_tooltip.add_theme_stylebox_override("panel", style)
+	_bounty_bar_tooltip.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	var tooltip_label := Label.new()
+	tooltip_label.name = "TooltipText"
+	tooltip_label.add_theme_font_size_override("font_size", 12)
+	tooltip_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	_bounty_bar_tooltip.add_child(tooltip_label)
+	add_child(_bounty_bar_tooltip)
+
+func _update_bounty_bar_display() -> void:
+	if bounty_bar_label == null or GameManager.state == null:
+		return
+	var n := BountySystem.bounties_of_faction(GameManager.state.player_faction_id).size()
+	bounty_bar_label.text = "  |  Bounties: %d" % n
+	bounty_bar_label.visible = n > 0
+
+func _on_bounty_bar_hover() -> void:
+	if _bounty_bar_tooltip == null or GameManager.state == null:
+		return
+	var entries: Array[Dictionary] = BountySystem.bounties_of_faction(GameManager.state.player_faction_id)
+	var text := "Bounties: %d held" % entries.size()
+	for entry in entries:
+		var city: CityState = GameManager.state.cities.get(entry.city_id)
+		var city_name := city.get_display_name() if city else "?"
+		text += "\n  %s — %s (%s)" % [entry.name, city_name, BountySystem.describe(entry.id)]
+	if entries.is_empty():
+		text += "\n  (none)"
+
+	var tooltip_label: Label = _bounty_bar_tooltip.get_node("TooltipText")
+	tooltip_label.text = text
+	# Position tooltip directly below the bounty bar label
+	var label_rect := bounty_bar_label.get_global_rect()
+	_bounty_bar_tooltip.global_position = Vector2(label_rect.position.x, label_rect.end.y + 4)
+	_bounty_bar_tooltip.visible = true
 
 ## Shard Reserve: lists claimed shards; Shardhorde can consume them for realm
 ## resonance, Tainted Jade can shatter them for taint power.
