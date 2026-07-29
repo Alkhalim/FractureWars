@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="UnitData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/unit_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"dawnscale_thunderlizard"
+display_name = "Dawnscale Thunderlizard"
+description = "A colossal saurian raised from hatching in the temple springs, its golden scales drinking in the sun. The ground shakes when it charges."
+faction_id = &"sunblessed"
+max_hp = 6500
+attack = 85
+melee_defense = 45
+projectile_defense = 35
+magic_defense = 25
+speed = 5
+attack_range = 1
+squad_size = 1
+hp_per_soldier = 0
+movement_points = 3.0
+upkeep_cost = {0: 9, 3: 8}
+recruit_cost = {0: 210, 3: 90, 5: 45}
+recruit_time = 4
+population_cost = 0
+terrain_bonuses = {}
+realm_bonuses = {}
+tags = Array[String](["monster", "beast", "heavy", "melee"])
+base_morale = 85
+tiles_per_entity = 8
+captive_chance = 0.02
+morale_aura = -3
+fear_radius = 4
