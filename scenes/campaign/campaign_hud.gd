@@ -2113,10 +2113,18 @@ func _create_economy_panel() -> void:
 	economy_panel.name = "EconomyPanel"
 	economy_panel.visible = false
 
-	economy_panel.anchor_left = 0.15
-	economy_panel.anchor_right = 0.85
-	economy_panel.anchor_top = 0.04
-	economy_panel.anchor_bottom = 0.96
+	# Centered window that hugs its content — the old 0.15..0.85 anchors made
+	# a near-fullscreen leather sheet with ~70% dead space below the readout.
+	# Height comes from the scroll's min size, set per-refresh from content.
+	economy_panel.custom_minimum_size = Vector2(640, 0)
+	economy_panel.anchor_left = 0.5
+	economy_panel.anchor_right = 0.5
+	economy_panel.anchor_top = 0.5
+	economy_panel.anchor_bottom = 0.5
+	economy_panel.offset_left = -320
+	economy_panel.offset_right = 320
+	economy_panel.offset_top = 0
+	economy_panel.offset_bottom = 0
 	economy_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	economy_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	economy_panel.clip_contents = true
@@ -2164,6 +2172,9 @@ func _refresh_economy_panel() -> void:
 	scroll.add_theme_stylebox_override("panel", _make_text_chip_style())
 	var vbox: VBoxContainer = scroll.get_node("EconomyVBox")
 	for child in vbox.get_children():
+		# remove_child so freed rows don't count toward the min-size
+		# measurement at the end of this refresh
+		vbox.remove_child(child)
 		child.queue_free()
 
 	var player_id := GameManager.state.player_faction_id
@@ -2285,6 +2296,11 @@ func _refresh_economy_panel() -> void:
 		vbox.add_child(none_lbl)
 	else:
 		vbox.add_child(GameManager.make_cost_row(net_all, {}, 13, "  ", true))
+
+	# Size the window to its content (capped so huge empires scroll) — the
+	# panel itself hugs this scroll min, keeping the window free of dead space
+	var max_h: float = get_viewport_rect().size.y * 0.8
+	scroll.custom_minimum_size = Vector2(0, clampf(vbox.get_combined_minimum_size().y + 24.0, 160.0, max_h))
 
 # ── Panel Style Helper ────────────────────────────────────────
 
@@ -4823,7 +4839,7 @@ func _on_diplomacy_open_gift(target: StringName) -> void:
 	if _diplomacy_gift_panel:
 		_diplomacy_gift_panel.queue_free()
 
-	_diplomacy_gift_panel = _create_centered_dialog(360, 340)
+	_diplomacy_gift_panel = _create_centered_dialog(360)
 	add_child(_diplomacy_gift_panel)
 
 	var vbox := VBoxContainer.new()
@@ -4942,7 +4958,9 @@ func _on_diplomacy_open_gift(target: StringName) -> void:
 	else:
 		# Items mode
 		var item_scroll := ScrollContainer.new()
-		item_scroll.custom_minimum_size = Vector2(0, 180)
+		# One item row ~33px; cap so big inventories scroll
+		var gift_item_count: int = player_fs.item_storage.size() if player_fs else 0
+		item_scroll.custom_minimum_size = Vector2(0, clampf(gift_item_count * 33.0 + 6.0, 40.0, 180.0))
 		var item_list := VBoxContainer.new()
 		item_list.add_theme_constant_override("separation", 3)
 		item_scroll.add_child(item_list)
@@ -5005,7 +5023,7 @@ func _on_diplomacy_open_gift(target: StringName) -> void:
 func _show_diplomacy_result(target: StringName, message: String, show_threaten: bool, accepted: bool = false, response_line_override: Dictionary = {}, standing_override: int = -9999) -> void:
 	if _diplomacy_result_panel:
 		_diplomacy_result_panel.queue_free()
-	_diplomacy_result_panel = _create_centered_dialog(440, 240)
+	_diplomacy_result_panel = _create_centered_dialog(440)
 	add_child(_diplomacy_result_panel)
 
 	var vbox := VBoxContainer.new()
@@ -5138,7 +5156,7 @@ func _on_diplomacy_open_trade(target: StringName) -> void:
 		_diplomacy_trade_panel.queue_free()
 	_diplomacy_trade_target = target
 
-	_diplomacy_trade_panel = _create_centered_dialog(360, 320)
+	_diplomacy_trade_panel = _create_centered_dialog(360)
 	add_child(_diplomacy_trade_panel)
 
 	var vbox := VBoxContainer.new()
@@ -5289,7 +5307,7 @@ func _on_diplomacy_open_trade(target: StringName) -> void:
 func _show_counter_offer_dialog(target: StringName, reason: String, counter_offer: Dictionary, duration: int) -> void:
 	if _diplomacy_counter_offer_panel:
 		_diplomacy_counter_offer_panel.queue_free()
-	_diplomacy_counter_offer_panel = _create_centered_dialog(460, 320)
+	_diplomacy_counter_offer_panel = _create_centered_dialog(460)
 	add_child(_diplomacy_counter_offer_panel)
 
 	var vbox := VBoxContainer.new()
@@ -6604,7 +6622,7 @@ func _show_research_detail(data: ResearchData) -> void:
 	var existing := get_node_or_null("ResearchDetailDialog")
 	if existing:
 		existing.queue_free()
-	var dialog := _create_centered_dialog(400, 340)
+	var dialog := _create_centered_dialog(400)
 	dialog.name = "ResearchDetailDialog"
 
 	var vbox := VBoxContainer.new()
@@ -6715,8 +6733,12 @@ func _create_policies_panel() -> void:
 	_policies_panel = PanelContainer.new()
 	_policies_panel.name = "PoliciesPanel"
 	_policies_panel.visible = false
-	_policies_panel.anchor_left = 0.15
-	_policies_panel.anchor_right = 0.85
+	# Fixed-width centered column — full-width rows left the right ~40% of
+	# every policy line empty (labels left, Enact mid-screen, void beyond)
+	_policies_panel.anchor_left = 0.5
+	_policies_panel.anchor_right = 0.5
+	_policies_panel.offset_left = -460
+	_policies_panel.offset_right = 460
 	_policies_panel.anchor_top = 0.04
 	_policies_panel.anchor_bottom = 0.96
 	_policies_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -10014,7 +10036,7 @@ func _show_level_up_dialog(commander: CommanderState) -> void:
 	if _level_up_dialog:
 		_level_up_dialog.queue_free()
 
-	_level_up_dialog = _create_centered_dialog(350, 280)
+	_level_up_dialog = _create_centered_dialog(350)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
@@ -10234,7 +10256,7 @@ func _show_item_drop_dialog(commander: CommanderState, new_item) -> void:
 	if _item_drop_dialog:
 		_item_drop_dialog.queue_free()
 
-	_item_drop_dialog = _create_centered_dialog(320, 260)
+	_item_drop_dialog = _create_centered_dialog(320)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
@@ -10325,7 +10347,16 @@ func _show_event_dialog(event_data: Dictionary) -> void:
 	if _event_dialog:
 		_event_dialog.queue_free()
 
-	_event_dialog = _create_centered_dialog(400, 260)
+	_event_dialog = _create_centered_dialog(400)
+	# Plain dark frame — the ornate gold nine-patch looked out of place on
+	# frequent small event popups (shelved for now, see chat 2026-07)
+	var plain_style := StyleBoxFlat.new()
+	plain_style.bg_color = Color(0.11, 0.095, 0.08, 0.97)
+	plain_style.border_color = Color(0.55, 0.42, 0.2, 0.85)
+	plain_style.set_border_width_all(1)
+	plain_style.set_corner_radius_all(6)
+	plain_style.set_content_margin_all(14)
+	_event_dialog.add_theme_stylebox_override("panel", plain_style)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 10)
@@ -10376,7 +10407,7 @@ func _on_event_choice(choice: String) -> void:
 	_apply_event_choice(choice)
 
 func _show_decline_commander_confirm() -> void:
-	var confirm := _create_centered_dialog(340, 160)
+	var confirm := _create_centered_dialog(340)
 	confirm.z_index = 60
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 10)
@@ -10425,7 +10456,7 @@ func _apply_event_choice(choice: String) -> void:
 		_show_event_result(event_title, result)
 
 func _show_event_result(event_title: String, result_text: String) -> void:
-	var dialog := _create_centered_dialog(380, 180)
+	var dialog := _create_centered_dialog(380)
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
 	dialog.add_child(vbox)
@@ -10469,7 +10500,7 @@ func _show_ai_diplomacy_offer(from_faction: StringName, offer_type: StringName, 
 	var fd: FactionData = DataManager.get_faction(from_faction)
 	var faction_name: String = fd.display_name if fd else str(from_faction)
 
-	_ai_offer_dialog = _create_centered_dialog(420, 260)
+	_ai_offer_dialog = _create_centered_dialog(420)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 10)
@@ -10602,7 +10633,7 @@ func _show_siege_choice_dialog(city: CityState) -> void:
 	if _siege_choice_dialog:
 		_siege_choice_dialog.queue_free()
 
-	_siege_choice_dialog = _create_centered_dialog(460, 340)
+	_siege_choice_dialog = _create_centered_dialog(460)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
@@ -10839,19 +10870,24 @@ func _show_region_overview(region_id: StringName) -> void:
 
 # ── Dialog Helper ────────────────────────────────────────────
 
-func _create_centered_dialog(width: int, height: int) -> PanelContainer:
+func _create_centered_dialog(width: int, min_height: int = 0) -> PanelContainer:
+	# Width is fixed; height hugs the content (min_height acts as a floor).
+	# With point anchors + zero offsets the PanelContainer takes its minimum
+	# size and the BOTH grow directions keep it centered as content changes —
+	# no more hand-tuned heights leaving dead space or clipping long content.
 	var dialog := PanelContainer.new()
 	dialog.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 
+	dialog.custom_minimum_size = Vector2(width, min_height)
 	dialog.anchors_preset = Control.PRESET_CENTER
 	dialog.anchor_left = 0.5
 	dialog.anchor_top = 0.5
 	dialog.anchor_right = 0.5
 	dialog.anchor_bottom = 0.5
-	dialog.offset_left = -width / 2
-	dialog.offset_top = -height / 2
-	dialog.offset_right = width / 2
-	dialog.offset_bottom = height / 2
+	dialog.offset_left = -width / 2.0
+	dialog.offset_top = 0
+	dialog.offset_right = width / 2.0
+	dialog.offset_bottom = 0
 	dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	dialog.grow_vertical = Control.GROW_DIRECTION_BOTH
 	# Dark chip backdrop behind whatever content the caller adds — dialog text
@@ -10872,7 +10908,7 @@ func _on_faction_defeated(faction_id: StringName) -> void:
 	var fd: FactionData = DataManager.factions.get(faction_id)
 	if fd == null:
 		return
-	var dialog := _create_centered_dialog(380, 260)
+	var dialog := _create_centered_dialog(380)
 	add_child(dialog)
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 16)
@@ -10928,7 +10964,7 @@ func _on_faction_defeated(faction_id: StringName) -> void:
 # ── Victory / Defeat ────────────────────────────────────────
 
 func _on_game_over(faction_id: StringName, victory_type: int, is_player: bool) -> void:
-	var dialog := _create_centered_dialog(500, 350)
+	var dialog := _create_centered_dialog(500, 260)
 	add_child(dialog)
 
 	var vbox := VBoxContainer.new()
@@ -11427,7 +11463,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 func _show_turn_summary() -> void:
 	if _turn_summary_panel:
 		_turn_summary_panel.queue_free()
-	_turn_summary_panel = _create_centered_dialog(400, 320)
+	_turn_summary_panel = _create_centered_dialog(400)
 	add_child(_turn_summary_panel)
 
 	var vbox := VBoxContainer.new()
@@ -11444,7 +11480,9 @@ func _show_turn_summary() -> void:
 	_add_separator(vbox)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 200)
+	# Hug the log: one row ~24px; cap so long logs scroll instead of growing
+	var log_rows: int = maxi(1, TurnManager.turn_log.size())
+	scroll.custom_minimum_size = Vector2(0, clampf(log_rows * 24.0 + 8.0, 40.0, 320.0))
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vbox.add_child(scroll)
@@ -11494,7 +11532,7 @@ func _show_army_split_dialog(army_id: StringName) -> void:
 	if army == null or army.units.size() < 2:
 		return
 
-	var dialog := _create_centered_dialog(400, 400)
+	var dialog := _create_centered_dialog(400)
 	add_child(dialog)
 
 	var vbox := VBoxContainer.new()
@@ -11517,7 +11555,8 @@ func _show_army_split_dialog(army_id: StringName) -> void:
 	_add_separator(vbox)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 240)
+	# One checkbox row ~30px; cap so huge armies scroll
+	scroll.custom_minimum_size = Vector2(0, clampf(army.units.size() * 30.0 + 6.0, 60.0, 300.0))
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vbox.add_child(scroll)
@@ -11604,8 +11643,11 @@ func _show_disband_dialog(army_id: StringName) -> void:
 	if army == null or army.units.is_empty():
 		return
 
-	var dialog := _create_centered_dialog(400, 400)
-	var vbox: VBoxContainer = dialog.get_node("VBox")
+	var dialog := _create_centered_dialog(400)
+	add_child(dialog)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 6)
+	dialog.add_child(vbox)
 
 	var title := Label.new()
 	title.text = "Disband Units"
@@ -11623,6 +11665,8 @@ func _show_disband_dialog(army_id: StringName) -> void:
 	_add_separator(vbox)
 
 	var scroll := ScrollContainer.new()
+	# One checkbox row ~31px; cap so huge armies scroll
+	scroll.custom_minimum_size = Vector2(0, clampf(army.units.size() * 31.0 + 8.0, 62.0, 300.0))
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(scroll)
 
@@ -11638,7 +11682,7 @@ func _show_disband_dialog(army_id: StringName) -> void:
 		var cb := CheckBox.new()
 		var vet_label := unit.get_veterancy_label()
 		var vet_str := " [%s]" % vet_label if vet_label != "Recruit" else ""
-		cb.text = "%s%s (HP: %d/%d)" % [ud.display_name, vet_str, unit.current_hp, ud.hp * ud.squad_size]
+		cb.text = "%s%s (HP: %d/%d)" % [ud.display_name, vet_str, unit.current_hp, ud.max_hp]
 		cb.add_theme_font_size_override("font_size", 11)
 		cb.add_theme_color_override("font_color", Color(0.8, 0.75, 0.65))
 		unit_list.add_child(cb)
@@ -11683,8 +11727,11 @@ func _show_disband_confirmation(army_id: StringName, unit_indices: Array[int]) -
 	var count := unit_indices.size()
 	var will_destroy_army := count >= army.units.size()
 
-	var dialog := _create_centered_dialog(320, 160)
-	var vbox: VBoxContainer = dialog.get_node("VBox")
+	var dialog := _create_centered_dialog(320)
+	add_child(dialog)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	dialog.add_child(vbox)
 
 	var warn := Label.new()
 	warn.text = "Are you sure you want to disband %d unit%s?" % [count, "s" if count > 1 else ""]
