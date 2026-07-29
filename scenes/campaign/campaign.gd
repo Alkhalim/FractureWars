@@ -91,6 +91,9 @@ var _minimap_dirty := true  # Set true when content changes (turn/capture), redr
 var _minimap_content_cache: Image = null  # Cached minimap image without viewport rect
 var _fog_dirty := false  # Deferred fog update flag — batches multiple _update_fog_of_war calls per frame
 var _last_hover_hex := Vector2i(-1, -1)  # Throttle trade route hover to hex changes only
+var _bounty_markers: Dictionary = {} # Vector2i -> Node2D
+var bounty_markers_node: Node2D = null
+var _bounty_tooltip: PanelContainer = null
 
 # Pre-battle dialog state
 var _pending_battle_attacker_id: StringName = &""
@@ -183,6 +186,7 @@ func _ready() -> void:
 	_create_overview_sprite()
 	_bake_hex_map_to_texture()
 	_create_city_markers()
+	_create_bounty_markers()
 	_create_building_tile_markers()
 	_create_army_markers()
 	_city_markers_dirty = false  # Initial markers just created; skip redundant rebuild
@@ -2527,6 +2531,50 @@ func _create_city_markers() -> void:
 		var city: CityState = GameManager.state.cities[city_id]
 		_create_city_marker(city)
 
+func _create_bounty_markers() -> void:
+	if bounty_markers_node == null:
+		bounty_markers_node = Node2D.new()
+		bounty_markers_node.name = "BountyMarkers"
+		bounty_markers_node.z_index = 1 # above terrain, below cities (2)
+		$EntityLayer.add_child(bounty_markers_node)
+	for child in bounty_markers_node.get_children():
+		child.queue_free()
+	_bounty_markers.clear()
+	var map = GameManager.state.hex_map
+	if map == null:
+		return
+	for coord in map.tiles:
+		var tile = map.tiles[coord]
+		if tile.bounty_id == &"":
+			continue
+		var marker := Node2D.new()
+		# Top-right corner of the hex tile
+		marker.position = _hex_to_pixel(coord) + Vector2(HEX_RADIUS * 0.45, -HEX_RADIUS * 0.55)
+		var bg := Polygon2D.new()
+		bg.polygon = _make_circle(7.0, 10)
+		bg.color = Color(0.08, 0.07, 0.05, 0.9)
+		marker.add_child(bg)
+		var rim := Polygon2D.new()
+		rim.polygon = _make_circle(7.0, 10)
+		rim.color = Color(0.78, 0.62, 0.32, 0.9)
+		rim.scale = Vector2(1.15, 1.15)
+		rim.z_index = -1
+		marker.add_child(rim)
+		var glyph := Label.new()
+		glyph.text = String(BountySystem.BOUNTY_TYPES[tile.bounty_id].name).left(1)
+		glyph.add_theme_font_size_override("font_size", 9)
+		glyph.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+		glyph.position = Vector2(-4, -8)
+		marker.add_child(glyph)
+		marker.visible = GameManager.explored_tiles.has(coord)
+		bounty_markers_node.add_child(marker)
+		_bounty_markers[coord] = marker
+
+func _refresh_bounty_marker_visibility() -> void:
+	for coord in _bounty_markers:
+		var marker: Node2D = _bounty_markers[coord]
+		marker.visible = GameManager.explored_tiles.has(coord)
+
 func _create_city_marker(city: CityState) -> void:
 	var marker := Node2D.new()
 	marker.position = _hex_to_pixel(city.hex_pos)
@@ -3415,6 +3463,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_last_hover_hex = hex_coord
 			_update_region_hover(world_pos)
 			_update_trade_route_hover(world_pos)
+			_update_bounty_hover(hex_coord)
 			if selected_army_id != &"":
 				if _reachable_tiles.has(hex_coord):
 					_show_path_preview(hex_coord)
@@ -4980,6 +5029,37 @@ func _process_trade_caravans(delta: float) -> void:
 		var caravan_hex := _pixel_to_hex(pos)
 		caravan.visible = _is_tile_visible(caravan_hex) or GameManager.explored_tiles.has(caravan_hex)
 
+func _update_bounty_hover(hex_coord: Vector2i) -> void:
+	var map = GameManager.state.hex_map
+	var tile = map.get_tile(hex_coord) if map else null
+	if tile == null or tile.bounty_id == &"" or not GameManager.explored_tiles.has(hex_coord):
+		if _bounty_tooltip:
+			_bounty_tooltip.visible = false
+		return
+	if _bounty_tooltip == null:
+		_bounty_tooltip = PanelContainer.new()
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+		style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+		style.set_border_width_all(1)
+		style.set_corner_radius_all(4)
+		style.set_content_margin_all(8)
+		_bounty_tooltip.add_theme_stylebox_override("panel", style)
+		var lbl := Label.new()
+		lbl.name = "Text"
+		lbl.add_theme_font_size_override("font_size", 12)
+		_bounty_tooltip.add_child(lbl)
+		$UILayer.add_child(_bounty_tooltip)
+	var def: Dictionary = BountySystem.BOUNTY_TYPES[tile.bounty_id]
+	var claimant := BountySystem.claimant_for(hex_coord)
+	var claim_text := "Unclaimed — settle within %d tiles" % BountySystem.CLAIM_RADIUS
+	if claimant != &"":
+		var c: CityState = GameManager.state.cities.get(claimant)
+		claim_text = "Claimed by " + (c.get_display_name() if c else String(claimant))
+	_bounty_tooltip.get_node("Text").text = "%s\n%s\n%s" % [def.name, BountySystem.describe(tile.bounty_id), claim_text]
+	_bounty_tooltip.position = get_viewport().get_mouse_position() + Vector2(15, -30)
+	_bounty_tooltip.visible = true
+
 func _update_trade_route_hover(world_pos: Vector2) -> void:
 	if _trade_route_draw_node == null or not _trade_route_draw_node.is_inside_tree():
 		if _trade_route_tooltip and _trade_route_tooltip.visible:
@@ -5240,6 +5320,9 @@ func _update_fog_of_war() -> void:
 			marker.visible = true
 		else:
 			marker.visible = bool(_visible_tile_cache.get(beast.hex_pos, false)) if _fog_of_war_enabled else true
+
+	# Bounty resource markers — visible once the tile has been explored
+	_refresh_bounty_marker_visibility()
 
 	# Track encountered factions from visible tiles, cities, and armies
 	_update_encountered_factions(player_id)
