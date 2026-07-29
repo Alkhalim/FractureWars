@@ -9112,9 +9112,10 @@ func _on_shard_label_mouse_entered() -> void:
 
 	var tooltip_label: Label = shard_tooltip.get_node("TooltipText")
 	tooltip_label.text = text
-	# Position tooltip directly below the shard label
+	# Position tooltip directly below the shard label, but never under the TopBar
 	var label_rect := shard_label.get_global_rect()
-	shard_tooltip.global_position = Vector2(label_rect.position.x, label_rect.end.y + 4)
+	var bar_bottom: float = ($TopBar as Control).get_global_rect().end.y
+	shard_tooltip.global_position = Vector2(label_rect.position.x, maxf(label_rect.end.y, bar_bottom) + 4.0)
 	shard_tooltip.visible = true
 
 func _on_shard_label_mouse_exited() -> void:
@@ -9198,9 +9199,10 @@ func _on_bounty_bar_hover() -> void:
 
 	var tooltip_label: Label = _bounty_bar_tooltip.get_node("TooltipText")
 	tooltip_label.text = text
-	# Position tooltip directly below the bounty bar label
+	# Position tooltip directly below the bounty bar label, but never under the TopBar
 	var label_rect := bounty_bar_label.get_global_rect()
-	_bounty_bar_tooltip.global_position = Vector2(label_rect.position.x, label_rect.end.y + 4)
+	var bar_bottom: float = ($TopBar as Control).get_global_rect().end.y
+	_bounty_bar_tooltip.global_position = Vector2(label_rect.position.x, maxf(label_rect.end.y, bar_bottom) + 4.0)
 	_bounty_bar_tooltip.visible = true
 
 ## Shard Reserve: lists claimed shards; Shardhorde can consume them for realm
