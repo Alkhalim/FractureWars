@@ -145,6 +145,8 @@ func _run() -> void:
 	# ── Founding preview query ──
 	map2.get_tile(spot).bounty_id = &"orchards"
 	var near_settle := Vector2i(home.hex_pos.x, home.hex_pos.y)  # settling AT the city is impossible, but the query is position-based
+	# Populate explored_tiles with the bounty location so the fog-of-war check passes
+	_gm.explored_tiles[spot] = true
 	var claimable: Array = BountySystem.bounties_claimable_at(spot)  # standing on the bounty
 	var self_found := false
 	for entry in claimable:

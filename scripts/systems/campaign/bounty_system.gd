@@ -163,6 +163,8 @@ static func bounties_claimable_at(hex_pos: Vector2i) -> Array[Dictionary]:
 			var tile = map.get_tile(h)
 			if tile == null or tile.bounty_id == &"":
 				continue
+			if not GameManager.explored_tiles.has(h):
+				continue
 			var current := claimant_for(h)
 			if current == &"":
 				result.append({id = tile.bounty_id, name = BOUNTY_TYPES[tile.bounty_id].name, hex = h})
