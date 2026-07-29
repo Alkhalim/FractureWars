@@ -178,6 +178,48 @@ func _run() -> void:
 	for f_id in _gm.state.faction_states:
 		_check(SpecialResourceSystem.extracted_specials_of_faction(f_id).is_empty(), "fresh game: no faction extracts anything (%s)" % f_id)
 
+	# ── Saffron trade split: receiver banks inflated gold, giver pays base ──
+	_gm.new_game(&"empire")
+	var map5 = _gm.state.hex_map
+	var sdep := Vector2i(-1, -1)
+	for coord in map5.tiles:
+		if map5.tiles[coord].special_id != &"":
+			sdep = coord
+			break
+	var stile = map5.get_tile(sdep)
+	stile.special_id = &"saffron_reeds"
+	var scity: CityState = null
+	for cid in _gm.state.cities:
+		if _gm.state.cities[cid].faction_id == &"empire":
+			scity = _gm.state.cities[cid]
+			break
+	scity.region_id = stile.region_id
+	scity.buildings.append(&"extractor_saffron")
+	for rc in map5.get_region_tiles(stile.region_id):
+		map5.get_tile(rc).owner_faction = &"empire"
+	map5._region_owner_cache.clear()
+	var sfs: FactionState = _gm.state.faction_states[&"empire"]
+	if not (stile.region_id in sfs.owned_regions):
+		sfs.owned_regions.append(stile.region_id)
+	# empire (faction_a) gives food, receives 20 gold from gladehost
+	var t := TreatyInstance.new()
+	t.treaty_id = &"test_saffron_trade"
+	t.treaty_type = Enums.TreatyType.TRADE_DEAL
+	t.faction_a = &"empire"
+	t.faction_b = &"gladehost"
+	t.turns_remaining = 3
+	t.terms = {give_resource = 3, give_amount = 10, receive_resource = 0, receive_amount = 20}
+	_gm.state.diplomacy_state.treaties[t.treaty_id] = t
+	var gfs2: FactionState = _gm.state.faction_states[&"gladehost"]
+	var e_gold2: int = sfs.resources.get(0, 0)
+	var g_gold2: int = gfs2.resources.get(0, 0)
+	_gm.diplomacy_system._execute_trade(t)
+	var e_gained: int = sfs.resources.get(0, 0) - e_gold2
+	var g_paid: int = g_gold2 - gfs2.resources.get(0, 0)
+	_check(g_paid == 20, "giver pays base 20 gold (paid %d)" % g_paid)
+	_check(e_gained > 20, "saffron receiver banks inflated gold (got %d)" % e_gained)
+	_gm.state.diplomacy_state.treaties.erase(t.treaty_id)
+
 	if _fails == 0:
 		print("SPECIALS TEST PASSED")
 		quit(0)

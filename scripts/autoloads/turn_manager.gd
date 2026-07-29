@@ -350,6 +350,7 @@ func _start_faction_turn() -> void:
 	_grant_passive_commander_xp(faction_id)
 
 	# Reset army movement for this faction (skip garrisons)
+	var storm_mod := SpecialResourceSystem.modifier_strength(faction_id, &"stormcrystal")
 	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 		if army.is_garrison:
 			continue
@@ -358,7 +359,6 @@ func _start_faction_turn() -> void:
 		else:
 			army.movement_remaining = army.get_max_movement()
 			# Stormcrystal: +% army movement
-			var storm_mod := SpecialResourceSystem.modifier_strength(faction_id, &"stormcrystal")
 			if storm_mod > 0.0:
 				army.movement_remaining *= (1.0 + storm_mod)
 			# Road bonus: +0.6 MP per road level
