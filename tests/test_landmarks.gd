@@ -186,6 +186,42 @@ func _run() -> void:
 	_check(stacked >= 0, "stacked discount sum computable (bounty=%d, special=%d, landmark=%d)" % [b_disc, s_disc, l_disc])
 	# Clamp at 75% is code-verified; city_system.gd applies mini(total_discount_pct, 75) before use
 
+	# ── Effect hooks B ──
+	# Leyline: socket bonuses x1.5
+	ltile.landmark_id = &"leyline_well"
+	lcity.buildings.append(&"attunement_circle")
+	_check(LandmarkSystem.has_landmark(&"empire", &"leyline_well"), "leyline held")
+	# Craft: socket a research with a known socket_bonus and compare effects
+	var rs = _gm.research_system
+	var socketed_id: StringName = &""
+	for rid in root.get_node("/root/DataManager").research:
+		var rd = root.get_node("/root/DataManager").research[rid]
+		if not rd.socket_bonus.is_empty():
+			socketed_id = rid
+			break
+	if socketed_id != &"":
+		var rd2 = root.get_node("/root/DataManager").research[socketed_id]
+		lfs.completed_research.append(socketed_id)
+		lfs.research_sockets[socketed_id] = rd2.socket_realm
+		rs._invalidate_cache(&"empire")
+		var eff_with: Dictionary = rs.get_research_effects(&"empire")
+		lcity.buildings.erase(&"attunement_circle")
+		rs._invalidate_cache(&"empire")
+		var eff_without: Dictionary = rs.get_research_effects(&"empire")
+		var key0 = rd2.socket_bonus.keys()[0]
+		var base_v: float = float(rd2.socket_bonus[key0])
+		_check(float(eff_with.get(key0, 0)) - float(eff_without.get(key0, 0)) >= base_v * 0.4,
+			"leyline amplifies socket bonus (%s: %s vs %s)" % [key0, eff_with.get(key0, 0), eff_without.get(key0, 0)])
+		lfs.completed_research.erase(socketed_id)
+		lfs.research_sockets.erase(socketed_id)
+		rs._invalidate_cache(&"empire")
+	else:
+		print("NOTE: no socketable research found; leyline assert skipped")
+	ltile.landmark_id = ltype
+
+	# Worldroot: adjacent-region growth qualifies (query-level)
+	_check(LandmarkSystem.worldroot_region_of_faction(&"empire") == &"", "no worldroot held -> empty")
+
 	if _fails == 0:
 		print("LANDMARKS TEST PASSED")
 		quit(0)

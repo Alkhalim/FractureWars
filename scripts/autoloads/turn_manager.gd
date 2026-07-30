@@ -1794,6 +1794,9 @@ func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:
 func _heal_armies_in_settlements(faction_id: StringName) -> void:
 	# Cache unit data lookups to avoid repeated DataManager calls for the same unit type
 	var _unit_cache: Dictionary = {} # unit_data_id -> UnitData
+	# Worldroot Nexus (Landmark): armies in the region heal double. Hoisted once
+	# per faction (not per army) — landmark ownership doesn't change mid-loop.
+	var worldroot_region: StringName = LandmarkSystem.worldroot_region_of_faction(faction_id)
 	for army: ArmyState in GameManager.get_all_faction_armies(faction_id):
 		# Wounded commanders recover one turn at a time
 		if army.commander and army.commander.wounded_turns > 0:
@@ -1821,6 +1824,8 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 						continue
 					_unit_cache[unit.unit_data_id] = unit_data
 				var heal_amount := int(unit_data.max_hp * 0.15 * moonwell_mult) + cmd_heal
+				if worldroot_region != &"" and tile and tile.region_id == worldroot_region:
+					heal_amount *= 2
 				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
 				if unit_data.squad_size > 1 and unit_data.hp_per_soldier > 0:
 					if unit.current_hp < unit_data.max_hp:
@@ -1834,6 +1839,8 @@ func _heal_armies_in_settlements(faction_id: StringName) -> void:
 						continue
 					_unit_cache[unit.unit_data_id] = unit_data
 				var heal_amount := int(unit_data.max_hp * 0.05) + cmd_heal
+				if worldroot_region != &"" and tile and tile.region_id == worldroot_region:
+					heal_amount *= 2
 				unit.current_hp = mini(unit.current_hp + heal_amount, unit_data.max_hp)
 		elif faction_id == &"shardhorde" and _is_in_undepleted_beast_range(army.hex_pos):
 			# Shardhorde armies regenerate troops in undepleted elderbeast territory

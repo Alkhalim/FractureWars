@@ -397,6 +397,12 @@ func calculate_province_growth(region_id: StringName, faction_id: StringName) ->
 		base_growth += _get_commander_growth_bonus(city)
 		if city.loyalty > best_loyalty:
 			best_loyalty = city.loyalty
+	# Worldroot Nexus (Landmark): +1 growth in its own and adjacent regions (any
+	# faction's province benefits only from ITS OWN faction's worldroot)
+	var wr_region: StringName = LandmarkSystem.worldroot_region_of_faction(faction_id)
+	if wr_region != &"":
+		if region_id == wr_region or GameManager.state.hex_map.regions_adjacent(region_id, wr_region):
+			base_growth += 1
 	# special_effects: region_population_growth_bonus (applied once for the whole province)
 	for scan_city_id in GameManager.state.cities:
 		var scan_city: CityState = GameManager.state.cities[scan_city_id]
@@ -547,6 +553,10 @@ func _process_build_queue(city: CityState) -> void:
 		city.buildings.append(building_id)
 		city.build_queue.remove_at(0)
 		invalidate_region_effects_cache()
+		# Landmark buildings (e.g. Leyline Well's attunement_circle) change research
+		# effects the moment they complete — stale caches would persist for a session.
+		if building and building.requires_region_landmark != &"":
+			GameManager.research_system._invalidate_cache(city.faction_id)
 		EventBus.building_completed.emit(city.city_id, building_id)
 
 func _process_recruit_queue(city: CityState, faction_id: StringName) -> void:

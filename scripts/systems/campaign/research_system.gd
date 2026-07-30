@@ -185,9 +185,11 @@ func get_research_effects(faction_id: StringName) -> Dictionary:
 				for key in bonus:
 					combined[key] = combined.get(key, 0) + bonus[key]
 		# Socket bonuses (removable crystal embedded in completed tech)
+		# Leyline Well (Landmark): socketed crystal bonuses count +50% stronger.
 		if fs.research_sockets.has(research_id) and not data.socket_bonus.is_empty():
+			var socket_mult := 1.5 if LandmarkSystem.has_landmark(faction_id, &"leyline_well") else 1.0
 			for key in data.socket_bonus:
-				combined[key] = combined.get(key, 0) + data.socket_bonus[key]
+				combined[key] = combined.get(key, 0) + int(round(data.socket_bonus[key] * socket_mult))
 	_effects_cache[faction_id] = combined
 	return combined
 

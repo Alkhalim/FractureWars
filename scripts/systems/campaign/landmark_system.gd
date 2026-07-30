@@ -114,6 +114,17 @@ static func landmarks_of_faction(faction_id: StringName) -> Array[StringName]:
 static func has_landmark(faction_id: StringName, landmark_id: StringName) -> bool:
 	return landmark_id in landmarks_of_faction(faction_id)
 
+## Returns the region_id holding faction_id's active (owned + built) Worldroot
+## Nexus, or &"" if none. Used by heal-doubling and adjacent-growth hooks.
+static func worldroot_region_of_faction(faction_id: StringName) -> StringName:
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return &""
+	for region_id in fs.owned_regions:
+		if landmark_in_region(region_id) == &"worldroot_nexus" and region_has_landmark_building(region_id):
+			return region_id
+	return &""
+
 static func describe(landmark_id: StringName) -> String:
 	var def: Dictionary = LANDMARK_TYPES.get(landmark_id, {})
 	return def.get("rule_text", "") if not def.is_empty() else ""

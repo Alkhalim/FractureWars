@@ -2426,6 +2426,12 @@ func change_region_owner(region_id: StringName, _new_owner_hint: StringName) -> 
 			var new_fs: FactionState = state.faction_states.get(new_owner)
 			if new_fs and not new_fs.owned_regions.has(region_id):
 				new_fs.owned_regions.append(region_id)
+		# Landmark/lease-relevant caches: region transfer can change research effects
+		# (e.g. Leyline Well ownership changing the socket-bonus multiplier).
+		if old_owner != &"":
+			research_system._invalidate_cache(old_owner)
+		if new_owner != &"":
+			research_system._invalidate_cache(new_owner)
 
 	# Grant a new general when a player fully captures a region from another faction
 	if new_owner != &"" and old_owner != &"" and new_owner != old_owner:
