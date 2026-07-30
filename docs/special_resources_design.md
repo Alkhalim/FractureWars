@@ -375,6 +375,13 @@ Open follow-ups (not blocking, no test asserts these):
   bespoke painted Landmark tiles via the generated-tile pipeline, matching
   the terrain set's gouache style.
 
+Art pass (2026-07-31): generated gouache art replaced ALL programmatic
+markers — 22 bounty icons, 8 deposit overlays, 7 landmark hex dioramas
+(tool: tests/tools_generate_resource_art.gd, deterministic, regenerate
+per-tier via mode arg). Hand-made art can replace any individual PNG
+file-by-file with zero code changes (loader falls back to polygons when a
+PNG is missing).
+
 ## Risks / open questions
 
 - ~~**Category name** for the Landmarks tier~~ — DECIDED 2026-07-29:

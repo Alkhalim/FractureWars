@@ -9,6 +9,8 @@ var _bounty_coord := Vector2i(-9999, -9999)
 var _pinned := false
 var _special_coord := Vector2i(-9999, -9999)
 var _landmark_coord := Vector2i(-9999, -9999)
+var _gallery_pts: Array[Vector2i] = []
+var _gallery_cam_pos := Vector2.ZERO
 
 func _init() -> void:
 	call_deferred("_start")
@@ -297,6 +299,21 @@ func _process(_delta: float) -> bool:
 				cam.position = _campaign.call("_hex_to_pixel", _landmark_coord)
 				cam.zoom = Vector2(1, 1)
 
+	if _frames == 90 and _landmark_coord != Vector2i(-9999, -9999):
+		# Extra debug capture, taken BEFORE the hover tooltip (frame 94) so the
+		# new landmark-tier art is visible unobstructed (the tooltip lands
+		# right on top of the tile-centered marker at frame 96, same as the
+		# special-deposit phase above). Hide any leftover tooltip from an
+		# earlier phase too.
+		var leftover_tip2: Node = _campaign.get("_bounty_tooltip")
+		if leftover_tip2:
+			leftover_tip2.visible = false
+
+	if _frames == 93 and _landmark_coord != Vector2i(-9999, -9999):
+		var img_dbg2 := root.get_viewport().get_texture().get_image()
+		img_dbg2.save_png("user://win_landmark_marker_notip.png")
+		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_landmark_marker_notip.png"))
+
 	if _frames == 94:
 		if _landmark_coord != Vector2i(-9999, -9999):
 			var center := root.get_viewport().get_visible_rect().size / 2
@@ -314,5 +331,81 @@ func _process(_delta: float) -> bool:
 		var img5 := root.get_viewport().get_texture().get_image()
 		img5.save_png("user://win_landmark_marker.png")
 		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_landmark_marker.png"))
+
+	# ── Phase 6: GALLERY — landmark + deposit + bounty cluster, one frame ──
+	# Seed 0 doesn't naturally place all three tiers next to each other, so
+	# this crafts a tight cluster near the Phase 5 landmark tile: a deposit
+	# and two distinct bounty types on nearby clear land tiles, then reframes
+	# the camera on the cluster's centroid at zoom 1.6 for the final art
+	# verdict. Crafting is fine here — this is a presentation shot, not a
+	# gameplay assertion.
+	if _frames == 98:
+		if _landmark_coord == Vector2i(-9999, -9999):
+			print("WARNING: gallery phase skipped, no landmark tile found")
+		else:
+			var gm: Node = root.get_node("/root/GameManager")
+			var map = gm.state.hex_map
+			var craft_targets: Array[Vector2i] = []
+			var used: Dictionary = {_landmark_coord: true}
+			for radius in range(1, 4):
+				if craft_targets.size() >= 3:
+					break
+				for coord in map.tiles:
+					if craft_targets.size() >= 3:
+						break
+					if used.has(coord):
+						continue
+					if HexHelper.hex_distance(_landmark_coord, coord) != radius:
+						continue
+					var t = map.tiles[coord]
+					if t.terrain == Enums.TerrainType.WATER:
+						continue
+					if t.bounty_id != &"" or t.special_id != &"" or t.landmark_id != &"":
+						continue
+					craft_targets.append(coord)
+					used[coord] = true
+			if craft_targets.size() < 3:
+				print("WARNING: gallery could not find 3 clear land tiles near the landmark to craft")
+			else:
+				map.tiles[craft_targets[0]].special_id = &"moonsilver"
+				map.tiles[craft_targets[1]].bounty_id = &"orchards"
+				map.tiles[craft_targets[2]].bounty_id = &"vineyards"
+				print("GALLERY CRAFTED: deposit=", craft_targets[0], " bounty1=", craft_targets[1], " bounty2=", craft_targets[2])
+			_gallery_pts = [_landmark_coord]
+			for c in craft_targets:
+				_gallery_pts.append(c)
+			_campaign.call("_create_bounty_markers")
+			_campaign.set("_fog_dirty", true)
+			var centroid := Vector2.ZERO
+			for p in _gallery_pts:
+				centroid += (_campaign.call("_hex_to_pixel", p) as Vector2)
+			centroid /= _gallery_pts.size()
+			_gallery_cam_pos = centroid
+			# Hide any leftover tooltip from Phase 5.
+			var leftover_tip3: Node = _campaign.get("_bounty_tooltip")
+			if leftover_tip3:
+				leftover_tip3.visible = false
+			# campaign_camera.gd smoothly lerps `zoom` back toward its own
+			# internal `_target_zoom` (stuck at the never-touched default 1.0,
+			# since no wheel event ever fires in this harness) and drags
+			# `position` along with it via a "keep the point under the cursor
+			# stable" adjustment anchored at a never-set (0,0) zoom-focus — a
+			# one-shot zoom assignment other than 1.0 gets silently pulled
+			# away over the next few frames (Phase 1's zoom=2 close-up avoids
+			# this only because it reasserts every frame in its own window;
+			# Phases 4/5 avoid it only because they happen to set zoom to
+			# exactly 1.0, the untouched default target). Setting
+			# `_target_zoom` to match stops the lerp at the source instead of
+			# fighting it frame-by-frame.
+			var cam: Camera2D = _campaign.get("camera")
+			if cam:
+				cam.position = _gallery_cam_pos
+				cam.zoom = Vector2(1.6, 1.6)
+				cam.set("_target_zoom", 1.6)
+
+	if _frames == 109:
+		var img6 := root.get_viewport().get_texture().get_image()
+		img6.save_png("user://win_art_gallery.png")
+		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_art_gallery.png"))
 		quit()
 	return false
