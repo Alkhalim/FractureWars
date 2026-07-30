@@ -24,6 +24,7 @@ extends Resource
 @export var tutorial_enabled: bool = true
 @export var tutorial_step: int = 0
 @export var encountered_factions: Dictionary = {} # faction_id -> true (factions the player has seen)
+@export var faction_intro_shown: bool = false # Show-once onboarding panel (Polish Pass 1, Task 1)
 
 var hex_map: HexMapData # Runtime hex map state (not serialized)
 

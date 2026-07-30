@@ -176,6 +176,13 @@ func _ready() -> void:
 	faction_label.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	faction_label.gui_input.connect(_on_faction_label_input)
 
+	# Faction onboarding panel (Polish Pass 1, Task 1) — show-once, deferred so
+	# it lands after the turn-start tutorial hint (_check_tutorial, fired from
+	# _on_turn_started once the parent campaign scene kicks off turn 1) and
+	# therefore sits above it in the child order.
+	if not GameManager.state.faction_intro_shown:
+		call_deferred("_show_faction_intro")
+
 var _pause_panel: PanelContainer
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -11068,6 +11075,58 @@ func _create_centered_dialog(width: int, min_height: int = 0) -> PanelContainer:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dialog.add_child(backdrop)
 	return dialog
+
+# ── Faction Onboarding Panel (Polish Pass 1, Task 1) ──────────
+
+## Show-once intro blurb for the player's faction: its mechanic, its recurring
+## dilemma, its affinity resource/roster flavor, and an opening-moves tip.
+## Content lives in FactionIntroData so it can be audited/tested on its own.
+func _show_faction_intro() -> void:
+	var fid := GameManager.state.player_faction_id
+	var intro: Dictionary = FactionIntroData.INTROS.get(fid, {})
+	if intro.is_empty():
+		GameManager.state.faction_intro_shown = true
+		return
+	var dialog := _create_centered_dialog(560)
+	add_child(dialog)
+	dialog.move_to_front() # Always land above the turn-start tutorial hint
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	dialog.add_child(margin)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	margin.add_child(vbox)
+	var title := Label.new()
+	title.text = intro.title
+	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+	_add_separator(vbox)
+	for pair in [["Your Power", intro.mechanic], ["Your Choices", intro.dilemma], ["Your Strengths", intro.resource], ["Opening Moves", intro.opening]]:
+		var h := Label.new()
+		h.text = pair[0]
+		h.add_theme_font_size_override("font_size", 13)
+		h.add_theme_color_override("font_color", Color(0.72, 0.85, 0.55))
+		vbox.add_child(h)
+		var b := Label.new()
+		b.text = pair[1]
+		b.add_theme_font_size_override("font_size", 13)
+		b.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.custom_minimum_size = Vector2(500, 0)
+		vbox.add_child(b)
+	var begin := Button.new()
+	begin.text = "Begin Your Reign"
+	begin.custom_minimum_size = Vector2(0, 36)
+	begin.pressed.connect(func():
+		AudioManager.play_sfx(&"ui_click")
+		GameManager.state.faction_intro_shown = true
+		dialog.queue_free())
+	vbox.add_child(begin)
 
 # ── Faction Defeated Notification ─────────────────────────────
 
