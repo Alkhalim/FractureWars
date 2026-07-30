@@ -67,21 +67,35 @@ func _run() -> void:
 			_check(special_counts.get(type_id, 0) >= 1, "seed %d: special type %s spawns at least once (got %d)" % [s, type_id, special_counts.get(type_id, 0)])
 
 	# ── 5. Region structure unchanged across seeds (regions/starts stay put) ──
-	# NOTE on tolerances: _fix_region_pockets/_find_valid_city_pos read salted
-	# terrain (mountain placement shifts with the seed) even though they are
-	# NOT themselves salted — the plan's own scope rules call this out
-	# ("connectivity guarantees come from the algorithm, not the hash"). An
-	# empirical sweep of 20 seeds on this map showed a stable ~1% of tiles
-	# reassigned by pocket cleanup near mountain-shifted borders (never more),
-	# zero land/water drift, and city-founding drift of 0-1 hexes except one
-	# recurring case that spirals out to a consistent alternate spot 4 hexes
-	# away when its preferred tile becomes a border mountain. The brief's
-	# illustrative "<=2" was written before that data existed; these bounds
-	# are set from the measured worst case plus headroom, not loosened
-	# arbitrarily -- a real regression (e.g. regions reshuffling wholesale,
-	# or a city teleporting across the map) would blow well past them.
+	# NOTE on tolerances: _fix_region_pockets reads salted terrain (mountain
+	# placement shifts with the seed) even though it is NOT itself salted —
+	# the plan's own scope rules call this out ("connectivity guarantees come
+	# from the algorithm, not the hash"). An empirical sweep of 20 seeds on
+	# this map showed a stable ~1% of tiles reassigned by pocket cleanup near
+	# mountain-shifted borders (never more), and zero land/water drift.
+	# City-founding drift used to include one recurring case that spiralled
+	# out to a spot 4 hexes away whenever a border-mountain roll blocked its
+	# preferred tile; map_generator.gd's _place_border_mountains()/
+	# _fix_region_pockets() now protect every REGION_CITIES anchor tile
+	# (region center + slot offset) from the salted mountain roll and from
+	# pocket-cleanup reassignment (skipped only when _map_salt != 0, so
+	# salt-0 stays byte-identical to the legacy map). That closes the drift
+	# for every city EXCEPT one: asdrol's "Pilgrim's Rest" (offset (-4,4))
+	# lands its raw anchor tile on open water outside the region, on every
+	# seed (land/water layout is unsalted — see the check above) — it was
+	# never a real candidate, protected or not, so this one city always falls
+	# through to _find_valid_city_pos()'s BFS fallback search, which still
+	# walks past seed-salted mountains near the coast and can resolve up to
+	# 4 hexes from the seed-0 spot. Swept 15 seeds after the anchor-protection
+	# fix: exactly this one city exceeds 1 hex, always by exactly 4, every
+	# other one of the other 80 cities is always within 1. The bound below
+	# reflects that measured reality instead of pretending the anchor fix
+	# reaches a case where there's no anchor to protect — a real regression
+	# (a second city joining the exception, or any city moving further)
+	# would still blow past it.
 	var region_drift_pct_max := 3.0
-	var city_drift_hex_max := 6
+	var city_drift_hex_max := 1
+	var known_drift_exceptions := {"Pilgrim's Rest": 4} # city_name -> max hexes (see NOTE above)
 	_gm.new_game(&"empire", false, 0)
 	var map0 = _gm.state.hex_map
 	var region_ids_0: Array = []
@@ -113,7 +127,8 @@ func _run() -> void:
 			_check(cs.city_name == c0.name, "seed %d: city %s name unchanged" % [s, cid])
 			_check(cs.region_id == c0.region_id, "seed %d: city %s region unchanged" % [s, cid])
 			_check(cs.faction_id == c0.faction_id, "seed %d: city %s faction unchanged" % [s, cid])
-			_check(HexHelper.hex_distance(cs.hex_pos, c0.hex_pos) <= city_drift_hex_max, "seed %d: city %s position within %d hexes of seed0 (%s vs %s)" % [s, cid, city_drift_hex_max, cs.hex_pos, c0.hex_pos])
+			var allowed_drift: int = known_drift_exceptions.get(c0.name, city_drift_hex_max)
+			_check(HexHelper.hex_distance(cs.hex_pos, c0.hex_pos) <= allowed_drift, "seed %d: city %s position within %d hexes of seed0 (%s vs %s)" % [s, cid, allowed_drift, cs.hex_pos, c0.hex_pos])
 
 	# ── 6. Seed variance actually re-rolls the landmark SET across seeds 1..8 ──
 	var landmark_sets: Array[String] = []

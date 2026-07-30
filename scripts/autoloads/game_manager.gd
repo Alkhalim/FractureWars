@@ -930,11 +930,11 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false, map_seed: 
 	if demo:
 		HexMapData.MAP_WIDTH = MapGenerator.DEMO_WIDTH
 		HexMapData.MAP_HEIGHT = MapGenerator.DEMO_HEIGHT
-		state.hex_map = MapGenerator.generate_demo_hex_map(DataManager.regions, map_seed)
+		state.hex_map = MapGenerator.generate_demo_hex_map(DataManager.regions, map_seed, REGION_CITIES)
 	else:
 		HexMapData.MAP_WIDTH = 117
 		HexMapData.MAP_HEIGHT = 78
-		state.hex_map = MapGenerator.generate_hex_map(DataManager.regions, map_seed)
+		state.hex_map = MapGenerator.generate_hex_map(DataManager.regions, map_seed, REGION_CITIES)
 	state.hex_map.build_region_cache()
 	movement_system = MovementSystem.new(state.hex_map)
 	city_system.invalidate_city_hex_index()

@@ -81,7 +81,7 @@ static var _active_seeds: Dictionary = {}
 ## code when this is 0. Set at generate entry, read by _hash_coord_salted().
 static var _map_salt: int = 0
 
-static func generate_demo_hex_map(regions: Dictionary, salt: int = 0) -> HexMapData:
+static func generate_demo_hex_map(regions: Dictionary, salt: int = 0, region_cities: Dictionary = {}) -> HexMapData:
 	# Map dimensions must be set by caller before calling this
 	_active_seeds = DEMO_SEEDS
 	_map_salt = salt
@@ -116,9 +116,9 @@ static func generate_demo_hex_map(regions: Dictionary, salt: int = 0) -> HexMapD
 			demo_regions[rid] = regions[rid]
 	_assign_regions(map, demo_regions)
 	_assign_terrain(map)
-	_place_border_mountains(map)
+	_place_border_mountains(map, region_cities)
 	_thin_mountains(map)
-	_fix_region_pockets(map)
+	_fix_region_pockets(map, region_cities)
 	_carve_rivers(map)
 	_create_wetland_bridges(map)
 	_assign_realm_influence(map, demo_regions)
@@ -131,7 +131,7 @@ static func generate_demo_hex_map(regions: Dictionary, salt: int = 0) -> HexMapD
 	_map_salt = 0
 	return map
 
-static func generate_hex_map(regions: Dictionary, salt: int = 0) -> HexMapData:
+static func generate_hex_map(regions: Dictionary, salt: int = 0, region_cities: Dictionary = {}) -> HexMapData:
 	_map_salt = salt
 	var map := HexMapData.new()
 
@@ -148,13 +148,13 @@ static func generate_hex_map(regions: Dictionary, salt: int = 0) -> HexMapData:
 	_assign_terrain(map)
 
 	# 4b. Place mountain ranges along faction borders
-	_place_border_mountains(map)
+	_place_border_mountains(map, region_cities)
 
 	# 4c. Thin mountains to prevent thick blobs
 	_thin_mountains(map)
 
 	# 4d. Fix small region pockets and mountain-isolated tiles
-	_fix_region_pockets(map)
+	_fix_region_pockets(map, region_cities)
 
 	# 5. Carve rivers through land
 	_carve_rivers(map)
@@ -561,12 +561,56 @@ const MOUNTAIN_BORDER_PROB := {
 # ── Border Mountain Placement ─────────────────────────────────────────────────
 # Places narrow mountain ranges along borders between different faction zones.
 
-static func _place_border_mountains(map: HexMapData) -> void:
+## Task 2 fix (map-seed review): every REGION_CITIES anchor tile (region
+## center + slot offset, clamped to map bounds) that exists on this map,
+## mapped to the region_id it belongs to. Two SALTED-adjacent passes must
+## never move one of these off its intended tile, or _find_valid_city_pos()
+## (game_manager.gd) relocates the city — breaking the "starting positions
+## stay put across seeds" requirement:
+##  - _place_border_mountains() must never flip the tile itself to MOUNTAINS.
+##  - _fix_region_pockets() must never reassign the tile's region_id away,
+##    even when salted mountains elsewhere cut its component off from the
+##    region's true seed tile (anchors sit near region corners/borders by
+##    design, exactly where border mountains cluster).
+## Only regions actually present on this map contribute (demo maps carry a
+## subset of REGION_CITIES). region_cities is passed in by the caller
+## (GameManager.REGION_CITIES) rather than read from the autoload directly:
+## this script is a plain utility class, not itself an autoload, and a
+## hard GameManager.* reference here creates a circular class dependency
+## that GDScript does not always resolve cleanly (intermittent compile
+## failures / hangs under `-s` headless scripts, and — worse — silently
+## empty results if hit during normal play, which would defeat this whole
+## protection).
+static func _get_protected_city_anchors(map: HexMapData, region_cities: Dictionary) -> Dictionary:
+	var protected_anchors: Dictionary = {}
+	for region_id in region_cities:
+		if map.get_region_tiles(region_id).is_empty():
+			continue
+		var region_center := get_region_center(region_id)
+		var slots: Array = region_cities[region_id]
+		for slot in slots:
+			var slot_dict: Dictionary = slot
+			var anchor: Vector2i = region_center + slot_dict.offset
+			anchor.x = clampi(anchor.x, 0, HexMapData.MAP_WIDTH - 1)
+			anchor.y = clampi(anchor.y, 0, HexMapData.MAP_HEIGHT - 1)
+			protected_anchors[anchor] = region_id
+	return protected_anchors
+
+static func _place_border_mountains(map: HexMapData, region_cities: Dictionary) -> void:
+	# Only protect anchors when salted: at _map_salt == 0 this pass must stay
+	# byte-identical to the legacy (pre-seed) map, even in the edge case where
+	# an anchor tile already rolls mountainous there.
+	var protected_anchors: Dictionary = {}
+	if _map_salt != 0:
+		protected_anchors = _get_protected_city_anchors(map, region_cities)
+
 	for coord in map.tiles:
 		var tile: HexMapData.TileState = map.tiles[coord]
 		if tile.terrain == Enums.TerrainType.WATER or tile.terrain == Enums.TerrainType.WETLANDS:
 			continue
 		if tile.region_id == &"":
+			continue
+		if protected_anchors.has(coord):
 			continue
 
 		var my_zone := _get_faction_zone(tile.region_id)
@@ -642,7 +686,15 @@ static func _thin_mountains(map: HexMapData) -> void:
 # region inside another. Also reassigns tiles connected to their region only
 # through mountain tiles (impassable connectivity).
 
-static func _fix_region_pockets(map: HexMapData) -> void:
+static func _fix_region_pockets(map: HexMapData, region_cities: Dictionary) -> void:
+	# Task 2 fix (map-seed review): treat a component as seed-bearing (never
+	# reassigned below) if it holds one of its region's protected city
+	# anchors, not just the literal region seed tile. Gated on _map_salt != 0
+	# for the same byte-identity reason as _place_border_mountains().
+	var protected_anchors: Dictionary = {}
+	if _map_salt != 0:
+		protected_anchors = _get_protected_city_anchors(map, region_cities)
+
 	# Pass 1: Find connected components per region using passable tiles (no water, no mountains)
 	var visited: Dictionary = {}
 	var components: Array = []
@@ -659,7 +711,7 @@ static func _fix_region_pockets(map: HexMapData) -> void:
 		var region_id := tile.region_id
 		var seed_pos: Vector2i = REGION_SEEDS.get(region_id, Vector2i(-1, -1))
 		var comp_tiles: Array[Vector2i] = [coord]
-		var has_seed: bool = (coord == seed_pos)
+		var has_seed: bool = (coord == seed_pos) or protected_anchors.get(coord, &"") == region_id
 		visited[coord] = true
 		var queue: Array[Vector2i] = [coord]
 		while not queue.is_empty():
@@ -677,7 +729,7 @@ static func _fix_region_pockets(map: HexMapData) -> void:
 				visited[n] = true
 				comp_tiles.append(n)
 				queue.append(n)
-				if n == seed_pos:
+				if n == seed_pos or protected_anchors.get(n, &"") == region_id:
 					has_seed = true
 		components.append({region_id = region_id, tiles = comp_tiles, has_seed = has_seed})
 
