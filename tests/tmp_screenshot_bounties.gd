@@ -243,6 +243,23 @@ func _process(_delta: float) -> bool:
 				cam.position = _campaign.call("_hex_to_pixel", _special_coord)
 				cam.zoom = Vector2(1, 1)
 
+	if _frames == 70 and _special_coord != Vector2i(-9999, -9999):
+		# Extra debug capture, taken BEFORE the hover tooltip (frame 78) so the
+		# new deposit-tier art is visible unobstructed (the tooltip lands
+		# right on top of the tile-centered special marker at frame 80). Also
+		# hide the still-visible Phase-1 bounty tooltip (never got a real
+		# mouse_exited, so it lingers at the same screen-center-ish spot).
+		# Give the renderer a couple frames to pick up the visibility change
+		# before capturing (get_texture() reflects the prior rendered frame).
+		var leftover_tip: Node = _campaign.get("_bounty_tooltip")
+		if leftover_tip:
+			leftover_tip.visible = false
+
+	if _frames == 73 and _special_coord != Vector2i(-9999, -9999):
+		var img_dbg := root.get_viewport().get_texture().get_image()
+		img_dbg.save_png("user://win_special_marker_notip.png")
+		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_special_marker_notip.png"))
+
 	if _frames == 78:
 		if _special_coord != Vector2i(-9999, -9999):
 			var center := root.get_viewport().get_visible_rect().size / 2

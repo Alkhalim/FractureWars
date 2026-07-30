@@ -21,9 +21,13 @@ const BOUNTY_IDS: Array[StringName] = [
 	&"crystal_springs", &"clay_pits", &"peat_bogs", &"dye_gardens",
 ]
 
-## Future tasks: special-deposit (128px) and landmark (512px) ids. Empty for
-## now — Task 1 only covers the bounty tier; painters land in a later task.
-const DEPOSIT_IDS: Array[StringName] = []
+## The 8 Tier-2 special-deposit ids (must match SpecialResourceSystem.SPECIAL_TYPES exactly).
+const DEPOSIT_IDS: Array[StringName] = [
+	&"moonsilver", &"sunstone", &"deepiron", &"heartwood",
+	&"shardglass", &"saffron_reeds", &"bloodsalt", &"stormcrystal",
+]
+
+## Future task: landmark (512px) ids. Empty for now — painters land in a later task.
 const LANDMARK_IDS: Array[StringName] = []
 
 var _vp: SubViewport
@@ -90,7 +94,9 @@ class _ResourcePainter extends Node2D:
 				rng.seed = hash(asset_id)
 				_paint_bounty(rng, asset_id)
 			"deposit":
-				pass  # Task 2: deposit-tier painters land later
+				var rng2 := RandomNumberGenerator.new()
+				rng2.seed = hash(asset_id)
+				_paint_deposit(rng2, asset_id)
 			"landmark":
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2(2.0, 2.0))
 				pass  # Task 3: landmark-tier painters land later
@@ -375,6 +381,220 @@ class _ResourcePainter extends Node2D:
 		_outline_poly(_blob(rng, Vector2(27, 25), 9.5, 8, 0.2), c1, c1.darkened(0.35))
 		_outline_poly(_blob(rng, Vector2(37, 39), 9.5, 8, 0.2), c2, c2.darkened(0.35))
 		draw_line(Vector2(30, 30), Vector2(34, 34), Color(0.2, 0.1, 0.15, 0.5), 1.2)
+
+	# ── Deposit tier: 8 special-deposit overlays ───────────────────────────
+	# 128px transparent canvas, no chip. Each painter draws a small ground
+	# patch (footprint center ~(64,78)) then a crystal/material cluster of
+	# radius ~34 on top — gouache-flat fills, darker outlines, slight _blob
+	# jitter, a few glow/accent dots per the Task 2 palette table.
+
+	## Shared earthy footprint every deposit cluster sits on/in.
+	func _ground_patch(rng: RandomNumberGenerator, center: Vector2, rx: float, ry: float, fill: Color, outline: Color) -> void:
+		var verts := 14
+		var pts := PackedVector2Array()
+		for i in verts:
+			var a := TAU * float(i) / float(verts)
+			var rr := 0.88 + rng.randf() * 0.24
+			pts.append(center + Vector2(cos(a) * rx * rr, sin(a) * ry * rr))
+		_outline_poly(pts, fill, outline, 1.2)
+
+	func _paint_deposit(rng: RandomNumberGenerator, id: StringName) -> void:
+		match id:
+			&"moonsilver": _d_moonsilver(rng)
+			&"sunstone": _d_sunstone(rng)
+			&"deepiron": _d_deepiron(rng)
+			&"heartwood": _d_heartwood(rng)
+			&"shardglass": _d_shardglass(rng)
+			&"saffron_reeds": _d_saffron_reeds(rng)
+			&"bloodsalt": _d_bloodsalt(rng)
+			&"stormcrystal": _d_stormcrystal(rng)
+			_:
+				if id != &"":
+					push_warning("No deposit painter for id: %s" % id)
+
+	func _d_moonsilver(rng: RandomNumberGenerator) -> void:
+		# 4 slender crystal spires, silver-blue.
+		var gc := Color(0.26, 0.28, 0.32)
+		_ground_patch(rng, Vector2(64, 80), 30.0, 12.0, gc, gc.darkened(0.3))
+		var fill := Color(0.75, 0.8, 0.9)
+		var outline := Color(0.5, 0.55, 0.7)
+		var glow := Color(0.9, 0.93, 1.0)
+		var xs := [42.0, 58.0, 76.0, 90.0]
+		var heights := [22.0, 34.0, 30.0, 18.0]
+		for i in 4:
+			var x: float = xs[i] + rng.randf_range(-2.0, 2.0)
+			var h: float = heights[i]
+			var base_y := 80.0
+			var w := 5.0 + rng.randf_range(-0.6, 0.6)
+			var lean := rng.randf_range(-3.0, 3.0)
+			var top := Vector2(x + lean, base_y - h)
+			var pts := PackedVector2Array([
+				top, Vector2(x + w, base_y - h * 0.3), Vector2(x + w * 0.55, base_y),
+				Vector2(x - w * 0.55, base_y), Vector2(x - w, base_y - h * 0.3),
+			])
+			_outline_poly(pts, fill, outline, 1.3)
+			draw_line(top + Vector2(0, h * 0.15), top + Vector2(0, h * 0.55), Color(1, 1, 1, 0.4), 1.0)
+		draw_circle(Vector2(58, 44), 1.8, glow)
+		draw_circle(Vector2(76, 48), 1.6, glow)
+		draw_circle(Vector2(42, 58), 1.3, glow)
+
+	func _d_sunstone(rng: RandomNumberGenerator) -> void:
+		# 3 rounded glow-stones, amber.
+		var gc := Color(0.32, 0.24, 0.14)
+		_ground_patch(rng, Vector2(64, 80), 32.0, 13.0, gc, gc.darkened(0.3))
+		var fill := Color(0.9, 0.7, 0.3)
+		var outline := Color(0.65, 0.48, 0.18)
+		var glow := Color(0.98, 0.85, 0.5)
+		var stones := [
+			{c = Vector2(46, 68), r = 15.0},
+			{c = Vector2(72, 72), r = 18.0},
+			{c = Vector2(60, 52), r = 12.0},
+		]
+		for s in stones:
+			var c: Vector2 = s.c
+			var r: float = s.r
+			_outline_poly(_blob(rng, c, r, 10, 0.2), fill, outline, 1.4)
+			draw_circle(c + Vector2(-r * 0.25, -r * 0.3), r * 0.28, glow)
+
+	func _d_deepiron(rng: RandomNumberGenerator) -> void:
+		# 5 dark angular nodes, part-buried in the ground.
+		var fill := Color(0.3, 0.3, 0.35)
+		var outline := Color(0.18, 0.18, 0.22)
+		var rust := Color(0.5, 0.32, 0.2)
+		var centers := [Vector2(40, 72), Vector2(56, 64), Vector2(72, 68), Vector2(86, 74), Vector2(62, 78)]
+		for i in 5:
+			var c: Vector2 = centers[i]
+			var r := 10.0 + rng.randf() * 4.0
+			var pts := _blob(rng, c, r, 6, 0.4)  # low vert count reads angular
+			_outline_poly(pts, fill, outline, 1.3)
+			if rng.randf() > 0.35:
+				draw_line(c + Vector2(-r * 0.3, -r * 0.2), c + Vector2(r * 0.2, r * 0.1), rust, 1.2)
+		# Ground overlay drawn last buries each node's lower third.
+		var gc := Color(0.24, 0.22, 0.2)
+		var rx := 36.0
+		var ry := 16.0
+		var gy := 80.0
+		var half_pts := PackedVector2Array()
+		for i in 9:
+			var t := float(i) / 8.0
+			var ang := PI * t
+			half_pts.append(Vector2(64, gy) + Vector2(cos(ang) * rx, sin(ang) * ry))
+		_outline_poly(half_pts, gc, gc.darkened(0.3), 1.2)
+
+	func _d_heartwood(rng: RandomNumberGenerator) -> void:
+		# Glowing root knot: 3 crossing roots + green light.
+		var gc := Color(0.2, 0.17, 0.13)
+		_ground_patch(rng, Vector2(64, 82), 30.0, 12.0, gc, gc.darkened(0.3))
+		var root_c := Color(0.35, 0.26, 0.18)
+		var outline := root_c.darkened(0.35)
+		var glow := Color(0.5, 0.8, 0.4)
+		var knot := Vector2(64, 70)
+		var angles := [20.0, 100.0, 160.0]
+		for i in 3:
+			var ang := deg_to_rad(angles[i] + rng.randf_range(-6.0, 6.0))
+			var dirv := Vector2(cos(ang), sin(ang))
+			var a := knot - dirv * 28.0
+			var b := knot + dirv * 28.0
+			var pts := _wavy_line(rng, a, b, 3.0, 6)
+			draw_polyline(pts, outline, 5.0)
+			draw_polyline(pts, root_c, 3.0)
+		draw_circle(knot, 9.0, glow.darkened(0.15))
+		draw_circle(knot, 6.0, glow)
+		draw_circle(knot, 3.0, Color(0.85, 1.0, 0.7))
+
+	func _d_shardglass(rng: RandomNumberGenerator) -> void:
+		# 5 teal glass shards, one catching light.
+		var gc := Color(0.16, 0.22, 0.22)
+		_ground_patch(rng, Vector2(64, 80), 32.0, 13.0, gc, gc.darkened(0.3))
+		var fill := Color(0.35, 0.7, 0.68)
+		var outline := Color(0.2, 0.48, 0.46)
+		var glint := Color(0.8, 0.95, 0.92)
+		var shards := [
+			{c = Vector2(42, 70), h = 24.0, w = 6.0, lean = -4.0},
+			{c = Vector2(56, 64), h = 32.0, w = 7.0, lean = 2.0},
+			{c = Vector2(70, 62), h = 36.0, w = 7.5, lean = -2.0},
+			{c = Vector2(84, 68), h = 26.0, w = 6.0, lean = 5.0},
+			{c = Vector2(60, 78), h = 18.0, w = 5.5, lean = 0.0},
+		]
+		for i in shards.size():
+			var s: Dictionary = shards[i]
+			var c: Vector2 = s.c
+			var h: float = s.h
+			var w: float = s.w
+			var lean: float = s.lean
+			var top := c + Vector2(lean, -h)
+			var pts := PackedVector2Array([
+				top, c + Vector2(w, -h * 0.15), c + Vector2(w * 0.4, h * 0.3),
+				c + Vector2(-w * 0.4, h * 0.3), c + Vector2(-w, -h * 0.15),
+			])
+			_outline_poly(pts, fill, outline, 1.3)
+			if i == 2:  # tallest shard catches the light
+				draw_line(top + Vector2(0, h * 0.15), c + Vector2(0, -h * 0.1), glint, 1.6)
+
+	func _d_saffron_reeds(rng: RandomNumberGenerator) -> void:
+		# Tuft of 7 red-gold reeds bending one way.
+		var gc := Color(0.28, 0.22, 0.14)
+		_ground_patch(rng, Vector2(64, 84), 30.0, 11.0, gc, gc.darkened(0.3))
+		var stem := Color(0.55, 0.3, 0.15)
+		var body := Color(0.8, 0.45, 0.25)
+		var head := Color(0.9, 0.6, 0.3)
+		for i in 7:
+			var x0 := 42.0 + i * 6.0 + rng.randf_range(-1.5, 1.5)
+			var h := 30.0 + rng.randf_range(-4.0, 6.0)
+			var bend := 10.0 + rng.randf_range(-2.0, 3.0)  # all bend the same way
+			var base := Vector2(x0, 84.0)
+			var mid := base + Vector2(bend * 0.4, -h * 0.55)
+			var tip := base + Vector2(bend, -h)
+			draw_line(base, mid, stem, 2.2)
+			draw_line(mid, tip, body, 2.0)
+			draw_circle(tip, 2.6, head)
+
+	func _d_bloodsalt(rng: RandomNumberGenerator) -> void:
+		# Crimson salt crust: jagged low crystals on dark ground.
+		var gc := Color(0.12, 0.08, 0.08)
+		_ground_patch(rng, Vector2(64, 82), 34.0, 14.0, gc, gc.darkened(0.3))
+		var fill := Color(0.7, 0.25, 0.25)
+		var outline := Color(0.45, 0.15, 0.15)
+		var edge := Color(0.85, 0.7, 0.7)
+		var xs := [40.0, 52.0, 64.0, 76.0, 88.0]
+		var heights := [10.0, 16.0, 20.0, 14.0, 9.0]
+		for i in 5:
+			var x: float = xs[i] + rng.randf_range(-2.0, 2.0)
+			var h: float = heights[i]
+			var w := 7.0 + rng.randf() * 2.0
+			var base_y := 82.0
+			var pts := PackedVector2Array([
+				Vector2(x, base_y - h), Vector2(x + w * 0.5, base_y - h * 0.3), Vector2(x + w, base_y),
+				Vector2(x - w, base_y), Vector2(x - w * 0.5, base_y - h * 0.3),
+			])
+			_outline_poly(pts, fill, outline, 1.2)
+			draw_line(Vector2(x, base_y - h), Vector2(x + w * 0.3, base_y - h * 0.5), edge, 1.0)
+
+	func _d_stormcrystal(rng: RandomNumberGenerator) -> void:
+		# Single tall jagged crystal + 2 small, electric blue, tiny spark lines.
+		var gc := Color(0.2, 0.22, 0.28)
+		_ground_patch(rng, Vector2(64, 82), 28.0, 12.0, gc, gc.darkened(0.3))
+		var fill := Color(0.45, 0.65, 0.9)
+		var outline := Color(0.28, 0.42, 0.65)
+		var spark := Color(0.8, 0.9, 1.0)
+		var top := Vector2(62, 40)
+		var pts := PackedVector2Array([
+			top, Vector2(70, 54), Vector2(66, 58), Vector2(74, 70), Vector2(60, 82),
+			Vector2(52, 68), Vector2(58, 58), Vector2(50, 52),
+		])
+		_outline_poly(pts, fill, outline, 1.4)
+		for s in [Vector2(84, 74), Vector2(40, 76)]:
+			var h := 16.0
+			var w := 6.0
+			var spts := PackedVector2Array([
+				s + Vector2(0, -h), s + Vector2(w, -h * 0.2), s + Vector2(w * 0.5, h * 0.2),
+				s + Vector2(-w * 0.5, h * 0.2), s + Vector2(-w, -h * 0.2),
+			])
+			_outline_poly(spts, fill, outline, 1.2)
+		for i in 4:
+			var a := top + Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(-6.0, 10.0))
+			var b := a + Vector2(rng.randf_range(-6.0, 6.0), rng.randf_range(-6.0, 6.0))
+			draw_line(a, b, spark, 1.0)
 
 func _init() -> void:
 	call_deferred("_start")

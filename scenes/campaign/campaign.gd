@@ -2603,24 +2603,32 @@ func _create_bounty_markers() -> void:
 			continue
 		var marker := Node2D.new()
 		marker.position = _hex_to_pixel(coord)
-		var bg := Polygon2D.new()
-		bg.polygon = diamond_pts
-		bg.color = Color(0.08, 0.07, 0.05, 0.9)
-		marker.add_child(bg)
-		var rim := Polygon2D.new()
-		rim.polygon = diamond_pts
-		rim.color = Color(0.65, 0.45, 0.85, 0.95)
-		rim.scale = Vector2(1.15, 1.15)
-		rim.z_index = -1
-		marker.add_child(rim)
-		var glyph := Label.new()
-		glyph.text = String(SpecialResourceSystem.SPECIAL_TYPES[tile.special_id].name).left(2)
-		glyph.add_theme_font_size_override("font_size", 9)
-		glyph.add_theme_color_override("font_color", Color(0.95, 0.88, 0.98))
-		glyph.custom_minimum_size = Vector2(18, 0)
-		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		glyph.position = Vector2(-9, -6)
-		marker.add_child(glyph)
+		var s_tex := _load_resource_art("res://assets/sprites/resources/deposit_%s.png" % tile.special_id)
+		if s_tex:
+			var spr := Sprite2D.new()
+			spr.texture = s_tex
+			spr.scale = Vector2(0.36, 0.36)  # 128px -> ~46px on map
+			marker.add_child(spr)
+		else:
+			# fallback: existing purple-diamond chip (keep verbatim)
+			var bg := Polygon2D.new()
+			bg.polygon = diamond_pts
+			bg.color = Color(0.08, 0.07, 0.05, 0.9)
+			marker.add_child(bg)
+			var rim := Polygon2D.new()
+			rim.polygon = diamond_pts
+			rim.color = Color(0.65, 0.45, 0.85, 0.95)
+			rim.scale = Vector2(1.15, 1.15)
+			rim.z_index = -1
+			marker.add_child(rim)
+			var glyph := Label.new()
+			glyph.text = String(SpecialResourceSystem.SPECIAL_TYPES[tile.special_id].name).left(2)
+			glyph.add_theme_font_size_override("font_size", 9)
+			glyph.add_theme_color_override("font_color", Color(0.95, 0.88, 0.98))
+			glyph.custom_minimum_size = Vector2(18, 0)
+			glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			glyph.position = Vector2(-9, -6)
+			marker.add_child(glyph)
 		marker.visible = GameManager.explored_tiles.has(coord)
 		bounty_markers_node.add_child(marker)
 		_bounty_markers[coord] = marker
