@@ -76,7 +76,11 @@ func deserialize_state(data: Dictionary) -> void:
 	_ai_attack_counters = data.get("_ai_attack_counters", {})
 	_gladehost_waypoints = data.get("_gladehost_waypoints", {})
 	_jade_patrol_index = data.get("_jade_patrol_index", {})
-	_temp_effects = data.get("_temp_effects", [])
+	var loaded_temp_effects: Array = data.get("_temp_effects", [])
+	_temp_effects.clear()
+	for entry in loaded_temp_effects:
+		if entry is Dictionary:
+			_temp_effects.append(entry)
 	_event_cooldown = data.get("_event_cooldown", 0)
 	_first_follower_turn = data.get("_first_follower_turn", -1)
 	if GameManager.diplomacy_system:
@@ -300,8 +304,15 @@ func start_game() -> void:
 	faction_order.clear()
 	faction_order.append(GameManager.state.player_faction_id)
 	for faction_id in GameManager.state.faction_states:
-		if faction_id != GameManager.state.player_faction_id:
-			faction_order.append(faction_id)
+		if faction_id == GameManager.state.player_faction_id:
+			continue
+		# Shard guardians are stationary map entities spawned by shardfalls
+		# (see ShardGuardianSystem.spawn_guardian_army) — they never act on
+		# their own, so giving the pseudo-faction a full AI turn is wasted
+		# processing. Rebels and independent still get real AI turns.
+		if faction_id == &"shard_guardians":
+			continue
+		faction_order.append(faction_id)
 
 	current_faction_index = 0
 	is_player_turn = true
