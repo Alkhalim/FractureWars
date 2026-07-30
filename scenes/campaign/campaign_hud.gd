@@ -9240,8 +9240,9 @@ func _update_bounty_bar_display() -> void:
 	var n_b := BountySystem.bounties_of_faction(pid).size()
 	var n_s := SpecialResourceSystem.extracted_specials_of_faction(pid).size()
 	var n_l := SpecialResourceSystem.leased_in_specials(pid).size()
-	bounty_bar_label.text = "  |  Resources: %d" % (n_b + n_s + n_l)
-	bounty_bar_label.visible = (n_b + n_s + n_l) > 0
+	var n_lm := LandmarkSystem.landmarks_of_faction(pid).size()
+	bounty_bar_label.text = "  |  Resources: %d" % (n_b + n_s + n_l + n_lm)
+	bounty_bar_label.visible = (n_b + n_s + n_l + n_lm) > 0
 
 func _on_bounty_bar_hover() -> void:
 	if _bounty_bar_tooltip == null or GameManager.state == null:
@@ -9276,6 +9277,14 @@ func _on_bounty_bar_hover() -> void:
 		var ffd: FactionData = DataManager.get_faction(entry_l.from)
 		text += "\n  %s — via %s (%d turns)" % [sdef2.name, (ffd.display_name if ffd else String(entry_l.from)), entry_l.turns_remaining]
 	if leased_in.is_empty():
+		text += "\n  (none)"
+
+	text += "\nLandmarks:"
+	var my_landmarks: Array[StringName] = LandmarkSystem.landmarks_of_faction(pid)
+	for lm in my_landmarks:
+		var ldef: Dictionary = LandmarkSystem.LANDMARK_TYPES[lm]
+		text += "\n  %s — %s" % [ldef.name, LandmarkSystem.describe(lm)]
+	if my_landmarks.is_empty():
 		text += "\n  (none)"
 
 	var tooltip_label: Label = _bounty_bar_tooltip.get_node("TooltipText")

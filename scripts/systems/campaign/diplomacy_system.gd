@@ -1334,6 +1334,8 @@ func _execute_ai_diplomacy_inner(faction_id: StringName) -> void:
 			for aff_special in _affinity_specials_of(faction_id):
 				if aff_special in SpecialResourceSystem.extracted_specials_of_faction(other_id):
 					war_score += 10.0
+			# Covet Landmarks the target holds (rare, faction-wide bonuses)
+			war_score += 8.0 * LandmarkSystem.landmarks_of_faction(other_id).size()
 			# Forsaken culture requires overwhelming advantage (1.5x strength)
 			var min_strength: float = 1.5 if is_forsaken_culture else 0.8
 			if war_score > 30.0 and strength_ratio >= min_strength:

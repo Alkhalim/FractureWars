@@ -2531,6 +2531,16 @@ func _create_city_markers() -> void:
 		var city: CityState = GameManager.state.cities[city_id]
 		_create_city_marker(city)
 
+const LANDMARK_COLORS := {
+	&"dragonbone_fields": Color(0.85, 0.80, 0.65),
+	&"everfrost_core": Color(0.55, 0.80, 0.95),
+	&"sungold_vein": Color(0.95, 0.78, 0.25),
+	&"worldroot_nexus": Color(0.35, 0.75, 0.35),
+	&"voidglass_rift": Color(0.60, 0.35, 0.85),
+	&"titan_forge_ruin": Color(0.80, 0.45, 0.25),
+	&"leyline_well": Color(0.40, 0.85, 0.85),
+}
+
 func _create_bounty_markers() -> void:
 	if bounty_markers_node == null:
 		bounty_markers_node = Node2D.new()
@@ -2596,6 +2606,43 @@ func _create_bounty_markers() -> void:
 		glyph.custom_minimum_size = Vector2(18, 0)
 		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		glyph.position = Vector2(-9, -6)
+		marker.add_child(glyph)
+		marker.visible = GameManager.explored_tiles.has(coord)
+		bounty_markers_node.add_child(marker)
+		_bounty_markers[coord] = marker
+
+	# Landmarks — large 6-point star, tile-centered (Landmarks dominate a
+	# region and are the rarest resource, so they get the boldest marker).
+	for coord in map.tiles:
+		var tile = map.tiles[coord]
+		if tile.landmark_id == &"":
+			continue
+		var ldef: Dictionary = LandmarkSystem.LANDMARK_TYPES[tile.landmark_id]
+		var lcolor: Color = LANDMARK_COLORS.get(tile.landmark_id, Color.WHITE)
+		var marker := Node2D.new()
+		marker.position = _hex_to_pixel(coord)
+		var bg := Polygon2D.new()
+		bg.polygon = _make_circle(13.0, 14)
+		bg.color = Color(0.06, 0.05, 0.05, 0.9)
+		marker.add_child(bg)
+		# Outer tips land on the horizontal axis (angle 0) so the widest part
+		# of the star sits behind the glyph row instead of a concave notch.
+		var star_pts := PackedVector2Array()
+		for i in 12:
+			var angle := TAU * i / 12.0
+			var r := 12.0 if i % 2 == 0 else 6.0
+			star_pts.append(Vector2(cos(angle) * r, sin(angle) * r))
+		var star := Polygon2D.new()
+		star.polygon = star_pts
+		star.color = lcolor
+		marker.add_child(star)
+		var glyph := Label.new()
+		glyph.text = String(ldef.name).left(3)
+		glyph.add_theme_font_size_override("font_size", 8)
+		glyph.add_theme_color_override("font_color", Color(0.08, 0.07, 0.06))
+		glyph.custom_minimum_size = Vector2(24, 0)
+		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		glyph.position = Vector2(-12, -5)
 		marker.add_child(glyph)
 		marker.visible = GameManager.explored_tiles.has(coord)
 		bounty_markers_node.add_child(marker)
@@ -5063,7 +5110,7 @@ func _process_trade_caravans(delta: float) -> void:
 func _update_bounty_hover(hex_coord: Vector2i) -> void:
 	var map = GameManager.state.hex_map
 	var tile = map.get_tile(hex_coord) if map else null
-	var has_content: bool = tile != null and (tile.bounty_id != &"" or tile.special_id != &"") and GameManager.explored_tiles.has(hex_coord)
+	var has_content: bool = tile != null and (tile.bounty_id != &"" or tile.special_id != &"" or tile.landmark_id != &"") and GameManager.explored_tiles.has(hex_coord)
 	if not has_content:
 		if _bounty_tooltip:
 			_bounty_tooltip.visible = false
@@ -5082,7 +5129,21 @@ func _update_bounty_hover(hex_coord: Vector2i) -> void:
 		lbl.add_theme_font_size_override("font_size", 12)
 		_bounty_tooltip.add_child(lbl)
 		$UILayer.add_child(_bounty_tooltip)
-	if tile.special_id != &"":
+	if tile.landmark_id != &"":
+		# Landmark — takes precedence over a special/bounty on the same tile
+		# (map-gen never stacks these, but the branch order documents intent).
+		var ldef: Dictionary = LandmarkSystem.LANDMARK_TYPES[tile.landmark_id]
+		var lowner_id: StringName = GameManager.state.get_region_owner(tile.region_id)
+		var lowner_txt := "Unowned region"
+		if lowner_id != &"":
+			var lofd: FactionData = DataManager.get_faction(lowner_id)
+			lowner_txt = "Region: " + (lofd.display_name if lofd else String(lowner_id))
+		var lbuilding_txt := "Built"
+		if not LandmarkSystem.region_has_landmark_building(tile.region_id):
+			var lbd: BuildingData = DataManager.get_building(ldef.building_id)
+			lbuilding_txt = "Requires %s (build in a city of this region)" % (lbd.display_name if lbd else String(ldef.building_id))
+		_bounty_tooltip.get_node("Text").text = "%s (Landmark)\n%s\n%s\n%s" % [ldef.name, LandmarkSystem.describe(tile.landmark_id), lowner_txt, lbuilding_txt]
+	elif tile.special_id != &"":
 		# Special deposit — takes precedence over a bounty on the same tile
 		# (map-gen never stacks the two, but the branch order documents intent).
 		var sdef: Dictionary = SpecialResourceSystem.SPECIAL_TYPES[tile.special_id]

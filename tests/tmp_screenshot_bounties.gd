@@ -8,6 +8,7 @@ var _campaign: Node = null
 var _bounty_coord := Vector2i(-9999, -9999)
 var _pinned := false
 var _special_coord := Vector2i(-9999, -9999)
+var _landmark_coord := Vector2i(-9999, -9999)
 
 func _init() -> void:
 	call_deferred("_start")
@@ -254,5 +255,42 @@ func _process(_delta: float) -> bool:
 		var img4 := root.get_viewport().get_texture().get_image()
 		img4.save_png("user://win_special_marker.png")
 		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_special_marker.png"))
+
+	# ── Phase 5: Landmark star marker + hover tooltip ───────────────────────
+	if _frames == 82:
+		var gm: Node = root.get_node("/root/GameManager")
+		var map = gm.state.hex_map
+		for coord in map.tiles:
+			var tile = map.tiles[coord]
+			if tile.landmark_id != &"":
+				_landmark_coord = coord
+				break
+		print("LANDMARK TILE: ", _landmark_coord, " type=", map.get_tile(_landmark_coord).landmark_id if _landmark_coord != Vector2i(-9999, -9999) else &"")
+		# Fog is already disabled (Phase 1); refresh so the star marker shows.
+		_campaign.set("_fog_dirty", true)
+		_campaign.call("_refresh_bounty_marker_visibility")
+		if _landmark_coord != Vector2i(-9999, -9999):
+			var cam: Camera2D = _campaign.get("camera")
+			if cam:
+				cam.position = _campaign.call("_hex_to_pixel", _landmark_coord)
+				cam.zoom = Vector2(1, 1)
+
+	if _frames == 94:
+		if _landmark_coord != Vector2i(-9999, -9999):
+			var center := root.get_viewport().get_visible_rect().size / 2
+			root.get_viewport().warp_mouse(center)
+			_campaign.call("_update_bounty_hover", _landmark_coord)
+			var tip: Node = _campaign.get("_bounty_tooltip")
+			if tip:
+				print("LANDMARK TOOLTIP visible=", tip.visible, " text=[", tip.get_node("Text").text, "]")
+			else:
+				print("WARNING: _bounty_tooltip is null after landmark _update_bounty_hover")
+		else:
+			print("WARNING: no landmark tile found on the map")
+
+	if _frames == 96:
+		var img5 := root.get_viewport().get_texture().get_image()
+		img5.save_png("user://win_landmark_marker.png")
+		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_landmark_marker.png"))
 		quit()
 	return false
