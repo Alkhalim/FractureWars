@@ -1588,7 +1588,7 @@ func _ensure_landmark_neighbors() -> void:
 		if spot == Vector2i(-1, -1):
 			for n in HexHelper.get_neighbors(coord): # fallback: allow mountains
 				var nt2 := state.hex_map.get_tile(n)
-				if nt2 and nt2.terrain != Enums.TerrainType.WATER and nt2.landmark_id == &"":
+				if nt2 and nt2.terrain != Enums.TerrainType.WATER and nt2.landmark_id == &"" and nt2.special_id == &"" and nt2.bounty_id == &"":
 					spot = n
 					break
 		if spot == Vector2i(-1, -1):

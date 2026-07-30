@@ -60,10 +60,19 @@ func _run() -> void:
 	# ── Demo map: still exactly SPAWN_COUNT (or all placeable) ──
 	_gm.new_game(&"empire", true, 0)
 	var demo_count := 0
+	var demo_landmarks: Array[Vector2i] = []
 	for coord in _gm.state.hex_map.tiles:
 		if _gm.state.hex_map.tiles[coord].landmark_id != &"":
 			demo_count += 1
+			demo_landmarks.append(coord)
 	_check(demo_count == LandmarkSystem.SPAWN_COUNT, "demo map places all %d landmarks (got %d)" % [LandmarkSystem.SPAWN_COUNT, demo_count])
+	for coord in demo_landmarks:
+		var found_city := false
+		for cid in _gm.state.cities:
+			if HexHelper.hex_distance(_gm.state.cities[cid].hex_pos, coord) <= 2:
+				found_city = true
+				break
+		_check(found_city, "demo: landmark at %s has a neighboring city" % [coord])
 
 	# ── Every landmark has a city within distance 2 (guardian rule), across seeds ──
 	for s in [0, 1, 2]:
@@ -76,6 +85,11 @@ func _run() -> void:
 			for cid in _gm.state.cities:
 				if HexHelper.hex_distance(_gm.state.cities[cid].hex_pos, coord) <= 2:
 					found_city = true
+					# Verify guardian cities have matching region_id
+					var city = _gm.state.cities[cid]
+					if city.city_name in _gm.LANDMARK_GUARD_NAMES.values():
+						var city_tile = map6.get_tile(city.hex_pos)
+						_check(city.region_id == city_tile.region_id, "seed %d: guardian city at %s has region_id matching tile" % [s, city.hex_pos])
 					break
 			_check(found_city, "seed %d: landmark at %s has a neighboring city" % [s, coord])
 
