@@ -2846,6 +2846,18 @@ func _build_treaty_icons(player_id: StringName, faction_id: StringName) -> HBoxC
 					tooltip_lines.append("Tributary (they pay you)")
 				else:
 					tooltip_lines.append("Tributary (you pay them)")
+			Enums.TreatyType.RESOURCE_LEASE:
+				icon.text = "L"
+				icon.add_theme_color_override("font_color", Color(0.65, 0.45, 0.85))
+				var rl_special: StringName = treaty.terms.get("special_id", &"")
+				var rl_def: Dictionary = SpecialResourceSystem.SPECIAL_TYPES.get(rl_special, {})
+				var rl_name: String = rl_def.get("name", String(rl_special))
+				var rl_gpt: int = treaty.terms.get("gold_per_turn", 0)
+				var is_owner := treaty.faction_a == player_id
+				if is_owner:
+					tooltip_lines.append("Resource Lease: %s (earning %d gold/turn)" % [rl_name, rl_gpt])
+				else:
+					tooltip_lines.append("Resource Lease: %s (paying %d gold/turn)" % [rl_name, rl_gpt])
 		icon.custom_minimum_size = Vector2(14, 0)
 		icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		hbox.add_child(icon)
@@ -3777,6 +3789,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				Enums.TreatyType.ALLIANCE: type_name = "Alliance"
 				Enums.TreatyType.TRADE_DEAL: type_name = "Trade Deal"
 				Enums.TreatyType.TRADE_RELATIONS: type_name = "Trade Relations"
+				Enums.TreatyType.RESOURCE_LEASE: type_name = "Resource Lease"
 			var dur_text := ""
 			if treaty.turns_remaining > 0:
 				dur_text = " (%d turns)" % treaty.turns_remaining
@@ -3793,6 +3806,12 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				var you_give := res_a_name if treaty.faction_a == player_id else res_b_name
 				var you_get := res_b_name if treaty.faction_a == player_id else res_a_name
 				detail_text = " — Sharing %.0f%% (You get: %s)" % [share, you_get]
+			elif treaty.treaty_type == Enums.TreatyType.RESOURCE_LEASE:
+				var rl_special: StringName = treaty.terms.get("special_id", &"")
+				var rl_def: Dictionary = SpecialResourceSystem.SPECIAL_TYPES.get(rl_special, {})
+				var rl_name: String = rl_def.get("name", String(rl_special))
+				var rl_gpt: int = treaty.terms.get("gold_per_turn", 0)
+				detail_text = " — %s, %d gold/turn" % [rl_name, rl_gpt]
 			var t_lbl := Label.new()
 			t_lbl.text = "  " + type_name + dur_text + detail_text
 			t_lbl.add_theme_font_size_override("font_size", 10)
@@ -3911,6 +3930,15 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 		var our_tribute := GameManager.diplomacy_system.get_tributary_gold_amount(player_id)
 		offers.append({id = "offer_tributary", label = "Offer Tributary (you pay ~%d gold/turn)" % our_tribute})
 	offers.append({id = "gift", label = "Gift Resources"})
+	# Resource leases (tier-2 Specials)
+	var my_specials := SpecialResourceSystem.extracted_specials_of_faction(player_id)
+	for sp in my_specials:
+		if SpecialResourceSystem.lease_for_special(player_id, sp) == null:
+			offers.append({id = "lease_out_%s" % sp, label = "Lease out %s (10g/turn, 10 turns)" % SpecialResourceSystem.SPECIAL_TYPES[sp].name})
+	var their_specials := SpecialResourceSystem.extracted_specials_of_faction(faction_id)
+	for sp in their_specials:
+		if SpecialResourceSystem.lease_for_special(faction_id, sp) == null:
+			offers.append({id = "lease_in_%s" % sp, label = "Request lease of %s (pay 14g/turn, 10 turns)" % SpecialResourceSystem.SPECIAL_TYPES[sp].name})
 	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
 	if player_fs and player_fs.owned_shards.size() > 0:
 		offers.append({id = "shard", label = "Offer Shard"})
@@ -4584,6 +4612,33 @@ func _execute_combined_offers(target: StringName) -> void:
 		var result := GameManager.diplomacy_system.offer_tributary(player_id, target)
 		results.append("Offer Tributary: " + result.reason)
 		any_accepted = true
+
+	# Resource leases (tier-2 Specials) — unilateral: dynamic per-special ids
+	# don't fit the fixed proposal_types package below. Both directions route
+	# through DiplomacySystem.propose_resource_lease, which runs the AI-side
+	# accept/reject evaluation for whichever party isn't the player.
+	for offer_key in _diplo_selected_offers.keys():
+		var offer_key_s: String = offer_key
+		if not _diplo_selected_offers.get(offer_key, false):
+			continue
+		if offer_key_s.begins_with("lease_out_"):
+			var sp: StringName = StringName(offer_key_s.substr("lease_out_".length()))
+			var sp_name: String = SpecialResourceSystem.SPECIAL_TYPES[sp].name if SpecialResourceSystem.SPECIAL_TYPES.has(sp) else String(sp)
+			var lease_result := GameManager.diplomacy_system.propose_resource_lease(player_id, target, sp, 10, 10)
+			results.append("Lease Out %s: %s" % [sp_name, lease_result.reason])
+			if lease_result.accepted:
+				any_accepted = true
+			else:
+				any_rejected = true
+		elif offer_key_s.begins_with("lease_in_"):
+			var sp2: StringName = StringName(offer_key_s.substr("lease_in_".length()))
+			var sp2_name: String = SpecialResourceSystem.SPECIAL_TYPES[sp2].name if SpecialResourceSystem.SPECIAL_TYPES.has(sp2) else String(sp2)
+			var lease_result2 := GameManager.diplomacy_system.propose_resource_lease(target, player_id, sp2, 14, 10)
+			results.append("Request Lease of %s: %s" % [sp2_name, lease_result2.reason])
+			if lease_result2.accepted:
+				any_accepted = true
+			else:
+				any_rejected = true
 
 	# === Negotiation package (all-or-nothing) ===
 	var has_gift: bool = _diplo_selected_offers.get("gift", false)
@@ -9181,20 +9236,46 @@ func _create_bounty_bar_label() -> void:
 func _update_bounty_bar_display() -> void:
 	if bounty_bar_label == null or GameManager.state == null:
 		return
-	var n := BountySystem.bounties_of_faction(GameManager.state.player_faction_id).size()
-	bounty_bar_label.text = "  |  Bounties: %d" % n
-	bounty_bar_label.visible = n > 0
+	var pid := GameManager.state.player_faction_id
+	var n_b := BountySystem.bounties_of_faction(pid).size()
+	var n_s := SpecialResourceSystem.extracted_specials_of_faction(pid).size()
+	var n_l := SpecialResourceSystem.leased_in_specials(pid).size()
+	bounty_bar_label.text = "  |  Resources: %d" % (n_b + n_s + n_l)
+	bounty_bar_label.visible = (n_b + n_s + n_l) > 0
 
 func _on_bounty_bar_hover() -> void:
 	if _bounty_bar_tooltip == null or GameManager.state == null:
 		return
-	var entries: Array[Dictionary] = BountySystem.bounties_of_faction(GameManager.state.player_faction_id)
+	var pid := GameManager.state.player_faction_id
+	var entries: Array[Dictionary] = BountySystem.bounties_of_faction(pid)
 	var text := "Bounties: %d held" % entries.size()
 	for entry in entries:
 		var city: CityState = GameManager.state.cities.get(entry.city_id)
 		var city_name := city.get_display_name() if city else "?"
 		text += "\n  %s — %s (%s)" % [entry.name, city_name, BountySystem.describe(entry.id)]
 	if entries.is_empty():
+		text += "\n  (none)"
+
+	text += "\nSpecials:"
+	var my_specials: Array[StringName] = SpecialResourceSystem.extracted_specials_of_faction(pid)
+	for sp in my_specials:
+		var sdef: Dictionary = SpecialResourceSystem.SPECIAL_TYPES[sp]
+		var line := "\n  %s (%s)" % [sdef.name, SpecialResourceSystem.describe(sp)]
+		var lease := SpecialResourceSystem.lease_for_special(pid, sp)
+		if lease:
+			var lfd: FactionData = DataManager.get_faction(lease.faction_b)
+			line += " — leased to %s" % (lfd.display_name if lfd else String(lease.faction_b))
+		text += line
+	if my_specials.is_empty():
+		text += "\n  (none)"
+
+	text += "\nLeased in:"
+	var leased_in: Array[Dictionary] = SpecialResourceSystem.leased_in_specials(pid)
+	for entry_l in leased_in:
+		var sdef2: Dictionary = SpecialResourceSystem.SPECIAL_TYPES[entry_l.special_id]
+		var ffd: FactionData = DataManager.get_faction(entry_l.from)
+		text += "\n  %s — via %s (%d turns)" % [sdef2.name, (ffd.display_name if ffd else String(entry_l.from)), entry_l.turns_remaining]
+	if leased_in.is_empty():
 		text += "\n  (none)"
 
 	var tooltip_label: Label = _bounty_bar_tooltip.get_node("TooltipText")

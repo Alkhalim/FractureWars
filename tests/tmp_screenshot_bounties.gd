@@ -7,6 +7,7 @@ var _frames := 0
 var _campaign: Node = null
 var _bounty_coord := Vector2i(-9999, -9999)
 var _pinned := false
+var _special_coord := Vector2i(-9999, -9999)
 
 func _init() -> void:
 	call_deferred("_start")
@@ -40,7 +41,7 @@ func _process(_delta: float) -> bool:
 		_campaign.set("_fog_dirty", true)
 		_campaign.call("_refresh_bounty_marker_visibility")
 
-	if _frames >= 40 and _bounty_coord != Vector2i(-9999, -9999):
+	if _frames >= 40 and _frames < 66 and _bounty_coord != Vector2i(-9999, -9999):
 		var cam: Camera2D = _campaign.get("camera")
 		if cam:
 			cam.position = _campaign.call("_hex_to_pixel", _bounty_coord)
@@ -197,5 +198,61 @@ func _process(_delta: float) -> bool:
 		var img3 := root.get_viewport().get_texture().get_image()
 		img3.save_png("user://win_settle_preview.png")
 		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_settle_preview.png"))
+
+	# ── Phase 4: special-deposit diamond marker + hover tooltip ────────────
+	if _frames == 66:
+		# Dismiss the Phase 3 settlement-preview overlay (still open) so its
+		# candidate-site rings/labels don't cover the special marker, and hide
+		# the Phase 2 resource-bar tooltip (never got a real mouse_exited).
+		_campaign.call("_cancel_settlement_placement")
+		var hud2: Node = _campaign.get_node("UILayer/HUD")
+		var bar_tip2: Node = hud2.get("_bounty_bar_tooltip")
+		if bar_tip2:
+			bar_tip2.visible = false
+		var gm: Node = root.get_node("/root/GameManager")
+		var map = gm.state.hex_map
+		# Pick a deposit tile a few hexes clear of any city marker — city art
+		# (z_index 2, sizable radius) draws above the special marker (z_index
+		# 1) and, at this zoom, can visually cover a same-hex OR adjacent-hex
+		# deposit.
+		var city_hexes: Array[Vector2i] = []
+		for city_id in gm.state.cities:
+			city_hexes.append(gm.state.cities[city_id].hex_pos)
+		for coord in map.tiles:
+			var tile = map.tiles[coord]
+			if tile.special_id == &"":
+				continue
+			var clear_of_cities := true
+			for chex in city_hexes:
+				if HexHelper.hex_distance(coord, chex) < 3:
+					clear_of_cities = false
+					break
+			if clear_of_cities:
+				_special_coord = coord
+				break
+		print("SPECIAL DEPOSIT TILE: ", _special_coord, " type=", map.get_tile(_special_coord).special_id if _special_coord != Vector2i(-9999, -9999) else &"")
+		if _special_coord != Vector2i(-9999, -9999):
+			var cam: Camera2D = _campaign.get("camera")
+			if cam:
+				cam.position = _campaign.call("_hex_to_pixel", _special_coord)
+				cam.zoom = Vector2(1, 1)
+
+	if _frames == 78:
+		if _special_coord != Vector2i(-9999, -9999):
+			var center := root.get_viewport().get_visible_rect().size / 2
+			root.get_viewport().warp_mouse(center)
+			_campaign.call("_update_bounty_hover", _special_coord)
+			var tip: Node = _campaign.get("_bounty_tooltip")
+			if tip:
+				print("SPECIAL TOOLTIP visible=", tip.visible, " text=[", tip.get_node("Text").text, "]")
+			else:
+				print("WARNING: _bounty_tooltip is null after special _update_bounty_hover")
+		else:
+			print("WARNING: no special deposit tile found on the map")
+
+	if _frames == 80:
+		var img4 := root.get_viewport().get_texture().get_image()
+		img4.save_png("user://win_special_marker.png")
+		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_special_marker.png"))
 		quit()
 	return false

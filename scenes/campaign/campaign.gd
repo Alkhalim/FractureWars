@@ -2570,6 +2570,37 @@ func _create_bounty_markers() -> void:
 		bounty_markers_node.add_child(marker)
 		_bounty_markers[coord] = marker
 
+	# Special deposits — distinct diamond marker, tile-centered (specials
+	# dominate their tile, unlike the bounty's corner-flag treatment).
+	var diamond_pts := PackedVector2Array([Vector2(0, -9), Vector2(9, 0), Vector2(0, 9), Vector2(-9, 0)])
+	for coord in map.tiles:
+		var tile = map.tiles[coord]
+		if tile.special_id == &"":
+			continue
+		var marker := Node2D.new()
+		marker.position = _hex_to_pixel(coord)
+		var bg := Polygon2D.new()
+		bg.polygon = diamond_pts
+		bg.color = Color(0.08, 0.07, 0.05, 0.9)
+		marker.add_child(bg)
+		var rim := Polygon2D.new()
+		rim.polygon = diamond_pts
+		rim.color = Color(0.65, 0.45, 0.85, 0.95)
+		rim.scale = Vector2(1.15, 1.15)
+		rim.z_index = -1
+		marker.add_child(rim)
+		var glyph := Label.new()
+		glyph.text = String(SpecialResourceSystem.SPECIAL_TYPES[tile.special_id].name).left(2)
+		glyph.add_theme_font_size_override("font_size", 9)
+		glyph.add_theme_color_override("font_color", Color(0.95, 0.88, 0.98))
+		glyph.custom_minimum_size = Vector2(18, 0)
+		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		glyph.position = Vector2(-9, -6)
+		marker.add_child(glyph)
+		marker.visible = GameManager.explored_tiles.has(coord)
+		bounty_markers_node.add_child(marker)
+		_bounty_markers[coord] = marker
+
 func _refresh_bounty_marker_visibility() -> void:
 	for coord in _bounty_markers:
 		var marker: Node2D = _bounty_markers[coord]
@@ -5032,7 +5063,8 @@ func _process_trade_caravans(delta: float) -> void:
 func _update_bounty_hover(hex_coord: Vector2i) -> void:
 	var map = GameManager.state.hex_map
 	var tile = map.get_tile(hex_coord) if map else null
-	if tile == null or tile.bounty_id == &"" or not GameManager.explored_tiles.has(hex_coord):
+	var has_content: bool = tile != null and (tile.bounty_id != &"" or tile.special_id != &"") and GameManager.explored_tiles.has(hex_coord)
+	if not has_content:
 		if _bounty_tooltip:
 			_bounty_tooltip.visible = false
 		return
@@ -5050,13 +5082,31 @@ func _update_bounty_hover(hex_coord: Vector2i) -> void:
 		lbl.add_theme_font_size_override("font_size", 12)
 		_bounty_tooltip.add_child(lbl)
 		$UILayer.add_child(_bounty_tooltip)
-	var def: Dictionary = BountySystem.BOUNTY_TYPES[tile.bounty_id]
-	var claimant := BountySystem.claimant_for(hex_coord)
-	var claim_text := "Unclaimed — settle within %d tiles" % BountySystem.CLAIM_RADIUS
-	if claimant != &"":
-		var c: CityState = GameManager.state.cities.get(claimant)
-		claim_text = "Claimed by " + (c.get_display_name() if c else String(claimant))
-	_bounty_tooltip.get_node("Text").text = "%s\n%s\n%s" % [def.name, BountySystem.describe(tile.bounty_id), claim_text]
+	if tile.special_id != &"":
+		# Special deposit — takes precedence over a bounty on the same tile
+		# (map-gen never stacks the two, but the branch order documents intent).
+		var sdef: Dictionary = SpecialResourceSystem.SPECIAL_TYPES[tile.special_id]
+		var owner_id: StringName = GameManager.state.get_region_owner(tile.region_id)
+		var owner_txt := "Unowned region"
+		if owner_id != &"":
+			var ofd: FactionData = DataManager.get_faction(owner_id)
+			owner_txt = "Region: " + (ofd.display_name if ofd else String(owner_id))
+		var extract_txt := "Extractor built" if SpecialResourceSystem.region_has_extractor(tile.region_id) else "Requires %s (build in a city of this region)" % DataManager.get_building(sdef.extractor_id).display_name
+		var lease_txt := ""
+		if owner_id != &"":
+			var lease := SpecialResourceSystem.lease_for_special(owner_id, tile.special_id)
+			if lease:
+				var lfd: FactionData = DataManager.get_faction(lease.faction_b)
+				lease_txt = "\nLeased to %s (%d turns)" % [lfd.display_name if lfd else String(lease.faction_b), lease.turns_remaining]
+		_bounty_tooltip.get_node("Text").text = "%s (Special)\n%s\n%s\n%s%s" % [sdef.name, SpecialResourceSystem.describe(tile.special_id), owner_txt, extract_txt, lease_txt]
+	else:
+		var def: Dictionary = BountySystem.BOUNTY_TYPES[tile.bounty_id]
+		var claimant := BountySystem.claimant_for(hex_coord)
+		var claim_text := "Unclaimed — settle within %d tiles" % BountySystem.CLAIM_RADIUS
+		if claimant != &"":
+			var c: CityState = GameManager.state.cities.get(claimant)
+			claim_text = "Claimed by " + (c.get_display_name() if c else String(claimant))
+		_bounty_tooltip.get_node("Text").text = "%s\n%s\n%s" % [def.name, BountySystem.describe(tile.bounty_id), claim_text]
 	_bounty_tooltip.position = get_viewport().get_mouse_position() + Vector2(15, -30)
 	_bounty_tooltip.visible = true
 
