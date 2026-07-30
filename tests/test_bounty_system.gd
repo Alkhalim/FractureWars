@@ -26,8 +26,15 @@ func _run() -> void:
 		_check(not def.is_empty(), "placed bounty %s exists in table" % tile.bounty_id)
 		_check(int(tile.terrain) in def.get("terrains", []), "bounty %s on allowed terrain (%d)" % [tile.bounty_id, tile.terrain])
 	_check(placed.size() >= 10, "at least 10 bounty deposits placed (got %d)" % placed.size())
+	# MAX_PER_TYPE is a soft variety cap; the capital-ring guarantee (below)
+	# is a hard settlement-decision invariant and wins when they conflict —
+	# a few terrains have very few fitting types (desert: 3; shard wastes:
+	# only obsidian_flows) and can exhaust those types map-wide before every
+	# capital's ring is satisfied. Empirically (20-seed sweep) the resulting
+	# overflow tops out around MAX_PER_TYPE+5; double the cap as a generous
+	# ceiling that still catches a real runaway-placement regression.
 	for t in counts:
-		_check(counts[t] <= 8, "type %s capped at 8 (got %d)" % [t, counts[t]])
+		_check(counts[t] <= BountySystem.MAX_PER_TYPE * 2, "type %s stays near MAX_PER_TYPE, allowing bounded capital-ring overflow (got %d)" % [t, counts[t]])
 	# Spacing: no two bounties within 3 hexes
 	for i in placed.size():
 		for j in range(i + 1, placed.size()):
@@ -154,6 +161,53 @@ func _run() -> void:
 			self_found = true
 	_check(self_found, "bounties_claimable_at sees an adjacent bounty (distance 0 beats the existing claimant at 2)")
 	map2.get_tile(spot).bounty_id = &""
+
+	# ── Density + placement rebalance (user directive 2026-07-31) ──
+	for seed_v in [0, 1, 2]:
+		_gm.new_game(&"empire", false, seed_v)
+		var mapd = _gm.state.hex_map
+		var land := 0
+		var total_b := 0
+		for coord in mapd.tiles:
+			var t = mapd.tiles[coord]
+			if t.terrain != Enums.TerrainType.WATER:
+				land += 1
+			if t.bounty_id != &"":
+				total_b += 1
+		_check(total_b >= land / 60, "seed %d: density at least land/60 (got %d of %d land)" % [seed_v, total_b, land])
+		# Validity rule holds for EVERY bounty
+		for coord in mapd.tiles:
+			if mapd.tiles[coord].bounty_id == &"":
+				continue
+			_check(BountySystem.is_valid_bounty_spot(mapd, coord), "seed %d: bounty at %s satisfies placement rule" % [seed_v, coord])
+		# No major-faction city auto-claims at spawn
+		for cid in _gm.state.cities:
+			var c: CityState = _gm.state.cities[cid]
+			if c.faction_id == &"independent" or _gm.is_npc_faction(c.faction_id):
+				continue
+			_check(BountySystem.claimed_bounties_for_city(c).is_empty(), "seed %d: major city %s starts with zero free bounties" % [seed_v, c.get_display_name()])
+		# Capital ring guarantee: every major capital has >=3 grabbable bounties at dist 4..10
+		for fid in _gm.state.faction_states:
+			var fd: FactionData = root.get_node("/root/DataManager").get_faction(fid)
+			if fd == null or not fd.is_playable:
+				continue
+			var cap: CityState = null
+			for cid2 in _gm.state.cities:
+				var c2: CityState = _gm.state.cities[cid2]
+				if c2.faction_id == fid and c2.is_capital:
+					cap = c2
+					break
+			if cap == null:
+				continue
+			var ring := 0
+			for coord in mapd.tiles:
+				if mapd.tiles[coord].bounty_id == &"":
+					continue
+				var d := HexHelper.hex_distance(cap.hex_pos, coord)
+				if d >= BountySystem.CAPITAL_RING_NEAR and d <= BountySystem.CAPITAL_RING_FAR:
+					ring += 1
+			_check(ring >= BountySystem.CAPITAL_RING_MIN, "seed %d: capital of %s has >=3 ring bounties (got %d)" % [seed_v, fid, ring])
+	_gm.new_game(&"empire", false, 0)
 
 	if _fails == 0:
 		print("BOUNTY TEST PASSED")

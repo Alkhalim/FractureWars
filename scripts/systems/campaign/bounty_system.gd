@@ -6,8 +6,12 @@ extends RefCounted
 
 const CLAIM_RADIUS := 2
 const MIN_SPACING := 3      # no two bounties closer than this
-const MAX_PER_TYPE := 8
+const MAX_PER_TYPE := 14
 const ROSTER_ROLL_PCT := 66 # ~2/3 of types spawn per map
+const DENSITY_DIVISOR := 40 # target ~1 bounty per 40 land tiles (post-rebalance)
+const CAPITAL_RING_MIN := 3
+const CAPITAL_RING_NEAR := 4
+const CAPITAL_RING_FAR := 10
 
 ## Effects implemented in Phase 1: income {ResourceType->int},
 ## loyalty {class->int}, recruit_discount {unit_tag->pct}.
@@ -100,6 +104,194 @@ static func _has_water_neighbor(map: HexMapData, coord: Vector2i) -> bool:
 		var t = map.get_tile(n)
 		if t and t.terrain == Enums.TerrainType.WATER:
 			return true
+	return false
+
+## Placement validity (post-city): never free for majors; claimable by an
+## independent town or grabbable by a future settlement.
+static func is_valid_bounty_spot(map: HexMapData, coord: Vector2i) -> bool:
+	var tile = map.get_tile(coord)
+	if tile == null or tile.terrain == Enums.TerrainType.WATER:
+		return false
+	if tile.special_id != &"" or tile.landmark_id != &"":
+		return false
+	var near_independent := false
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		var d := HexHelper.hex_distance(city.hex_pos, coord)
+		if d <= CLAIM_RADIUS:
+			if city.faction_id == &"independent":
+				near_independent = true
+			else:
+				return false # major (or other) city would auto-claim: forbidden
+	if near_independent:
+		return true
+	# Grabbable: a foundable land tile within CLAIM_RADIUS
+	for dx in range(-CLAIM_RADIUS, CLAIM_RADIUS + 1):
+		for dy in range(-CLAIM_RADIUS, CLAIM_RADIUS + 1):
+			var t_coord := Vector2i(coord.x + dx, coord.y + dy)
+			if HexHelper.hex_distance(coord, t_coord) > CLAIM_RADIUS:
+				continue
+			var tt = map.get_tile(t_coord)
+			if tt == null or tt.terrain == Enums.TerrainType.WATER or tt.terrain == Enums.TerrainType.MOUNTAINS:
+				continue
+			var far_enough := true
+			for city_id2 in GameManager.state.cities:
+				if HexHelper.hex_distance(GameManager.state.cities[city_id2].hex_pos, t_coord) < 4:
+					far_enough = false
+					break
+			if far_enough:
+				return true
+	return false
+
+## Post-city rebalance: relocate invalid map-gen bounties, then top up the
+## capital rings and the global density target. Deterministic via salt.
+## Runs once per new_game, after cities (and landmark-guardian towns) exist.
+static func rebalance_for_cities(map: HexMapData, salt: int) -> void:
+	var coords: Array = map.tiles.keys()
+	coords.sort()
+	# 1. Strip invalid bounties (map-gen ran before cities existed, so any
+	#    deposit that now falls within CLAIM_RADIUS of a major city, or off
+	#    the settlement-adjacency rule, gets cleared here). Their type is not
+	#    tracked for re-placement — see the topup-loop note below.
+	var placed: Array[Vector2i] = []
+	for coord in coords:
+		var tile = map.tiles[coord]
+		if tile.bounty_id == &"":
+			continue
+		if is_valid_bounty_spot(map, coord):
+			placed.append(coord)
+		else:
+			tile.bounty_id = &""
+	# 2. Build the valid-candidate list once (terrain-agnostic; per-type
+	#    terrain checked at placement)
+	var candidates: Array[Vector2i] = []
+	for coord in coords:
+		var tile = map.tiles[coord]
+		if tile.bounty_id == &"" and is_valid_bounty_spot(map, coord):
+			candidates.append(coord)
+	# 3. Top up ring targets + global density via a shared placement helper:
+	var counts := {}
+	for p in placed:
+		var b: StringName = map.tiles[p].bounty_id
+		counts[b] = counts.get(b, 0) + 1
+	var type_ids: Array = BOUNTY_TYPES.keys()
+	# Capital rings: for each major capital lacking ring coverage, queue extra
+	var ring_targets: Array[Vector2i] = []
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id == &"independent" or GameManager.is_npc_faction(city.faction_id):
+			continue
+		if not city.is_capital:
+			continue
+		var have := 0
+		for p in placed:
+			var d := HexHelper.hex_distance(city.hex_pos, p)
+			if d >= CAPITAL_RING_NEAR and d <= CAPITAL_RING_FAR:
+				have += 1
+		for k in maxi(0, CAPITAL_RING_MIN + 1 - have): # +1 headroom over the min
+			ring_targets.append(city.hex_pos)
+	# Global density
+	var land := 0
+	for coord in coords:
+		if map.tiles[coord].terrain != Enums.TerrainType.WATER:
+			land += 1
+	var target := land / DENSITY_DIVISOR
+	# 4. Placement loop: ring targets first (nearest valid candidate to each
+	#    capital within the ring band), then displaced+topup on hash-rotated
+	#    candidates. All spacing-checked and per-type capped.
+	# `dead` remembers candidates _place_rebalanced already rejected (every
+	# terrain-fitting type at that tile is at MAX_PER_TYPE, or no type fits
+	# its terrain at all) — counts only grow, so a dead candidate stays dead
+	# for the rest of this pass. Without this, the ring search below would
+	# keep re-selecting the same nearest-but-unplaceable tile on every one of
+	# a capital's remaining ring slots instead of moving on to the next one.
+	var dead: Dictionary = {}
+	for cap_pos in ring_targets:
+		var best := Vector2i(-9999, -9999)
+		var best_d := 9999
+		for cand in candidates:
+			if dead.has(cand):
+				continue
+			var d := HexHelper.hex_distance(cap_pos, cand)
+			if d < CAPITAL_RING_NEAR or d > CAPITAL_RING_FAR:
+				continue
+			if map.tiles[cand].bounty_id != &"":
+				continue
+			if not _spacing_ok(map, cand, placed):
+				continue
+			if d < best_d:
+				best_d = d
+				best = cand
+		if best.x != -9999:
+			# The capital-ring guarantee is a hard settlement-decision invariant;
+			# MAX_PER_TYPE is a soft variety cap. A handful of terrains (desert:
+			# 3 fitting types; shard wastes: 1) can exhaust their type(s) map-wide
+			# before every capital's ring is served, so retry ignoring the cap
+			# rather than leave a capital permanently short.
+			if not _place_rebalanced(map, best, type_ids, counts, salt, placed):
+				_place_rebalanced(map, best, type_ids, counts, salt, placed, true)
+			dead[best] = true # never revisit — filled or truly unplaceable either way
+	# NOTE: re-placement deliberately ignores the map-gen roster roll — top-up
+	# may introduce types the initial roll skipped. That's acceptable (more
+	# variety across a rebalanced map) rather than a bug.
+	while placed.size() < target:
+		var progressed := false
+		for cand in candidates:
+			if placed.size() >= target:
+				break
+			if dead.has(cand) or map.tiles[cand].bounty_id != &"":
+				continue
+			var h := _hash(cand.x + salt * 7919, cand.y + 13)
+			if h % 3 != 0:
+				continue
+			if not _spacing_ok(map, cand, placed):
+				continue
+			if _place_rebalanced(map, cand, type_ids, counts, salt, placed):
+				progressed = true
+			else:
+				dead[cand] = true
+		if not progressed:
+			break # candidates exhausted; accept what fits
+
+static func _spacing_ok(map: HexMapData, coord: Vector2i, placed: Array[Vector2i]) -> bool:
+	for p in placed:
+		if HexHelper.hex_distance(coord, p) < MIN_SPACING:
+			return false
+	return true
+
+## Places the hash-preferred terrain-fitting type at coord; false if none fits.
+## `ignore_cap`: capital-ring fallback only (see call site) — a handful of
+## terrains have very few fitting types (desert: 3, shard wastes: 1) and can
+## exhaust MAX_PER_TYPE map-wide before every capital's ring guarantee is
+## met. When true, and every fitting type is at cap, spreads the unavoidable
+## overflow onto whichever fitting type is currently least-over rather than
+## dumping it all on the first hash match, so no single type runs away.
+static func _place_rebalanced(map: HexMapData, coord: Vector2i, type_ids: Array, counts: Dictionary, salt: int, placed: Array[Vector2i], ignore_cap: bool = false) -> bool:
+	var tile = map.get_tile(coord)
+	var start := _hash(coord.x + salt * 7919, coord.y) % type_ids.size()
+	var fallback_type: StringName = &""
+	var fallback_count := 999999
+	for k in type_ids.size():
+		var type_id: StringName = type_ids[(start + k) % type_ids.size()]
+		var def: Dictionary = BOUNTY_TYPES[type_id]
+		if not (int(tile.terrain) in def.terrains):
+			continue
+		if def.get("coastal", false) and not _has_water_neighbor(map, coord):
+			continue
+		var c: int = counts.get(type_id, 0)
+		if c < MAX_PER_TYPE:
+			tile.bounty_id = type_id
+			counts[type_id] = c + 1
+			placed.append(coord)
+			return true
+		if ignore_cap and c < fallback_count:
+			fallback_count = c
+			fallback_type = type_id
+	if ignore_cap and fallback_type != &"":
+		tile.bounty_id = fallback_type
+		counts[fallback_type] = fallback_count + 1
+		placed.append(coord)
+		return true
 	return false
 
 ## Nearest city within CLAIM_RADIUS claims a bounty; ties break by city_id.
