@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"rimeheart_bore"
+display_name = "Rimeheart Bore"
+description = "Drilled into the eternal ice, the bore vents a chill that hardens whoever fights beneath it come winter."
+faction_id = &""
+category = &"economic"
+build_cost = {0: 220, 1: 60, 5: 40}
+build_time = 4
+income_bonus = {}
+required_capital_level = 2
+requires_region_landmark = &"everfrost_core"
+upkeep_cost = {0: 4}

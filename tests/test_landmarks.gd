@@ -93,6 +93,47 @@ func _run() -> void:
 					break
 			_check(found_city, "seed %d: landmark at %s has a neighboring city" % [s, coord])
 
+	# ── Landmark buildings + state queries ──
+	_gm.new_game(&"empire", false, 0)
+	var map7 = _gm.state.hex_map
+	var lhex := Vector2i(-1, -1)
+	for coord in map7.tiles:
+		if map7.tiles[coord].landmark_id != &"":
+			lhex = coord
+			break
+	var ltile = map7.get_tile(lhex)
+	var ltype: StringName = ltile.landmark_id
+	var lregion: StringName = ltile.region_id
+	_check(LandmarkSystem.landmark_in_region(lregion) == ltype, "landmark_in_region finds it")
+	_check(not LandmarkSystem.region_has_landmark_building(lregion), "no landmark building at start")
+	var lcity: CityState = null
+	for cid in _gm.state.cities:
+		if _gm.state.cities[cid].faction_id == &"empire":
+			lcity = _gm.state.cities[cid]
+			break
+	lcity.region_id = lregion
+	lcity.level = maxi(lcity.level, 2)
+	var lbuilding: StringName = LandmarkSystem.LANDMARK_TYPES[ltype].building_id
+	# Gate: offered only in the landmark's region
+	var avail_l: Array[BuildingData] = _gm.city_system.get_available_buildings(lcity)
+	var offered := false
+	for b in avail_l:
+		if b.id == lbuilding:
+			offered = true
+	_check(offered, "landmark building offered in its region")
+	lcity.buildings.append(lbuilding)
+	for rc in map7.get_region_tiles(lregion):
+		map7.get_tile(rc).owner_faction = &"empire"
+	map7._region_owner_cache.clear()
+	var lfs: FactionState = _gm.state.faction_states[&"empire"]
+	if not (lregion in lfs.owned_regions):
+		lfs.owned_regions.append(lregion)
+	_check(LandmarkSystem.region_has_landmark_building(lregion), "landmark building detected")
+	_check(LandmarkSystem.has_landmark(&"empire", ltype), "has_landmark true when region owned + built")
+	_check(ltype in LandmarkSystem.landmarks_of_faction(&"empire"), "landmarks_of_faction lists it")
+	_check(not LandmarkSystem.has_landmark(&"skulloath", ltype), "other factions do not hold it")
+	_check(LandmarkSystem.describe(ltype) != "", "describe returns rule text")
+
 	if _fails == 0:
 		print("LANDMARKS TEST PASSED")
 		quit(0)

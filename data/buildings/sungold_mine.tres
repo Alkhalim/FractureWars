@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"sungold_mine"
+display_name = "Sungold Mine"
+description = "Veins of raw gold glitter under torchlight. The nobility's cut only sharpens their appetite for more."
+faction_id = &""
+category = &"economic"
+build_cost = {0: 220, 1: 60, 5: 40}
+build_time = 4
+income_bonus = {0: 15}
+class_loyalty_bonus = {"nobles": -2}
+required_capital_level = 2
+requires_region_landmark = &"sungold_vein"
+upkeep_cost = {0: 4}

@@ -70,3 +70,50 @@ static func _try_place(map: HexMapData, coord: Vector2i, type_id: StringName, de
 	tile.landmark_id = type_id
 	placed.append(coord)
 	return true
+
+## Query API (Task 3). A Landmark is exploited by owning its region and
+## building the landmark's unique faction-shared building in a region city.
+static func landmark_hex_in_region(region_id: StringName) -> Vector2i:
+	var map = GameManager.state.hex_map
+	if map == null or region_id == &"":
+		return Vector2i(-1, -1)
+	for coord in map.get_region_tiles(region_id):
+		var tile = map.get_tile(coord)
+		if tile and tile.landmark_id != &"":
+			return coord
+	return Vector2i(-1, -1)
+
+static func landmark_in_region(region_id: StringName) -> StringName:
+	var hex := landmark_hex_in_region(region_id)
+	if hex == Vector2i(-1, -1):
+		return &""
+	return GameManager.state.hex_map.get_tile(hex).landmark_id
+
+static func region_has_landmark_building(region_id: StringName) -> bool:
+	var lm: StringName = landmark_in_region(region_id)
+	if lm == &"":
+		return false
+	var building_id: StringName = LANDMARK_TYPES[lm].building_id
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.region_id == region_id and city.buildings.has(building_id):
+			return true
+	return false
+
+static func landmarks_of_faction(faction_id: StringName) -> Array[StringName]:
+	var result: Array[StringName] = []
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return result
+	for region_id in fs.owned_regions:
+		var lm: StringName = landmark_in_region(region_id)
+		if lm != &"" and region_has_landmark_building(region_id):
+			result.append(lm)
+	return result
+
+static func has_landmark(faction_id: StringName, landmark_id: StringName) -> bool:
+	return landmark_id in landmarks_of_faction(faction_id)
+
+static func describe(landmark_id: StringName) -> String:
+	var def: Dictionary = LANDMARK_TYPES.get(landmark_id, {})
+	return def.get("rule_text", "") if not def.is_empty() else ""

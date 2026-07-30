@@ -742,6 +742,19 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 				if extractor_available and GameManager.city_system.start_building(city_id, extractor_id):
 					continue
 
+			# Landmarks: claim an unbuilt landmark building in this city's
+			# region the same way, before falling back to generic priorities.
+			var lm := LandmarkSystem.landmark_in_region(city.region_id)
+			if lm != &"" and not LandmarkSystem.region_has_landmark_building(city.region_id):
+				var landmark_building_id: StringName = LandmarkSystem.LANDMARK_TYPES[lm].building_id
+				var landmark_available := false
+				for b in available:
+					if b.id == landmark_building_id:
+						landmark_available = true
+						break
+				if landmark_available and GameManager.city_system.start_building(city_id, landmark_building_id):
+					continue
+
 			if available.size() > 0:
 				var built := false
 				for priority_id in priority_list:

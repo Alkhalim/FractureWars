@@ -1416,6 +1416,10 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 		if building.requires_region_resource != &"":
 			if SpecialResourceSystem.special_in_region(city.region_id) != building.requires_region_resource:
 				continue
+		# Landmark buildings: only buildable where the city's region holds the landmark
+		if building.requires_region_landmark != &"":
+			if LandmarkSystem.landmark_in_region(city.region_id) != building.requires_region_landmark:
+				continue
 		# Doctrine fork: if another building of the same exclusive_group exists
 		# (or is queued) ANYWHERE in the faction, this one is locked forever
 		if building.exclusive_group != &"" and _faction_has_exclusive_group(city.faction_id, building.exclusive_group, building_id):
@@ -1508,6 +1512,10 @@ func start_building(city_id: StringName, building_id: StringName, tile_pos: Vect
 	# Extractors: only buildable where the city's region holds the deposit
 	if building.requires_region_resource != &"":
 		if SpecialResourceSystem.special_in_region(city.region_id) != building.requires_region_resource:
+			return false
+	# Landmark buildings: only buildable where the city's region holds the landmark
+	if building.requires_region_landmark != &"":
+		if LandmarkSystem.landmark_in_region(city.region_id) != building.requires_region_landmark:
 			return false
 	if city.buildings.has(building_id):
 		return false
