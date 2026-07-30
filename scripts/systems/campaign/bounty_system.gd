@@ -64,8 +64,8 @@ static func scatter_bounties(map: HexMapData) -> void:
 		var tile: HexMapData.TileState = map.tiles[coord]
 		if tile.terrain == Enums.TerrainType.WATER:
 			continue
-		if tile.special_id != &"":
-			continue # specials scattered first; one resource per tile
+		if tile.special_id != &"" or tile.landmark_id != &"":
+			continue # specials/landmarks scattered first; one resource per tile
 		var h := _hash(coord.x, coord.y)
 		if h % 9 != 0:
 			continue # ~11% of land tiles are candidates

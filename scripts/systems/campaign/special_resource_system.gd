@@ -158,6 +158,8 @@ static func _try_place(map: HexMapData, coord: Vector2i, type_id: StringName, de
 	var tile: HexMapData.TileState = map.tiles[coord]
 	if tile.terrain == Enums.TerrainType.WATER or tile.special_id != &"":
 		return false
+	if tile.landmark_id != &"":
+		return false # landmarks scattered first; one resource per tile
 	if tile.region_id == &"":
 		return false # deposits must belong to a region (ownership model)
 	if not (int(tile.terrain) in def.terrains):
