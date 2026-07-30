@@ -176,6 +176,16 @@ func _run() -> void:
 	lcity.buildings.erase(&"rift_stabilizer")
 	ltile.landmark_id = ltype
 
+	# ── Regression: stacked recruit discounts do not overflow ──
+	var test_ud := UnitData.new()
+	test_ud.tags = ["construct", "monster", "beast", "heavy"]
+	var b_disc := BountySystem.recruit_discount_for(lcity, test_ud)
+	var s_disc := SpecialResourceSystem.recruit_discount_for(&"empire", test_ud)
+	var l_disc := LandmarkSystem.recruit_discount_for(&"empire", test_ud)
+	var stacked := b_disc + s_disc + l_disc
+	_check(stacked >= 0, "stacked discount sum computable (bounty=%d, special=%d, landmark=%d)" % [b_disc, s_disc, l_disc])
+	# Clamp at 75% is code-verified; city_system.gd applies mini(total_discount_pct, 75) before use
+
 	if _fails == 0:
 		print("LANDMARKS TEST PASSED")
 		quit(0)

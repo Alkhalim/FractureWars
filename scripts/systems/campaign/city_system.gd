@@ -1593,6 +1593,8 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 	total_discount_pct += SpecialResourceSystem.recruit_discount_for(city.faction_id, unit_data)
 	# Dragonbone Fields / Titan Forge-Ruin: landmark recruit discounts
 	total_discount_pct += LandmarkSystem.recruit_discount_for(city.faction_id, unit_data)
+	# Cap stacked discounts at 75% to prevent negative costs (resource-generation exploit)
+	total_discount_pct = mini(total_discount_pct, 75)
 	if total_discount_pct > 0:
 		for res_type in adjusted_recruit:
 			adjusted_recruit[res_type] = int(adjusted_recruit[res_type] * (100 - total_discount_pct) / 100.0)
