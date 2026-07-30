@@ -1358,11 +1358,58 @@ func get_valid_tiles_for_building_terrain(city: CityState, terrain: int) -> Arra
 			result.append(neighbor)
 	return result
 
+## The building_id a tile is exclusively reserved for (its deposit's extractor,
+## or its landmark's unique building), or &"" if the tile carries no such
+## reservation and is buildable by anything terrain-eligible.
+func _tile_reservation_owner(tile: HexMapData.TileState) -> StringName:
+	if tile.special_id != &"":
+		return SpecialResourceSystem.SPECIAL_TYPES.get(tile.special_id, {}).get("extractor_id", &"")
+	if tile.landmark_id != &"":
+		return LandmarkSystem.LANDMARK_TYPES.get(tile.landmark_id, {}).get("building_id", &"")
+	# Bounty tiles (bounty_id) stay generally buildable for now — that layer's
+	# density is being doubled separately, so it is deliberately NOT reserved.
+	return &""
+
+## Single source of truth for the "deposit/landmark tiles are reserved" rule,
+## applied on top of a terrain-filtered candidate list. Shared by the player
+## build-tile UI, start_building's validation, and the AI auto-pick path (all
+## three only ever call get_valid_tiles_for_building).
+## - Generic buildings: reserved tiles (owned by a DIFFERENT building) are
+##   dropped entirely; other candidates pass through unchanged.
+## - The extractor/landmark building itself: if its own deposit/landmark tile
+##   is among the candidates (i.e. within the city's adjacent build range),
+##   ONLY that tile (those tiles) are valid — it cannot be built elsewhere.
+## - Fallback: if that building's deposit/landmark is NOT within build range
+##   (region-wide resources can sit anywhere in a possibly large region, and
+##   landmarks are only guaranteed a city within distance 2, which is outside
+##   the distance-1 neighbor ring used for building placement), it falls back
+##   to any other unreserved candidate tile so it stays buildable somewhere.
+func _apply_tile_reservation(building: BuildingData, candidates: Array[Vector2i]) -> Array[Vector2i]:
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return candidates
+	var own_tiles: Array[Vector2i] = []
+	var free_tiles: Array[Vector2i] = []
+	for coord in candidates:
+		var tile := hex_map.get_tile(coord)
+		if tile == null:
+			continue
+		var reserved_for: StringName = _tile_reservation_owner(tile)
+		if reserved_for == &"":
+			free_tiles.append(coord)
+		elif reserved_for == building.id:
+			own_tiles.append(coord)
+		# else: reserved for a different building's deposit/landmark -> excluded
+	if not own_tiles.is_empty():
+		return own_tiles
+	return free_tiles
+
 func get_valid_tiles_for_building(city: CityState, building: BuildingData) -> Array[Vector2i]:
 	# For upgrades, use the same tile as the building being upgraded
 	if building.upgrades_from != &"" and city.building_tiles.has(building.upgrades_from):
 		return [city.building_tiles[building.upgrades_from] as Vector2i]
-	return get_valid_tiles_for_building_terrain(city, building.required_terrain)
+	var candidates := get_valid_tiles_for_building_terrain(city, building.required_terrain)
+	return _apply_tile_reservation(building, candidates)
 
 func get_free_adjacent_tiles(city: CityState) -> Array[Vector2i]:
 	# All adjacent tiles not occupied by a building (any terrain)
@@ -1465,9 +1512,14 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 			skulloath_corruption = fs.corruption
 
 	# Loop invariants hoisted out of the 246-building scan: the loop mutates
-	# nothing, so slots and per-terrain valid-tile results cannot change inside it.
+	# nothing, so slots and per-key valid-tile results cannot change inside it.
+	# Keyed by (required_terrain, requires_region_resource, requires_region_landmark)
+	# rather than terrain alone: those three fields are exactly what
+	# get_valid_tiles_for_building's result depends on (see _apply_tile_reservation),
+	# and in practice each non-empty resource/landmark id maps 1:1 to a single
+	# building id, so buildings sharing a key always get the same tile list.
 	var available_slots := city.get_available_building_slots()
-	var valid_tiles_by_terrain: Dictionary = {} # required_terrain (int) -> Array[Vector2i]
+	var valid_tiles_by_key: Dictionary = {} # "terrain|resource|landmark" -> Array[Vector2i]
 
 	var result: Array[BuildingData] = []
 	for building_id in DataManager.buildings:
@@ -1527,15 +1579,16 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 		if building.settlement_only and not city.is_settlement:
 			continue
 		# Skip if no valid adjacent tile available (identical result to
-		# get_valid_tiles_for_building, with the terrain query memoized)
+		# get_valid_tiles_for_building, with the tile query memoized)
 		var has_valid_tile: bool
 		if building.upgrades_from != &"" and city.building_tiles.has(building.upgrades_from):
 			has_valid_tile = true # upgrade reuses the existing building's tile
 		else:
-			var terrain_key: int = building.required_terrain
-			if not valid_tiles_by_terrain.has(terrain_key):
-				valid_tiles_by_terrain[terrain_key] = get_valid_tiles_for_building_terrain(city, terrain_key)
-			has_valid_tile = not (valid_tiles_by_terrain[terrain_key] as Array).is_empty()
+			var tile_key: String = "%d|%s|%s" % [building.required_terrain, building.requires_region_resource, building.requires_region_landmark]
+			if not valid_tiles_by_key.has(tile_key):
+				var terrain_candidates := get_valid_tiles_for_building_terrain(city, building.required_terrain)
+				valid_tiles_by_key[tile_key] = _apply_tile_reservation(building, terrain_candidates)
+			has_valid_tile = not (valid_tiles_by_key[tile_key] as Array).is_empty()
 		if not has_valid_tile:
 			continue
 		if building.upgrades_from == &"":

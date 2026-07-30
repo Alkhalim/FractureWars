@@ -222,6 +222,97 @@ func _run() -> void:
 	# Worldroot: adjacent-region growth qualifies (query-level)
 	_check(LandmarkSystem.worldroot_region_of_faction(&"empire") == &"", "no worldroot held -> empty")
 
+	# ── Tile reservation: deposit/landmark tiles are locked to their own
+	# building; a generic building may not steal them (user report: barracks
+	# built on top of a sunstone deposit). Craft state directly on a real
+	# city's free neighbor tiles so the deposit/landmark is guaranteed to be
+	# "in build range" (distance 1) for the ONLY-valid-tile assertion.
+	var dm := root.get_node("/root/DataManager")
+	var cs = _gm.city_system
+	var rcity: CityState = null
+	for cid in _gm.state.cities:
+		var c: CityState = _gm.state.cities[cid]
+		if c.faction_id == &"empire":
+			rcity = c
+			break
+	_check(rcity != null, "reservation test: found an empire city")
+	if rcity:
+		rcity.level = maxi(rcity.level, 2)
+		var occupied := rcity.get_occupied_tiles()
+		var free_neighbors: Array[Vector2i] = []
+		for n in HexHelper.get_neighbors(rcity.hex_pos):
+			var nt = map7.get_tile(n)
+			if nt and nt.terrain != Enums.TerrainType.WATER and not occupied.has(n) \
+					and nt.special_id == &"" and nt.landmark_id == &"":
+				free_neighbors.append(n)
+		_check(free_neighbors.size() >= 2, "reservation test: city has >=2 free neighbor tiles (got %d)" % free_neighbors.size())
+		if free_neighbors.size() >= 2:
+			var dep_coord: Vector2i = free_neighbors[0]
+			var control_coord: Vector2i = free_neighbors[1]
+			var dep_tile = map7.get_tile(dep_coord)
+			var saved_special = dep_tile.special_id
+			var saved_landmark = dep_tile.landmark_id
+
+			var market: BuildingData = dm.get_building(&"market_square")
+			var extractor: BuildingData = dm.get_building(&"extractor_sunstone")
+			var landmark_bld: BuildingData = dm.get_building(&"sungold_mine")
+			_check(market != null and extractor != null and landmark_bld != null, "reservation test: buildings loaded")
+
+			# Give the faction ample resources so start_building only fails/succeeds
+			# on the tile check, never on affordability.
+			var rfs: FactionState = _gm.state.faction_states[&"empire"]
+			for rt in [0, 1, 2, 3, 5]:
+				rfs.resources[rt] = rfs.resources.get(rt, 0) + 5000
+
+			# ── Special deposit tile ──
+			dep_tile.special_id = &"sunstone"
+			dep_tile.landmark_id = &""
+			if market:
+				var valid_generic = cs.get_valid_tiles_for_building(rcity, market)
+				_check(not valid_generic.has(dep_coord), "generic building excludes sunstone deposit tile")
+				_check(valid_generic.has(control_coord), "generic building still allows a normal control tile")
+				_check(not cs.start_building(rcity.city_id, &"market_square", dep_coord), "start_building rejects generic building on deposit tile")
+				_check(cs.start_building(rcity.city_id, &"market_square", control_coord), "start_building accepts generic building on a normal tile")
+				if rcity.buildings.has(&"market_square"):
+					rcity.buildings.erase(&"market_square")
+					rcity.building_tiles.erase(&"market_square")
+				rcity.build_queue.clear()
+			if extractor:
+				var valid_extractor = cs.get_valid_tiles_for_building(rcity, extractor)
+				_check(valid_extractor.has(dep_coord), "extractor_sunstone is valid on its own deposit tile")
+				_check(valid_extractor.size() == 1 and valid_extractor[0] == dep_coord, "extractor_sunstone's ONLY valid tile is the deposit when in range (got %s)" % [valid_extractor])
+			dep_tile.special_id = saved_special
+			dep_tile.landmark_id = saved_landmark
+
+			# ── Landmark tile ──
+			dep_tile.special_id = &""
+			dep_tile.landmark_id = &"sungold_vein"
+			if market:
+				var valid_generic2 = cs.get_valid_tiles_for_building(rcity, market)
+				_check(not valid_generic2.has(dep_coord), "generic building excludes sungold_vein landmark tile")
+				_check(not cs.start_building(rcity.city_id, &"market_square", dep_coord), "start_building rejects generic building on landmark tile")
+			if landmark_bld:
+				var valid_landmark = cs.get_valid_tiles_for_building(rcity, landmark_bld)
+				_check(valid_landmark.has(dep_coord), "sungold_mine is valid on its own landmark tile")
+				_check(valid_landmark.size() == 1 and valid_landmark[0] == dep_coord, "sungold_mine's ONLY valid tile is the landmark tile when in range (got %s)" % [valid_landmark])
+			dep_tile.special_id = saved_special
+			dep_tile.landmark_id = saved_landmark
+
+			# ── Out-of-range fallback: a deposit far outside the city's adjacent
+			# build radius must not strand the extractor with zero valid tiles —
+			# it falls back to any other unreserved tile (documented behavior;
+			# real deposits/landmarks can sit anywhere in a region).
+			var far_coord := Vector2i((rcity.hex_pos.x + 20) % HexMapData.MAP_WIDTH, rcity.hex_pos.y)
+			var far_tile = map7.get_tile(far_coord)
+			if far_tile:
+				var far_saved = far_tile.special_id
+				far_tile.special_id = &"sunstone"
+				if extractor:
+					var valid_far = cs.get_valid_tiles_for_building(rcity, extractor)
+					_check(not valid_far.is_empty(), "extractor falls back to a normal tile when its deposit is out of build range")
+					_check(not valid_far.has(far_coord), "fallback tile list never includes the out-of-range deposit itself")
+				far_tile.special_id = far_saved
+
 	if _fails == 0:
 		print("LANDMARKS TEST PASSED")
 		quit(0)
