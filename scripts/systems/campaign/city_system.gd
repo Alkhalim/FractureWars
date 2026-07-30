@@ -590,6 +590,10 @@ func _spawn_recruited_unit(city: CityState, unit_data_id: StringName, faction_id
 
 	var instance := UnitInstance.new()
 	instance.init_from_data(unit_data, GameManager.state.generate_id())
+	# Titan Forge-Ruin: constructs muster already Trained
+	if unit_data.tags.has("construct") and LandmarkSystem.has_landmark(faction_id, &"titan_forge_ruin"):
+		instance.veterancy_level = 1
+		instance.experience = UnitInstance.VETERANCY_XP_THRESHOLDS[0]
 
 	if existing_army:
 		existing_army.units.append(instance)
@@ -1587,6 +1591,8 @@ func start_recruitment(city_id: StringName, unit_data_id: StringName) -> bool:
 	total_discount_pct += BountySystem.recruit_discount_for(city, unit_data)
 	# Moonsilver: heavy-unit recruit discount (special_resources_design)
 	total_discount_pct += SpecialResourceSystem.recruit_discount_for(city.faction_id, unit_data)
+	# Dragonbone Fields / Titan Forge-Ruin: landmark recruit discounts
+	total_discount_pct += LandmarkSystem.recruit_discount_for(city.faction_id, unit_data)
 	if total_discount_pct > 0:
 		for res_type in adjusted_recruit:
 			adjusted_recruit[res_type] = int(adjusted_recruit[res_type] * (100 - total_discount_pct) / 100.0)

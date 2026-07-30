@@ -117,3 +117,12 @@ static func has_landmark(faction_id: StringName, landmark_id: StringName) -> boo
 static func describe(landmark_id: StringName) -> String:
 	var def: Dictionary = LANDMARK_TYPES.get(landmark_id, {})
 	return def.get("rule_text", "") if not def.is_empty() else ""
+
+## Dragonbone: -15% for monster/beast. Titan Forge: -25% for constructs.
+static func recruit_discount_for(faction_id: StringName, ud: UnitData) -> int:
+	var total := 0
+	if (ud.tags.has("monster") or ud.tags.has("beast")) and has_landmark(faction_id, &"dragonbone_fields"):
+		total += 15
+	if ud.tags.has("construct") and has_landmark(faction_id, &"titan_forge_ruin"):
+		total += 25
+	return total
