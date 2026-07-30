@@ -11,7 +11,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 
 	_compare_all("initial")
 	_compare_all("cached second read")

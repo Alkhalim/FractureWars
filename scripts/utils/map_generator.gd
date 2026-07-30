@@ -76,9 +76,15 @@ const DEMO_SEEDS := {
 
 static var _active_seeds: Dictionary = {}
 
-static func generate_demo_hex_map(regions: Dictionary) -> HexMapData:
+## Per-campaign map seed (Task 1B). 0 is the identity fold — every SALTED
+## hash call below must reproduce byte-identical output to the pre-seed
+## code when this is 0. Set at generate entry, read by _hash_coord_salted().
+static var _map_salt: int = 0
+
+static func generate_demo_hex_map(regions: Dictionary, salt: int = 0) -> HexMapData:
 	# Map dimensions must be set by caller before calling this
 	_active_seeds = DEMO_SEEDS
+	_map_salt = salt
 
 	var map := HexMapData.new()
 	_init_tiles(map)
@@ -117,14 +123,16 @@ static func generate_demo_hex_map(regions: Dictionary) -> HexMapData:
 	_create_wetland_bridges(map)
 	_assign_realm_influence(map, demo_regions)
 	_fix_terrain_pockets(map)
-	LandmarkSystem.scatter_landmarks(map)  # tier-3 landmarks; first pick over specials/bounties
-	SpecialResourceSystem.scatter_specials(map)  # tier-2 rare deposits; first pick over bounties
-	BountySystem.scatter_bounties(map)  # tier-1 resources; terrain is final here
+	LandmarkSystem.scatter_landmarks(map, salt)  # tier-3 landmarks; first pick over specials/bounties
+	SpecialResourceSystem.scatter_specials(map, salt)  # tier-2 rare deposits; first pick over bounties
+	BountySystem.scatter_bounties(map, salt)  # tier-1 resources; terrain is final here
 
 	_active_seeds = {}
+	_map_salt = 0
 	return map
 
-static func generate_hex_map(regions: Dictionary) -> HexMapData:
+static func generate_hex_map(regions: Dictionary, salt: int = 0) -> HexMapData:
+	_map_salt = salt
 	var map := HexMapData.new()
 
 	# 1. Create all tiles - water by default
@@ -160,10 +168,11 @@ static func generate_hex_map(regions: Dictionary) -> HexMapData:
 	# 8. Fix terrain pockets
 	_fix_terrain_pockets(map)
 
-	LandmarkSystem.scatter_landmarks(map)  # tier-3 landmarks; first pick over specials/bounties
-	SpecialResourceSystem.scatter_specials(map)  # tier-2 rare deposits; first pick over bounties
-	BountySystem.scatter_bounties(map)  # tier-1 resources; terrain is final here
+	LandmarkSystem.scatter_landmarks(map, salt)  # tier-3 landmarks; first pick over specials/bounties
+	SpecialResourceSystem.scatter_specials(map, salt)  # tier-2 rare deposits; first pick over bounties
+	BountySystem.scatter_bounties(map, salt)  # tier-1 resources; terrain is final here
 
+	_map_salt = 0
 	return map
 
 static func _init_tiles(map: HexMapData) -> void:
@@ -363,7 +372,7 @@ static func _assign_terrain(map: HexMapData) -> void:
 		if tile.region_id == &"":
 			continue
 
-		var hash_val := _hash_coord(coord.x, coord.y)
+		var hash_val := _hash_coord_salted(coord.x, coord.y)
 		tile.terrain = _terrain_for_region(tile.region_id, hash_val)
 
 static func _terrain_for_region(region_id: StringName, hash_val: int) -> Enums.TerrainType:
@@ -581,7 +590,7 @@ static func _place_border_mountains(map: HexMapData) -> void:
 				best_prob = prob
 
 		if best_prob > 0.0:
-			var h := _hash_coord(coord.x * 7 + 11, coord.y * 13 + 23)
+			var h := _hash_coord_salted(coord.x * 7 + 11, coord.y * 13 + 23)
 			if float(h % 100) / 100.0 < best_prob:
 				tile.terrain = Enums.TerrainType.MOUNTAINS
 
@@ -607,7 +616,7 @@ static func _thin_mountains(map: HexMapData) -> void:
 	for coord in to_remove:
 		var tile := map.get_tile(coord)
 		if tile:
-			tile.terrain = _terrain_for_region(tile.region_id, _hash_coord(coord.x + 7, coord.y + 13))
+			tile.terrain = _terrain_for_region(tile.region_id, _hash_coord_salted(coord.x + 7, coord.y + 13))
 
 	# Pass 2: Remove isolated mountains (0 mountain neighbors)
 	to_remove.clear()
@@ -626,7 +635,7 @@ static func _thin_mountains(map: HexMapData) -> void:
 	for coord in to_remove:
 		var tile := map.get_tile(coord)
 		if tile:
-			tile.terrain = _terrain_for_region(tile.region_id, _hash_coord(coord.x + 7, coord.y + 13))
+			tile.terrain = _terrain_for_region(tile.region_id, _hash_coord_salted(coord.x + 7, coord.y + 13))
 
 # ── Region Pocket Cleanup ────────────────────────────────────────────────────
 # Removes small isolated pockets where Voronoi noise placed 1-2 tiles of one
@@ -756,6 +765,12 @@ static func _hash_coord(col: int, row: int) -> int:
 	h = (h ^ (h >> 13)) * 1274126177
 	h = h ^ (h >> 16)
 	return absi(h)
+
+## SALTED variant: used only by the terrain/mountain passes that are allowed
+## to shuffle with the per-campaign seed. Fold is additive on the column
+## input so _map_salt == 0 reproduces _hash_coord() exactly (legacy map).
+static func _hash_coord_salted(col: int, row: int) -> int:
+	return _hash_coord(col + _map_salt * 7919, row)
 
 # ── Rivers ──────────────────────────────────────────────────────────────────────
 # Carves rivers as lines of WATER tiles with WETLANDS crossing points (fords).

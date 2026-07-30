@@ -17,7 +17,7 @@ func _run() -> void:
 	_dm = root.get_node("/root/DataManager")
 	_tm = root.get_node("/root/TurnManager")
 	_cmds = root.get_node("/root/CommanderSystem")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	_compare_all("initial empire state")
 	# Loyalty drop (changes step 3)
 	var fs: FactionState = _gm.state.faction_states[_gm.state.player_faction_id]

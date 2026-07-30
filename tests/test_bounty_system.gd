@@ -10,7 +10,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var map = _gm.state.hex_map
 
 	# ── Scatter happened and is sane ──
@@ -37,7 +37,7 @@ func _run() -> void:
 
 	# ── Determinism: regenerating the same map yields identical bounties ──
 	var fingerprint := _fingerprint(map)
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	_check(_fingerprint(_gm.state.hex_map) == fingerprint, "scatter is deterministic across new_game")
 
 	# ── Serialization roundtrip preserves bounty_id ──
@@ -59,7 +59,7 @@ func _run() -> void:
 	_check(not any_bounty, "old saves without bounty_id load with empty bounties")
 
 	# ── Claim resolution ──
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var map2 = _gm.state.hex_map
 	var pid: StringName = &"empire"
 	var home: CityState = null

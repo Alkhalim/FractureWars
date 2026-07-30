@@ -58,7 +58,7 @@ func _measure(uid: StringName) -> Dictionary:
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
 	_dm = root.get_node("/root/DataManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	print("faction,unit,role,squad,attack,hp,mdef,speed,cost,gold,sim_damage,sim_taken,hp_left_pct,survived")
 	for uid in _dm.units:
 		var ud: UnitData = _dm.units[uid]

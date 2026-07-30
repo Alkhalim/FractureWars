@@ -10,7 +10,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 
 	var turn: int = _gm.state.current_turn
 	var city_count: int = _gm.state.cities.size()

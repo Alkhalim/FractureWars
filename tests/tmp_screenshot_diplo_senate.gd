@@ -11,7 +11,7 @@ func _init() -> void:
 func _start() -> void:
 	var gm: Node = root.get_node("/root/GameManager")
 	gm._is_transitioning = true
-	gm.new_game(&"empire", false)
+	gm.new_game(&"empire", false, 0)
 	gm._is_transitioning = false
 	var scene: PackedScene = load("res://scenes/campaign/campaign.tscn")
 	_campaign = scene.instantiate()

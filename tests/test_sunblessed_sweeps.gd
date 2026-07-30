@@ -11,7 +11,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	seed(777)
 
 	# Fabricate 25 armies at random positions for a hypothetical faction

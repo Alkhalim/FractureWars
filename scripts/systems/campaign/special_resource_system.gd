@@ -30,7 +30,9 @@ static func _hash(x: int, y: int) -> int:
 
 ## Map-gen pass. Runs BEFORE BountySystem.scatter_bounties (rare deposits get
 ## first pick; bounties skip occupied tiles). All 8 types spawn 1-3 deposits.
-static func scatter_specials(map: HexMapData) -> void:
+## salt: per-campaign map seed (Task 1B). 0 == identity fold, reproducing the
+## legacy roster/placement exactly.
+static func scatter_specials(map: HexMapData, salt: int = 0) -> void:
 	var coords: Array = map.tiles.keys()
 	coords.sort()
 	var placed: Array[Vector2i] = []
@@ -40,7 +42,7 @@ static func scatter_specials(map: HexMapData) -> void:
 	for t_idx in type_ids.size():
 		var type_id: StringName = type_ids[t_idx]
 		var def: Dictionary = SPECIAL_TYPES[type_id]
-		var start := _hash(t_idx * 101 + 13, 4242) % coords.size()
+		var start := _hash(t_idx * 101 + 13 + salt * 7919, 4242) % coords.size()
 		var placed_one := false
 		for spacing in [MIN_SPACING, 6, 4, 2]:
 			for k in coords.size():
@@ -56,7 +58,7 @@ static func scatter_specials(map: HexMapData) -> void:
 		var tid: StringName = map.tiles[p].special_id
 		counts[tid] = counts.get(tid, 0) + 1
 	for coord in coords:
-		var h := _hash(coord.x + 7, coord.y - 7)
+		var h := _hash(coord.x + 7 + salt * 7919, coord.y - 7)
 		if h % 37 != 0:
 			continue
 		var type_id: StringName = type_ids[(h / 37) % type_ids.size()]

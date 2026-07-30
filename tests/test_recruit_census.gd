@@ -15,7 +15,7 @@ func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
 	_dm = root.get_node("/root/DataManager")
 	_tm = root.get_node("/root/TurnManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 
 	var count := 0
 	for fid in _gm.state.faction_states:

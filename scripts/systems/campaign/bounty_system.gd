@@ -45,12 +45,14 @@ static func _hash(x: int, y: int) -> int:
 	return absi(h ^ (h >> 16))
 
 ## Map-gen pass: run AFTER terrain is final (map_generator calls this last).
-static func scatter_bounties(map: HexMapData) -> void:
+## salt: per-campaign map seed (Task 1B). 0 == identity fold, reproducing the
+## legacy roster/placement exactly.
+static func scatter_bounties(map: HexMapData, salt: int = 0) -> void:
 	# 1. Roll the roster: ~2/3 of types spawn on any given map
 	var selected: Array[StringName] = []
 	var idx := 0
 	for type_id in BOUNTY_TYPES:
-		if _hash(idx * 31 + 7, 7777) % 100 < ROSTER_ROLL_PCT:
+		if _hash(idx * 31 + 7 + salt * 7919, 7777) % 100 < ROSTER_ROLL_PCT:
 			selected.append(type_id)
 		idx += 1
 	if selected.is_empty():
@@ -66,7 +68,7 @@ static func scatter_bounties(map: HexMapData) -> void:
 			continue
 		if tile.special_id != &"" or tile.landmark_id != &"":
 			continue # specials/landmarks scattered first; one resource per tile
-		var h := _hash(coord.x, coord.y)
+		var h := _hash(coord.x + salt * 7919, coord.y)
 		if h % 9 != 0:
 			continue # ~11% of land tiles are candidates
 		# Spacing vs already-placed bounties

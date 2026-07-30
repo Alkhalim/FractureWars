@@ -13,7 +13,7 @@ func _init() -> void:
 func _start() -> void:
 	var gm: Node = root.get_node("/root/GameManager")
 	gm._is_transitioning = true  # Block new_game's campaign scene transition
-	gm.new_game(&"empire", true)
+	gm.new_game(&"empire", true, 0)
 	gm._is_transitioning = false
 
 	var attacker_id: StringName = &""

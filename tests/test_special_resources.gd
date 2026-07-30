@@ -10,7 +10,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var map = _gm.state.hex_map
 
 	# ── Scatter: all 8 types present, 1-3 each, valid terrain, no tile overlap ──
@@ -31,7 +31,7 @@ func _run() -> void:
 		_check(c >= 1 and c <= 3, "type %s spawns 1-3 times (got %d)" % [type_id, c])
 
 	# ── Demo map must also guarantee all 8 types ──
-	_gm.new_game(&"empire", true)
+	_gm.new_game(&"empire", true, 0)
 	var demo_counts := {}
 	for coord in _gm.state.hex_map.tiles:
 		var t = _gm.state.hex_map.tiles[coord]
@@ -39,11 +39,11 @@ func _run() -> void:
 			demo_counts[t.special_id] = demo_counts.get(t.special_id, 0) + 1
 	for type_id in SpecialResourceSystem.SPECIAL_TYPES:
 		_check(demo_counts.get(type_id, 0) >= 1, "demo map spawns type %s" % type_id)
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 
 	# ── Determinism ──
 	var fp := _fingerprint(map)
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	_check(_fingerprint(_gm.state.hex_map) == fp, "special scatter deterministic across new_game")
 
 	# ── Serialization roundtrip + old-save compat ──
@@ -63,7 +63,7 @@ func _run() -> void:
 	_check(not any, "old saves without special_id load empty")
 
 	# ── Region/extractor plumbing ──
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var map3 = _gm.state.hex_map
 	# Find any special deposit and its region
 	var dep_hex := Vector2i(-1, -1)
@@ -174,12 +174,12 @@ func _run() -> void:
 	pcity.buildings.erase(&"extractor_saffron")
 	dep_tile.special_id = dep_type
 	# Deepiron inert at fresh state (battle-determinism guard)
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	for f_id in _gm.state.faction_states:
 		_check(SpecialResourceSystem.extracted_specials_of_faction(f_id).is_empty(), "fresh game: no faction extracts anything (%s)" % f_id)
 
 	# ── Saffron trade split: receiver banks inflated gold, giver pays base ──
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var map5 = _gm.state.hex_map
 	var sdep := Vector2i(-1, -1)
 	for coord in map5.tiles:
@@ -221,7 +221,7 @@ func _run() -> void:
 	_gm.state.diplomacy_state.treaties.erase(t.treaty_id)
 
 	# ── Resource lease lifecycle ──
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var map4 = _gm.state.hex_map
 	var dhex := Vector2i(-1, -1)
 	for coord in map4.tiles:

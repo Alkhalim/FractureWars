@@ -30,7 +30,7 @@ func _run() -> void:
 	_dm = root.get_node("/root/DataManager")
 	_eb = root.get_node("/root/EventBus")
 	_gm._is_transitioning = true
-	_gm.new_game(&"empire", false)
+	_gm.new_game(&"empire", false, _seed)
 	_gm._is_transitioning = false
 	# No human: every faction is played by the AI, so each turn self-advances
 	_gm.state.player_faction_id = &"__observer__"

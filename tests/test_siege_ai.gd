@@ -12,7 +12,7 @@ func _init() -> void:
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
 	_dm = root.get_node("/root/DataManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 
 	var _tm = root.get_node("/root/TurnManager")
 

@@ -15,7 +15,7 @@ func _run() -> void:
 	# Autoload globals are not compile-time resolvable in -s scripts; fetch nodes.
 	_gm = root.get_node("/root/GameManager")
 	_dm = root.get_node("/root/DataManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var ms: MovementSystem = _gm.movement_system
 	ms.refresh_caches()
 

@@ -15,7 +15,7 @@ func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
 	_tm = root.get_node("/root/TurnManager")
 	var dm = root.get_node("/root/DataManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 
 	# ── Posture layer ──
 	var ts: FactionState = _gm.state.faction_states.get(&"thunderswarm")

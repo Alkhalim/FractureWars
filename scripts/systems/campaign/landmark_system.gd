@@ -26,12 +26,14 @@ static func _hash(x: int, y: int) -> int:
 ## Map-gen pass. Runs FIRST (before specials/bounties). Rolls 5 of the 7
 ## types deterministically, then places each with wide spacing, relaxing
 ## spacing progressively so small maps still fit all SPAWN_COUNT.
-static func scatter_landmarks(map: HexMapData) -> void:
+## salt: per-campaign map seed (Task 1B). 0 == identity fold, reproducing the
+## legacy roll/placement exactly.
+static func scatter_landmarks(map: HexMapData, salt: int = 0) -> void:
 	# Deterministic 5-of-7 roll: sort type ids by hash, take the first SPAWN_COUNT
 	var type_ids: Array = LANDMARK_TYPES.keys()
 	var scored: Array = []
 	for i in type_ids.size():
-		scored.append([_hash(i * 271 + 5, 991), type_ids[i]])
+		scored.append([_hash(i * 271 + 5 + salt * 7919, 991), type_ids[i]])
 	scored.sort()
 	var selected: Array[StringName] = []
 	for k in mini(SPAWN_COUNT, scored.size()):
@@ -43,7 +45,7 @@ static func scatter_landmarks(map: HexMapData) -> void:
 	for t_idx in selected.size():
 		var type_id: StringName = selected[t_idx]
 		var def: Dictionary = LANDMARK_TYPES[type_id]
-		var start := _hash(t_idx * 137 + 29, 771) % coords.size()
+		var start := _hash(t_idx * 137 + 29 + salt * 7919, 771) % coords.size()
 		var done := false
 		for spacing in [MIN_SPACING, 9, 6, 4, 2]:
 			for k in coords.size():

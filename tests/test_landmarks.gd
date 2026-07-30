@@ -10,7 +10,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var map = _gm.state.hex_map
 
 	# ── Exactly SPAWN_COUNT landmarks, max 1 per type, terrain-fitting ──
@@ -38,7 +38,7 @@ func _run() -> void:
 
 	# ── Determinism ──
 	var fp := _fingerprint(map)
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	_check(_fingerprint(_gm.state.hex_map) == fp, "landmark scatter deterministic")
 
 	# ── Serialization roundtrip + old-save compat ──
@@ -58,7 +58,7 @@ func _run() -> void:
 	_check(not any, "old saves load with no landmarks")
 
 	# ── Demo map: still exactly SPAWN_COUNT (or all placeable) ──
-	_gm.new_game(&"empire", true)
+	_gm.new_game(&"empire", true, 0)
 	var demo_count := 0
 	for coord in _gm.state.hex_map.tiles:
 		if _gm.state.hex_map.tiles[coord].landmark_id != &"":

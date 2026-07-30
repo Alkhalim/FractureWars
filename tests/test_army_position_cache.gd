@@ -12,7 +12,7 @@ func _init() -> void:
 
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
-	_gm.new_game(&"empire")
+	_gm.new_game(&"empire", false, 0)
 	var ms: MovementSystem = _gm.movement_system
 	ms.refresh_caches()
 	_check(ms.positions_fresh(), "cache fresh after refresh")

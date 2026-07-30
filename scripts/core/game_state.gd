@@ -14,6 +14,7 @@ extends Resource
 @export var elderbeasts: Dictionary = {} # beast_id -> ElderbeastState
 @export var selected_army_id: StringName = &""
 @export var next_id: int = 0
+@export var map_seed: int = 0 # Per-campaign map generation seed (Task 1B); 0 = legacy/default map
 @export var hex_map_data: Dictionary = {} # Serialized hex map for save/load
 @export var turn_manager_state: Dictionary = {} # Serialized TurnManager AI state
 @export var game_over: bool = false
