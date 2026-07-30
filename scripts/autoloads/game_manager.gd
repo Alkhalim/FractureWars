@@ -949,6 +949,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false, map_seed: 
 	_init_regions()
 	_init_cities()
 	_ensure_landmark_neighbors()
+	BountySystem.rebalance_for_cities(state.hex_map, state.map_seed)
 	_recompute_all_territory()
 	if not demo:
 		_init_elderbeasts()
@@ -1880,6 +1881,11 @@ func _init_diplomacy() -> void:
 			_set_relation(&"shard_guardians", faction_id, Enums.FactionRelation.WAR)
 
 	# ── Initialize diplomacy standing from relations ──
+	# Each contributing component is logged separately via
+	# DiplomacySystem.init_standing (not modify_standing — see its doc
+	# comment) so the standing breakdown tooltip fully explains turn-1
+	# standing instead of showing only whichever ripple effects happened
+	# to log something later.
 	for key in state.diplomacy:
 		var parts := str(key).split(":")
 		if parts.size() != 2:
@@ -1889,28 +1895,26 @@ func _init_diplomacy() -> void:
 		if str(a) > str(b):
 			continue
 		var relation: int = state.diplomacy[key]
-		var initial_standing := 0
+		var base_standing := 0
 		match relation:
-			Enums.FactionRelation.WAR: initial_standing = -30
-			Enums.FactionRelation.HOSTILE: initial_standing = -15
-			Enums.FactionRelation.NEUTRAL: initial_standing = 0
-			Enums.FactionRelation.FRIENDLY: initial_standing = 20
-			Enums.FactionRelation.ALLIED: initial_standing = 50
-		var standing_key_ab := str(a) + ":" + str(b)
-		var standing_key_ba := str(b) + ":" + str(a)
+			Enums.FactionRelation.WAR: base_standing = -30
+			Enums.FactionRelation.HOSTILE: base_standing = -15
+			Enums.FactionRelation.NEUTRAL: base_standing = 0
+			Enums.FactionRelation.FRIENDLY: base_standing = 20
+			Enums.FactionRelation.ALLIED: base_standing = 50
+		if base_standing != 0:
+			diplomacy_system.init_standing(a, b, base_standing, "Historical relations")
 		# Historical grudges: Empire vs Cinderguard (deserters) and Forsaken (exiled necromancers)
 		var is_empire_pair := (a == &"empire" or b == &"empire")
 		if is_empire_pair:
 			var other: StringName = b if a == &"empire" else a
 			if other == &"forsaken":
-				initial_standing -= 20  # Exiled necromancers — deep animosity
+				diplomacy_system.init_standing(a, b, -20, "Ancient enmity — exiled necromancers")
 			elif other == &"cinderguard":
-				initial_standing -= 10  # Deserters — resentment but shared values
+				diplomacy_system.init_standing(a, b, -10, "Deserter resentment")
 		# Cinderguard vs Forsaken: fellow ex-Imperials but opposed philosophies
 		if (a == &"cinderguard" and b == &"forsaken") or (a == &"forsaken" and b == &"cinderguard"):
-			initial_standing -= 15
-		state.diplomacy_state.standing[standing_key_ab] = initial_standing
-		state.diplomacy_state.standing[standing_key_ba] = initial_standing
+			diplomacy_system.init_standing(a, b, -15, "Rival realm distrust")
 
 func _set_relation(a: StringName, b: StringName, relation: Enums.FactionRelation) -> void:
 	state.diplomacy[StringName(str(a) + ":" + str(b))] = relation

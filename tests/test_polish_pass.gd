@@ -45,6 +45,30 @@ func _run() -> void:
 	_check(_tm.SHARD_ASCENSION_TARGET == 15, "SHARD_ASCENSION_TARGET is 15")
 	_check(_tm.count_victory_alliances(&"empire") == 0, "own minors don't count as victory alliances")
 
+	# ── Standing breakdown fully explains initial disposition (bug fix) ──
+	# _init_diplomacy's components (relation base + lore grudges) must all
+	# reach standing_log via DiplomacySystem.init_standing, so the breakdown
+	# tooltip's aggregated reasons sum exactly to the standing value at turn 1.
+	var checked_pair := false
+	for fid in _gm.state.faction_states:
+		if fid == &"empire":
+			continue
+		var standing: int = _gm.diplomacy_system.get_standing(&"empire", fid)
+		if standing == 0:
+			continue
+		var log: Array = _gm.diplomacy_system.get_standing_log(&"empire", fid)
+		var summed := 0
+		for entry in log:
+			summed += entry.get("delta", 0)
+		_check(summed == standing, "standing_log sums to standing for empire/%s (log=%d standing=%d)" % [fid, summed, standing])
+		checked_pair = true
+		break
+	_check(checked_pair, "found a faction pair with nonzero standing vs empire to test")
+	# init_standing must NOT mark factions as encountered — that would reveal
+	# the whole roster in the diplomacy panel before any exploration (see
+	# _build_diplo_faction_list's encountered_factions gate in campaign_hud.gd).
+	_check(_gm.state.encountered_factions.is_empty(), "init logging does not inflate encountered_factions (count=%d)" % _gm.state.encountered_factions.size())
+
 	if _fails == 0:
 		print("POLISH TEST PASSED")
 		quit(0)

@@ -2975,13 +2975,25 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 		# Sort by absolute value (biggest impact first)
 		var sorted_reasons: Array = aggregated.keys()
 		sorted_reasons.sort_custom(func(a, b): return absi(aggregated[a]) > absi(aggregated[b]))
+		var explained := 0
 		for reason in sorted_reasons:
 			var total: int = aggregated[reason]
+			explained += total
 			var prefix: String = "+" if total > 0 else ""
 			tip_lines.append("%s%d  %s" % [prefix, total, reason])
+		# The per-pair log is pruned to the most recent 20 entries (see
+		# DiplomacySystem.modify_standing), so a long game can drift from the
+		# true total. Surface the gap explicitly rather than let the list
+		# silently under-explain the standing value.
+		var residual := standing - explained
+		if residual != 0:
+			var residual_prefix: String = "+" if residual > 0 else ""
+			tip_lines.append("%s%d  Older history" % [residual_prefix, residual])
 		tip_lines.append("─────────────────────")
 		tip_lines.append("Total: %s%d" % [s_prefix, standing])
 		standing_label.tooltip_text = "\n".join(tip_lines)
+	elif standing != 0:
+		standing_label.tooltip_text = "Standing: %s%d\n%s%d  Initial disposition" % [s_prefix, standing, s_prefix, standing]
 	else:
 		standing_label.tooltip_text = "Standing: %s%d\nNo recorded history yet." % [s_prefix, standing]
 	info_row.add_child(standing_label)

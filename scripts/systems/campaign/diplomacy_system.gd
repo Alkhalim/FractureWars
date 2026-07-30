@@ -16,6 +16,28 @@ func get_standing(faction_a: StringName, faction_b: StringName) -> int:
 	return GameManager.state.diplomacy_state.standing.get(key, 0)
 
 func modify_standing(faction_a: StringName, faction_b: StringName, delta: int, reason: String = "") -> void:
+	var new_val := _apply_standing_delta(faction_a, faction_b, delta, reason)
+	EventBus.standing_changed.emit(faction_a, faction_b, new_val)
+	# Discover factions when the player's standing changes with them
+	var player_id := GameManager.state.player_faction_id
+	if faction_a == player_id and faction_b != &"" and faction_b != &"independent":
+		GameManager.state.encountered_factions[faction_b] = true
+	elif faction_b == player_id and faction_a != &"" and faction_a != &"independent":
+		GameManager.state.encountered_factions[faction_a] = true
+
+## Game-setup-only counterpart to modify_standing: applies the delta and
+## appends to standing_log (so the breakdown tooltip can fully account for
+## turn-1 standing) but skips EventBus.standing_changed and
+## encountered_factions marking. _init_diplomacy calls this while building
+## the initial relation web for every faction pair in the game — at that
+## point the player hasn't seen anyone yet, and encountered_factions gates
+## which factions appear in the diplomacy panel (see _build_diplo_faction_list
+## in campaign_hud.gd). Routing init through modify_standing would instantly
+## "discover" every faction in the game at turn 0/1.
+func init_standing(faction_a: StringName, faction_b: StringName, delta: int, reason: String) -> void:
+	_apply_standing_delta(faction_a, faction_b, delta, reason)
+
+func _apply_standing_delta(faction_a: StringName, faction_b: StringName, delta: int, reason: String) -> int:
 	var key := _standing_key(faction_a, faction_b)
 	var current: int = GameManager.state.diplomacy_state.standing.get(key, 0)
 	var new_val := clampi(current + delta, -100, 100)
@@ -42,13 +64,7 @@ func modify_standing(faction_a: StringName, faction_b: StringName, delta: int, r
 			if log.size() > 20:
 				log = log.slice(log.size() - 20)
 		GameManager.state.diplomacy_state.standing_log[log_key] = log
-	EventBus.standing_changed.emit(faction_a, faction_b, new_val)
-	# Discover factions when the player's standing changes with them
-	var player_id := GameManager.state.player_faction_id
-	if faction_a == player_id and faction_b != &"" and faction_b != &"independent":
-		GameManager.state.encountered_factions[faction_b] = true
-	elif faction_b == player_id and faction_a != &"" and faction_a != &"independent":
-		GameManager.state.encountered_factions[faction_a] = true
+	return new_val
 
 func get_standing_log(faction_a: StringName, faction_b: StringName) -> Array:
 	var key := _standing_key(faction_a, faction_b)
