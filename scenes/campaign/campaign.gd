@@ -2541,6 +2541,12 @@ const LANDMARK_COLORS := {
 	&"leyline_well": Color(0.40, 0.85, 0.85),
 }
 
+## Generated resource-tier art (bounty/deposit/landmark) lives under
+## assets/sprites/resources/; null when a given id's PNG hasn't been
+## generated yet, so callers fall back to the programmatic markers.
+func _load_resource_art(path: String) -> Texture2D:
+	return load(path) if ResourceLoader.exists(path) else null
+
 func _create_bounty_markers() -> void:
 	if bounty_markers_node == null:
 		bounty_markers_node = Node2D.new()
@@ -2560,22 +2566,30 @@ func _create_bounty_markers() -> void:
 		var marker := Node2D.new()
 		# Top-right corner of the hex tile
 		marker.position = _hex_to_pixel(coord) + Vector2(HEX_RADIUS * 0.45, -HEX_RADIUS * 0.55)
-		var bg := Polygon2D.new()
-		bg.polygon = _make_circle(7.0, 10)
-		bg.color = Color(0.08, 0.07, 0.05, 0.9)
-		marker.add_child(bg)
-		var rim := Polygon2D.new()
-		rim.polygon = _make_circle(7.0, 10)
-		rim.color = Color(0.78, 0.62, 0.32, 0.9)
-		rim.scale = Vector2(1.15, 1.15)
-		rim.z_index = -1
-		marker.add_child(rim)
-		var glyph := Label.new()
-		glyph.text = String(BountySystem.BOUNTY_TYPES[tile.bounty_id].name).left(1)
-		glyph.add_theme_font_size_override("font_size", 9)
-		glyph.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
-		glyph.position = Vector2(-4, -8)
-		marker.add_child(glyph)
+		var b_tex := _load_resource_art("res://assets/sprites/resources/bounty_%s.png" % tile.bounty_id)
+		if b_tex:
+			var spr := Sprite2D.new()
+			spr.texture = b_tex
+			spr.scale = Vector2(0.30, 0.30)  # 64px -> ~19px on map
+			marker.add_child(spr)
+		else:
+			# fallback: existing chip polygons (keep verbatim)
+			var bg := Polygon2D.new()
+			bg.polygon = _make_circle(7.0, 10)
+			bg.color = Color(0.08, 0.07, 0.05, 0.9)
+			marker.add_child(bg)
+			var rim := Polygon2D.new()
+			rim.polygon = _make_circle(7.0, 10)
+			rim.color = Color(0.78, 0.62, 0.32, 0.9)
+			rim.scale = Vector2(1.15, 1.15)
+			rim.z_index = -1
+			marker.add_child(rim)
+			var glyph := Label.new()
+			glyph.text = String(BountySystem.BOUNTY_TYPES[tile.bounty_id].name).left(1)
+			glyph.add_theme_font_size_override("font_size", 9)
+			glyph.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+			glyph.position = Vector2(-4, -8)
+			marker.add_child(glyph)
 		marker.visible = GameManager.explored_tiles.has(coord)
 		bounty_markers_node.add_child(marker)
 		_bounty_markers[coord] = marker

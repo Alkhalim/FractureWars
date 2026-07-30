@@ -18,6 +18,11 @@ func _start() -> void:
 	gm._is_transitioning = true
 	gm.new_game(&"empire", false, 0)
 	gm._is_transitioning = false
+	# Unrelated feature (added by a later SDD cycle): the once-per-game faction
+	# onboarding dialog pops up on HUD _ready() and would cover the whole map
+	# for this harness's bounty-icon screenshot. Pre-mark it shown so it never
+	# appears — nothing here exercises that dialog.
+	gm.state.faction_intro_shown = true
 	var scene: PackedScene = load("res://scenes/campaign/campaign.tscn")
 	_campaign = scene.instantiate()
 	root.add_child(_campaign)
