@@ -275,6 +275,7 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 						# Consume a claimed shard crystal
 						var shard_id: StringName = fs.owned_shards[0]
 						fs.owned_shards.erase(shard_id)
+						fs.shards_spent += 1
 						if GameManager.state.active_shards.has(shard_id):
 							GameManager.state.active_shards.erase(shard_id)
 						fs.pyramid_restoration = mini(fs.pyramid_restoration + 15, 100)
@@ -482,6 +483,8 @@ func _decay_shards() -> void:
 
 # ── Victory Conditions ───────────────────────────────────────
 
+const SHARD_ASCENSION_TARGET := 15
+
 func _check_victory_conditions() -> void:
 	if GameManager.state.game_over:
 		return
@@ -561,8 +564,9 @@ func _check_victory_conditions() -> void:
 				_trigger_game_over(faction_id, Enums.VictoryType.DIPLOMATIC, is_player)
 				return
 
-		# Check Shard Ascension — 10+ total shards claimed
-		if fs.owned_shards.size() >= 10:
+		# Shard Ascension: cumulative mastery — every shard consumed by your
+		# works (research, rituals, the Pyramid) counts toward transcendence
+		if fs.shards_spent >= SHARD_ASCENSION_TARGET:
 			_trigger_game_over(faction_id, Enums.VictoryType.SHARD_ASCENSION, is_player)
 			return
 
@@ -4227,6 +4231,7 @@ func consume_shard_for_resonance(faction_id: StringName, shard_id: StringName) -
 	if shard == null or shard.claimed_by != faction_id:
 		return
 	fs.owned_shards.erase(shard_id)
+	fs.shards_spent += 1
 	GameManager.state.active_shards.erase(shard_id)
 	# Grant resonance buff: 6 turns of realm bonus (12 if Resonance Amplifier built)
 	var resonance_duration := 6
@@ -4252,6 +4257,7 @@ func destroy_shard_for_taint(faction_id: StringName, shard_id: StringName) -> vo
 	if shard == null or shard.claimed_by != faction_id:
 		return
 	fs.owned_shards.erase(shard_id)
+	fs.shards_spent += 1
 	GameManager.state.active_shards.erase(shard_id)
 	fs.taint_power += shard.power_level * 12
 	fs.resources[Enums.ResourceType.TECHNOLOGY] = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0) + 8
@@ -5018,6 +5024,7 @@ func _process_ivoryscar_relics(fs: FactionState) -> void:
 		if GameManager.state.current_turn % 3 == 0 and not fs.owned_shards.is_empty():
 			var shard_id: StringName = fs.owned_shards[0]
 			fs.owned_shards.erase(shard_id)
+			fs.shards_spent += 1
 			if GameManager.state.active_shards.has(shard_id):
 				GameManager.state.active_shards.erase(shard_id)
 			fs.pyramid_restoration = mini(fs.pyramid_restoration + 5, 100)
@@ -5076,6 +5083,7 @@ func _process_ivoryscar_relics(fs: FactionState) -> void:
 				fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) - 5
 				var ai_shard_id: StringName = fs.owned_shards[0]
 				fs.owned_shards.erase(ai_shard_id)
+				fs.shards_spent += 1
 				if GameManager.state.active_shards.has(ai_shard_id):
 					GameManager.state.active_shards.erase(ai_shard_id)
 				fs.pyramid_restoration = mini(fs.pyramid_restoration + 15, 100)

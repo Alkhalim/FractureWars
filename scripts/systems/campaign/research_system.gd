@@ -71,6 +71,7 @@ func invest_shard(faction_id: StringName, shard_id: StringName) -> bool:
 	fs.research_invested_shards[research_id].append(shard.realm)
 	# Remove shard from faction ownership
 	fs.owned_shards.erase(shard_id)
+	fs.shards_spent += 1
 	# Remove from active shards (consumed)
 	GameManager.state.active_shards.erase(shard_id)
 	return true
@@ -249,7 +250,8 @@ func socket_shard(faction_id: StringName, research_id: StringName, shard_id: Str
 	# Check realm matches
 	if shard.realm != data.socket_realm:
 		return false
-	# Socket the crystal
+	# Socket the crystal — reversible banking, not consumption: unsocket_shard()
+	# below hands back an equivalent shard, so this does NOT increment shards_spent
 	fs.owned_shards.erase(shard_id)
 	GameManager.state.active_shards.erase(shard_id)
 	fs.research_sockets[research_id] = int(shard.realm)

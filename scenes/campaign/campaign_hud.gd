@@ -11221,7 +11221,7 @@ func _on_game_over(faction_id: StringName, victory_type: int, is_player: bool) -
 	var victory_descs := {
 		Enums.VictoryType.DOMINATION: "%s has conquered over 60%% of the known world through military might.",
 		Enums.VictoryType.DIPLOMATIC: "%s has forged a grand alliance, uniting the fractured lands through diplomacy.",
-		Enums.VictoryType.SHARD_ASCENSION: "%s has collected enough shards to ascend beyond mortal power.",
+		Enums.VictoryType.SHARD_ASCENSION: "%s has spent enough shard crystals in pursuit of power to ascend beyond mortal limits.",
 		Enums.VictoryType.ELIMINATION: "%s is the last faction standing. All others have been destroyed.",
 		Enums.VictoryType.DEFEAT: "Your faction has been eliminated. The fractured lands continue without you.",
 	}

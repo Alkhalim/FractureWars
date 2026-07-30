@@ -6,6 +6,7 @@ extends Resource
 @export var owned_regions: Array[StringName] = []
 @export var owned_cities: Array[StringName] = []
 @export var owned_shards: Array[StringName] = []
+@export var shards_spent: int = 0 # Cumulative shards consumed (research, rituals, Pyramid) — Shard Ascension victory metric
 @export var commander_pool: Array[CommanderState] = []
 @export var item_storage: Array[StringName] = []
 @export var follower_storage: Array[StringName] = []

@@ -23,6 +23,27 @@ func _run() -> void:
 			_check(intro.get(key, "") != "", "intro.%s non-empty for %s" % [key, fid])
 	_check(not _gm.state.faction_intro_shown, "intro flag starts false")
 
+	# ── Shard ascension counts consumption ──
+	var efs: FactionState = _gm.state.faction_states[&"empire"]
+	_check(efs.shards_spent == 0, "shards_spent starts 0")
+	# Craft a shard and invest it in research
+	var shard := ShardInstance.new()
+	shard.shard_id = &"test_shard_polish"
+	shard.claimed_by = &"empire"
+	shard.realm = 1
+	_gm.state.active_shards[shard.shard_id] = shard
+	efs.owned_shards.append(shard.shard_id)
+	# Start any affordable research so invest_shard has a target
+	for rid in root.get_node("/root/DataManager").research:
+		if _gm.research_system.start_research(&"empire", rid):
+			break
+	if efs.current_research_id != &"":
+		var before := efs.shards_spent
+		if _gm.research_system.invest_shard(&"empire", shard.shard_id):
+			_check(efs.shards_spent == before + 1, "invest_shard increments shards_spent")
+	var _tm: Node = root.get_node("/root/TurnManager")
+	_check(_tm.SHARD_ASCENSION_TARGET == 15, "SHARD_ASCENSION_TARGET is 15")
+
 	if _fails == 0:
 		print("POLISH TEST PASSED")
 		quit(0)

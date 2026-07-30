@@ -467,6 +467,8 @@ func offer_shard(from: StringName, to: StringName, shard_id: StringName) -> void
 	var to_fs: FactionState = GameManager.state.faction_states.get(to)
 	if from_fs == null or to_fs == null:
 		return
+	# Transfer, not consumption — the shard moves to another faction intact,
+	# so `from`'s shards_spent does NOT increment here.
 	from_fs.owned_shards.erase(shard_id)
 	to_fs.owned_shards.append(shard_id)
 	shard.claimed_by = to
