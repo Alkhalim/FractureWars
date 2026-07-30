@@ -190,8 +190,9 @@ These reuse existing mechanic hooks — no new systems.
    list. (No new buildings; immediate "settle toward resources" gameplay.)
 2. **Phase 2 — IMPLEMENTED 2026-07-30** (see tests/test_special_resources.gd) —
    specials with extractors + Access leases + AI valuation.
-3. **Phase 3** — Landmarks: unique tiles/art, unique shared buildings,
-   neutral-city adjacency, war-goal weighting, affinity flagship effects.
+3. **Phase 3 — IMPLEMENTED 2026-07-31** (see tests/test_landmarks.gd) —
+   Landmarks: unique tiles/art, unique shared buildings, neutral-city
+   adjacency, war-goal weighting, affinity flagship effects.
 
 ### Phase 1 implementation notes
 
@@ -302,6 +303,77 @@ phase's tests):
   terrain band and spacing only; there's no check that every faction (or
   every affinity faction) has a reasonably reachable deposit of its own
   affinity type on a given map.
+
+### Phase 3 implementation notes
+
+`LandmarkSystem` (`scripts/systems/campaign/landmark_system.gd`) ships all 7
+Landmark types with a deterministic 5-of-7 roll (max 1 each), wide-spread
+terrain-fitting placement, neutral-city adjacency (with guardian-city
+fallback), unique faction-shared buildings, all 7 rule effects, AI build
+priority, and the war-goal weight — but five points depart from this doc's
+original plan text:
+
+- **The building lives in a region city, not on the Landmark tile itself**
+  — a Landmark is exploited by owning its region and constructing the
+  unique building in any city of that region, the same pattern
+  `SpecialResourceSystem` established in Phase 2, rather than a
+  tile-attached structure.
+- **Unique per-Landmark map markers stand in for hand-made tile art** —
+  each of the 7 types gets a distinct corner-icon-style marker + tooltip on
+  its tile (`campaign_hud.gd`/tile renderer), the same presentation tier as
+  bounties/specials, rather than the bespoke painted tile art the original
+  proposal's "Art" row called for; the generated-tile pipeline
+  (`tests/tools_generate_terrain_tiles.gd`) is the intended path to real art
+  later.
+- **Everfrost Core's winter-immunity clause is dormant** — the plan text
+  read "Owner's armies immune to winter penalties; +10% defense in own
+  territory during winter"; only the +10% defense clause shipped
+  (`landmark_system.gd`'s `rule_text`, hooked in
+  `battle_simulator_v3.gd`). No *universal* winter penalty exists anywhere
+  in the codebase to be immune from — the only winter-linked penalty is
+  Gladehost's own seasonal food modifier (`city_system.gd`,
+  faction-specific) — so there is currently nothing for the immunity half
+  of the clause to cancel.
+- **Dragonbone Fields' +1 fear-radius rider is deferred** — the plan text
+  read "-15% recruit cost for monster/beast faction-wide; units recruited
+  in this region gain +1 fear radius"; only the faction-wide recruit
+  discount shipped. `fear_radius` is a static per-`UnitData` field
+  (`scripts/resources/unit_data.gd`), not a per-unit-instance value, and
+  there is no unit-origin tracking (which region/city recruited a given
+  unit) anywhere in army/unit state to hang a "+1 if recruited here" rider
+  on.
+- **Landmark leasing is deferred** — unlike Specials, owning a Landmark's
+  building grants no Access-lease-style treaty to share its effect with
+  another faction; leasing stays a Special-resource-only mechanic this
+  phase.
+
+**BONUS shipped beyond the plan** — a per-campaign map seed
+(`GameManager.new_game(faction_id, demo, map_seed)`; `state.map_seed`,
+`tests/test_map_seed.gd`): terrain, mountain placement, and bounty/special/
+Landmark rolls now vary per campaign, while the rough landmass shape,
+region layout, and `REGION_CITIES` anchor positions stay fixed (one
+documented city-founding exception drifts up to 4 hexes via BFS fallback;
+every other city stays within 1 hex); seed 0 reproduces the legacy map
+byte-for-byte. Every Landmark that lands without a neutral city already
+adjacent to it gets one founded beside it post-hoc (a guardian independent
+city), so every Landmark has a neutral claimant in range regardless of map
+seed.
+
+Open follow-ups (not blocking, no test asserts these):
+- **War-score stacking balance** — `diplomacy_system.gd`'s +8 war-score per
+  Landmark held by the target (`_covet` scoring) has not had a sign-off
+  pass for how it stacks against the rest of the war-goal weight when a
+  faction holds several Landmarks at once.
+- **Glyph contrast pass** — the 7 Landmark marker colors need a
+  dedicated accessibility/contrast check against the terrain palette (the
+  same pass bounty/special icons already went through informally by
+  reusing existing corner-icon conventions).
+- **Landmark leasing** — see deviation above; would need its own
+  Access-lease-style treaty type distinct from Specials' `region_has_extractor`
+  gating.
+- **Hand-made tile art** — replace the placeholder marker presentation with
+  bespoke painted Landmark tiles via the generated-tile pipeline, matching
+  the terrain set's gouache style.
 
 ## Risks / open questions
 
