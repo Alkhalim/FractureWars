@@ -2400,20 +2400,6 @@ func _toggle_victory_panel() -> void:
 		return
 	_show_victory_panel()
 
-## Counts factions allied with faction_id — mirrors the Diplomatic Victory
-## branch's inner loop (turn_manager.gd _check_victory_conditions).
-func _victory_count_alliances(faction_id: StringName) -> int:
-	var count := 0
-	for other_id in GameManager.state.faction_states:
-		if other_id == faction_id or GameManager.is_npc_faction(other_id):
-			continue
-		var other_fs: FactionState = GameManager.state.faction_states[other_id]
-		if other_fs.is_defeated:
-			continue
-		if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.ALLIED:
-			count += 1
-	return count
-
 ## Best single-culture-bloc completion for faction_id (Culture Victory branch
 ## fires once completed_cultures.size() > 0 — i.e. any bloc fully owned).
 ## Every CULTURE_REGIONS bloc has exactly 3 member regions.
@@ -2459,6 +2445,11 @@ func _add_victory_row(vbox: VBoxContainer, title_text: String, desc_text: String
 
 	var desc_lbl := _make_label(desc_text, 11, Color(0.75, 0.72, 0.63))
 	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Explicit wrap width so get_combined_minimum_size() (read synchronously
+	# right after building, below) measures real wrapped height instead of a
+	# phantom near-zero-width TextServer measurement (faction-intro panel
+	# uses this same technique — see custom_minimum_size = Vector2(500, 0)).
+	desc_lbl.custom_minimum_size = Vector2(460, 0)
 	row.add_child(desc_lbl)
 
 	var safe_max := maxi(max_val, 1)
@@ -2573,10 +2564,10 @@ func _show_victory_panel() -> void:
 			you_completed, total_map_regions, String(leader_completed[0]), int(leader_completed[1]))
 
 	# ── Diplomatic — always active, no mode gate ──
-	var leader_diplo := _victory_leader(rival_ids, func(fid): return _victory_count_alliances(fid))
+	var leader_diplo := _victory_leader(rival_ids, func(fid): return TurnManager.count_victory_alliances(fid))
 	_add_victory_row(vbox, "Diplomatic Accord",
 		"Hold 5+ regions (you: %d) and forge alliances with 2+ factions." % player_fs.owned_regions.size(),
-		_victory_count_alliances(player_id), 2, String(leader_diplo[0]), int(leader_diplo[1]))
+		TurnManager.count_victory_alliances(player_id), 2, String(leader_diplo[0]), int(leader_diplo[1]))
 
 	# ── Shard Ascension — always active, no mode gate ──
 	var leader_shards := _victory_leader(rival_ids, func(fid):

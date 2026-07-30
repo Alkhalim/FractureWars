@@ -43,6 +43,7 @@ func _run() -> void:
 			_check(efs.shards_spent == before + 1, "invest_shard increments shards_spent")
 	var _tm: Node = root.get_node("/root/TurnManager")
 	_check(_tm.SHARD_ASCENSION_TARGET == 15, "SHARD_ASCENSION_TARGET is 15")
+	_check(_tm.count_victory_alliances(&"empire") == 0, "own minors don't count as victory alliances")
 
 	if _fails == 0:
 		print("POLISH TEST PASSED")

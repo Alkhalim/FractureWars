@@ -485,6 +485,26 @@ func _decay_shards() -> void:
 
 const SHARD_ASCENSION_TARGET := 15
 
+## Counts factions allied with faction_id for the Diplomatic Accord victory
+## condition. Excludes faction_id's own minor factions — majors start
+## auto-ALLIED with their minors (GameManager._init_diplomacy), so those
+## alliances would make the 2-alliance requirement nearly free. Public and
+## shared: both the victory check below and campaign_hud's victory panel UI
+## call this so the two can never diverge.
+func count_victory_alliances(faction_id: StringName) -> int:
+	var alliance_count := 0
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id or GameManager.is_npc_faction(other_id):
+			continue
+		if GameManager.MINOR_FACTION_PARENTS.get(other_id, &"") == faction_id:
+			continue
+		var other_fs: FactionState = GameManager.state.faction_states[other_id]
+		if other_fs.is_defeated:
+			continue
+		if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.ALLIED:
+			alliance_count += 1
+	return alliance_count
+
 func _check_victory_conditions() -> void:
 	if GameManager.state.game_over:
 		return
@@ -551,16 +571,7 @@ func _check_victory_conditions() -> void:
 
 		# Check Diplomatic — allied with 2+ factions while having 5+ regions
 		if fs.owned_regions.size() >= 5:
-			var alliance_count := 0
-			for other_id in GameManager.state.faction_states:
-				if other_id == faction_id or GameManager.is_npc_faction(other_id):
-					continue
-				var other_fs: FactionState = GameManager.state.faction_states[other_id]
-				if other_fs.is_defeated:
-					continue
-				if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.ALLIED:
-					alliance_count += 1
-			if alliance_count >= 2:
+			if count_victory_alliances(faction_id) >= 2:
 				_trigger_game_over(faction_id, Enums.VictoryType.DIPLOMATIC, is_player)
 				return
 
