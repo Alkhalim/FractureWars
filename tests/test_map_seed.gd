@@ -96,6 +96,15 @@ func _run() -> void:
 	var region_drift_pct_max := 3.0
 	var city_drift_hex_max := 1
 	var known_drift_exceptions := {"Pilgrim's Rest": 4} # city_name -> max hexes (see NOTE above)
+	# Landmark guardian towns (Task 2: independent-city adjacency guarantee) are
+	# founded post-hoc beside whichever landmarks land unguarded — their count,
+	# ids, and positions are INTENTIONALLY seed-dependent (landmark placement
+	# itself is salted), so they're excluded from this cross-seed stability
+	# comparison, which is about the fixed REGION_CITIES roster.
+	var guardian_names: Dictionary = {}
+	for lk in _gm.LANDMARK_GUARD_NAMES:
+		guardian_names[_gm.LANDMARK_GUARD_NAMES[lk]] = true
+	guardian_names["Landmark Watch"] = true
 	_gm.new_game(&"empire", false, 0)
 	var map0 = _gm.state.hex_map
 	var region_ids_0: Array = []
@@ -104,6 +113,8 @@ func _run() -> void:
 	var cities_0 := {}
 	for cid in _gm.state.cities:
 		var c: CityState = _gm.state.cities[cid]
+		if guardian_names.has(c.city_name):
+			continue
 		cities_0[cid] = {name = c.city_name, region_id = c.region_id, faction_id = c.faction_id, hex_pos = c.hex_pos}
 	for s in [1, 2, 3]:
 		_gm.new_game(&"empire", false, s)
@@ -116,7 +127,11 @@ func _run() -> void:
 			i += 1
 		var region_diff_pct := 100.0 * region_diffs / maxi(region_ids_0.size(), 1)
 		_check(region_diff_pct <= region_drift_pct_max, "seed %d: region_id layout stays materially unchanged (%.2f%% of tiles reassigned, cap %.1f%%)" % [s, region_diff_pct, region_drift_pct_max])
-		_check(_gm.state.cities.keys().size() == cities_0.keys().size(), "seed %d: same number of cities" % s)
+		var non_guardian_count := 0
+		for cid in _gm.state.cities:
+			if not guardian_names.has(_gm.state.cities[cid].city_name):
+				non_guardian_count += 1
+		_check(non_guardian_count == cities_0.keys().size(), "seed %d: same number of non-guardian cities" % s)
 		for cid in cities_0:
 			var c0: Dictionary = cities_0[cid]
 			if not _gm.state.cities.has(cid):

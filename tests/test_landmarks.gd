@@ -65,6 +65,20 @@ func _run() -> void:
 			demo_count += 1
 	_check(demo_count == LandmarkSystem.SPAWN_COUNT, "demo map places all %d landmarks (got %d)" % [LandmarkSystem.SPAWN_COUNT, demo_count])
 
+	# ── Every landmark has a city within distance 2 (guardian rule), across seeds ──
+	for s in [0, 1, 2]:
+		_gm.new_game(&"empire", false, s)
+		var map6 = _gm.state.hex_map
+		for coord in map6.tiles:
+			if map6.tiles[coord].landmark_id == &"":
+				continue
+			var found_city := false
+			for cid in _gm.state.cities:
+				if HexHelper.hex_distance(_gm.state.cities[cid].hex_pos, coord) <= 2:
+					found_city = true
+					break
+			_check(found_city, "seed %d: landmark at %s has a neighboring city" % [s, coord])
+
 	if _fails == 0:
 		print("LANDMARKS TEST PASSED")
 		quit(0)

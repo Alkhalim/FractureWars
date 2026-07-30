@@ -948,6 +948,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false, map_seed: 
 	_init_independent_faction()
 	_init_regions()
 	_init_cities()
+	_ensure_landmark_neighbors()
 	_recompute_all_territory()
 	if not demo:
 		_init_elderbeasts()
@@ -1549,6 +1550,72 @@ func _init_cities() -> void:
 				]
 
 			state.cities[city.city_id] = city
+
+const LANDMARK_GUARD_NAMES := {
+	&"dragonbone_fields": "Bonewatch",
+	&"everfrost_core": "Rimehold",
+	&"sungold_vein": "Gilder's Rest",
+	&"worldroot_nexus": "Rootshade",
+	&"voidglass_rift": "Whisperfall",
+	&"titan_forge_ruin": "Cindervault",
+	&"leyline_well": "Wellwarden",
+}
+
+## Every Landmark spawns guarded: ensure a city (any owner) exists within 2
+## hexes, founding a small independent town beside it when none does.
+func _ensure_landmark_neighbors() -> void:
+	if state.hex_map == null:
+		return
+	for coord in state.hex_map.tiles:
+		var tile: HexMapData.TileState = state.hex_map.tiles[coord]
+		if tile.landmark_id == &"":
+			continue
+		var has_neighbor := false
+		for cid in state.cities:
+			if HexHelper.hex_distance(state.cities[cid].hex_pos, coord) <= 2:
+				has_neighbor = true
+				break
+		if has_neighbor:
+			continue
+		# Pick a deterministic adjacent land tile (not the landmark itself)
+		var spot := Vector2i(-1, -1)
+		for n in HexHelper.get_neighbors(coord):
+			var nt := state.hex_map.get_tile(n)
+			if nt and nt.terrain != Enums.TerrainType.WATER and nt.terrain != Enums.TerrainType.MOUNTAINS \
+					and nt.landmark_id == &"" and nt.special_id == &"" and nt.bounty_id == &"":
+				spot = n
+				break
+		if spot == Vector2i(-1, -1):
+			for n in HexHelper.get_neighbors(coord): # fallback: allow mountains
+				var nt2 := state.hex_map.get_tile(n)
+				if nt2 and nt2.terrain != Enums.TerrainType.WATER and nt2.landmark_id == &"":
+					spot = n
+					break
+		if spot == Vector2i(-1, -1):
+			continue # fully water-locked landmark: leave unguarded
+		var spot_tile := state.hex_map.get_tile(spot)
+		var city := CityState.new()
+		city.city_id = state.generate_id()
+		city.city_name = LANDMARK_GUARD_NAMES.get(tile.landmark_id, "Landmark Watch")
+		city.region_id = spot_tile.region_id if spot_tile else tile.region_id
+		city.hex_pos = spot
+		city.level = 1
+		city.population = 80
+		city.faction_id = &"independent"
+		city.original_faction_id = &"independent"
+		city.loyalty = 60
+		city.class_loyalty = {
+			"peasants": 60, "artisans": 60, "scholars": 60, "nobles": 60, "captives": 0
+		}
+		city.turns_since_capture = -1
+		city.garrison_units = [
+			{unit_id = &"citizen_phalanx", count = 3},
+			{unit_id = &"toxotes", count = 1},
+		]
+		state.cities[city.city_id] = city
+		invalidate_completion_cache()
+		city_system.invalidate_region_effects_cache()
+	city_system.invalidate_city_hex_index()
 
 func _init_elderbeasts() -> void:
 	var shard_data: FactionData = DataManager.get_faction(&"shardhorde")
