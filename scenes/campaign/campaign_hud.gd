@@ -1378,12 +1378,42 @@ func _calculate_projected_income() -> Dictionary:
 			income[res_type] = breakdown.net
 	return income
 
+func _accumulate_stage_amount(stage_totals: Dictionary, label: String, amount: int) -> void:
+	if amount != 0:
+		stage_totals[label] = stage_totals.get(label, 0) + amount
+
+func _accumulate_income_stage(stage_totals: Dictionary, label: String, income: Dictionary, delta: Dictionary, res_type: int) -> void:
+	# Merges `delta` into the running per-city `income` (so later stages in
+	# the SAME pipeline read the updated value, exactly like
+	# city_system._generate_income()'s _merge_income_delta), then records
+	# this stage's contribution to `res_type` under `label`.
+	for rt in delta:
+		income[rt] = income.get(rt, 0) + delta[rt]
+	_accumulate_stage_amount(stage_totals, label, delta.get(res_type, 0))
+
 func _calculate_income_breakdown(res_type: int) -> Dictionary:
 	# Returns {"cities": {city_name: amount}, "upkeep": {category: amount},
 	#          "modifiers": [{label, amount}], "net": int}
-	# Mirrors the actual _generate_income() logic in city_system.gd.
-	# Per-city income / class percentages / army upkeep come from the memo
-	# built once per update in _rebuild_income_memo().
+	#
+	# Every stage below is DERIVED from the real city_system income pipeline,
+	# never re-implemented: per-city amounts come straight from
+	# calculate_city_income() (via the memo), and every faction-level
+	# modifier row is produced by calling the SAME pure helper functions
+	# city_system._generate_income() calls (apply_research_income_percentages,
+	# apply_heartwood_income_bonus, compute_faction_income_modifier_effects,
+	# etc — see city_system.gd). A stage this loop skips is a stage the
+	# tooltip under-reports; tests/test_income_breakdown_equivalence.gd
+	# asserts the two can't drift apart.
+	#
+	# Scope: this covers the INCOME side of _generate_income only, i.e.
+	# everything up to (not including) its final `fs.resources[r] +=
+	# income[r]` credit. It does NOT cover: army/commander upkeep (a separate
+	# _deduct_upkeep() pass — shown below as its own "upkeep" section),
+	# captive camp decay (_process_captive_decay(), a separate per-turn pass —
+	# shown as "Camp Decay" for Captives but excluded from the equivalence
+	# test), diplomacy trade-deal/trade-relations transfers and trade-route
+	# plunder (diplomacy_system, not city_system), or elderbeast income
+	# (TurnManager._get_elderbeast_income). Those sections are unchanged below.
 	var breakdown := {"cities": {}, "upkeep": {}, "modifiers": [], "net": 0}
 	var player_id := GameManager.state.player_faction_id
 	var fs: FactionState = GameManager.state.faction_states.get(player_id)
@@ -1392,110 +1422,116 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 	if not _income_memo_valid:
 		_rebuild_income_memo()
 
-	# Step 1: Base city income (from buildings + region)
+	var cs := GameManager.city_system
+
+	var class_label := "Class Bonus"
+	match res_type:
+		Enums.ResourceType.FOOD: class_label = "Peasant Bonus"
+		Enums.ResourceType.IRON, Enums.ResourceType.WOOD: class_label = "Artisan Bonus"
+		Enums.ResourceType.TECHNOLOGY: class_label = "Scholar Bonus"
+		Enums.ResourceType.GOLD: class_label = "Noble Bonus"
+	# Canonical stage order, matching city_system._generate_income() exactly.
+	# Pre-seeded so the final modifier list preserves this order regardless
+	# of WHICH city first produces a non-zero amount for a given stage.
+	var stage_labels: Array[String] = [class_label, "Low Loyalty", "Research", "Heartwood",
+		"Research: Trade Bonus", "Senate Majority", "Region Completion", "Culture Bonus",
+		"Shard Research", "Debt Penalty", "Faction Bonus", "Wood Reduction"]
+	var stage_totals: Dictionary = {}
+
+	# Faction-specific modifier consumes captives/mechanic meters sequentially
+	# across cities in the real per-city turn pass; thread a simulated
+	# running state across this loop instead of re-reading the real
+	# (undepleted) fs each time, or a 3-city faction with 1 qualifying
+	# building each would triple-count scarce captives.
+	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(player_id, player_id)
+	var mech_fs: FactionState = GameManager.state.faction_states.get(parent_fid)
+	var mech_state: Dictionary = {}
+	if mech_fs:
+		mech_state = {
+			captives = mech_fs.resources.get(Enums.ResourceType.CAPTIVES, 0),
+			storm_fury = mech_fs.storm_fury,
+			relic_power = mech_fs.relic_power,
+			solar_faith = mech_fs.solar_faith,
+		}
+	var captive_modifier_consumption := 0
+
+	# Debt penalty reads the faction's live GOLD balance, which the real
+	# per-city turn pass can cross zero mid-turn (city 1's gold gets credited
+	# to fs.resources before city 2 is processed). Thread a simulated running
+	# balance across this loop so the preview matches that sequential
+	# behavior instead of reading the same (unmutated) balance every city.
+	var simulated_gold: int = fs.resources.get(Enums.ResourceType.GOLD, 0)
+
 	var base_total := 0
 	for city_id in fs.owned_cities:
 		var memo: Dictionary = _income_city_memo.get(city_id, {})
 		if memo.is_empty():
 			continue
 		var city: CityState = GameManager.state.cities.get(city_id)
-		var amount: int = (memo.income as Dictionary).get(res_type, 0)
-		if amount != 0:
-			breakdown.cities[city.get_display_name()] = amount
-			base_total += amount
+		if city == null:
+			continue
+		var raw_income: Dictionary = memo.income
+		var raw_amount: int = raw_income.get(res_type, 0)
+		if raw_amount != 0:
+			breakdown.cities[city.get_display_name()] = raw_amount
+			base_total += raw_amount
 
-	# Step 2: Class bonuses (applied per-city in _generate_income, aggregate here)
-	var class_bonus_total := 0
-	for city_id in fs.owned_cities:
-		var memo: Dictionary = _income_city_memo.get(city_id, {})
-		if memo.is_empty():
-			continue
-		var raw: int = (memo.income as Dictionary).get(res_type, 0)
-		if raw == 0:
-			continue
-		var pcts: Dictionary = memo.pcts
-		var bonus := 0
-		match res_type:
-			Enums.ResourceType.FOOD:
-				bonus = int(float(raw) * (pcts.get("peasants", 0.0) * 100.0 * 0.005))
-			Enums.ResourceType.IRON, Enums.ResourceType.WOOD:
-				bonus = int(float(raw) * (pcts.get("artisans", 0.0) * 100.0 * 0.005))
-			Enums.ResourceType.TECHNOLOGY:
-				bonus = int(float(raw) * (pcts.get("scholars", 0.0) * 100.0 * 0.008))
-			Enums.ResourceType.GOLD:
-				bonus = int(float(raw) * (pcts.get("nobles", 0.0) * 100.0 * 0.006))
-		class_bonus_total += bonus
-	if class_bonus_total != 0:
-		var class_label := ""
-		match res_type:
-			Enums.ResourceType.FOOD: class_label = "Peasant Bonus"
-			Enums.ResourceType.IRON, Enums.ResourceType.WOOD: class_label = "Artisan Bonus"
-			Enums.ResourceType.TECHNOLOGY: class_label = "Scholar Bonus"
-			Enums.ResourceType.GOLD: class_label = "Noble Bonus"
-			_: class_label = "Class Bonus"
-		breakdown.modifiers.append({label = class_label, amount = class_bonus_total})
-
-	var income_subtotal := base_total + class_bonus_total
-
-	# Step 3: Loyalty multiplier (applied per-city, aggregate the penalty)
-	var loyalty_penalty := 0
-	for city_id in fs.owned_cities:
-		var memo: Dictionary = _income_city_memo.get(city_id, {})
-		if memo.is_empty():
-			continue
-		var city: CityState = GameManager.state.cities.get(city_id)
-		var raw: int = (memo.income as Dictionary).get(res_type, 0)
-		if raw == 0:
-			continue
-		var pcts: Dictionary = memo.pcts
-		var after_class := raw
-		match res_type:
-			Enums.ResourceType.FOOD:
-				after_class += int(float(raw) * (pcts.get("peasants", 0.0) * 100.0 * 0.005))
-			Enums.ResourceType.IRON, Enums.ResourceType.WOOD:
-				after_class += int(float(raw) * (pcts.get("artisans", 0.0) * 100.0 * 0.005))
-			Enums.ResourceType.TECHNOLOGY:
-				after_class += int(float(raw) * (pcts.get("scholars", 0.0) * 100.0 * 0.008))
-			Enums.ResourceType.GOLD:
-				after_class += int(float(raw) * (pcts.get("nobles", 0.0) * 100.0 * 0.006))
+		# Class bonuses + loyalty multiplier: call the REAL LoyaltySystem
+		# functions _generate_income() calls (duplicate first — apply_class_bonuses
+		# mutates in place, and this memo entry is shared across every res_type
+		# in this same update).
+		var income: Dictionary = LoyaltySystem.apply_class_bonuses(raw_income.duplicate(), memo.pcts)
+		_accumulate_stage_amount(stage_totals, class_label, income.get(res_type, 0) - raw_amount)
+		var before_loyalty: int = income.get(res_type, 0)
 		var loyalty_mult := LoyaltySystem.get_loyalty_multiplier(city.loyalty)
 		if loyalty_mult < 1.0:
-			loyalty_penalty += int(float(after_class) * loyalty_mult) - after_class
-	if loyalty_penalty != 0:
-		breakdown.modifiers.append({label = "Low Loyalty", amount = loyalty_penalty})
-		income_subtotal += loyalty_penalty
+			for rt in income:
+				income[rt] = int(float(income[rt]) * loyalty_mult)
+		_accumulate_stage_amount(stage_totals, "Low Loyalty", income.get(res_type, 0) - before_loyalty)
 
-	# Step 4: Research percentage bonuses
-	var research_effects := GameManager.research_system.get_research_effects(player_id)
-	var research_bonus := 0
-	match res_type:
-		Enums.ResourceType.GOLD:
-			var pct: int = research_effects.get("income_gold_pct", 0)
-			if pct != 0:
-				research_bonus = int(income_subtotal * pct / 100.0)
-		Enums.ResourceType.FOOD:
-			var pct: int = research_effects.get("income_food_pct", 0)
-			if pct != 0:
-				research_bonus = int(income_subtotal * pct / 100.0)
-	if research_bonus != 0:
-		breakdown.modifiers.append({label = "Research", amount = research_bonus})
-		income_subtotal += research_bonus
+		_accumulate_income_stage(stage_totals, "Research", income, cs.apply_research_income_percentages(player_id, income), res_type)
+		_accumulate_income_stage(stage_totals, "Heartwood", income, cs.apply_heartwood_income_bonus(player_id, income), res_type)
+		_accumulate_income_stage(stage_totals, "Research: Trade Bonus", income, cs.apply_trade_income_bonus(player_id, income), res_type)
+		_accumulate_income_stage(stage_totals, "Senate Majority", income, cs.apply_senate_income_percentages(player_id, income), res_type)
+		_accumulate_income_stage(stage_totals, "Region Completion", income, cs.region_completion_income_bonus(player_id, city), res_type)
+		_accumulate_income_stage(stage_totals, "Culture Bonus", income, cs.apply_culture_income_bonuses(player_id, income), res_type)
+		_accumulate_income_stage(stage_totals, "Shard Research", income, cs.apply_shard_research_income(player_id, income), res_type)
+		_accumulate_income_stage(stage_totals, "Debt Penalty", income, cs.apply_debt_penalty(fs, income, simulated_gold), res_type)
 
-	# Step 5: Senate majority effects (Empire only)
-	if player_id == &"empire":
-		var senate_effects := GameManager.policy_system.get_senate_majority_effects(player_id)
-		var senate_pct_key := ""
-		match res_type:
-			Enums.ResourceType.GOLD: senate_pct_key = "gold_income_pct"
-			Enums.ResourceType.TECHNOLOGY: senate_pct_key = "tech_income_pct"
-			Enums.ResourceType.IRON: senate_pct_key = "iron_income_pct"
-			Enums.ResourceType.WOOD: senate_pct_key = "wood_income_pct"
-		if senate_pct_key != "" and senate_effects.has(senate_pct_key):
-			var pct: int = senate_effects[senate_pct_key]
-			if pct != 0:
-				var senate_amount := int(income_subtotal * pct / 100.0)
-				breakdown.modifiers.append({label = "Senate Majority (%+d%%)" % pct, amount = senate_amount})
-				income_subtotal += senate_amount
+		var mod_result: Dictionary = cs.compute_faction_income_modifier_effects(player_id, fs, city, income, mech_state)
+		mech_state = {
+			captives = mech_state.get("captives", 0) - mod_result.captive_consumption,
+			storm_fury = mech_state.get("storm_fury", 0) + mod_result.storm_fury_delta,
+			relic_power = mech_state.get("relic_power", 0) + mod_result.relic_power_delta,
+			solar_faith = mech_state.get("solar_faith", 0) + mod_result.solar_faith_delta,
+		}
+		captive_modifier_consumption += mod_result.captive_consumption
+		_accumulate_income_stage(stage_totals, "Faction Bonus", income, mod_result.income_delta, res_type)
+
+		_accumulate_income_stage(stage_totals, "Wood Reduction", income, cs.apply_wood_production_reduction(income), res_type)
+
+		# This city's fully-processed gold is what _generate_income() would
+		# credit to fs.resources[GOLD] before the NEXT city is processed.
+		simulated_gold += income.get(Enums.ResourceType.GOLD, 0)
+
+	var income_subtotal := base_total
+	for label in stage_labels:
+		var amount: int = stage_totals.get(label, 0)
+		if amount != 0:
+			breakdown.modifiers.append({label = label, amount = amount})
+			income_subtotal += amount
+
+	# Captive consumption: faction-specific buildings (derived from the real
+	# per-turn threshold checks above) plus base camp decay (a SEPARATE
+	# _process_captive_decay() pass, shown for completeness but not covered
+	# by the equivalence test).
+	if res_type == Enums.ResourceType.CAPTIVES:
+		if captive_modifier_consumption > 0:
+			breakdown.modifiers.append({label = "Faction Building Consumption", amount = -captive_modifier_consumption})
+		if fs.resources.get(Enums.ResourceType.CAPTIVES, 0) > 0:
+			var camp_decay: int = cs.calculate_captive_camp_decay(player_id)
+			if camp_decay > 0:
+				breakdown.modifiers.append({label = "Camp Decay", amount = -camp_decay})
 
 	# Step 6: Active trade agreements
 	var trade_income := 0
@@ -1586,62 +1622,25 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 		upkeep_total = upkeep_memo.total
 	breakdown.upkeep = upkeep_by_tag
 
-	# Population food consumption (quartered rate)
+	# Population food consumption — shared with city_system._generate_income()
+	# via population_food_consumption() so the divisor can't drift out of sync
+	# (was hard-coded to /40 here vs the real /60 before this fix).
 	var food_consumption := 0
 	if res_type == Enums.ResourceType.FOOD:
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
 			if city and not city.is_under_siege:
-				var province_pop := GameManager.city_system.get_province_population(city)
-				food_consumption += province_pop / 40
+				food_consumption += cs.population_food_consumption(city)
 		if food_consumption > 0:
 			breakdown.modifiers.append({label = "Pop. Consumption", amount = -food_consumption})
 
-	# Captive consumption from buildings (labor camps, faction-specific buildings)
+	# Total captive drain shown in the net below (Faction Building Consumption
+	# + Camp Decay modifier rows were already appended above).
 	var captive_consumption := 0
 	if res_type == Enums.ResourceType.CAPTIVES:
-		var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(player_id, player_id)
-		for city_id in fs.owned_cities:
-			var city: CityState = GameManager.state.cities.get(city_id)
-			if city == null:
-				continue
-			# Base camp buildings
-			if city.buildings.has(&"labor_camp"):
-				captive_consumption += 3
-			if city.buildings.has(&"thrall_quarters"):
-				captive_consumption += 2
-			if city.buildings.has(&"captive_processing_camp"):
-				captive_consumption += 4
-			# Faction-specific buildings
-			match parent_fid:
-				&"skulloath":
-					if city.buildings.has(&"blood_altar"):
-						captive_consumption += 4
-				&"moonspear":
-					if city.buildings.has(&"lunar_observatory") or city.buildings.has(&"astral_observatory"):
-						captive_consumption += 3
-				&"thunderswarm":
-					if city.buildings.has(&"warriors_longhouse") or city.buildings.has(&"warchief_warcamp"):
-						captive_consumption += 3
-				&"cinderguard":
-					if city.buildings.has(&"ember_foundry") or city.buildings.has(&"molten_core_forge"):
-						captive_consumption += 4
-				&"forsaken":
-					if city.buildings.has(&"wretched_pit") or city.buildings.has(&"necromancer_sanctum"):
-						captive_consumption += 3
-					if city.buildings.has(&"void_pit"):
-						captive_consumption += 3
-				&"ivoryscar":
-					if city.buildings.has(&"tomb_scholars_hall") or city.buildings.has(&"vault_of_ages"):
-						captive_consumption += 3
-				&"sunblessed":
-					if city.buildings.has(&"pilgrims_rest") or city.buildings.has(&"cathedral_of_dawn"):
-						captive_consumption += 2
-				&"empire":
-					if city.buildings.has(&"imperial_work_yard"):
-						captive_consumption += 4
-		if captive_consumption > 0:
-			breakdown.modifiers.append({label = "Building Consumption", amount = -captive_consumption})
+		captive_consumption = captive_modifier_consumption
+		if fs.resources.get(Enums.ResourceType.CAPTIVES, 0) > 0:
+			captive_consumption += cs.calculate_captive_camp_decay(player_id)
 
 	# Trade route plunder income (player armies intercepting enemy trade routes)
 	var plunder_income := 0

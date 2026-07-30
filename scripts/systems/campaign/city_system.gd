@@ -93,101 +93,37 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 		for res_type in income:
 			income[res_type] = int(float(income[res_type]) * loyalty_mult)
 
-	# Apply research percentage bonuses
-	var research_effects := GameManager.research_system.get_research_effects(faction_id)
-	var gold_pct: int = research_effects.get("income_gold_pct", 0)
-	var food_pct: int = research_effects.get("income_food_pct", 0)
-	var iron_pct: int = research_effects.get("income_iron_pct", 0)
-	var wood_pct: int = research_effects.get("income_wood_pct", 0)
-	var all_pct: int = research_effects.get("income_all_pct", 0)
-	if gold_pct + all_pct != 0 and income.has(Enums.ResourceType.GOLD):
-		income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * (gold_pct + all_pct) / 100.0)
-	if food_pct + all_pct != 0 and income.has(Enums.ResourceType.FOOD):
-		income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * (food_pct + all_pct) / 100.0)
-	# Heartwood: +% food income (special_resources_design)
-	var heart_mod := SpecialResourceSystem.modifier_strength(faction_id, &"heartwood")
-	if heart_mod > 0.0 and income.has(Enums.ResourceType.FOOD):
-		income[Enums.ResourceType.FOOD] = int(income[Enums.ResourceType.FOOD] * (1.0 + heart_mod))
-	if iron_pct + all_pct != 0 and income.has(Enums.ResourceType.IRON):
-		income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * (iron_pct + all_pct) / 100.0)
-	if wood_pct + all_pct != 0 and income.has(Enums.ResourceType.WOOD):
-		income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * (wood_pct + all_pct) / 100.0)
+	# Faction-level percentage/flat stages below are small PURE helpers (income
+	# in, delta out) shared with the income breakdown tooltip in
+	# campaign_hud._calculate_income_breakdown, so the two can never drift
+	# apart. Order matters: each stage reads the income AFTER prior stages
+	# were merged in, exactly like the inline math this replaced.
+	_merge_income_delta(income, apply_research_income_percentages(faction_id, income))
+	# Heartwood: +% food income (special_resources_design) — compounds on top
+	# of the research food_pct bonus just applied above.
+	_merge_income_delta(income, apply_heartwood_income_bonus(faction_id, income))
 	# Research: trade income bonus (flat gold per active trade treaty)
-	var trade_bonus: int = research_effects.get("trade_income_bonus", 0)
-	if trade_bonus > 0 and income.has(Enums.ResourceType.GOLD):
-		var trade_count := 0
-		if GameManager.diplomacy_system:
-			for tid in GameManager.state.diplomacy_state.treaties:
-				var treaty = GameManager.state.diplomacy_state.treaties[tid]
-				if treaty.treaty_type == Enums.TreatyType.TRADE_DEAL or treaty.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
-					if treaty.faction_a == faction_id or treaty.faction_b == faction_id:
-						trade_count += 1
-		income[Enums.ResourceType.GOLD] += trade_bonus * trade_count
-
+	_merge_income_delta(income, apply_trade_income_bonus(faction_id, income))
 	# Apply senate majority income effects (Empire only — other factions have no senate)
-	if faction_id == &"empire":
-		var senate_effects := GameManager.policy_system.get_senate_majority_effects(faction_id)
-		var senate_gold_pct: int = senate_effects.get("gold_income_pct", 0)
-		var senate_tech_pct: int = senate_effects.get("tech_income_pct", 0)
-		var senate_iron_pct: int = senate_effects.get("iron_income_pct", 0)
-		var senate_wood_pct: int = senate_effects.get("wood_income_pct", 0)
-		if senate_gold_pct != 0 and income.has(Enums.ResourceType.GOLD):
-			income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * senate_gold_pct / 100.0)
-		if senate_tech_pct != 0 and income.has(Enums.ResourceType.TECHNOLOGY):
-			income[Enums.ResourceType.TECHNOLOGY] += int(income[Enums.ResourceType.TECHNOLOGY] * senate_tech_pct / 100.0)
-		if senate_iron_pct != 0 and income.has(Enums.ResourceType.IRON):
-			income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * senate_iron_pct / 100.0)
-		if senate_wood_pct != 0 and income.has(Enums.ResourceType.WOOD):
-			income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * senate_wood_pct / 100.0)
-
+	_merge_income_delta(income, apply_senate_income_percentages(faction_id, income))
 	# Region completion bonus: +2 to all resources for each city in completed regions
-	var completed_regions := GameManager.get_completed_regions(faction_id)
-	if city.region_id in completed_regions:
-		for res_type in [Enums.ResourceType.GOLD, Enums.ResourceType.IRON, Enums.ResourceType.FOOD, Enums.ResourceType.WOOD, Enums.ResourceType.TECHNOLOGY]:
-			income[res_type] = income.get(res_type, 0) + 2
-
+	_merge_income_delta(income, region_completion_income_bonus(faction_id, city))
 	# Culture completion bonuses
-	if GameManager.has_culture_bonus(faction_id, "food_bonus"):
-		var val := GameManager.get_culture_bonus_value(faction_id, "food_bonus")
-		if income.has(Enums.ResourceType.FOOD):
-			income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * val)
-	if GameManager.has_culture_bonus(faction_id, "tech_bonus"):
-		var val := GameManager.get_culture_bonus_value(faction_id, "tech_bonus")
-		if income.has(Enums.ResourceType.TECHNOLOGY):
-			income[Enums.ResourceType.TECHNOLOGY] += int(income[Enums.ResourceType.TECHNOLOGY] * val)
-	if GameManager.has_culture_bonus(faction_id, "iron_bonus"):
-		var val := GameManager.get_culture_bonus_value(faction_id, "iron_bonus")
-		if income.has(Enums.ResourceType.IRON):
-			income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * val)
-	if GameManager.has_culture_bonus(faction_id, "shard_bonus"):
-		var val := GameManager.get_culture_bonus_value(faction_id, "shard_bonus")
-		if income.has(Enums.ResourceType.SHARD_ESSENCE):
-			income[Enums.ResourceType.SHARD_ESSENCE] += int(income[Enums.ResourceType.SHARD_ESSENCE] * val)
+	_merge_income_delta(income, apply_culture_income_bonuses(faction_id, income))
 	# Research: shard_essence_pct and shard_harvest_bonus
-	var shard_pct: int = research_effects.get("shard_essence_pct", 0)
-	var shard_flat: int = research_effects.get("shard_harvest_bonus", 0)
-	if shard_pct > 0 and income.has(Enums.ResourceType.SHARD_ESSENCE):
-		income[Enums.ResourceType.SHARD_ESSENCE] += int(income[Enums.ResourceType.SHARD_ESSENCE] * shard_pct / 100.0)
-	if shard_flat > 0:
-		income[Enums.ResourceType.SHARD_ESSENCE] = income.get(Enums.ResourceType.SHARD_ESSENCE, 0) + shard_flat
-
+	_merge_income_delta(income, apply_shard_research_income(faction_id, income))
 	# Debt penalty: buildings produce 66% income when faction gold is negative
-	if fs.resources.get(Enums.ResourceType.GOLD, 0) < 0:
-		for res_type in income:
-			income[res_type] = int(income[res_type] * 0.66)
+	_merge_income_delta(income, apply_debt_penalty(fs, income))
 
-	# Faction-specific income modifiers
+	# Faction-specific income modifiers (also consumes captives / mechanic
+	# meters as a side effect — see compute_faction_income_modifier_effects)
 	_apply_faction_income_modifier(income, faction_id, fs, city)
 
 	# Global wood production reduction (-10%) to offset lower building costs
-	if income.has(Enums.ResourceType.WOOD):
-		income[Enums.ResourceType.WOOD] = int(income[Enums.ResourceType.WOOD] * 0.90)
+	_merge_income_delta(income, apply_wood_production_reduction(income))
 
 	# Population food consumption: larger populations eat more
-	var province_pop := get_province_population(city)
-	# Population eats less than it used to (pop/60): food income was being
-	# almost entirely swallowed by mouths to feed
-	var food_consumed := province_pop / 60
+	var food_consumed := population_food_consumption(city)
 	if food_consumed > 0 and income.has(Enums.ResourceType.FOOD):
 		income[Enums.ResourceType.FOOD] -= food_consumed
 	elif food_consumed > 0:
@@ -198,6 +134,140 @@ func _generate_income(city: CityState, faction_id: StringName) -> void:
 			fs.resources[res_type] += income[res_type]
 		else:
 			fs.resources[res_type] = income[res_type]
+
+func _merge_income_delta(income: Dictionary, delta: Dictionary) -> void:
+	for res_type in delta:
+		income[res_type] = income.get(res_type, 0) + delta[res_type]
+
+# ── Faction-level income stages (single source of truth) ──────────────────
+# Each function below is PURE: given the running per-city income (and
+# whatever faction/city context it needs), it returns the DELTA that stage
+# would add — it never mutates its inputs. _generate_income calls them in
+# sequence via _merge_income_delta. campaign_hud._calculate_income_breakdown
+# calls the SAME functions per owned city to build labeled tooltip rows, so
+# the tooltip can never drift out of sync with what actually gets credited.
+
+func apply_research_income_percentages(faction_id: StringName, income: Dictionary) -> Dictionary:
+	var research_effects := GameManager.research_system.get_research_effects(faction_id)
+	var gold_pct: int = research_effects.get("income_gold_pct", 0)
+	var food_pct: int = research_effects.get("income_food_pct", 0)
+	var iron_pct: int = research_effects.get("income_iron_pct", 0)
+	var wood_pct: int = research_effects.get("income_wood_pct", 0)
+	var all_pct: int = research_effects.get("income_all_pct", 0)
+	var delta: Dictionary = {}
+	if gold_pct + all_pct != 0 and income.has(Enums.ResourceType.GOLD):
+		delta[Enums.ResourceType.GOLD] = int(income[Enums.ResourceType.GOLD] * (gold_pct + all_pct) / 100.0)
+	if food_pct + all_pct != 0 and income.has(Enums.ResourceType.FOOD):
+		delta[Enums.ResourceType.FOOD] = int(income[Enums.ResourceType.FOOD] * (food_pct + all_pct) / 100.0)
+	if iron_pct + all_pct != 0 and income.has(Enums.ResourceType.IRON):
+		delta[Enums.ResourceType.IRON] = int(income[Enums.ResourceType.IRON] * (iron_pct + all_pct) / 100.0)
+	if wood_pct + all_pct != 0 and income.has(Enums.ResourceType.WOOD):
+		delta[Enums.ResourceType.WOOD] = int(income[Enums.ResourceType.WOOD] * (wood_pct + all_pct) / 100.0)
+	return delta
+
+func apply_heartwood_income_bonus(faction_id: StringName, income: Dictionary) -> Dictionary:
+	var heart_mod := SpecialResourceSystem.modifier_strength(faction_id, &"heartwood")
+	if heart_mod <= 0.0 or not income.has(Enums.ResourceType.FOOD):
+		return {}
+	var boosted := int(income[Enums.ResourceType.FOOD] * (1.0 + heart_mod))
+	return {Enums.ResourceType.FOOD: boosted - income[Enums.ResourceType.FOOD]}
+
+func apply_trade_income_bonus(faction_id: StringName, income: Dictionary) -> Dictionary:
+	var research_effects := GameManager.research_system.get_research_effects(faction_id)
+	var trade_bonus: int = research_effects.get("trade_income_bonus", 0)
+	if trade_bonus <= 0 or not income.has(Enums.ResourceType.GOLD):
+		return {}
+	var trade_count := 0
+	if GameManager.diplomacy_system:
+		for tid in GameManager.state.diplomacy_state.treaties:
+			var treaty = GameManager.state.diplomacy_state.treaties[tid]
+			if treaty.treaty_type == Enums.TreatyType.TRADE_DEAL or treaty.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
+				if treaty.faction_a == faction_id or treaty.faction_b == faction_id:
+					trade_count += 1
+	if trade_count == 0:
+		return {}
+	return {Enums.ResourceType.GOLD: trade_bonus * trade_count}
+
+func apply_senate_income_percentages(faction_id: StringName, income: Dictionary) -> Dictionary:
+	if faction_id != &"empire":
+		return {}
+	var senate_effects := GameManager.policy_system.get_senate_majority_effects(faction_id)
+	var delta: Dictionary = {}
+	var senate_gold_pct: int = senate_effects.get("gold_income_pct", 0)
+	var senate_tech_pct: int = senate_effects.get("tech_income_pct", 0)
+	var senate_iron_pct: int = senate_effects.get("iron_income_pct", 0)
+	var senate_wood_pct: int = senate_effects.get("wood_income_pct", 0)
+	if senate_gold_pct != 0 and income.has(Enums.ResourceType.GOLD):
+		delta[Enums.ResourceType.GOLD] = int(income[Enums.ResourceType.GOLD] * senate_gold_pct / 100.0)
+	if senate_tech_pct != 0 and income.has(Enums.ResourceType.TECHNOLOGY):
+		delta[Enums.ResourceType.TECHNOLOGY] = int(income[Enums.ResourceType.TECHNOLOGY] * senate_tech_pct / 100.0)
+	if senate_iron_pct != 0 and income.has(Enums.ResourceType.IRON):
+		delta[Enums.ResourceType.IRON] = int(income[Enums.ResourceType.IRON] * senate_iron_pct / 100.0)
+	if senate_wood_pct != 0 and income.has(Enums.ResourceType.WOOD):
+		delta[Enums.ResourceType.WOOD] = int(income[Enums.ResourceType.WOOD] * senate_wood_pct / 100.0)
+	return delta
+
+func region_completion_income_bonus(faction_id: StringName, city: CityState) -> Dictionary:
+	var completed_regions := GameManager.get_completed_regions(faction_id)
+	if not city.region_id in completed_regions:
+		return {}
+	var delta: Dictionary = {}
+	for res_type in [Enums.ResourceType.GOLD, Enums.ResourceType.IRON, Enums.ResourceType.FOOD, Enums.ResourceType.WOOD, Enums.ResourceType.TECHNOLOGY]:
+		delta[res_type] = 2
+	return delta
+
+func apply_culture_income_bonuses(faction_id: StringName, income: Dictionary) -> Dictionary:
+	var delta: Dictionary = {}
+	if GameManager.has_culture_bonus(faction_id, "food_bonus") and income.has(Enums.ResourceType.FOOD):
+		var val := GameManager.get_culture_bonus_value(faction_id, "food_bonus")
+		delta[Enums.ResourceType.FOOD] = int(income[Enums.ResourceType.FOOD] * val)
+	if GameManager.has_culture_bonus(faction_id, "tech_bonus") and income.has(Enums.ResourceType.TECHNOLOGY):
+		var val := GameManager.get_culture_bonus_value(faction_id, "tech_bonus")
+		delta[Enums.ResourceType.TECHNOLOGY] = int(income[Enums.ResourceType.TECHNOLOGY] * val)
+	if GameManager.has_culture_bonus(faction_id, "iron_bonus") and income.has(Enums.ResourceType.IRON):
+		var val := GameManager.get_culture_bonus_value(faction_id, "iron_bonus")
+		delta[Enums.ResourceType.IRON] = int(income[Enums.ResourceType.IRON] * val)
+	if GameManager.has_culture_bonus(faction_id, "shard_bonus") and income.has(Enums.ResourceType.SHARD_ESSENCE):
+		var val := GameManager.get_culture_bonus_value(faction_id, "shard_bonus")
+		delta[Enums.ResourceType.SHARD_ESSENCE] = int(income[Enums.ResourceType.SHARD_ESSENCE] * val)
+	return delta
+
+func apply_shard_research_income(faction_id: StringName, income: Dictionary) -> Dictionary:
+	var research_effects := GameManager.research_system.get_research_effects(faction_id)
+	var shard_pct: int = research_effects.get("shard_essence_pct", 0)
+	var shard_flat: int = research_effects.get("shard_harvest_bonus", 0)
+	var delta: Dictionary = {}
+	if shard_pct > 0 and income.has(Enums.ResourceType.SHARD_ESSENCE):
+		delta[Enums.ResourceType.SHARD_ESSENCE] = int(income[Enums.ResourceType.SHARD_ESSENCE] * shard_pct / 100.0)
+	if shard_flat > 0:
+		delta[Enums.ResourceType.SHARD_ESSENCE] = delta.get(Enums.ResourceType.SHARD_ESSENCE, 0) + shard_flat
+	return delta
+
+func apply_debt_penalty(fs: FactionState, income: Dictionary, gold_override: Variant = null) -> Dictionary:
+	# gold_override lets a caller thread a SIMULATED running gold balance
+	# (e.g. the breakdown looping over multiple owned cities for one turn
+	# projection) instead of re-reading the real fs.resources[GOLD] each
+	# time. _generate_income() itself never passes it, so the real per-city
+	# turn pass keeps reading the live (and, mid-turn, actually-changing)
+	# balance exactly as before.
+	var current_gold: int = gold_override if gold_override != null else fs.resources.get(Enums.ResourceType.GOLD, 0)
+	if current_gold >= 0:
+		return {}
+	var delta: Dictionary = {}
+	for res_type in income:
+		delta[res_type] = int(income[res_type] * 0.66) - income[res_type]
+	return delta
+
+func apply_wood_production_reduction(income: Dictionary) -> Dictionary:
+	if not income.has(Enums.ResourceType.WOOD):
+		return {}
+	var reduced := int(income[Enums.ResourceType.WOOD] * 0.90)
+	return {Enums.ResourceType.WOOD: reduced - income[Enums.ResourceType.WOOD]}
+
+func population_food_consumption(city: CityState) -> int:
+	# Population eats less than it used to (pop/60): food income was being
+	# almost entirely swallowed by mouths to feed
+	return get_province_population(city) / 60
 
 func get_province_population(city: CityState) -> int:
 	return LoyaltySystem.get_province_population(city.region_id, city.faction_id)
@@ -1026,7 +1096,26 @@ func _process_captive_decay(faction_id: StringName) -> void:
 	if captives <= 0:
 		return
 
-	# Count labor-camp-type buildings across all faction cities
+	# Each camp-type building consumes captives per turn (they die, escape, get
+	# worked to death). Shared with the income breakdown tooltip's "Camp Decay"
+	# row (see calculate_captive_camp_decay) so the two counts can't drift.
+	var decay := calculate_captive_camp_decay(faction_id)
+	# Note: Blood Altar, Void Pit, Wretched Pit, Tomb Scholar's Hall, Pilgrim's Rest,
+	# Warriors' Longhouse, Ember Foundry, Lunar Observatory, Imperial Work Yard
+	# all consume captives in _apply_faction_income_modifier() directly
+
+	# Natural captive attrition: even without camps, 1 captive escapes/dies per 5 turns
+	if decay == 0:
+		# No camp buildings — slow natural decay
+		if GameManager.state.current_turn % 5 == 0:
+			decay = 1
+
+	if decay > 0:
+		fs.resources[Enums.ResourceType.CAPTIVES] = maxi(0, captives - decay)
+
+func calculate_captive_camp_decay(faction_id: StringName) -> int:
+	# Count labor-camp-type buildings across all faction cities and convert to
+	# the per-turn captive decay they cause. Pure/read-only.
 	var labor_camp_count := 0
 	var thrall_count := 0
 	var processing_camp_count := 0
@@ -1040,24 +1129,11 @@ func _process_captive_decay(faction_id: StringName) -> void:
 			thrall_count += 1
 		if city.buildings.has(&"captive_processing_camp"):
 			processing_camp_count += 1
-
-	# Each camp-type building consumes captives per turn (they die, escape, get worked to death)
 	var decay := 0
 	decay += labor_camp_count * 3        # Labor Camp: -3 captives/turn each
 	decay += thrall_count * 2             # Thrall Quarters: -2 captives/turn each
 	decay += processing_camp_count * 4    # Captive Processing Camp: -4 captives/turn each
-	# Note: Blood Altar, Void Pit, Wretched Pit, Tomb Scholar's Hall, Pilgrim's Rest,
-	# Warriors' Longhouse, Ember Foundry, Lunar Observatory, Imperial Work Yard
-	# all consume captives in _apply_faction_income_modifier() directly
-
-	# Natural captive attrition: even without camps, 1 captive escapes/dies per 5 turns
-	if decay == 0:
-		# No camp buildings — slow natural decay
-		if GameManager.state.current_turn % 5 == 0:
-			decay = 1
-
-	if decay > 0:
-		fs.resources[Enums.ResourceType.CAPTIVES] = maxi(0, captives - decay)
+	return decay
 
 func _process_jungle_spread(faction_id: StringName) -> void:
 	# Tainted Jade: jungle spreads from cities, converting adjacent tiles
@@ -2092,46 +2168,103 @@ func _get_hex_ring(center: Vector2i, radius: int) -> Array[Vector2i]:
 # ── Faction-Specific Income Modifiers ─────────────────────
 
 func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, fs: FactionState, city: CityState = null) -> void:
-	# Sub-factions inherit parent faction's income modifiers
+	# Thin mutating wrapper around the pure compute function below: applies
+	# the income delta plus whatever captive/mechanic-meter consumption it
+	# says would happen. Keeping the side effects OUT of the pure function is
+	# what lets the income breakdown tooltip call it safely for a preview
+	# without silently draining captives every time the player hovers it.
+	var result := compute_faction_income_modifier_effects(faction_id, fs, city, income)
+	_merge_income_delta(income, result.income_delta)
+	var mech_fs: FactionState = GameManager.state.faction_states.get(result.mech_faction_id)
+	if mech_fs == null:
+		return
+	if result.captive_consumption != 0:
+		mech_fs.resources[Enums.ResourceType.CAPTIVES] = mech_fs.resources.get(Enums.ResourceType.CAPTIVES, 0) - result.captive_consumption
+	if result.storm_fury_delta != 0:
+		mech_fs.storm_fury += result.storm_fury_delta
+	if result.relic_power_delta != 0:
+		mech_fs.relic_power += result.relic_power_delta
+	if result.solar_faith_delta != 0:
+		mech_fs.solar_faith += result.solar_faith_delta
+	if result.population_delta != 0 and city:
+		city.population += result.population_delta
+
+func compute_faction_income_modifier_effects(faction_id: StringName, fs: FactionState, city: CityState, income: Dictionary, state_override: Dictionary = {}) -> Dictionary:
+	# PURE preview of the faction-specific income modifier stage: returns the
+	# income delta this stage would add AND the captive/meter consumption it
+	# would trigger, WITHOUT mutating fs or city. This is the single source
+	# of truth for both the real mutation path (_apply_faction_income_modifier
+	# above) and the income breakdown tooltip in campaign_hud.gd.
+	#
+	# state_override lets a caller thread a SIMULATED running captives/meter
+	# state across several calls (e.g. the breakdown looping over multiple
+	# owned cities for one turn projection) instead of re-reading the real,
+	# undepleted fs each time. Recognized keys: captives, storm_fury,
+	# relic_power, solar_faith.
 	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 	# For parent mechanic checks, use parent's FactionState if sub-faction
+	var mech_fs := fs
 	if parent_fid != faction_id:
 		var parent_fs: FactionState = GameManager.state.faction_states.get(parent_fid)
 		if parent_fs:
-			fs = parent_fs
+			mech_fs = parent_fs
+
+	var delta: Dictionary = {}
+	var view := income.duplicate()
+	var start_captives: int = state_override.get("captives", mech_fs.resources.get(Enums.ResourceType.CAPTIVES, 0))
+	var start_storm_fury: int = state_override.get("storm_fury", mech_fs.storm_fury)
+	var start_relic_power: int = state_override.get("relic_power", mech_fs.relic_power)
+	var start_solar_faith: int = state_override.get("solar_faith", mech_fs.solar_faith)
+	var local_captives := start_captives
+	var local_storm_fury := start_storm_fury
+	var local_relic_power := start_relic_power
+	var local_solar_faith := start_solar_faith
+	var population_delta := 0
+
 	# Apply sub-faction-specific income bonuses
 	match faction_id:
 		&"miststriders":  # Fog traders: +15% gold
-			if income.has(Enums.ResourceType.GOLD):
-				income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * 0.15)
+			if view.has(Enums.ResourceType.GOLD):
+				var add := int(view[Enums.ResourceType.GOLD] * 0.15)
+				delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + add
+				view[Enums.ResourceType.GOLD] += add
 		&"oaseans":  # Desert educators: +2 tech flat
-			income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 2
+			delta[Enums.ResourceType.TECHNOLOGY] = delta.get(Enums.ResourceType.TECHNOLOGY, 0) + 2
+			view[Enums.ResourceType.TECHNOLOGY] = view.get(Enums.ResourceType.TECHNOLOGY, 0) + 2
 		&"servants_of_reliquary":  # Building discount proxy: +10% iron (construction materials)
-			if income.has(Enums.ResourceType.IRON):
-				income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * 0.10)
+			if view.has(Enums.ResourceType.IRON):
+				var add := int(view[Enums.ResourceType.IRON] * 0.10)
+				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + add
+				view[Enums.ResourceType.IRON] += add
 		&"salt_reavers":  # Raiders: +10% gold from raiding/trade
-			if income.has(Enums.ResourceType.GOLD):
-				income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * 0.10)
+			if view.has(Enums.ResourceType.GOLD):
+				var add := int(view[Enums.ResourceType.GOLD] * 0.10)
+				delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + add
+				view[Enums.ResourceType.GOLD] += add
 	match parent_fid:
 		&"skulloath":
 			# Low corruption: +15% food. High corruption: -10% food
-			if fs.corruption <= 30:
-				if income.has(Enums.ResourceType.FOOD):
-					income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * 0.15)
-			elif fs.corruption >= 70:
-				if income.has(Enums.ResourceType.FOOD):
-					income[Enums.ResourceType.FOOD] -= int(income[Enums.ResourceType.FOOD] * 0.10)
+			if mech_fs.corruption <= 30:
+				if view.has(Enums.ResourceType.FOOD):
+					var add := int(view[Enums.ResourceType.FOOD] * 0.15)
+					delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) + add
+					view[Enums.ResourceType.FOOD] += add
+			elif mech_fs.corruption >= 70:
+				if view.has(Enums.ResourceType.FOOD):
+					var sub := int(view[Enums.ResourceType.FOOD] * 0.10)
+					delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) - sub
+					view[Enums.ResourceType.FOOD] -= sub
 			# Blood Altar: consume 4 captives per turn for +20 iron and +15 gold
-			if city and city.buildings.has(&"blood_altar"):
-				var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if captives >= 4:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 4
-					income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + 20
-					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 15
+			if city and city.buildings.has(&"blood_altar") and local_captives >= 4:
+				local_captives -= 4
+				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + 20
+				delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + 15
+				view[Enums.ResourceType.IRON] = view.get(Enums.ResourceType.IRON, 0) + 20
+				view[Enums.ResourceType.GOLD] = view.get(Enums.ResourceType.GOLD, 0) + 15
 		&"gladehost":
 			# Seasonal modifiers — Seasonal Shrine amplifies by 50%
 			var season: int = GameManager.state.current_month
-			var harmony_mult := fs.harmony / 100.0
+			var harmony_mult := mech_fs.harmony / 100.0
 			var has_shrine := city and (city.buildings.has(&"seasonal_shrine") or city.buildings.has(&"solstice_altar") or city.buildings.has(&"eternal_cycle"))
 			var shrine_mult := 1.0
 			if has_shrine:
@@ -2142,133 +2275,141 @@ func _apply_faction_income_modifier(income: Dictionary, faction_id: StringName, 
 				else:
 					shrine_mult = 1.5
 			if season <= 2: # Spring: +food, +growth
-				if income.has(Enums.ResourceType.FOOD):
-					income[Enums.ResourceType.FOOD] += int(income[Enums.ResourceType.FOOD] * 0.20 * harmony_mult * shrine_mult)
+				if view.has(Enums.ResourceType.FOOD):
+					var add := int(view[Enums.ResourceType.FOOD] * 0.20 * harmony_mult * shrine_mult)
+					delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) + add
+					view[Enums.ResourceType.FOOD] += add
 			elif season <= 5: # Summer: +iron (arms production)
-				if income.has(Enums.ResourceType.IRON):
-					income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * 0.15 * harmony_mult * shrine_mult)
+				if view.has(Enums.ResourceType.IRON):
+					var add := int(view[Enums.ResourceType.IRON] * 0.15 * harmony_mult * shrine_mult)
+					delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + add
+					view[Enums.ResourceType.IRON] += add
 			elif season <= 7: # Autumn: +gold, +wood (harvest)
-				if income.has(Enums.ResourceType.GOLD):
-					income[Enums.ResourceType.GOLD] += int(income[Enums.ResourceType.GOLD] * 0.20 * harmony_mult * shrine_mult)
-				if income.has(Enums.ResourceType.WOOD):
-					income[Enums.ResourceType.WOOD] += int(income[Enums.ResourceType.WOOD] * 0.20 * harmony_mult * shrine_mult)
+				if view.has(Enums.ResourceType.GOLD):
+					var add_g := int(view[Enums.ResourceType.GOLD] * 0.20 * harmony_mult * shrine_mult)
+					delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + add_g
+					view[Enums.ResourceType.GOLD] += add_g
+				if view.has(Enums.ResourceType.WOOD):
+					var add_w := int(view[Enums.ResourceType.WOOD] * 0.20 * harmony_mult * shrine_mult)
+					delta[Enums.ResourceType.WOOD] = delta.get(Enums.ResourceType.WOOD, 0) + add_w
+					view[Enums.ResourceType.WOOD] += add_w
 			else: # Winter: -food (shrine reduces winter penalty)
 				var winter_penalty := 0.20 if shrine_mult == 1.0 else 0.10
-				if income.has(Enums.ResourceType.FOOD):
-					income[Enums.ResourceType.FOOD] -= int(income[Enums.ResourceType.FOOD] * winter_penalty)
+				if view.has(Enums.ResourceType.FOOD):
+					var sub := int(view[Enums.ResourceType.FOOD] * winter_penalty)
+					delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) - sub
+					view[Enums.ResourceType.FOOD] -= sub
 			# Living Fortress: seasonal defense scaling (bonus defense in spring/summer)
 			if city and city.buildings.has(&"living_fortress"):
 				if season <= 5: # Spring/Summer: trees grow, fortress strengthens
-					income[Enums.ResourceType.WOOD] = income.get(Enums.ResourceType.WOOD, 0) + 5
+					delta[Enums.ResourceType.WOOD] = delta.get(Enums.ResourceType.WOOD, 0) + 5
+					view[Enums.ResourceType.WOOD] = view.get(Enums.ResourceType.WOOD, 0) + 5
 		&"tainted_jade":
 			# Taint power bonus: +5% iron when taint > 20 (hardened materials)
-			if fs.taint_power >= 20:
-				if income.has(Enums.ResourceType.IRON):
-					income[Enums.ResourceType.IRON] += int(income[Enums.ResourceType.IRON] * 0.05)
+			if mech_fs.taint_power >= 20:
+				if view.has(Enums.ResourceType.IRON):
+					var add := int(view[Enums.ResourceType.IRON] * 0.05)
+					delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + add
+					view[Enums.ResourceType.IRON] += add
 			# Captive conversion: each captive generates a small amount of wood/iron
-			var captives: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-			if captives > 0:
+			if local_captives > 0:
 				# Captive Processing Camp doubles thrall output
 				var camp_mult := 2 if (city and city.buildings.has(&"captive_processing_camp")) else 1
-				var thrall_output := mini(captives / 5, 10) * camp_mult
-				income[Enums.ResourceType.WOOD] = income.get(Enums.ResourceType.WOOD, 0) + thrall_output
-				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + thrall_output
+				var thrall_output := mini(local_captives / 5, 10) * camp_mult
+				delta[Enums.ResourceType.WOOD] = delta.get(Enums.ResourceType.WOOD, 0) + thrall_output
+				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + thrall_output
+				view[Enums.ResourceType.WOOD] = view.get(Enums.ResourceType.WOOD, 0) + thrall_output
+				view[Enums.ResourceType.IRON] = view.get(Enums.ResourceType.IRON, 0) + thrall_output
 			# Taint Suppressor: converts taint power into technology (shard neutralization research)
 			if city and city.buildings.has(&"taint_suppressor"):
-				if fs.taint_power >= 10:
-					income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + int(fs.taint_power * 0.1)
+				if mech_fs.taint_power >= 10:
+					delta[Enums.ResourceType.TECHNOLOGY] = delta.get(Enums.ResourceType.TECHNOLOGY, 0) + int(mech_fs.taint_power * 0.1)
 			# Shard Breaker Forge: bonus shard essence from destroying shards (passive shard processing)
 			if city and city.buildings.has(&"shard_breaker_forge"):
-				income[Enums.ResourceType.SHARD_ESSENCE] = income.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 5
+				delta[Enums.ResourceType.SHARD_ESSENCE] = delta.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 5
 		&"shardhorde":
 			# Active resonance buffs boost income
-			for realm_key in fs.shard_resonance:
+			for realm_key in mech_fs.shard_resonance:
 				var realm: int = realm_key
 				match realm:
 					Enums.Realm.DIVINE:
-						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 15
+						delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + 15
 					Enums.Realm.ELEMENTAL:
-						income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + 20
+						delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + 20
 					Enums.Realm.NATURE:
-						income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + 20
+						delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) + 20
 					Enums.Realm.MORTAL:
-						income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 10
-						income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + 10
+						delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + 10
+						delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) + 10
 					Enums.Realm.VOID:
-						income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 15
+						delta[Enums.ResourceType.TECHNOLOGY] = delta.get(Enums.ResourceType.TECHNOLOGY, 0) + 15
 		&"moonspear":
 			# Lunar Observatory: moonlit study of captives for arcane knowledge
-			if city and (city.buildings.has(&"lunar_observatory") or city.buildings.has(&"astral_observatory")):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if cap >= 3:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
-					income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 10
+			if city and (city.buildings.has(&"lunar_observatory") or city.buildings.has(&"astral_observatory")) and local_captives >= 3:
+				local_captives -= 3
+				delta[Enums.ResourceType.TECHNOLOGY] = delta.get(Enums.ResourceType.TECHNOLOGY, 0) + 10
 			# Lunar phase: tech bonus at full moon
-			if fs.lunar_phase >= 3:
-				income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 4
+			if mech_fs.lunar_phase >= 3:
+				delta[Enums.ResourceType.TECHNOLOGY] = delta.get(Enums.ResourceType.TECHNOLOGY, 0) + 4
 		&"thunderswarm":
 			# Warriors' Longhouse: trial by combat games with captives
-			if city and (city.buildings.has(&"warriors_longhouse") or city.buildings.has(&"warchief_warcamp")):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if cap >= 3:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
-					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 10
-					fs.storm_fury = mini(fs.storm_fury + 3, 100)
+			if city and (city.buildings.has(&"warriors_longhouse") or city.buildings.has(&"warchief_warcamp")) and local_captives >= 3:
+				local_captives -= 3
+				delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + 10
+				local_storm_fury = mini(local_storm_fury + 3, 100)
 			# Storm fury: +iron at high fury
-			if fs.storm_fury >= 50:
-				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + int(fs.storm_fury * 0.08)
+			if local_storm_fury >= 50:
+				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + int(local_storm_fury * 0.08)
 		&"cinderguard":
 			# Forge chain labor: captives work the forges
-			if city and (city.buildings.has(&"ember_foundry") or city.buildings.has(&"molten_core_forge")):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if cap >= 4:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 4
-					income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + 18
+			if city and (city.buildings.has(&"ember_foundry") or city.buildings.has(&"molten_core_forge")) and local_captives >= 4:
+				local_captives -= 4
+				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + 18
 			# Border vigilance: +iron production scaling
-			if fs.border_vigilance >= 30:
-				income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + int(fs.border_vigilance * 0.06)
+			if mech_fs.border_vigilance >= 30:
+				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + int(mech_fs.border_vigilance * 0.06)
 		&"forsaken":
 			# Shadow Barracks: consume captives as thrall fuel (blood-binding)
-			if city and (city.buildings.has(&"wretched_pit") or city.buildings.has(&"necromancer_sanctum")):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if cap >= 3:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
-					income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + 15
+			if city and (city.buildings.has(&"wretched_pit") or city.buildings.has(&"necromancer_sanctum")) and local_captives >= 3:
+				local_captives -= 3
+				delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) + 15
 			# Void Pit: sacrifice captives to the void for gold
-			if city and city.buildings.has(&"void_pit"):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if cap >= 3:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
-					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 12
+			if city and city.buildings.has(&"void_pit") and local_captives >= 3:
+				local_captives -= 3
+				delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + 12
 		&"ivoryscar":
 			# Tomb Scholar's Hall: captives excavate ancient tombs
-			if city and (city.buildings.has(&"tomb_scholars_hall") or city.buildings.has(&"vault_of_ages")):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if cap >= 3:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 3
-					income[Enums.ResourceType.TECHNOLOGY] = income.get(Enums.ResourceType.TECHNOLOGY, 0) + 8
-					fs.relic_power = mini(fs.relic_power + 4, 100)
+			if city and (city.buildings.has(&"tomb_scholars_hall") or city.buildings.has(&"vault_of_ages")) and local_captives >= 3:
+				local_captives -= 3
+				delta[Enums.ResourceType.TECHNOLOGY] = delta.get(Enums.ResourceType.TECHNOLOGY, 0) + 8
+				local_relic_power = mini(local_relic_power + 4, 100)
 			# Relic power: +gold at high relic power
-			if fs.relic_power >= 30:
-				income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + int(fs.relic_power * 0.08)
+			if local_relic_power >= 30:
+				delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + int(local_relic_power * 0.08)
 		&"sunblessed":
 			# Pilgrim's Rest: convert captives through religious redemption
-			if city and (city.buildings.has(&"pilgrims_rest") or city.buildings.has(&"cathedral_of_dawn")):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
-				if cap >= 2:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= 2
-					if city:
-						city.population += 5 # Converted captives join the population
-					fs.solar_faith = mini(fs.solar_faith + 3, 100)
+			if city and (city.buildings.has(&"pilgrims_rest") or city.buildings.has(&"cathedral_of_dawn")) and local_captives >= 2:
+				local_captives -= 2
+				population_delta += 5 # Converted captives join the population
+				local_solar_faith = mini(local_solar_faith + 3, 100)
 			# Solar faith: +food at high faith
-			if fs.solar_faith >= 40:
-				income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + int(fs.solar_faith * 0.06)
+			if local_solar_faith >= 40:
+				delta[Enums.ResourceType.FOOD] = delta.get(Enums.ResourceType.FOOD, 0) + int(local_solar_faith * 0.06)
 		&"empire":
 			# Labor Camp / Imperial Work Yard: empire captive processing
 			if city and (city.buildings.has(&"imperial_work_yard") or city.buildings.has(&"labor_camp")):
-				var cap: int = fs.resources.get(Enums.ResourceType.CAPTIVES, 0)
 				var consume := 4 if city.buildings.has(&"imperial_work_yard") else 3
-				if cap >= consume:
-					fs.resources[Enums.ResourceType.CAPTIVES] -= consume
-					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + consume * 5
-					income[Enums.ResourceType.IRON] = income.get(Enums.ResourceType.IRON, 0) + consume * 3
+				if local_captives >= consume:
+					local_captives -= consume
+					delta[Enums.ResourceType.GOLD] = delta.get(Enums.ResourceType.GOLD, 0) + consume * 5
+					delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + consume * 3
+
+	return {
+		income_delta = delta,
+		captive_consumption = start_captives - local_captives,
+		storm_fury_delta = local_storm_fury - start_storm_fury,
+		relic_power_delta = local_relic_power - start_relic_power,
+		solar_faith_delta = local_solar_faith - start_solar_faith,
+		population_delta = population_delta,
+		mech_faction_id = parent_fid,
+	}
