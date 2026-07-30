@@ -2633,8 +2633,9 @@ func _create_bounty_markers() -> void:
 		bounty_markers_node.add_child(marker)
 		_bounty_markers[coord] = marker
 
-	# Landmarks — large 6-point star, tile-centered (Landmarks dominate a
-	# region and are the rarest resource, so they get the boldest marker).
+	# Landmarks — tile-dominating generated art (or a fallback 6-point star +
+	# glyph), tile-centered (Landmarks dominate a region and are the rarest
+	# resource, so they get the boldest marker).
 	for coord in map.tiles:
 		var tile = map.tiles[coord]
 		if tile.landmark_id == &"":
@@ -2643,29 +2644,37 @@ func _create_bounty_markers() -> void:
 		var lcolor: Color = LANDMARK_COLORS.get(tile.landmark_id, Color.WHITE)
 		var marker := Node2D.new()
 		marker.position = _hex_to_pixel(coord)
-		var bg := Polygon2D.new()
-		bg.polygon = _make_circle(13.0, 14)
-		bg.color = Color(0.06, 0.05, 0.05, 0.9)
-		marker.add_child(bg)
-		# Outer tips land on the horizontal axis (angle 0) so the widest part
-		# of the star sits behind the glyph row instead of a concave notch.
-		var star_pts := PackedVector2Array()
-		for i in 12:
-			var angle := TAU * i / 12.0
-			var r := 12.0 if i % 2 == 0 else 6.0
-			star_pts.append(Vector2(cos(angle) * r, sin(angle) * r))
-		var star := Polygon2D.new()
-		star.polygon = star_pts
-		star.color = lcolor
-		marker.add_child(star)
-		var glyph := Label.new()
-		glyph.text = String(ldef.name).left(3)
-		glyph.add_theme_font_size_override("font_size", 8)
-		glyph.add_theme_color_override("font_color", Color(0.08, 0.07, 0.06))
-		glyph.custom_minimum_size = Vector2(24, 0)
-		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		glyph.position = Vector2(-12, -5)
-		marker.add_child(glyph)
+		var l_tex := _load_resource_art("res://assets/sprites/resources/landmark_%s.png" % tile.landmark_id)
+		if l_tex:
+			var spr := Sprite2D.new()
+			spr.texture = l_tex
+			spr.scale = Vector2(0.17, 0.17)  # 512px -> ~87px, slightly over the hex so landmarks dominate their tile
+			marker.add_child(spr)
+		else:
+			# fallback: existing star + glyph chip (keep verbatim)
+			var bg := Polygon2D.new()
+			bg.polygon = _make_circle(13.0, 14)
+			bg.color = Color(0.06, 0.05, 0.05, 0.9)
+			marker.add_child(bg)
+			# Outer tips land on the horizontal axis (angle 0) so the widest part
+			# of the star sits behind the glyph row instead of a concave notch.
+			var star_pts := PackedVector2Array()
+			for i in 12:
+				var angle := TAU * i / 12.0
+				var r := 12.0 if i % 2 == 0 else 6.0
+				star_pts.append(Vector2(cos(angle) * r, sin(angle) * r))
+			var star := Polygon2D.new()
+			star.polygon = star_pts
+			star.color = lcolor
+			marker.add_child(star)
+			var glyph := Label.new()
+			glyph.text = String(ldef.name).left(3)
+			glyph.add_theme_font_size_override("font_size", 8)
+			glyph.add_theme_color_override("font_color", Color(0.08, 0.07, 0.06))
+			glyph.custom_minimum_size = Vector2(24, 0)
+			glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			glyph.position = Vector2(-12, -5)
+			marker.add_child(glyph)
 		marker.visible = GameManager.explored_tiles.has(coord)
 		bounty_markers_node.add_child(marker)
 		_bounty_markers[coord] = marker

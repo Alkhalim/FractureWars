@@ -27,8 +27,11 @@ const DEPOSIT_IDS: Array[StringName] = [
 	&"shardglass", &"saffron_reeds", &"bloodsalt", &"stormcrystal",
 ]
 
-## Future task: landmark (512px) ids. Empty for now — painters land in a later task.
-const LANDMARK_IDS: Array[StringName] = []
+## The 7 Tier-3 landmark ids (must match LandmarkSystem.LANDMARK_TYPES exactly).
+const LANDMARK_IDS: Array[StringName] = [
+	&"dragonbone_fields", &"everfrost_core", &"sungold_vein", &"worldroot_nexus",
+	&"voidglass_rift", &"titan_forge_ruin", &"leyline_well",
+]
 
 var _vp: SubViewport
 var _painter: _ResourcePainter
@@ -99,7 +102,9 @@ class _ResourcePainter extends Node2D:
 				_paint_deposit(rng2, asset_id)
 			"landmark":
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2(2.0, 2.0))
-				pass  # Task 3: landmark-tier painters land later
+				var rng3 := RandomNumberGenerator.new()
+				rng3.seed = hash(asset_id)
+				_paint_landmark(rng3, asset_id)
 			_:
 				pass
 
@@ -595,6 +600,326 @@ class _ResourcePainter extends Node2D:
 			var a := top + Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(-6.0, 10.0))
 			var b := a + Vector2(rng.randf_range(-6.0, 6.0), rng.randf_range(-6.0, 6.0))
 			draw_line(a, b, spark, 1.0)
+
+	# ── Landmark tier: 7 unique hex-tile dioramas ───────────────────────────
+	# 512px canvas (256-space × 2, like terrain tiles), hex-clipped: base fill
+	# is the flat-top hex polygon (same orientation/vertex order as
+	# campaign.gd's _make_hex_polygon — vertices at 60°*i), radius 122 in
+	# 256-space so the hex nearly fills the canvas with a thin transparent
+	# margin. ALL scene content is hand-bounded to stay inside that hex: a
+	# safe circle of radius ~95 covers every direction (the hex boundary is
+	# never closer than its apothem, ~105.7px), and a few "reach the edge"
+	# elements use _lm_edge_dist for an exact per-angle bound instead.
+	const _LM_C := Vector2(128, 128)
+	const _LM_HEX_R := 122.0
+
+	func _lm_hex_poly(r := _LM_HEX_R) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		for i in 6:
+			var a := deg_to_rad(60.0 * i)
+			pts.append(_LM_C + Vector2(cos(a), sin(a)) * r)
+		return pts
+
+	## Exact distance from _LM_C to the hex boundary along `angle` (radians).
+	func _lm_edge_dist(angle: float) -> float:
+		var apothem := _LM_HEX_R * 0.8660254
+		var sector := PI / 3.0
+		var a := fposmod(angle, sector)
+		var offset := a - sector * 0.5
+		return apothem / cos(offset)
+
+	func _lm_speckle(rng: RandomNumberGenerator) -> void:
+		for i in 24:
+			var a := rng.randf() * TAU
+			var rr := rng.randf() * _lm_edge_dist(a) * 0.92
+			draw_circle(_LM_C + Vector2(cos(a), sin(a)) * rr, 1.0 + rng.randf() * 0.8, Color(0, 0, 0, 0.05))
+		for i in 16:
+			var a := rng.randf() * TAU
+			var rr := rng.randf() * _lm_edge_dist(a) * 0.92
+			draw_circle(_LM_C + Vector2(cos(a), sin(a)) * rr, 0.9 + rng.randf() * 0.7, Color(1, 1, 1, 0.045))
+
+	func _lm_outline() -> void:
+		var pts := _lm_hex_poly()
+		var closed := pts.duplicate()
+		closed.append(pts[0])
+		draw_polyline(closed, Color(0.05, 0.04, 0.03, 0.45), 2.5, true)
+
+	func _paint_landmark(rng: RandomNumberGenerator, id: StringName) -> void:
+		match id:
+			&"dragonbone_fields": _lm_dragonbone_fields(rng)
+			&"everfrost_core": _lm_everfrost_core(rng)
+			&"sungold_vein": _lm_sungold_vein(rng)
+			&"worldroot_nexus": _lm_worldroot_nexus(rng)
+			&"voidglass_rift": _lm_voidglass_rift(rng)
+			&"titan_forge_ruin": _lm_titan_forge_ruin(rng)
+			&"leyline_well": _lm_leyline_well(rng)
+			_:
+				if id != &"":
+					push_warning("No landmark painter for id: %s" % id)
+				return
+		_lm_speckle(rng)
+		_lm_outline()
+
+	func _lm_dragonbone_fields(rng: RandomNumberGenerator) -> void:
+		# Desert sand base; a half-buried dragon skeleton lying diagonally
+		# across the tile — one long spine, ribs fanning out in tapering
+		# pairs (open arcs, NOT closed rings — each rib is fixed to the
+		# spine at one end and tapers to a free tip), a skull at the head
+		# end, and loose bone shards scattered in the sand.
+		var base := Color(0.76, 0.64, 0.44)
+		draw_colored_polygon(_lm_hex_poly(), base)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-52, 48), 40.0, 9, 0.4), base.darkened(0.1))
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(58, -38), 34.0, 9, 0.4), base.lightened(0.08))
+		var bone := Color(0.88, 0.85, 0.78)
+		var outline := Color(0.6, 0.58, 0.5)
+		var shadow := outline.darkened(0.25)
+		# Spine runs diagonally, head (upper-left) to tail (lower-right).
+		var spine_head := _LM_C + Vector2(-58, -56)
+		var spine_tail := _LM_C + Vector2(60, 62)
+		var spine_dir := (spine_tail - spine_head).normalized()
+		var spine_perp := Vector2(-spine_dir.y, spine_dir.x)
+		# Soft grounding shadow sized to the skeleton's silhouette, not a huge blob
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(6, 10), 50.0, 9, 0.3), Color(0.34, 0.27, 0.17, 0.22))
+		var spine_pts := _wavy_line(rng, spine_head, spine_tail, 5.0, 12)
+		draw_polyline(spine_pts, shadow, 5.0, true)
+		draw_polyline(spine_pts, bone, 2.6, true)
+		# 6 rib pairs branch off the spine as open draw_arc curves — each
+		# rib starts at its spine attachment and tapers to a free tip, so
+		# a pair never closes into a ring; reach shrinks toward the tail.
+		var last_i := spine_pts.size() - 1
+		var num_ribs := 6
+		for i in num_ribs:
+			var t := 0.12 + 0.76 * (float(i) / float(num_ribs - 1))
+			var idx: int = clampi(roundi(t * last_i), 1, last_i - 1)
+			var attach: Vector2 = spine_pts[idx]
+			var dir_i := (spine_pts[idx + 1] - spine_pts[idx - 1]).normalized()
+			var perp_i := Vector2(-dir_i.y, dir_i.x)
+			var radius: float = lerp(30.0, 11.0, t)
+			var sweep := deg_to_rad(120.0)
+			for side_f in [-1.0, 1.0]:
+				var side: float = side_f
+				var outward: Vector2 = (perp_i * side * 0.95 + dir_i * 0.3).normalized()
+				var center: Vector2 = attach + outward * radius
+				var start_a: float = (attach - center).angle()
+				var end_a: float = start_a + side * sweep
+				draw_arc(center, radius, start_a, end_a, 12, shadow, 4.2)
+				draw_arc(center, radius, start_a, end_a, 12, bone, 2.2)
+		# Skull at the head end, nudged slightly onto the spine.
+		var skull_c: Vector2 = spine_pts[0] + spine_dir * 6.0
+		var skull_shape := _blob(rng, skull_c, 15.0, 10, 0.2)
+		draw_colored_polygon(skull_shape, bone)
+		var skull_closed := skull_shape.duplicate()
+		skull_closed.append(skull_shape[0])
+		draw_polyline(skull_closed, outline, 1.6, true)
+		draw_circle(skull_c + spine_perp * 5.0 - spine_dir, 2.4, Color(0.15, 0.12, 0.1))
+		draw_circle(skull_c - spine_perp * 5.0 - spine_dir, 2.4, Color(0.15, 0.12, 0.1))
+		draw_colored_polygon(_blob(rng, skull_c + spine_dir * 12.0, 14.0, 9, 0.3), base.lightened(0.05))
+		# Half-buried feel: a translucent sand dune drifted over the mid-spine.
+		var mid_pt: Vector2 = spine_pts[spine_pts.size() / 2]
+		var band_unit := _blob(rng, Vector2.ZERO, 1.0, 10, 0.3)
+		var band := PackedVector2Array()
+		for p in band_unit:
+			band.append(mid_pt + spine_dir * p.x * 40.0 + spine_perp * p.y * 20.0)
+		draw_colored_polygon(band, Color(base.r, base.g, base.b, 0.55))
+		# 1-2 loose bone shards scattered off to the sides, clear of the ribcage.
+		var shard_dirs := [deg_to_rad(-40.0), deg_to_rad(145.0)]
+		for i in 2:
+			var ang: float = shard_dirs[i] + rng.randf_range(-0.25, 0.25)
+			var d := 62.0 + rng.randf() * 16.0
+			var sc := _LM_C + Vector2(cos(ang), sin(ang)) * d
+			var shard_r := 5.0 + rng.randf() * 2.0
+			var shard := _blob(rng, sc, shard_r, 6, 0.35)
+			draw_colored_polygon(shard, bone)
+			var shard_closed := shard.duplicate()
+			shard_closed.append(shard[0])
+			draw_polyline(shard_closed, outline, 1.0, true)
+
+	func _lm_everfrost_core(rng: RandomNumberGenerator) -> void:
+		# Tundra snow base; ice spire with concentric frost rings + shards.
+		var base := Color(0.82, 0.85, 0.88)
+		draw_colored_polygon(_lm_hex_poly(), base)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-32, 42), 45.0, 9, 0.35), base.darkened(0.05))
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(36, -36), 38.0, 9, 0.35), Color(0.9, 0.92, 0.95))
+		var ice := Color(0.7, 0.85, 0.95)
+		var outline := Color(0.45, 0.6, 0.75)
+		draw_polyline(_blob(rng, _LM_C, 86.0, 22, 0.05), Color(0.6, 0.78, 0.9, 0.5), 2.0, true)
+		draw_polyline(_blob(rng, _LM_C, 60.0, 20, 0.05), Color(0.6, 0.78, 0.9, 0.6), 2.2, true)
+		var base_pt := _LM_C + Vector2(0, 38)
+		var top_pt := _LM_C + Vector2(3, -66)
+		draw_colored_polygon(_blob(rng, base_pt + Vector2(5, 6), 24.0, 8, 0.3), Color(0.3, 0.4, 0.45, 0.4))
+		var spire := PackedVector2Array([top_pt, base_pt + Vector2(16, 0), base_pt + Vector2(8, 10), base_pt + Vector2(-8, 10), base_pt + Vector2(-16, 0)])
+		draw_colored_polygon(spire, ice)
+		var spire_closed := spire.duplicate()
+		spire_closed.append(spire[0])
+		draw_polyline(spire_closed, outline, 1.8, true)
+		draw_colored_polygon(PackedVector2Array([top_pt, base_pt + Vector2(-2, -4), base_pt + Vector2(-16, 0)]), Color(0.88, 0.94, 0.98, 0.7))
+		for i in 4:
+			var a := rng.randf_range(0.0, TAU)
+			var d := 28.0 + rng.randf() * 38.0
+			var sc := _LM_C + Vector2(cos(a), sin(a) * 0.6) * d
+			var h := 8.0 + rng.randf() * 6.0
+			var w := 3.0 + rng.randf() * 1.5
+			var pts := PackedVector2Array([sc + Vector2(0, -h), sc + Vector2(w, 2), sc + Vector2(-w, 2)])
+			draw_colored_polygon(pts, ice)
+			var pts_closed := pts.duplicate()
+			pts_closed.append(pts[0])
+			draw_polyline(pts_closed, outline, 1.2, true)
+
+	func _lm_sungold_vein(rng: RandomNumberGenerator) -> void:
+		# Mountain grey base; rocky peaks with branching gold cracks from a pool.
+		var base := Color(0.5, 0.48, 0.46)
+		draw_colored_polygon(_lm_hex_poly(), base)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-40, -30), 42.0, 9, 0.35), base.darkened(0.1))
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(45, 35), 36.0, 9, 0.35), base.lightened(0.08))
+		var peak_offsets := [Vector2(-38, -25), Vector2(30, -45), Vector2(50, 10)]
+		var peak_scales := [1.0, 0.75, 0.85]
+		for i in 3:
+			var c: Vector2 = _LM_C + peak_offsets[i]
+			var s: float = peak_scales[i]
+			draw_colored_polygon(_blob(rng, c + Vector2(4, 5) * s, 26.0 * s, 8, 0.4), Color(0.3, 0.28, 0.26, 0.55))
+			draw_colored_polygon(_blob(rng, c, 26.0 * s, 8, 0.4), base.darkened(0.15))
+			draw_colored_polygon(_blob(rng, c + Vector2(-5, -6) * s, 15.0 * s, 7, 0.35), base.lightened(0.12))
+		var pool_c := _LM_C + Vector2(0, 50)
+		draw_colored_polygon(_blob(rng, pool_c, 20.0, 10, 0.15), Color(0.75, 0.58, 0.2))
+		draw_colored_polygon(_blob(rng, pool_c, 13.0, 9, 0.15), Color(0.95, 0.8, 0.35))
+		var gold := Color(0.9, 0.75, 0.3)
+		var crack_angles := [200.0, 260.0, 320.0]
+		for ang_deg in crack_angles:
+			var ang: float = deg_to_rad(ang_deg)
+			var dirv := Vector2(cos(ang), sin(ang))
+			var main_len := 55.0 + rng.randf() * 15.0
+			var p0 := pool_c
+			var p1 := pool_c + dirv * main_len
+			draw_polyline(_wavy_line(rng, p0, p1, 3.0, 5), gold, 2.4, true)
+			var branch_from := p0.lerp(p1, 0.55)
+			var branch_ang := ang + deg_to_rad(30.0 * (1.0 if rng.randf() < 0.5 else -1.0))
+			var branch_to := branch_from + Vector2(cos(branch_ang), sin(branch_ang)) * (20.0 + rng.randf() * 10.0)
+			draw_polyline(_wavy_line(rng, branch_from, branch_to, 2.0, 4), gold, 1.6, true)
+
+	func _lm_worldroot_nexus(rng: RandomNumberGenerator) -> void:
+		# Forest floor base; massive trunk with 6 roots reaching the hex edges.
+		var base := Color(0.28, 0.38, 0.24)
+		draw_colored_polygon(_lm_hex_poly(), base)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-35, 35), 46.0, 9, 0.35), base.darkened(0.08))
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(40, -28), 40.0, 9, 0.35), base.lightened(0.06))
+		var wood := Color(0.4, 0.3, 0.2)
+		var wood_dark := wood.darkened(0.35)
+		var wood_light := wood.lightened(0.18)
+		for i in 6:
+			var ang := deg_to_rad(60.0 * i + 30.0)
+			var reach := _lm_edge_dist(ang) * 0.9
+			var dirv := Vector2(cos(ang), sin(ang))
+			var tip := _LM_C + dirv * reach
+			var pts := _wavy_line(rng, _LM_C, tip, 4.0, 6)
+			draw_polyline(pts, wood_dark, 7.0, true)
+			draw_polyline(pts, wood, 4.2, true)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(5, 7), 30.0, 10, 0.25), Color(0.15, 0.12, 0.08, 0.5))
+		draw_colored_polygon(_blob(rng, _LM_C, 30.0, 10, 0.25), wood)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-6, -7), 17.0, 8, 0.3), wood_light)
+		draw_circle(_LM_C + Vector2(0, -10), 30.0, Color(0.3, 0.7, 0.3, 0.5))
+		draw_circle(_LM_C + Vector2(0, -10), 20.0, Color(0.45, 0.85, 0.4, 0.8))
+		draw_circle(_LM_C + Vector2(0, -10), 10.0, Color(0.75, 0.98, 0.6, 0.9))
+
+	func _lm_voidglass_rift(rng: RandomNumberGenerator) -> void:
+		# Wastes purple-grey base; a diagonal fissure with a purple glow edge.
+		var base := Color(0.35, 0.3, 0.4)
+		draw_colored_polygon(_lm_hex_poly(), base)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-40, -25), 42.0, 9, 0.35), base.darkened(0.1))
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(38, 30), 38.0, 9, 0.35), base.lightened(0.06))
+		var dark := Color(0.1, 0.08, 0.14)
+		var glow := Color(0.6, 0.4, 0.8)
+		var ang := deg_to_rad(60.0)
+		var reach := _lm_edge_dist(ang) * 0.88
+		var dirv := Vector2(cos(ang), sin(ang))
+		var p_a := _LM_C - dirv * reach
+		var p_b := _LM_C + dirv * reach
+		var mid := _wavy_line(rng, p_a, p_b, 9.0, 8)
+		var perp := Vector2(-dirv.y, dirv.x)
+		draw_polyline(mid, glow, 13.0, true)
+		var fissure_poly := PackedVector2Array()
+		for p in mid:
+			fissure_poly.append(p + perp * 4.0)
+		for i in range(mid.size() - 1, -1, -1):
+			fissure_poly.append(mid[i] - perp * 4.0)
+		draw_colored_polygon(fissure_poly, dark)
+		draw_polyline(mid, glow.darkened(0.1), 2.0, true)
+		for i in 4:
+			var t := rng.randf_range(0.15, 0.85)
+			var pc: Vector2 = mid[int(t * (mid.size() - 1))] + perp * rng.randf_range(-24.0, 24.0)
+			var h := 9.0 + rng.randf() * 7.0
+			var w := 3.5 + rng.randf() * 2.0
+			var lean := rng.randf_range(-4.0, 4.0)
+			var pts := PackedVector2Array([pc + Vector2(lean, -h), pc + Vector2(w, -h * 0.1), pc + Vector2(-w, -h * 0.1)])
+			draw_colored_polygon(_blob(rng, pc + Vector2(0, 4), 4.0, 6, 0.2), Color(0, 0, 0, 0.25))
+			draw_colored_polygon(pts, glow.lightened(0.15))
+			var pts_closed := pts.duplicate()
+			pts_closed.append(pts[0])
+			draw_polyline(pts_closed, glow.darkened(0.3), 1.2, true)
+
+	func _lm_titan_forge_ruin(rng: RandomNumberGenerator) -> void:
+		# Mountain grey base; a broken ring of 5 anvil-blocks around an ember.
+		var base := Color(0.48, 0.46, 0.44)
+		draw_colored_polygon(_lm_hex_poly(), base)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-30, -40), 40.0, 9, 0.35), base.darkened(0.1))
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(35, 38), 36.0, 9, 0.35), base.lightened(0.07))
+		var stone_dark := Color(0.4, 0.38, 0.36)
+		var stone_light := Color(0.68, 0.65, 0.6)
+		var ring_r := 60.0
+		for slot in 6:
+			if slot == 2:
+				continue
+			var ang := TAU * float(slot) / 6.0 - PI / 2.0
+			var c := _LM_C + Vector2(cos(ang), sin(ang)) * ring_r
+			var face := ang + PI
+			var dirv := Vector2(cos(face), sin(face))
+			var perp := Vector2(-dirv.y, dirv.x)
+			var w := 12.0
+			var d := 15.0
+			var pts := PackedVector2Array([
+				c - perp * w - dirv * d * 0.3, c + perp * w - dirv * d * 0.3,
+				c + perp * w * 0.7 + dirv * d * 0.7, c - perp * w * 0.7 + dirv * d * 0.7,
+			])
+			draw_colored_polygon(_blob(rng, c + dirv * 2.0, w * 1.1, 6, 0.3), Color(0.2, 0.19, 0.17, 0.4))
+			draw_colored_polygon(pts, stone_dark)
+			var lit := PackedVector2Array([pts[0], pts[1], pts[1].lerp(pts[2], 0.4), pts[0].lerp(pts[3], 0.4)])
+			draw_colored_polygon(lit, stone_light)
+			var pts_closed := pts.duplicate()
+			pts_closed.append(pts[0])
+			draw_polyline(pts_closed, stone_dark.darkened(0.3), 1.3, true)
+		draw_circle(_LM_C, 26.0, Color(0.55, 0.25, 0.12, 0.55))
+		draw_circle(_LM_C, 17.0, Color(0.85, 0.45, 0.2, 0.85))
+		draw_circle(_LM_C, 8.0, Color(0.98, 0.75, 0.4, 0.95))
+
+	func _lm_leyline_well(rng: RandomNumberGenerator) -> void:
+		# Plains green base; 6 monoliths linked to a bright center by cyan lines.
+		var base := Color(0.5, 0.52, 0.32)
+		draw_colored_polygon(_lm_hex_poly(), base)
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(-38, 32), 44.0, 9, 0.35), base.darkened(0.08))
+		draw_colored_polygon(_blob(rng, _LM_C + Vector2(40, -35), 38.0, 9, 0.35), base.lightened(0.06))
+		var stone_dark := Color(0.43, 0.41, 0.4)
+		var stone_light := Color(0.73, 0.71, 0.7)
+		var cyan := Color(0.4, 0.85, 0.85)
+		var ring_r := 62.0
+		var monolith_centers: Array[Vector2] = []
+		for i in 6:
+			var ang := TAU * float(i) / 6.0 - PI / 2.0
+			monolith_centers.append(_LM_C + Vector2(cos(ang), sin(ang)) * ring_r)
+		for c in monolith_centers:
+			draw_line(_LM_C, c, cyan, 2.2)
+			draw_line(_LM_C, c, cyan.lightened(0.2), 0.9)
+		for c in monolith_centers:
+			var w := 7.5
+			var h := 21.0
+			draw_colored_polygon(PackedVector2Array([c + Vector2(3, h * 0.4 + 4), c + Vector2(w + 2, h * 0.4), c + Vector2(w, -h), c + Vector2(-w, -h), c + Vector2(-w - 2, h * 0.4)]), Color(0.15, 0.15, 0.12, 0.4))
+			var body := PackedVector2Array([c + Vector2(w, h * 0.4), c + Vector2(w * 0.9, -h), c + Vector2(-w * 0.9, -h), c + Vector2(-w, h * 0.4)])
+			draw_colored_polygon(body, stone_dark)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-w * 0.9, -h), c + Vector2(w * 0.3, -h), c + Vector2(w * 0.2, h * 0.2), c + Vector2(-w * 0.7, h * 0.2)]), stone_light)
+			var body_closed := body.duplicate()
+			body_closed.append(body[0])
+			draw_polyline(body_closed, stone_dark.darkened(0.3), 1.2, true)
+		draw_circle(_LM_C, 22.0, Color(0.35, 0.75, 0.78, 0.55))
+		draw_circle(_LM_C, 13.0, Color(0.55, 0.92, 0.92, 0.85))
+		draw_circle(_LM_C, 6.0, Color(0.85, 1.0, 0.98, 0.95))
 
 func _init() -> void:
 	call_deferred("_start")
