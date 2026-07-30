@@ -69,6 +69,7 @@ func _process(_delta: float) -> bool:
 		# Build the step list: [open_call, close_call, shot_name]
 		_steps = [
 			[func(): _hud.call("_toggle_economy_panel"), func(): _hud.call("_toggle_economy_panel"), "win_economy.png"],
+			[func(): _hud.call("_toggle_victory_panel"), func(): _hud.call("_toggle_victory_panel"), "win_victory.png"],
 			[func(): _hud.call("_toggle_diplomacy_panel"), func(): _hud.call("_toggle_diplomacy_panel"), "win_diplomacy.png"],
 			[func(): _hud.call("_toggle_research_panel"), func(): _hud.call("_toggle_research_panel"), "win_research.png"],
 			[func(): _hud.call("_toggle_policies_panel"), func(): _hud.call("_toggle_policies_panel"), "win_policies.png"],

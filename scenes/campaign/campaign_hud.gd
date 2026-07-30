@@ -2074,6 +2074,15 @@ func _create_economy_panel() -> void:
 	hbox.add_child(economy_btn)
 	hbox.move_child(economy_btn, end_turn_button.get_index())
 
+	# Victory button — always insert before End Turn
+	var victory_btn := Button.new()
+	victory_btn.name = "VictoryButton"
+	victory_btn.text = "Victory"
+	victory_btn.custom_minimum_size = Vector2(90, 0)
+	victory_btn.pressed.connect(_toggle_victory_panel)
+	hbox.add_child(victory_btn)
+	hbox.move_child(victory_btn, end_turn_button.get_index())
+
 	# AI speed controls (after End Turn button)
 	_skip_ai_btn = Button.new()
 	_skip_ai_btn.name = "SkipAIButton"
@@ -2376,6 +2385,230 @@ func _create_panel_header(vbox: VBoxContainer, title_text: String, panel: PanelC
 	header.add_child(_make_close_button(cb))
 	vbox.add_child(header)
 	_add_separator(vbox)
+
+# ── Victory Panel ─────────────────────────────────────────────
+# Mirrors TurnManager._check_victory_conditions exactly: one row per victory
+# branch that can actually fire for the CURRENT game_mode/quickmatch_won
+# state, using the same fields/thresholds the check reads (never re-derived).
+
+var _victory_dialog: PanelContainer = null
+
+func _toggle_victory_panel() -> void:
+	if _victory_dialog != null and is_instance_valid(_victory_dialog):
+		_victory_dialog.queue_free()
+		_victory_dialog = null
+		return
+	_show_victory_panel()
+
+## Counts factions allied with faction_id — mirrors the Diplomatic Victory
+## branch's inner loop (turn_manager.gd _check_victory_conditions).
+func _victory_count_alliances(faction_id: StringName) -> int:
+	var count := 0
+	for other_id in GameManager.state.faction_states:
+		if other_id == faction_id or GameManager.is_npc_faction(other_id):
+			continue
+		var other_fs: FactionState = GameManager.state.faction_states[other_id]
+		if other_fs.is_defeated:
+			continue
+		if GameManager.get_relation(faction_id, other_id) == Enums.FactionRelation.ALLIED:
+			count += 1
+	return count
+
+## Best single-culture-bloc completion for faction_id (Culture Victory branch
+## fires once completed_cultures.size() > 0 — i.e. any bloc fully owned).
+## Every CULTURE_REGIONS bloc has exactly 3 member regions.
+func _victory_best_culture_count(faction_id: StringName) -> int:
+	var completed := GameManager.get_completed_regions(faction_id)
+	var best := 0
+	for culture_id in GameManager.CULTURE_REGIONS:
+		var regions: Array = GameManager.CULTURE_REGIONS[culture_id]
+		var count := 0
+		for r in regions:
+			if r in completed:
+				count += 1
+		best = maxi(best, count)
+	return best
+
+## Scans rival_ids for the highest value of metric_fn(faction_id). Returns
+## [leader_display_name, leader_value]; leader_display_name is "" when there
+## are no living rivals to compare against.
+func _victory_leader(rival_ids: Array, metric_fn: Callable) -> Array:
+	var best_id: StringName = &""
+	var best_val: int = -1
+	for fid in rival_ids:
+		var v: int = metric_fn.call(fid)
+		if best_id == &"" or v > best_val:
+			best_val = v
+			best_id = fid
+	if best_id == &"":
+		return ["", 0]
+	var fd: FactionData = DataManager.get_faction(best_id)
+	return [(fd.display_name if fd else str(best_id)), best_val]
+
+## One condition row: name (14px gold), one-line description (11px), a themed
+## ProgressBar (300x16, no percent text), and a "you vs leader" caption.
+func _add_victory_row(vbox: VBoxContainer, title_text: String, desc_text: String,
+		you_val: int, max_val: int, leader_name: String, leader_val: int,
+		caption_override: String = "") -> void:
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	vbox.add_child(row)
+
+	var name_lbl := _make_label(title_text, 14, Color(0.95, 0.88, 0.55))
+	row.add_child(name_lbl)
+
+	var desc_lbl := _make_label(desc_text, 11, Color(0.75, 0.72, 0.63))
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(desc_lbl)
+
+	var safe_max := maxi(max_val, 1)
+	var bar := ProgressBar.new()
+	bar.custom_minimum_size = Vector2(300, 16)
+	bar.show_percentage = false
+	bar.min_value = 0.0
+	bar.max_value = float(safe_max)
+	bar.value = clampf(float(you_val), 0.0, float(safe_max))
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.75, 0.58, 0.22)
+	fill_style.set_corner_radius_all(3)
+	bar.add_theme_stylebox_override("fill", fill_style)
+	var bg_style := StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.16, 0.13, 0.1)
+	# Border keeps the empty track visible against the dialog's dark chip
+	# backdrop — without it a 0-progress bar (a fresh game's default state)
+	# renders as invisible negative space.
+	bg_style.border_color = Color(0.55, 0.42, 0.2, 0.7)
+	bg_style.set_border_width_all(1)
+	bg_style.set_corner_radius_all(3)
+	bar.add_theme_stylebox_override("background", bg_style)
+	row.add_child(bar)
+
+	var caption := Label.new()
+	if caption_override != "":
+		caption.text = caption_override
+	elif leader_name == "":
+		caption.text = "You: %d / %d" % [you_val, max_val]
+	else:
+		caption.text = "You: %d / %d — Leader: %s %d / %d" % [you_val, max_val, leader_name, leader_val, max_val]
+	caption.add_theme_font_size_override("font_size", 11)
+	caption.add_theme_color_override("font_color", Color(0.68, 0.64, 0.55))
+	row.add_child(caption)
+
+## Rebuilt from scratch every open (shard-reserve-dialog pattern). Shows
+## exactly the victory branches active for the CURRENT game_mode /
+## quickmatch_won — read live so this stays correct if either ever changes.
+func _show_victory_panel() -> void:
+	if _victory_dialog != null and is_instance_valid(_victory_dialog):
+		_victory_dialog.queue_free()
+		_victory_dialog = null
+
+	var player_id := GameManager.state.player_faction_id
+	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
+	if player_fs == null:
+		return
+
+	_victory_dialog = _create_centered_dialog(520)
+	_victory_dialog.name = "VictoryDialog"
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_victory_dialog.add_child(scroll)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "VictoryVBox"
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(vbox)
+
+	var close_cb := func():
+		if _victory_dialog:
+			_victory_dialog.queue_free()
+			_victory_dialog = null
+	_create_panel_header(vbox, "Victory Conditions", _victory_dialog, close_cb, 18)
+	add_child(_victory_dialog)
+
+	# Rivals for "leader" comparisons: non-NPC, non-player, not yet defeated —
+	# same population the check itself loops over (is_npc_faction/is_defeated).
+	var rival_ids: Array[StringName] = []
+	for fid in GameManager.state.faction_states:
+		if fid == player_id or GameManager.is_npc_faction(fid):
+			continue
+		var ofs: FactionState = GameManager.state.faction_states[fid]
+		if not ofs.is_defeated:
+			rival_ids.append(fid)
+
+	# ── Domination — always active, no mode gate (legacy owned_regions) ──
+	var total_regions := DataManager.regions.size()
+	var domination_threshold := int(total_regions * 0.6)
+	var leader_dom := _victory_leader(rival_ids, func(fid):
+		var fs: FactionState = GameManager.state.faction_states[fid]
+		return fs.owned_regions.size())
+	_add_victory_row(vbox, "Domination",
+		"Control 60%% of the world's %d regions through military conquest." % total_regions,
+		player_fs.owned_regions.size(), domination_threshold, String(leader_dom[0]), int(leader_dom[1]))
+
+	# ── Quickmatch: Culture Victory (only while game_mode == QUICKMATCH and
+	# not yet quickmatch_won) ──
+	if GameManager.state.game_mode == Enums.GameMode.QUICKMATCH and not GameManager.state.quickmatch_won:
+		var you_cult := _victory_best_culture_count(player_id)
+		var leader_cult := _victory_leader(rival_ids, func(fid): return _victory_best_culture_count(fid))
+		_add_victory_row(vbox, "Culture Victory",
+			"Fully control all 3 regions of any single cultural bloc (best bloc shown).",
+			you_cult, 3, String(leader_cult[0]), int(leader_cult[1]))
+
+	# ── Sandbox: Long Victory + World Conquest (game_mode == SANDBOX, or any
+	# mode once quickmatch_won) — both read GameManager.get_completed_regions,
+	# a stricter "every city in the region" metric than owned_regions above ──
+	if GameManager.state.game_mode == Enums.GameMode.SANDBOX or GameManager.state.quickmatch_won:
+		var total_map_regions := GameManager.REGION_CITIES.size()
+		var you_completed := GameManager.get_completed_regions(player_id).size()
+		var leader_completed := _victory_leader(rival_ids, func(fid): return GameManager.get_completed_regions(fid).size())
+		var long_threshold := int(total_map_regions * 0.6)
+		_add_victory_row(vbox, "Long Victory",
+			"Fully control 60%% of the map's %d regions (every city in a region held)." % total_map_regions,
+			you_completed, long_threshold, String(leader_completed[0]), int(leader_completed[1]))
+		_add_victory_row(vbox, "World Conquest",
+			"Fully control every one of the map's %d regions." % total_map_regions,
+			you_completed, total_map_regions, String(leader_completed[0]), int(leader_completed[1]))
+
+	# ── Diplomatic — always active, no mode gate ──
+	var leader_diplo := _victory_leader(rival_ids, func(fid): return _victory_count_alliances(fid))
+	_add_victory_row(vbox, "Diplomatic Accord",
+		"Hold 5+ regions (you: %d) and forge alliances with 2+ factions." % player_fs.owned_regions.size(),
+		_victory_count_alliances(player_id), 2, String(leader_diplo[0]), int(leader_diplo[1]))
+
+	# ── Shard Ascension — always active, no mode gate ──
+	var leader_shards := _victory_leader(rival_ids, func(fid):
+		var fs: FactionState = GameManager.state.faction_states[fid]
+		return fs.shards_spent)
+	_add_victory_row(vbox, "Shard Ascension",
+		"Spend %d shard crystals across research, rituals, and relics to transcend." % TurnManager.SHARD_ASCENSION_TARGET,
+		player_fs.shards_spent, TurnManager.SHARD_ASCENSION_TARGET, String(leader_shards[0]), int(leader_shards[1]))
+
+	# ── Elimination — last non-defeated major faction standing. Global/shared
+	# clock (no single faction "owns" another's defeat), so it gets a plain
+	# caption instead of the you-vs-leader format ──
+	var total_majors := 0
+	var alive_majors := 0
+	for fid in GameManager.state.faction_states:
+		if GameManager.is_npc_faction(fid):
+			continue
+		total_majors += 1
+		var fs: FactionState = GameManager.state.faction_states[fid]
+		if not fs.is_defeated:
+			alive_majors += 1
+	var defeated_majors := total_majors - alive_majors
+	var elim_target := maxi(total_majors - 1, 1)
+	_add_victory_row(vbox, "Elimination",
+		"Be the last faction standing — %d of %d factions remain." % [alive_majors, total_majors],
+		defeated_majors, elim_target, "", 0,
+		"Factions eliminated: %d / %d needed" % [defeated_majors, elim_target])
+
+	# Size the window to its content (capped so it never runs off-screen) —
+	# mirrors the Economy Panel's dynamic scroll-height clamp.
+	var max_h: float = get_viewport_rect().size.y * 0.8
+	scroll.custom_minimum_size = Vector2(0, clampf(vbox.get_combined_minimum_size().y + 24.0, 160.0, max_h))
 
 # ── Diplomacy Panel ──────────────────────────────────────────
 
