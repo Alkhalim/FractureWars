@@ -4734,8 +4734,12 @@ func _apply_dragon_damage(fs: FactionState, target_id: StringName) -> void:
 		# Destroy a random building if any
 		if not city.buildings.is_empty():
 			var destroyed: StringName = city.buildings[randi() % city.buildings.size()]
+			var destroyed_bld: BuildingData = DataManager.get_building(destroyed)
 			city.buildings.erase(destroyed)
 			GameManager.city_system.invalidate_region_effects_cache()
+			# Landmark buildings change research effects when removed — invalidate cache to prevent staleness
+			if destroyed_bld and destroyed_bld.requires_region_landmark != &"":
+				GameManager.research_system._invalidate_cache(city.faction_id)
 			city.building_tiles.erase(destroyed)
 	# Fortress level drops
 	var fort_lv: int = fs.border_fortresses.get(target_id, 0)

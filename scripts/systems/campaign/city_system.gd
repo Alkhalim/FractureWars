@@ -1311,11 +1311,14 @@ func demolish_building(city_id: StringName, building_id: StringName) -> bool:
 		if queued_bld and queued_bld.upgrades_from == building_id:
 			return false
 	# Remove from city
+	var building: BuildingData = DataManager.get_building(building_id)
 	city.buildings.erase(building_id)
 	city.building_tiles.erase(building_id)
 	invalidate_region_effects_cache()
+	# Landmark buildings change research effects when removed — invalidate cache to prevent staleness
+	if building and building.requires_region_landmark != &"":
+		GameManager.research_system._invalidate_cache(city.faction_id)
 	# Refund 1/3 of build cost
-	var building: BuildingData = DataManager.get_building(building_id)
 	if building:
 		var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 		if fs:

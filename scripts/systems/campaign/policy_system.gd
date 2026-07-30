@@ -369,8 +369,12 @@ func _apply_forsaken_sabotage(faction_id: StringName, fs: FactionState) -> void:
 			var city: CityState = GameManager.state.cities.get(city_id)
 			if city and city.buildings.size() > 0:
 				var destroyed := city.buildings[randi() % city.buildings.size()]
+				var destroyed_bld: BuildingData = DataManager.get_building(destroyed)
 				city.buildings.erase(destroyed)
 				GameManager.city_system.invalidate_region_effects_cache()
+				# Landmark buildings change research effects when removed — invalidate cache to prevent staleness
+				if destroyed_bld and destroyed_bld.requires_region_landmark != &"":
+					GameManager.research_system._invalidate_cache(city.faction_id)
 				break
 	else:
 		# Units desert from random army
