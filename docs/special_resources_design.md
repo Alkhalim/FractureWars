@@ -188,7 +188,8 @@ These reuse existing mechanic hooks — no new systems.
 1. **MVP — IMPLEMENTED 2026-07-29** (see tests/test_bounty_system.gd) —
    bounty scatter + corner icons + proximity claims + resource-bar
    list. (No new buildings; immediate "settle toward resources" gameplay.)
-2. **Phase 2** — specials with extractors + Access leases + AI valuation.
+2. **Phase 2 — IMPLEMENTED 2026-07-30** (see tests/test_special_resources.gd) —
+   specials with extractors + Access leases + AI valuation.
 3. **Phase 3** — Landmarks: unique tiles/art, unique shared buildings,
    neutral-city adjacency, war-goal weighting, affinity flagship effects.
 
@@ -222,6 +223,85 @@ each stand-in with its documented rule once the relevant hook exists
 (healing modifier, gift-value modifier, per-category build cost/speed
 modifiers, upkeep modifiers, population-growth modifier, unit-attack
 modifier, trade-only income flag).
+
+### Phase 2 implementation notes
+
+`SpecialResourceSystem` (`scripts/systems/campaign/special_resource_system.gd`)
+ships all 8 specials with region-bound scatter, the universal Extractor
+building per type, Access-lease treaties, AI valuation, and AI-side
+initiation — but one point departs from this doc's original text, and a
+few pieces named in the original proposal are deliberately out of scope
+this phase:
+
+- **DESIGN REFINEMENT: the Extractor activates BOTH the yield and the
+  identity modifier**, replacing this doc's earlier "automatic yield,
+  extractor doubles [the modifier]" split (§ Tier 2 table above, and the
+  category table's "How you get it" row). Un-extracted deposits now
+  produce nothing at all — no yield, no modifier — until the owner's
+  region builds the Extractor. Rationale: (1) battle-determinism safety —
+  an "automatic" yield that starts the moment a region is owned, with no
+  build step, is a passive per-turn income source with no fingerprint-safe
+  place to gate it against the AI building queue; gating both effects
+  behind one building keeps the whole feature inside the existing
+  build-queue/income-recalculation hooks instead of adding a second,
+  build-less income path. (2) Build-to-exploit clarity — a single
+  "build this to get anything at all" trigger is a simpler, more legible
+  incentive than "yield is free, modifier needs a building," and matches
+  how bounties (free) and Landmarks (building-gated) are already
+  differentiated by tier. (3) Lease prerequisite — Access leases lease the
+  *extractor's* effect (`extracted_specials_of_faction` requires
+  `region_has_extractor`), so a deposit has to be extracted before it can
+  be leased at all; splitting yield from modifier would leave leases
+  either transferring an un-buildable yield or requiring a second
+  eligibility check.
+- **Yields ride the Extractor's normal `income_bonus`** — there's no
+  separate "special resource income" pipeline; the Extractor is an
+  ordinary T2 building whose `income_bonus` field carries the deposit's
+  per-turn yield, so it flows through the same city-income calculation as
+  every other building.
+- **Lease exclusivity is scoped per (owner, special)** — `TreatyInstance`
+  lookups key on `faction_a == owner AND terms.special_id == special_id`,
+  so a deposit can only be leased out by its owner to one lessee at a
+  time, but if the same special type exists as separate deposits owned by
+  different factions, each owner runs its own independent exclusivity
+  (there is no single global "one lessee per special type" lock).
+- **AI builds Extractors when a city's region holds a deposit**: before
+  falling back to its faction's generic build-priority list, the AI build
+  loop (`turn_manager.gd`) checks whether the city's region has an
+  unclaimed special and, if the matching Extractor is buildable, queues it
+  first — so AI factions reliably feed the lease market instead of sitting
+  on unclaimed deposits.
+- **AI initiates affinity-seeking leases (AI → AI only)**: an AI missing
+  its own affinity special looks for another AI faction (never the player)
+  that already extracts it and, if not at war and not already leased
+  elsewhere, proposes a lease for itself as lessee
+  (`diplomacy_system.gd`, `_affinity_specials_of` + the per-turn AI
+  diplomacy pass). The reverse direction — an AI *owner* offering a lease
+  to another party unprompted — is not implemented; leases only originate
+  from the would-be lessee's side.
+
+Deferred to a follow-up phase (not implemented, out of scope for this
+phase's tests):
+- **Flagship effects at 2+ affinity deposits** — the per-faction bonus
+  effects listed under "Faction affinity payoffs" above (Silverguard
+  upkeep -25%, etc.) do not exist yet; only the doubled identity modifier
+  from Extractor + affinity is live.
+- **AI → player lease offers** — the AI never proposes a lease *to* the
+  player as lessee; `propose_resource_lease` still supports an AI owner
+  deciding whether to accept a player-initiated request, but nothing
+  triggers the AI to reach out first.
+- **Owner-side veto for AI-to-AI leases** — when both parties are AI,
+  `propose_resource_lease` only evaluates the lessee's side
+  (`_evaluate_lease_as_lessee`); the owning AI has no independent
+  accept/reject check of its own, unlike the AI-owner-vs-player-lessee
+  path, which does check standing and minimum pay.
+- **Offer-likelihood UI for leases** — there's no player-facing indicator
+  of how likely an AI is to accept a proposed Access lease before the
+  player commits to the offer.
+- **Placement reachability fairness** — special deposits scatter by
+  terrain band and spacing only; there's no check that every faction (or
+  every affinity faction) has a reasonably reachable deposit of its own
+  affinity type on a given map.
 
 ## Risks / open questions
 
