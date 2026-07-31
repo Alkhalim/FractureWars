@@ -2175,10 +2175,13 @@ const TILE_INCOME := {
 	Enums.TerrainType.WATER:     {3: 4, 0: 1},
 }
 
+## Task D (Playtest Round 2 cost rebalance): x1.5 like every other build/found
+## cost (was gold 80 / wood 40 / food 30) -- infrastructure is the expensive,
+## protected thing; armies are the cheap, replaceable thing.
 const SETTLEMENT_FOUNDING_COST := {
-	Enums.ResourceType.GOLD: 80,
-	Enums.ResourceType.WOOD: 40,
-	Enums.ResourceType.FOOD: 30,
+	Enums.ResourceType.GOLD: 120,
+	Enums.ResourceType.WOOD: 60,
+	Enums.ResourceType.FOOD: 45,
 }
 
 const SETTLEMENT_SPHERE_RADIUS := 3

@@ -625,7 +625,7 @@ func _run_task5_tail_cleanup(dm) -> void:
 		_check(hive_bulwark.upgrades_from == &"hardened_chitin_wall", "hive_bulwark upgrades_from == hardened_chitin_wall, got %s" % [hive_bulwark.upgrades_from])
 		_check(hive_bulwark.defense_bonus == 12, "hive_bulwark defense_bonus == 12 (was 8), got %s" % [hive_bulwark.defense_bonus])
 		_check(absf(float(hive_bulwark.special_effects.get("garrison_strength_bonus", -1.0)) - 0.2) < 0.001, "hive_bulwark garrison_strength_bonus == 0.2 (was 0.15), got %s" % [hive_bulwark.special_effects.get("garrison_strength_bonus")])
-		_check(int(hive_bulwark.build_cost.get(IRON, -1)) == 99, "hive_bulwark build_cost kept unchanged (iron 99), got %s" % [hive_bulwark.build_cost])
+		_check(int(hive_bulwark.build_cost.get(IRON, -1)) == 149, "hive_bulwark build_cost kept unchanged pre-sweep, now x1.5 (iron 99 -> 149), got %s" % [hive_bulwark.build_cost])
 		_check(hive_bulwark.display_name == "Hive Bulwark III", "hive_bulwark display_name carries tier-3 numeral suffix like chain siblings, got %s" % [hive_bulwark.display_name])
 
 	var hardened_chitin_wall = dm.get_building(&"hardened_chitin_wall")
@@ -637,8 +637,8 @@ func _run_task5_tail_cleanup(dm) -> void:
 	if resonant_crystal_forge == null:
 		_check(false, "resonant_crystal_forge building data exists")
 	else:
-		_check(int(resonant_crystal_forge.build_cost.get(GOLD, -1)) == 40, "resonant_crystal_forge build_cost gold == 40 (was 35), got %s" % [resonant_crystal_forge.build_cost.get(GOLD, -1)])
-		_check(int(resonant_crystal_forge.build_cost.get(FOOD, -1)) == 30, "resonant_crystal_forge build_cost food == 30 (was 101), got %s" % [resonant_crystal_forge.build_cost.get(FOOD, -1)])
+		_check(int(resonant_crystal_forge.build_cost.get(GOLD, -1)) == 60, "resonant_crystal_forge build_cost gold == 60 (payback-fix 40, then Task D x1.5), got %s" % [resonant_crystal_forge.build_cost.get(GOLD, -1)])
+		_check(int(resonant_crystal_forge.build_cost.get(FOOD, -1)) == 45, "resonant_crystal_forge build_cost food == 45 (payback-fix 30, then Task D x1.5), got %s" % [resonant_crystal_forge.build_cost.get(FOOD, -1)])
 
 	# ── blessed_springs no longer unlocks dawnscale_thunderlizard; the unlock ──
 	# moves to solar_chapter_house (sunblessed tier-2 barracks-line military
@@ -679,7 +679,7 @@ func _run_task5_tail_cleanup(dm) -> void:
 		_check(false, "echo_chamber building data exists")
 	else:
 		_check(echo_chamber.upgrades_from == &"resonant_pylon", "echo_chamber upgrades_from == resonant_pylon, got %s" % [echo_chamber.upgrades_from])
-		_check(int(echo_chamber.build_cost.get(GOLD, -1)) == 105, "echo_chamber build_cost gold unchanged == 105 (no discount convention found in data), got %s" % [echo_chamber.build_cost.get(GOLD, -1)])
+		_check(int(echo_chamber.build_cost.get(GOLD, -1)) == 158, "echo_chamber build_cost gold == 158 (no discount convention found in data: 105, then Task D x1.5), got %s" % [echo_chamber.build_cost.get(GOLD, -1)])
 
 	var resonant_pylon = dm.get_building(&"resonant_pylon")
 	if resonant_pylon != null:
