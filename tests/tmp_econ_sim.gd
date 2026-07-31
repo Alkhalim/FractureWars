@@ -36,7 +36,7 @@ func _run() -> void:
 	_gm.state.player_faction_id = &"__observer__"
 	# Fast-forward: skip the UI-responsiveness yields (headless has no UI)
 	_tm.skip_ai_turn = true
-	print("seed,turn,faction,gold,food,iron,wood,tech,cities,settlements,armies,units,pop,upkeep_gold,income_gold,net_gold,avg_loyalty,defeated")
+	print("seed,turn,faction,gold,food,iron,wood,tech,cities,settlements,armies,units,pop,upkeep_gold,income_gold,net_gold,avg_loyalty,defeated,iron_income,wood_income,vigilance,vigilance_target,scrap,pumps")
 	_tm.start_game()
 
 func _log_round() -> void:
@@ -76,18 +76,32 @@ func _log_round() -> void:
 				if ud:
 					upkeep += int(ud.upkeep_cost.get(0, 0))
 		var income := 0
+		var iron_income := 0
+		var wood_income := 0
+		var pump_ids: Array[StringName] = [&"ember_foundry", &"volcanic_smelter", &"cinder_mine", &"magma_vent", &"molten_core_forge"]
+		var pumps_owned: Array[String] = []
 		for cid in fs.owned_cities:
 			var c2 = _gm.state.cities.get(cid)
 			if c2:
 				var inc = _gm.city_system.calculate_city_income(c2)
 				income += int(inc.get(0, 0))
-		print("%d,%d,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%d" % [
+				iron_income += int(inc.get(1, 0))
+				wood_income += int(inc.get(5, 0))
+				for pid in pump_ids:
+					if c2.buildings.has(pid):
+						pumps_owned.append(str(pid))
+		var vigilance: int = fs.border_vigilance if fid == &"cinderguard" else -1
+		var vigilance_target: int = fs.vigilance_target if fid == &"cinderguard" else -1
+		var scrap: int = fs.scavenge_stockpile if fid == &"cinderguard" else -1
+		var pumps_str := ";".join(pumps_owned)
+		print("%d,%d,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%d,%d,%d,%d,%d,%d,%s" % [
 			_seed, turn, fid,
 			int(fs.resources.get(0, 0)), int(fs.resources.get(3, 0)), int(fs.resources.get(1, 0)),
 			int(fs.resources.get(5, 0)), int(fs.resources.get(2, 0)),
 			cities, settlements, armies, units, pop,
 			upkeep, income, income - upkeep,
-			(loy_sum / maxf(loy_n, 1)), (1 if fs.is_defeated else 0)])
+			(loy_sum / maxf(loy_n, 1)), (1 if fs.is_defeated else 0),
+			iron_income, wood_income, vigilance, vigilance_target, scrap, pumps_str])
 
 func _process(_delta: float) -> bool:
 	if _gm == null or _gm.state == null:

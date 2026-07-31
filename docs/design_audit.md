@@ -505,3 +505,154 @@ artifact, not caused by the rebalance.)
   `magma_vent`) were left as-shipped — only the tier-1 buildings got the
   secondary bump. Revisit if the tier-2 economy ends up under-differentiated
   in practice.
+
+---
+
+## Cinderguard Rework — final balance verification (2026-08-01)
+
+Task 5 (final) of the Cinderguard rework plan
+(`docs/superpowers/plans/2026-07-31-cinderguard-rework.md`), run deliberately
+last so it measures the state *after* the building rebalance (growth purge,
+twin-chain splits), coastal income, and the global cost sweep (buildings
+×1.5, units ×0.5) all landed on top of Tasks 1-4's pump halving, hidden-layer
+deletion, posture-target vigilance, and Smelt Surplus sink. Method: two
+40-turn AI-vs-AI `tmp_econ_sim.gd` runs (seeds 7 and 3), extended with
+iron/wood income columns, vigilance/target, scrap, and a live pump-building
+tracker; full regression battery; static ceiling check against the pinned
+building values.
+
+### Headline numbers vs. the ~417/turn baseline
+
+At both t30 and t40, in **both** seeds, Cinderguard's border vigilance has
+already settled at its war-footing target (85) and stays there. Recurring
+gross iron/turn at that plateau = `10` (flat building/region income — see
+caveat below) + `int(85*0.4)=34` (posture bonus) + `2` (dragon-veteran
+milestone, ≥3 raids survived) ≈ **46/turn**, identical in both seeds at both
+checkpoints. That is roughly **9x under** the brief's own war-footing ceiling
+(220) and **~9x under** the original ~417/turn glut. Net *stock* growth
+(after Smelt Surplus and recruiting spend) averages **+16.7/turn** (seed 7,
+turns 30→40: 420→587) and **+15.7/turn** (seed 3: 357→514) — a slow, bounded
+climb, not a runaway pile-up. Cinderguard is never defeated in either seed.
+
+### Sink cross-check
+
+- **Smelt Surplus fires reliably.** In both seeds, `scavenge_stockpile`
+  climbs in clean +20 steps every ~4 turns starting once iron first crosses
+  300 (seed 7: turns 23/27/31/35/39; seed 3: turns 27/31/35/39) — the AI's
+  `iron > 300 → -40 iron, +20 scrap` rule (`_ai_handle_frontier_orders`,
+  `turn_manager.gd:4774-4777`) is exercised exactly as designed.
+- **Iron is spent on recruiting, but gold is the binding constraint, not
+  iron.** Army size in seed 7 grows 5→13 units (turns 1-26) then falls back
+  to 7 by turn 38 from combat losses (matches Task D's independent turn-41
+  snapshot of 7 units for this exact seed, `.superpowers/sdd/task-D-report.md`).
+  Gold pins at 0 for 9 straight turns (32-40) under the war-footing drain
+  (`-int(vigilance*0.1)` gold, per Task 2) stacked on a 13-unit army's
+  upkeep, while iron sits at 400-600 essentially untouched — recruiting stops
+  because Cinderguard runs out of **gold**, not iron. Iron is a designed sink
+  target that is only partially exercised in AI play as a result.
+- **Scrap's other sink (border fortresses) never fires in these sims.**
+  `border_fortresses` upgrades require an owned settlement
+  (`fs.owned_cities` with `is_settlement == true`), and Cinderguard never
+  founds one in either 40-turn run (`settlements` column is 0 for all 40
+  turns, both seeds) — so scrap only ever accumulates (0→100 seed 7, 0→80
+  seed 3), it never gets spent. Pre-existing settlement-founding behavior,
+  not something this task changed or is scoped to fix.
+
+### Important caveat: the AI never builds the reworked pumps
+
+The new `iron_income`/`pumps` columns show something the brief's targets
+didn't anticipate: **`iron_income` (building income) is a flat, unmoving
+`10`/turn in every single logged turn, in both seeds** — the flat region
+base income, with zero contribution from any of the five rebalanced
+buildings (`ember_foundry`, `volcanic_smelter`, `cinder_mine`, `magma_vent`,
+`molten_core_forge`). None of them is ever built. This lines up exactly with
+Task D's independent, differently-instrumented measurement of the same two
+seeds, which found Cinderguard's total building count flat at `2→2` across
+its own pre/post cost-sweep comparison — four independent data points (2
+seeds × 2 separate tasks) all agree Cinderguard's AI does not grow its
+building base at all in a 40-turn window.
+
+Root cause, read from `turn_manager.gd:730-750`'s
+`faction_build_priorities`: Cinderguard's list is `[cinder_watchtower,
+oasis_farm, cinder_mine, sandstone_walls, ember_shrine, desert_bazaar,
+scorpion_pit]`. `cinder_mine` is on it, but requires `required_terrain == 2`
+(MOUNTAINS) — likely scarce-to-absent near a desert faction's own cities.
+`magma_vent` (the terrain-unrestricted half of the same twin pair, per the
+Building Rebalance section above) is **not on the list at all**, so it is
+only ever reachable via the generic "build whatever's first available"
+fallback, which the priority-listed buildings win by construction. The
+upgrade-tier buildings (`ember_foundry`, `volcanic_smelter`,
+`molten_core_forge`) are only reachable once their tier-1 parent exists, so
+they inherit the same block.
+
+**Consequence for this verification:** the ~46/turn figure above is
+Cinderguard's mechanic layer only (posture/vigilance economics) — it says
+nothing about whether Task 1's halved building values (45/35/20/16/28,
+pinned in `test_cinderguard_rework.gd`) are well-tuned in organic AI play,
+because that layer is never exercised. It *is* exercised, correctly, by the
+direct unit test. A static ceiling check bridges the gap: the single
+highest-iron building in the whole chain is `ember_foundry` at 45/turn
+(tier-2 pure, before the capstone trades iron for gold); two such cities
+would be 90/turn, four would be 180/turn — still under the 220 war-footing
+ceiling even at a fairly mature, iron-specialized 4-city spread, and nowhere
+close to needing another halving. The rework's data-side goal is
+structurally sound; it just isn't the thing an AI-vs-AI sim can currently
+prove, because the AI doesn't reach for these buildings.
+
+**Recommendation (not implemented — out of scope for this data/docs-only
+task):** add `magma_vent` to Cinderguard's `faction_build_priorities`, and
+consider whether `cinder_mine`'s mountain requirement is realistic for this
+faction's territory. Re-run the econ sim afterward — that would be the first
+measurement that actually exercises Task 1's halved values under AI control.
+
+### The `volcanic_smelter` tier-2-wood question — resolved by data (for now: no change)
+
+The deferred question from the Building Rebalance section above — whether
+`volcanic_smelter` (magma_vent's tier-2 upgrade) needs its wood income
+bumped to keep the hybrid chain differentiated at tier 2 — **cannot be
+answered directly from these sims**, because (per the caveat above)
+`volcanic_smelter` is never built, so `wood_income` reads a flat `0` for
+Cinderguard in every logged turn of both seeds. What the sims *do* show:
+Cinderguard's wood **stock** craters steadily to -52 (seed 7) / -70 (seed 3)
+by turn 40 with zero wood production of any kind — building upkeep (e.g.
+`ember_foundry`'s 5 wood/turn) draws it negative regardless of whether the
+hybrid pump chain exists. (Resources going negative here isn't new or
+scoped to this task — iron does the same briefly in seed 3, turns 7-13; it's
+existing, unclamped behavior on these two resource types elsewhere in the
+economy, unrelated to the vigilance/posture code this rework touched, which
+already clamps its own gold/food deltas at 0.) Given wood is already
+structurally negative for Cinderguard with or without the hybrid chain, a
+further wood bump on `volcanic_smelter` would only help, and there is no
+sign of a wood glut arguing against it — but the bigger lever by far is
+fixing the AI-priority gap above so the chain gets built at all. Recommend
+leaving `volcanic_smelter`'s wood value as-is for now and revisiting once
+the priority-list fix lands and an AI-driven sim can actually exercise it.
+
+### Full battery (final gate)
+
+| test | verdict |
+|---|---|
+| `test_cinderguard_rework` | CINDERGUARD REWORK TEST PASSED |
+| `test_building_rebalance` | BUILDING REBALANCE TEST PASSED |
+| `test_playtest_round2` | PLAYTEST ROUND 2 TEST PASSED |
+| `test_battle_determinism` | **FINGERPRINT MATCH** |
+| `test_income_breakdown_equivalence` | INCOME EQUIVALENCE TEST PASSED |
+| `test_save_roundtrip` | SAVE ROUNDTRIP TEST PASSED |
+| `test_faction_ai_flavor` | FACTION AI FLAVOR TEST PASSED |
+
+Zero `FAIL:` lines in any log; the `SCRIPT ERROR: Compile Error` /
+`Identifier not found` lines are the documented benign headless multi-instance
+compile noise, not real failures.
+
+### Verdict
+
+**Targets met, by a wide margin, on every number this task could directly
+measure.** Iron income is nowhere near piling up unboundedly, Cinderguard is
+never crippled or defeated in either seed, and the one sink that can fire in
+these sims (Smelt Surplus) does so reliably and on-schedule. No data value
+was changed in this task — nothing here crossed the "clearly broken" bar the
+brief set for unilateral tuning. The one real finding worth a designer's
+attention is the AI-priority gap above: it means this task's organic-play
+measurement is honest about what it *didn't* test (the building layer) as
+much as what it did (the mechanic layer), and the fix for that gap belongs
+to a follow-up task, not this one.
