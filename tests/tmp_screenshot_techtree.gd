@@ -1,6 +1,8 @@
 extends SceneTree
 ## Temp tool: loads a demo campaign (fast), opens the tech tree, screenshots at
-## default and low zoom. Also presets _max_bake_tex to exercise the immediate
+## default and low zoom, then force-opens the research detail dialog on a
+## tier-1 tech (Deliverable 1: "Research Cost: %d Tech | %d turns" line) and
+## screenshots that too. Also presets _max_bake_tex to exercise the immediate
 ## frame-0 bake path (battle-return scenario). Run WITHOUT --headless. Delete after use.
 
 var _frames := 0
@@ -40,9 +42,25 @@ func _process(_delta: float) -> bool:
 			tree.queue_redraw()
 	if _frames == 55:
 		_shot("techtree_zoomout.png")
+		var hud: Control = _campaign.get_node("UILayer/HUD")
+		var tier1_data: ResearchData = _find_tier1_research()
+		if tier1_data:
+			hud.call("_show_research_detail", tier1_data)
+		else:
+			print("ERROR: no tier-1 research found for the detail-dialog screenshot")
+	if _frames == 65:
+		_shot("win_tech_cost.png")
 		quit()
 	return false
 
 func hud_tree() -> Control:
 	var hud: Control = _campaign.get_node("UILayer/HUD")
 	return hud.get("_research_tree")
+
+func _find_tier1_research() -> ResearchData:
+	var dm: Node = root.get_node("/root/DataManager")
+	for rid in dm.research:
+		var data: ResearchData = dm.research[rid]
+		if data.tier == 1:
+			return data
+	return null

@@ -1584,6 +1584,7 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 	var simulated_gold: int = fs.resources.get(Enums.ResourceType.GOLD, 0)
 
 	var base_total := 0
+	var coastal_total := 0
 	for city_id in fs.owned_cities:
 		var memo: Dictionary = _income_city_memo.get(city_id, {})
 		if memo.is_empty():
@@ -1593,9 +1594,18 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 			continue
 		var raw_income: Dictionary = memo.income
 		var raw_amount: int = raw_income.get(res_type, 0)
-		if raw_amount != 0:
-			breakdown.cities[city.get_display_name()] = raw_amount
-			base_total += raw_amount
+		base_total += raw_amount
+
+		# Coastal waters is already folded into raw_amount by
+		# calculate_city_income() (see apply_coastal_income_bonus) -- split it
+		# back out into its own named row instead of adding a second time, so
+		# "cities" + "Coastal waters" still sums to exactly base_total.
+		var coastal_amt: int = cs.apply_coastal_income_bonus(city).get(res_type, 0)
+		var city_only_amount: int = raw_amount - coastal_amt
+		if city_only_amount != 0:
+			breakdown.cities[city.get_display_name()] = city_only_amount
+		if coastal_amt != 0:
+			coastal_total += coastal_amt
 
 		# Class bonuses + loyalty multiplier: call the REAL LoyaltySystem
 		# functions _generate_income() calls (duplicate first — apply_class_bonuses
@@ -1641,6 +1651,12 @@ func _calculate_income_breakdown(res_type: int) -> Dictionary:
 		if amount != 0:
 			breakdown.modifiers.append({label = label, amount = amount})
 			income_subtotal += amount
+
+	# Coastal waters: already counted in base_total above (it's part of each
+	# city's raw_amount) -- this row re-labels that portion, it does NOT add
+	# to income_subtotal a second time.
+	if coastal_total != 0:
+		breakdown.modifiers.append({label = "Coastal waters", amount = coastal_total})
 
 	# Captive consumption: faction-specific buildings (derived from the real
 	# per-turn threshold checks above) plus base camp decay (a SEPARATE
@@ -7091,7 +7107,7 @@ func _show_research_detail(data: ResearchData) -> void:
 
 	# Cost + Time
 	var cost_label := Label.new()
-	cost_label.text = "Research Time: %d turns" % data.research_time
+	cost_label.text = "Research Cost: %d Tech  |  %d turns" % [data.tech_cost, data.research_time]
 	cost_label.add_theme_font_size_override("font_size", 12)
 	cost_label.add_theme_color_override("font_color", RESOURCE_COLORS.get(2, Color.WHITE))
 	vbox.add_child(cost_label)

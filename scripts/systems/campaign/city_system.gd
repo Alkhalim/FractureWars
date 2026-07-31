@@ -2245,6 +2245,13 @@ func calculate_settlement_income_preview(hex_pos: Vector2i) -> Dictionary:
 
 	# Adjacency bonus from surrounding tiles within 2 radius
 	var center_terrain: int = tile.terrain
+	# Mirrors apply_coastal_income_bonus()'s real formula (+2 food per water
+	# neighbor, +1 gold per 2 water neighbors) instead of letting water fall
+	# through the generic max(1, adj_income[res]/3) path below, which only
+	# yielded ~+1 food +1 gold each -- honesty fix so the preview never
+	# promises more (or a different mix) than a founded coastal city actually
+	# gets from calculate_city_income().
+	var water_neighbor_count := 0
 	for r in range(1, SETTLEMENT_SPHERE_RADIUS + 1):
 		var ring := _get_hex_ring(hex_pos, r)
 		for ring_coord in ring:
@@ -2254,6 +2261,12 @@ func calculate_settlement_income_preview(hex_pos: Vector2i) -> Dictionary:
 			if rtile == null:
 				continue
 			if is_in_settlement_sphere(ring_coord):
+				continue
+			if rtile.terrain == Enums.TerrainType.WATER:
+				water_neighbor_count += 1
+				income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + 2
+				if water_neighbor_count % 2 == 0:
+					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 1
 				continue
 			var adj_income: Dictionary = TILE_INCOME.get(rtile.terrain, {})
 			# If same terrain as center, +1 to primary resource

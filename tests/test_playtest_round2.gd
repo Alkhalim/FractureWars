@@ -41,6 +41,7 @@ func _run() -> void:
 
 	_run_real_income_tests()
 	_run_preview_tests()
+	_run_coastal_breakdown_label_test()
 	_run_bounty_income_tests()
 	_run_bounty_claim_exclusion_tests()
 
@@ -239,6 +240,31 @@ func _legacy_settlement_income_preview(hex_pos: Vector2i) -> Dictionary:
 						income[res_type] = income.get(res_type, 0) + max(1, adj_income[res_type] / 3)
 	return income
 
+## Counts the ring tiles calculate_settlement_income_preview()'s adjacency
+## loop (radius 1..SETTLEMENT_SPHERE_RADIUS, excluding tiles already inside
+## another city's settlement sphere -- same eligibility check the production
+## loop applies to every terrain) would see as WATER for hex_pos. Independent
+## of the amounts the production code adds per water tile -- this only counts
+## which ring tiles ARE water, so comparing it against the honest formula
+## below isn't a tautology.
+func _count_preview_water_neighbors(hex_pos: Vector2i) -> int:
+	var cs = _gm.city_system
+	var hex_map = _gm.state.hex_map
+	var n := 0
+	for r in range(1, 4): # SETTLEMENT_SPHERE_RADIUS(3) + 1
+		var ring: Array = cs._get_hex_ring(hex_pos, r)
+		for ring_coord in ring:
+			if not HexHelper.is_valid(ring_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
+				continue
+			var rtile = hex_map.get_tile(ring_coord)
+			if rtile == null:
+				continue
+			if cs.is_in_settlement_sphere(ring_coord):
+				continue
+			if rtile.terrain == Enums.TerrainType.WATER:
+				n += 1
+	return n
+
 func _run_preview_tests() -> void:
 	var cs = _gm.city_system
 	var hex_map = _gm.state.hex_map
@@ -263,6 +289,21 @@ func _run_preview_tests() -> void:
 		legacy_total += legacy_income[r]
 	_check(new_total > legacy_total, "(b) coastal tile's total settlement preview income (%d) exceeds its pre-fix total (%d)" % [new_total, legacy_total])
 
+	# (d) Water composition honesty: the legacy oracle skips water entirely
+	# (contributes exactly 0), so new-vs-legacy isolates precisely what the
+	# water special-case adds. It must equal the REAL apply_coastal_income_bonus
+	# formula (+2 food per water neighbor, +1 gold per 2 water neighbors),
+	# not the old generic max(1, adj_income[res]/3) approximation (~+1
+	# food/+1 gold per neighbor).
+	var water_n := _count_preview_water_neighbors(coastal_hex)
+	_check(water_n > 0, "(d) test fixture has at least one water ring tile counted by the preview's own adjacency loop")
+	var water_food_delta: int = new_food - legacy_food
+	var new_gold: int = new_income.get(Enums.ResourceType.GOLD, 0)
+	var legacy_gold: int = legacy_income.get(Enums.ResourceType.GOLD, 0)
+	var water_gold_delta: int = new_gold - legacy_gold
+	_check(water_food_delta == water_n * 2, "(d) water's FOOD contribution to the preview (%d) equals the real formula's +2/neighbor for N=%d water ring tiles (expected %d)" % [water_food_delta, water_n, water_n * 2])
+	_check(water_gold_delta == water_n / 2, "(d) water's GOLD contribution to the preview (%d) equals the real formula's +1-per-2-neighbors for N=%d water ring tiles (expected %d)" % [water_gold_delta, water_n, water_n / 2])
+
 	# Regression guard (unrelated to the honesty fix): WATER must still never
 	# be a foundable tile itself.
 	var region_id: StringName = hex_map.get_tile(coastal_hex).region_id
@@ -275,6 +316,52 @@ func _run_preview_tests() -> void:
 				water_found = true
 				break
 		_check(not water_found, "get_valid_settlement_tiles never returns a WATER tile as foundable")
+
+# ── Deliverable 2 (deferred from Task A): "Coastal waters" breakdown row ───
+
+## The income-breakdown tooltip (campaign_hud._calculate_income_breakdown)
+## folds calculate_city_income()'s coastal contribution back out of the
+## per-city "cities" bucket into its own named "Coastal waters" modifier row
+## (see test_income_breakdown_equivalence.gd for the parity guarantee that
+## row doesn't change the net total). This proves the row actually shows up
+## for a coastal city, using the same direct hud._calculate_income_breakdown()
+## access pattern test_income_breakdown_equivalence.gd relies on.
+func _run_coastal_breakdown_label_test() -> void:
+	_gm.new_game(&"empire", false, 0)
+	var fs: FactionState = _gm.state.faction_states[_gm.state.player_faction_id]
+	if fs.owned_cities.is_empty():
+		_check(false, "(e) player has at least one owned city for the coastal-waters breakdown-label test")
+		return
+
+	var coastal_hex := _find_tile_by_water_neighbors(1, true)
+	if coastal_hex == Vector2i(-1, -1):
+		_check(false, "(e) found a land tile with >= 1 water neighbor for the coastal-waters breakdown-label test")
+		return
+
+	# Relocate the player's first owned city onto the coastal tile just long
+	# enough to read the breakdown -- apply_coastal_income_bonus() reads
+	# city.hex_pos directly (see city_system.gd), so this is enough to give
+	# the city a non-zero coastal contribution without disturbing anything
+	# else new_game set up (region_id, buildings, population, ...).
+	var city_id: StringName = fs.owned_cities[0]
+	var city: CityState = _gm.state.cities[city_id]
+	var original_hex: Vector2i = city.hex_pos
+	city.hex_pos = coastal_hex
+
+	var hud = (load("res://scenes/campaign/campaign_hud.gd") as GDScript).new()
+	var breakdown: Dictionary = hud._calculate_income_breakdown(Enums.ResourceType.FOOD)
+	hud.free()
+
+	city.hex_pos = original_hex
+
+	var found_label := false
+	for mod in breakdown.modifiers:
+		if mod.label == "Coastal waters":
+			found_label = true
+			break
+	_check(found_label, "(e) FOOD income breakdown includes a 'Coastal waters' row for a coastal city (modifiers=%s)" % [breakdown.modifiers])
+
+	_gm.new_game(&"empire", false, 0) # leave shared GameManager state clean
 
 # ── Task B: BountySystem.claimable_income_at() ──────────────────────────────
 
