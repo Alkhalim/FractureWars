@@ -764,32 +764,46 @@ func _settlement_build_priority_for(faction_id: StringName) -> Array:
 		return SETTLEMENT_BUILD_PRIORITY
 	return [heads.military, &"resource_camp", &"waystation", heads.science, &"frontier_watchpost", &"frontier_shrine"]
 
+# Per-faction building priorities — using each faction's own buildings.
+# ivoryscar carries sandstone_pit (+18 iron/+12 wood, gold-only cost/upkeep)
+# and its tier-2 petrified_quarry right after it, BEFORE dust_fields:
+# Ivoryscar's desert biome has zero native wood production, yet several of
+# its buildings (dust_fields, bone_quarry, ...) carry wood upkeep --
+# without a wood producer the faction runs a permanent wood deficit every
+# turn. sandstone_pit must sit ahead of dust_fields in this list, not just
+# somewhere in it: the AI's priority walk below (_execute_ai_city_management)
+# tries list entries in order and stops at the first one whose building is
+# currently buildable, whether or not the actual start_building() call
+# succeeds -- so an earlier, wood-costing, perpetually-unaffordable entry
+# (dust_fields needs wood ivoryscar doesn't have) would silently and
+# permanently block every later entry, including the gold-only wood
+# producer that would fix the shortage.
+const FACTION_BUILD_PRIORITIES := {
+	&"empire": [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"market_square", &"tavern", &"scriptorium_empire", &"village_gathering_place"],
+	&"skulloath": [&"raiders_den", &"herders_camp", &"bone_workshop", &"ancestor_shrine", &"trade_post_skulloath", &"steppe_watchtower", &"blood_altar", &"pale_waif_altar", &"beast_pens"],
+	&"gladehost": [&"ranger_outpost", &"harvest_clearing", &"rootwood_lodge", &"sacred_grove", &"seasonal_shrine", &"grove_ironworks", &"forest_market", &"embassy_grove", &"living_fortress", &"beastkeepers_glade"],
+	&"tainted_jade": [&"serpent_pit", &"vine_shelter", &"jade_forge", &"root_altar", &"thrall_quarters", &"jade_market", &"jungle_traps", &"taint_suppressor", &"hunting_ground"],
+	&"shardhorde": [&"crystal_nursery", &"shard_conduit", &"crystal_forge", &"shard_harvester", &"chitin_walls"],
+	&"moonspear": [&"sentinel_hall", &"frost_pastures", &"silver_vein", &"moon_shrine", &"starlight_market", &"frost_kennels", &"pilgrims_rest", &"frost_walls"],
+	&"sunblessed": [&"pilgrim_training_grounds", &"pilgrim_gardens", &"sunfire_altar", &"sunfire_forge", &"golden_bazaar", &"sacred_oasis", &"sacred_aviary", &"sacred_ward"],
+	&"thunderswarm": [&"warriors_longhouse", &"highland_terrace", &"thunderpeak_mine", &"lightning_shrine", &"windtrade_post", &"storm_kennels", &"mountain_watchtower"],
+	&"cinderguard": [&"cinder_watchtower", &"oasis_farm", &"cinder_mine", &"magma_vent", &"sandstone_walls", &"ember_shrine", &"desert_bazaar", &"scorpion_pit"],
+	&"forsaken": [&"wretched_pit", &"scavenger_camp", &"scrap_pit", &"black_alley_market", &"crypt_court", &"thrall_quarters", &"makeshift_barricades"],
+	&"ivoryscar": [&"seekers_lodge", &"sandstone_pit", &"petrified_quarry", &"dust_fields", &"bone_quarry", &"relic_shrine", &"caravan_depot", &"relic_workshop", &"ancestor_crypt", &"bone_palisade"],
+}
+
 func _execute_ai_city_management(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null:
 		return
 	var recruit_census: Dictionary = {} # computed once on first recruiting city
 
-	# Per-faction building priorities — using each faction's own buildings
-	var faction_build_priorities := {
-		&"empire": [&"cohort_barracks", &"grain_fields", &"iron_pit", &"lumber_camp_empire", &"market_square", &"tavern", &"scriptorium_empire", &"village_gathering_place"],
-		&"skulloath": [&"raiders_den", &"herders_camp", &"bone_workshop", &"ancestor_shrine", &"trade_post_skulloath", &"steppe_watchtower", &"blood_altar", &"pale_waif_altar", &"beast_pens"],
-		&"gladehost": [&"ranger_outpost", &"harvest_clearing", &"rootwood_lodge", &"sacred_grove", &"seasonal_shrine", &"grove_ironworks", &"forest_market", &"embassy_grove", &"living_fortress", &"beastkeepers_glade"],
-		&"tainted_jade": [&"serpent_pit", &"vine_shelter", &"jade_forge", &"root_altar", &"thrall_quarters", &"jade_market", &"jungle_traps", &"taint_suppressor", &"hunting_ground"],
-		&"shardhorde": [&"crystal_nursery", &"shard_conduit", &"crystal_forge", &"shard_harvester", &"chitin_walls"],
-		&"moonspear": [&"sentinel_hall", &"frost_pastures", &"silver_vein", &"moon_shrine", &"starlight_market", &"frost_kennels", &"pilgrims_rest", &"frost_walls"],
-		&"sunblessed": [&"pilgrim_training_grounds", &"pilgrim_gardens", &"sunfire_altar", &"sunfire_forge", &"golden_bazaar", &"sacred_oasis", &"sacred_aviary", &"sacred_ward"],
-		&"thunderswarm": [&"warriors_longhouse", &"highland_terrace", &"thunderpeak_mine", &"lightning_shrine", &"windtrade_post", &"storm_kennels", &"mountain_watchtower"],
-		&"cinderguard": [&"cinder_watchtower", &"oasis_farm", &"cinder_mine", &"magma_vent", &"sandstone_walls", &"ember_shrine", &"desert_bazaar", &"scorpion_pit"],
-		&"forsaken": [&"wretched_pit", &"scavenger_camp", &"scrap_pit", &"black_alley_market", &"crypt_court", &"thrall_quarters", &"makeshift_barricades"],
-		&"ivoryscar": [&"seekers_lodge", &"dust_fields", &"bone_quarry", &"relic_shrine", &"caravan_depot", &"relic_workshop", &"ancestor_crypt", &"bone_palisade"],
-	}
-	var priority_list: Array = faction_build_priorities.get(faction_id, [])
+	var priority_list: Array = FACTION_BUILD_PRIORITIES.get(faction_id, [])
 	if priority_list.is_empty():
 		# Minor factions use parent faction's building priorities
 		var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, &"")
 		if parent_id != &"":
-			priority_list = faction_build_priorities.get(parent_id, [])
+			priority_list = FACTION_BUILD_PRIORITIES.get(parent_id, [])
 	if priority_list.is_empty():
 		priority_list = [&"cohort_barracks", &"grain_fields", &"iron_pit", &"market_square"]
 
@@ -920,6 +934,14 @@ const FACTION_RECRUIT_TAG_WEIGHTS := {
 }
 
 func _ai_recruit_with_composition(city: CityState, faction_id: StringName, census: Dictionary) -> void:
+	# Economic gate: don't recruit while the faction's recurring gold income
+	# is already non-positive. Recruiting was previously driven purely by
+	# unit-count targets with no affordability check (audit: ivoryscar hit 13
+	# units / -238 gold by turn 40). Gold only -- iron/wood deficits are
+	# survivable by design (e.g. moonspear runs iron -103 healthily); gold is
+	# what pays the standing army's wages.
+	if GameManager.diplomacy_system.get_faction_resource_income(faction_id, Enums.ResourceType.GOLD) <= 0:
+		return
 	var tag_counts: Dictionary = census.tag_counts
 	var total_units: int = census.total_units
 	var max_enemy_units: int = census.max_enemy_units
