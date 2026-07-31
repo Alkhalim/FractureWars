@@ -18,6 +18,6 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 2
 requires_research = &"alpha_command"
 class_loyalty_bonus = {"peasants": 2}
-special_effects = {"garrison_strength_bonus": 2}
+special_effects = {"garrison_strength_bonus": 0.2}
 upgrades_from = &"chitin_walls"
 upkeep_cost = {1: 3, 5: 2}
