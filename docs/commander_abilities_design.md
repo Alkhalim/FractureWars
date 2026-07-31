@@ -4,6 +4,8 @@ Status: PROPOSAL — not implemented. Every id/line ref below was verified again
 
 > **DESIGNER DECISION (2026-08-01):** the second ability unlocks at **commander level 2** (deterministic), not on first battle won. This resolves Open Question 1.
 
+> **DESIGNER DECISION (2026-08-01, ability economy):** HYBRID charges + cooldown — every ability has BOTH a per-battle charge count AND a cooldown between casts. No spamming: the cooldown prevents back-to-back casts; the charges cap total uses. Low-cooldown abilities are advantaged (more flexible timing) but never infinitely usable (charges still bound them). AbilityData therefore carries `charges: int` and `cooldown_ticks: int`; auto-resolve EV fold-in uses `charges` as the effective cast count.
+
 ## 1. Problem
 
 Battles run mostly on formation orders (Advance/Hold/Charge/Flank/Retreat) plus automatic mage bolts. There is no moment-to-moment player decision once orders are queued — the player watches. Goal: give each commander 1 starter ability + a second early one, with more unlockable via tech/buildings, to create real mid-battle decisions in both the manual battle scene and (via an EV fold-in) auto-resolve.
