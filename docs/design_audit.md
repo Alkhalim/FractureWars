@@ -656,3 +656,160 @@ attention is the AI-priority gap above: it means this task's organic-play
 measurement is honest about what it *didn't* test (the building layer) as
 much as what it did (the mechanic layer), and the fix for that gap belongs
 to a follow-up task, not this one.
+
+---
+
+## Settlement Building Partition (2026-08-01)
+
+Three-commit implementation of the Settlement Building Partition plan
+(`docs/superpowers/plans/2026-08-01-settlement-building-partition.md`),
+branch `city_management`: `923f751` (the gate, both call sites, + AI
+settlement priorities), `ba9c8bc` (mobile-camp exemption fix round),
+`a6cef73` (curated per-faction chains + settlement tier-2s + old-save
+backfill).
+
+### The rule
+A settlement (`CityState.is_settlement == true`) may only build:
+- the 4 universal frontier buildings — `resource_camp`, `waystation`,
+  `frontier_watchpost`, `frontier_shrine` — plus their tier-2 upgrades
+  (`resource_camp_2`, `waystation_2`, `frontier_watchpost_2`,
+  `frontier_shrine_2`; `required_capital_level = 2`, `upgrades_from` the
+  tier-1);
+- exactly 3 curated faction chains (tier-1 **and** tier-2, tagged via the new
+  `BuildingData.settlement_allowed` flag): one military/barracks line, one
+  science/cultural line, and a third captive-economy or signature-mechanic
+  flavor line (table below) — never a defensive/wall chain;
+- region-gated extractors (`requires_region_resource != &""`) and Landmark
+  buildings (`requires_region_landmark != &""`) — whitelisted independently
+  of `settlement_only`/`settlement_allowed` because the AI's extractor and
+  landmark claiming steps run first, unconditionally, for every city
+  (`turn_manager.gd`, `_execute_ai_city_management`) whether it's a
+  settlement or not; excluding them would have silently broken deposit/relic
+  claiming inside settlements.
+- Sunblessed mobile camps are exempt from all of the above: a camp routes
+  back through the ordinary *city* branch of the shared predicate (see
+  below), keeping full faction-roster access exactly as before the
+  partition existed.
+
+Cities (`is_settlement == false`, camps included) are the mirror image:
+never offered `settlement_only` buildings, otherwise unaffected.
+
+One shared predicate, `CitySystem.is_building_allowed_for(city, building)`,
+gates BOTH `get_available_buildings` (what the UI/AI is offered) and
+`start_building`'s commit path — closing a pre-existing hole where
+`start_building` had no settlement check at all, so a settlement could be
+built into a full city by any direct caller even though the build menu never
+offered it.
+
+### Permanent identity, not a level gate
+`is_settlement` is never flipped back to `false` anywhere in the codebase —
+a settlement stays a settlement for its entire life; there is no
+"graduation" into a full city at any level. The partition is a permanent
+class distinction, not an early-game restriction that eventually lifts. This
+also made the original plan's flagged designer option ("the 4 settlement
+buildings have no upgrade tiers, so a level-5 settlement can build
+everything and go stale") moot: Task 1b resolved it by adding the 4 tier-2s
+above plus tier-2 successors on all 11 majors' curated chains, so a
+maxed-level settlement now has a genuinely larger, still-curated set to fill
+its slots with instead of running out of content.
+
+### Old-save behavior + backfill
+Existing settlements in saves made before this partition landed may already
+own city-class buildings that would no longer be *offered* going forward —
+this is expected and safe. The gate only ever governs NEW construction:
+`calculate_city_income` iterates `city.buildings` unconditionally, so a
+pre-existing building's income keeps working forever; nothing is deleted or
+invalidated retroactively.
+
+The mobile-camp exemption itself introduced (and, same commit, fixed) one
+real compatibility wrinkle. Before `ba9c8bc`, `setup_sunblessed_camp`'s
+re-settle branch cleared `is_mobile_camp` back to `false` every time a camp
+settled down — correct for the *marching vs. settled* signal that existed
+before this plan, but incompatible with the exemption's need for a
+*permanent* per-city marker. `is_mobile_camp` was repurposed into that
+permanent marker (set once at camp creation, never cleared again); the
+pre-existing marching-vs-settled distinction that `calculate_city_income`'s
+80%-while-marching penalty needs moved to a new
+`CitySystem._camp_is_currently_marching(city)` helper, derived from the
+linked army's `is_camp` flag instead of the city's own state. A `load_game`
+backfill (Task 1b) repairs saves made before `ba9c8bc`: it scans
+`state.armies` for any army with a non-empty `camp_city_id` pointing at an
+existing city — `camp_city_id` is written only by `setup_sunblessed_camp`
+and read only by one unrelated display helper, making it a reliable,
+save-age-independent discriminator — and force-sets that city's
+`is_mobile_camp = true`. Unconditional and idempotent: a no-op on saves that
+are already correct.
+
+### Per-faction curated chains (military / science-cultural / captive-or-flavor)
+
+| Faction | Military (t1/t2) | Science/Cultural (t1/t2) | Captive or Flavor (t1/t2) |
+|---|---|---|---|
+| empire | cohort_barracks / shieldwall_grounds | village_gathering_place / temple_of_the_pantheon | flavor: tavern / guild_hall |
+| skulloath | raiders_den / warchief_warcamp | ancestor_shrine / spirit_lodge | captive: blood_altar / crimson_altar |
+| gladehost | ranger_outpost / war_dojo | sacred_grove / druid_circle | flavor: seasonal_shrine / solstice_altar |
+| moonspear | sentinel_hall / lunar_range | moon_shrine / lunar_observatory | flavor: pilgrims_rest / pilgrims_haven |
+| sunblessed | pilgrim_training_grounds / solar_chapter_house | sunfire_altar / radiant_temple | flavor: wanderers_rest / wayfarers_lodge |
+| shardhorde | crystal_nursery / hive_spire | resonant_pylon / echo_chamber | flavor: shard_harvester / resonance_core |
+| thunderswarm | warriors_longhouse / stormrider_eyrie | lightning_shrine / temple_of_storms | flavor: storm_kennels / thunder_beast_pens |
+| cinderguard | cinder_watchtower / crossbow_range | ember_shrine / forge_academy | flavor: cinder_mine / ember_foundry |
+| forsaken | wretched_pit / necromancer_sanctum | blighted_shrine / void_whisperers_den | flavor: black_alley_market / thieves_den |
+| ivoryscar | seekers_lodge / bone_stables | ancestor_crypt / tomb_scholars_hall | flavor: relic_shrine / relic_sanctum |
+| tainted_jade | serpent_pit / venomwright_workshop | root_altar / jungle_shrine | captive: thrall_quarters / captive_processing_camp |
+
+All 11 majors land at exactly 3 chains (never 4) — captive-tree factions
+(skulloath, tainted_jade) sit at 3 by design; the rest use a signature-
+mechanic flavor chain as their third slot since cinderguard and ivoryscar
+turned out to have no CAPTIVES-keyed buildings in the actual roster despite
+being the plan's own captive-tree examples. Full per-id verification (never
+`category == defensive`, never `requires_capital`, `required_capital_level
+<= 2`) and the empire/thunderswarm branch-pick judgment calls are recorded
+in `.superpowers/sdd/task-1b-report.md`.
+
+### Verification (Task 2)
+Two 40-turn AI-vs-AI econ sims (seeds 7 and 3, `tests/tmp_econ_sim.gd`) plus
+a buildings/units-total and settlement-content sampler
+(`tests/tmp_settlement_sample.gd`, new) were compared against the Task-D-era
+post-cost-sweep baselines (`.superpowers/sdd/task-D-report.md`'s own turn-41
+snapshot — this sampler lines up on the identical turn by construction).
+Aggregate buildings/units land within normal seed-to-seed noise of that
+baseline (seed 7: 41→42 buildings, 124→113 units; seed 3: 39→41 buildings,
+104→104 units) — no faction shows a partition-caused economic collapse.
+Seed 7 has one new elimination (tainted_jade, absent from the Task-D
+baseline for this seed) traced to the same pre-existing loyalty-driven
+rebellion mechanic Task D already documented for ivoryscar: its city count
+drops in exact lockstep with `rebels`' city count rising, at the turns its
+loyalty (already declining for unrelated reasons) crosses the threshold —
+unrelated to this partition. RESOURCE_LEASE treaties still form normally in
+both seeds (leases are diplomacy-driven and untouched by this plan). Only
+one AI-founded settlement appeared across both runs (a level-2 Gladehost
+settlement, holding `resource_camp` + `waystation` only — it hadn't yet
+reached its curated chain heads in its priority walk within the 40-turn
+window). Full regression battery green (`test_settlement_partition`,
+`test_building_rebalance`, `test_cinderguard_rework`,
+`test_playtest_round2`, `test_save_roundtrip`, `test_faction_ai_flavor`,
+`test_income_breakdown_equivalence`) plus `test_battle_determinism`
+FINGERPRINT MATCH. A windowed screenshot of a founded settlement's city
+panel confirms the "Available Buildings" short list renders correctly (the
+universal 4 + a research-gated chain head, no full city roster leaking
+through). Full numbers, the battery table, and the screenshot path are in
+`.superpowers/sdd/task-2-report.md`.
+
+### Flagged follow-ups (not fixed here)
+- **Orphaned-camp gap (pre-existing, general):** neither `remove_army` nor
+  the army-merge path (`merge_armies_at_tile`) clears anything on a
+  camp-owning army's city when that army is destroyed or folded into
+  another army — the camp city's own `is_mobile_camp` flag is unaffected
+  either way (it's a permanent per-city marker read directly off the city,
+  not derived from the owning army at read time), so this is inert for
+  normal gameplay. It matters only for the `load_game` backfill above, which
+  discovers pre-fix misclassified camps by searching for exactly this
+  army→city linkage.
+- **Pre-fix orphaned-camp saves missed by the backfill (narrow):** if a save
+  made before `ba9c8bc` has a settled camp whose owning army was *already*
+  destroyed or merged away before that save was taken, the backfill's
+  army-search discriminator has nothing left to key off, and that specific
+  city stays permanently misclassified (`is_settlement=true,
+  is_mobile_camp=false`, wrongly confined to the settlement partition
+  forever). Requires both a pre-fix save AND that save's camp-owning army
+  already gone by save time — narrow enough that no migration path was
+  added for it.
