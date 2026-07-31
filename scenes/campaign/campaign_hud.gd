@@ -3,6 +3,15 @@ extends Control
 const TERRAIN_NAMES := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wetlands", "Tundra", "Shard Wastes", "Water", "Jungle"]
 const REALM_NAMES := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
 
+# Bottom-left docking: tile-info (region_panel) and the selected-army panel
+# sit side by side and must never overlap. region_panel is a fixed width wide
+# enough for its longest normal line ("Owner: <Faction>") with the Armies
+# line wrapping past that; army_panel docks starting PANEL_GAP past it.
+const REGION_PANEL_WIDTH := 260.0
+const REGION_PANEL_CONTENT_MARGIN_X := 26.0  # compact theme's left+right content margin
+const PANEL_GAP := 14.0
+const ARMY_PANEL_LEFT := REGION_PANEL_WIDTH + PANEL_GAP
+
 # Colors for unit card portrait backgrounds by tag
 const TAG_COLORS := {
 	"infantry": Color(0.45, 0.25, 0.15),
@@ -136,8 +145,13 @@ func _ready() -> void:
 	# skin needs ≥48px and collapsed into unreadable flat slivers below that).
 	theme = GameManager.get_compact_theme()
 
-	army_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
-	region_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
+	# Dense HUD readouts inherit the compact theme's panel style (per
+	# docs/ui_style_guide.md: "dense HUD panels inherit the compact theme's
+	# panel" — make_panel_style()'s ornate frame is for MAJOR panels and its
+	# ~66/62/48/42px content margins were forcing these small info readouts
+	# far past their coded offsets (a 232x150 region panel measured out to
+	# 297x256 once the style's minimum size won), which is what bled the tile
+	# text under the army panel and padded the commander panel with slack.
 
 	# Edge-anchored panels sit flush against the screen edges — small gaps
 	# between the gold frame and the screen border read as unfinished.
@@ -147,15 +161,41 @@ func _ready() -> void:
 	region_panel.offset_left = 0
 	region_panel.offset_bottom = 0
 	region_panel.offset_top = -150
-	region_panel.offset_right = 232
+	region_panel.offset_right = REGION_PANEL_WIDTH
+	region_panel.clip_contents = true
+	var armies_wrap_label: Label = region_panel.get_node("VBox/ArmiesLabel")
+	# Autowrap phantom-height gotcha: an autowrapping Label needs an explicit
+	# wrap width up front, or its first minimum-size pass (computed at width 0)
+	# reports a bogus multi-line height. custom_minimum_size.x fixes the wrap
+	# width immediately instead of waiting for a layout pass to settle it.
+	armies_wrap_label.custom_minimum_size.x = REGION_PANEL_WIDTH - REGION_PANEL_CONTENT_MARGIN_X
+	armies_wrap_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	army_panel.anchor_left = 0.0
 	army_panel.anchor_right = 0.0
-	army_panel.offset_left = 232.0
-	army_panel.offset_right = 1072.0
+	# The scene's original center-anchored layout left grow_horizontal = BOTH
+	# (symmetric growth), which was harmless when content only barely
+	# exceeded the old 840px-wide floor. Now that the floor is deliberately
+	# narrow so the panel hugs a small army, BOTH would grow the panel
+	# left INTO region_panel's space just as easily as right — pin it to
+	# END so it only ever grows away from the docked left edge.
+	army_panel.grow_horizontal = Control.GROW_DIRECTION_END
+	army_panel.offset_left = ARMY_PANEL_LEFT
+	army_panel.offset_right = ARMY_PANEL_LEFT + 380.0  # floor width; widened per-refresh to fit the grid
 	army_panel.offset_bottom = 0
-	# Collapsed unit cards are half-height, so four fit per row
-	var unit_grid: GridContainer = army_panel.get_node("VBox/UnitScroll/UnitGrid")
-	unit_grid.columns = 4
+	army_panel.clip_contents = false
+
+	# UnitScroll's size_flags_vertical (3 = FILL|EXPAND) was a leftover from
+	# the scene's original fixed-height layout: inside the VBox it greedily
+	# claimed every leftover pixel between the panel's coded height and the
+	# header/separator/button rows' real height, regardless of how tall the
+	# unit grid actually was. Measured via get_combined_minimum_size(): for a
+	# 5-unit (2-row) army the grid only needs ~80px, but EXPAND stretched
+	# UnitScroll to ~159px anyway — an ~80px dead band of panel background
+	# between the last chip row and the Split/Disband row. FILL-only (no
+	# EXPAND) plus the explicit custom_minimum_size set per refresh below
+	# (see _on_army_selected) makes it hug the real grid instead.
+	var army_unit_scroll: ScrollContainer = army_panel.get_node("VBox/UnitScroll")
+	army_unit_scroll.size_flags_vertical = Control.SIZE_FILL
 
 	# Wire up army panel close button
 	var army_close_btn: Button = army_panel.get_node("VBox/HeaderRow/CloseButton")
@@ -450,6 +490,7 @@ func _on_army_selected(army_id: StringName) -> void:
 	var movement: Label = army_panel.get_node("VBox/HeaderRow/MovementLabel")
 	var units_label: Label = army_panel.get_node("VBox/HeaderRow/UnitsLabel")
 	var unit_list: GridContainer = army_panel.get_node("VBox/UnitScroll/UnitGrid")
+	var unit_scroll: ScrollContainer = army_panel.get_node("VBox/UnitScroll")
 
 	var faction := DataManager.get_faction(army.faction_id)
 	var army_title_str := (faction.display_name if faction else "Army") + " Army"
@@ -582,9 +623,22 @@ func _on_army_selected(army_id: StringName) -> void:
 		if camp_row.get_child_count() > 0:
 			vbox_actions.add_child(camp_row)
 
-	# Clear old unit cards
+	# Clear old unit cards (remove_child first so a stale, not-yet-freed card
+	# can't still count toward this frame's grid layout/minimum-size)
 	for child in unit_list.get_children():
+		unit_list.remove_child(child)
 		child.queue_free()
+
+	# Pack collapsed cards into a near-square grid (capped at 4/row, matching
+	# the original "four fit per row" sizing) instead of always reserving 4
+	# full columns — a 1-3 unit army no longer forces a wide, mostly-empty
+	# row. The panel's actual width then hugs the grid automatically: it's a
+	# PanelContainer, so its rendered size is whatever's bigger of the coded
+	# floor (ARMY_PANEL_LEFT+380 set in _ready) and this grid's real minimum
+	# width, which shrinks/grows with the column count set here.
+	var unit_count: int = maxi(army.units.size(), 1)
+	var cols: int = clampi(ceili(sqrt(float(unit_count))), 1, 4)
+	unit_list.columns = cols
 
 	# Create unit cards
 	for unit in army.units:
@@ -593,11 +647,24 @@ func _on_army_selected(army_id: StringName) -> void:
 			var card := _create_unit_card(unit, unit_data)
 			unit_list.add_child(card)
 
-	# Size the window to its content instead of a fixed 840x320 box: collapsed
-	# cards are ~46px, four per row, plus header/actions chrome
-	var rows: int = int(ceil(float(army.units.size()) / 4.0))
-	var content_h: int = 150 + maxi(rows, 1) * 52
-	army_panel.offset_top = -float(clampi(content_h, 190, 460))
+	# UnitScroll deliberately does NOT propagate its content's true height
+	# upward (that's what lets a huge army scroll instead of growing the
+	# panel off-screen) — but that also means it reports a
+	# minimum height of 0 unless we hand it back an explicit measurement of
+	# the grid we just built. Cap the measurement (rather than trusting it
+	# unbounded) so a huge army still scrolls in a bounded box instead of
+	# growing off-screen.
+	var grid_h: float = unit_list.get_combined_minimum_size().y
+	unit_scroll.custom_minimum_size.y = clampf(grid_h, 40.0, 280.0)
+
+	# Panel height now hugs the VBox's real measured content (header row +
+	# separator + the scroll box just sized above + action button row(s))
+	# plus the compact theme panel's own top+bottom content margin (24px) —
+	# not the old static "150 + rows*52" guess, which had drifted out of
+	# sync with the actual card/row size (assumed ~52px/row; real rows
+	# measured ~37px) and left a ~80px dead band above the button row.
+	var content_h: float = vbox_ref.get_combined_minimum_size().y + 24.0
+	army_panel.offset_top = -clampf(content_h, 150.0, 460.0)
 
 func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -9632,11 +9699,16 @@ func _create_commander_panel() -> void:
 	commander_panel.offset_left = 0.0
 	commander_panel.offset_top = 52.0
 	commander_panel.offset_right = 256.0
-	# Shorter: the general's card is a handful of rows, not a 400px column
-	commander_panel.offset_bottom = 372.0
+	# Height is re-clamped to fit actual content every _update_commander_panel
+	# call (see the end of that function) — this initial value is just a safe
+	# starting floor before the first refresh.
+	commander_panel.offset_bottom = 52.0 + 130.0
 	commander_panel.custom_minimum_size = Vector2(256, 0)
 
-	commander_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
+	# Dense HUD readout — inherits the compact theme's panel (see
+	# docs/ui_style_guide.md); make_panel_style()'s ornate frame margins
+	# (~62/42px top+bottom) were forcing this panel far past its "handful of
+	# rows" content even for the empty "No Commander" state.
 
 	# Chip is the panel's direct child so it FILLS the window (inside a
 	# ScrollContainer it only ever grew to the height of its text)
@@ -10107,6 +10179,14 @@ func _update_commander_panel(army: ArmyState) -> void:
 		upkeep_label.add_theme_font_size_override("font_size", 11)
 		upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.35))
 		vbox.add_child(upkeep_label)
+
+	# Hug content instead of a fixed 320px column: "No Commander" is 2-3
+	# short lines, a fully leveled general with traits/skills/items is much
+	# taller. Clamp keeps a sane floor and preserves the previous max height
+	# (scroll — see _create_commander_panel — handles anything past that).
+	var content_min_h: float = vbox.get_combined_minimum_size().y
+	var chip_and_panel_margins := 44.0  # compact panel margins (15+9) + text chip margins (10+10)
+	commander_panel.offset_bottom = commander_panel.offset_top + clampf(content_min_h + chip_and_panel_margins, 130.0, 320.0)
 
 func _on_skill_hover_entered(skill_id: StringName, skill_level: int = 1) -> void:
 	var skill_data: CommanderSkill = CommanderSystem.skills.get(skill_id)

@@ -5864,6 +5864,14 @@ func _create_minimap() -> void:
 	_minimap_image = TextureRect.new()
 	_minimap_image.custom_minimum_size = MINIMAP_SIZE
 	_minimap_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	# The generated map image is MAP_WIDTH*4 x MAP_HEIGHT*4 px (e.g. 468x312
+	# for a 117x78 map) — well past the intended 360x220 display size. With
+	# the default EXPAND_KEEP_SIZE, TextureRect's minimum size tracks the raw
+	# texture instead of custom_minimum_size, so the panel/button column above
+	# it ballooned to fit the full-res image (mostly empty/fogged) rather than
+	# the compact minimap box. IGNORE_SIZE makes custom_minimum_size win, and
+	# stretch_mode scales the big source image down to actually fill the box.
+	_minimap_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_minimap_panel.add_child(_minimap_image)
 	outer_vbox.add_child(_minimap_panel)
 

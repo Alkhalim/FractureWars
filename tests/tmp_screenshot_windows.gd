@@ -85,6 +85,13 @@ func _process(_delta: float) -> bool:
 		if army_id != StringName():
 			_steps.append([func(): _hud.call("_show_army_split_dialog", army_id), func(): _pop_last_dialog(), "win_army_split.png"])
 			_steps.append([func(): _hud.call("_show_disband_dialog", army_id), func(): _pop_last_dialog(), "win_disband.png"])
+			# Panel-layout audit (army panel + tile info + minimap, all on
+			# screen together): the starting army sits on the starting city,
+			# so selecting it via the same path a player click takes
+			# (_select_army) opens the army panel AND the tile-info panel
+			# (region_panel) at once — _select_army emits both army_selected
+			# and hex_tile_selected for the army's hex.
+			_steps.append([func(): _campaign.call("_select_army", army_id), func(): _campaign.call("_deselect_all"), "win_panels_layout.png"])
 	# Each step: open at t, shot at t+6, close at t+8; next step at t+10
 	var t := _frames - _base_frame
 	if t >= 0 and _steps.size() > 0:
