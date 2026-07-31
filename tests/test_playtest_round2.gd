@@ -42,6 +42,7 @@ func _run() -> void:
 	_run_real_income_tests()
 	_run_preview_tests()
 	_run_bounty_income_tests()
+	_run_bounty_claim_exclusion_tests()
 
 	if _fails == 0:
 		print("PLAYTEST ROUND 2 TEST PASSED")
@@ -372,4 +373,104 @@ func _run_bounty_income_tests() -> void:
 		var bare_unfogged: Dictionary = BountySystem.claimable_income_at(hex_map, bare, true)
 		_check(bare_unfogged.is_empty(), "claimable_income_at(ignore_fog=true) also returns {} on a bare hex (got %s)" % [bare_unfogged])
 
+	_gm.new_game(&"empire", false, 0) # leave shared GameManager state clean
+
+# ── Task B review follow-up: claimable_income_at's EXCLUSION branch ────────
+# (a bounty already claimed by a closer-or-equal-distance existing city must
+# NOT also feed a farther candidate's income -- the double-count guard).
+
+## Finds a real seed-0 income-bearing bounty with NO current claimant (no
+## city, major or independent, sits within CLAIM_RADIUS of it yet) -- so
+## adding exactly one synthetic city near it deterministically becomes its
+## sole/closest claimant, independent of any tie-break rule.
+func _find_unclaimed_income_bounty() -> Dictionary:
+	var hex_map = _gm.state.hex_map
+	for coord in hex_map.tiles:
+		var tile = hex_map.tiles[coord]
+		if tile.bounty_id == &"":
+			continue
+		var def: Dictionary = BountySystem.BOUNTY_TYPES.get(tile.bounty_id, {})
+		if def.get("income", {}).is_empty():
+			continue
+		if BountySystem.claimant_for(coord) != &"":
+			continue # already claimed -- not the "starts unclaimed" fixture we need
+		return {hex = coord, type_id = tile.bounty_id}
+	return {}
+
+func _run_bounty_claim_exclusion_tests() -> void:
+	_gm.new_game(&"empire", false, 0)
+	var hex_map = _gm.state.hex_map
+
+	var fixture := _find_unclaimed_income_bounty()
+	_check(not fixture.is_empty(), "found a real seed-0 income-bearing bounty with no current claimant")
+	if fixture.is_empty():
+		return
+	var b_hex: Vector2i = fixture.hex
+	var b_type: StringName = fixture.type_id
+	var b_def: Dictionary = BountySystem.BOUNTY_TYPES[b_type]
+	var b_res: int = b_def.income.keys()[0]
+	var b_amount: int = b_def.income[b_res]
+
+	# A distance-1 neighbor of B to host the synthetic claimant city (1) --
+	# CLAIM_RADIUS is 2, so this leaves room for a distance-2 candidate (2)
+	# still inside radius, and the bounty's own distance-0 hex (3) as the
+	# closer-candidate site.
+	var c1_hex := Vector2i(-9999, -9999)
+	for n in HexHelper.get_neighbors(b_hex):
+		if HexHelper.hex_distance(b_hex, n) == 1:
+			c1_hex = n
+			break
+	_check(c1_hex != Vector2i(-9999, -9999), "found a distance-1 neighbor hex for the synthetic claimant city")
+	if c1_hex == Vector2i(-9999, -9999):
+		return
+
+	# A distance-2 hex from B (any tile qualifies -- claimable_income_at
+	# doesn't care about terrain/foundability, only distance).
+	var far_candidate := Vector2i(-9999, -9999)
+	for dx in range(-3, 4):
+		for dy in range(-3, 4):
+			var h := Vector2i(b_hex.x + dx, b_hex.y + dy)
+			if HexHelper.hex_distance(b_hex, h) == 2:
+				far_candidate = h
+				break
+		if far_candidate != Vector2i(-9999, -9999):
+			break
+	_check(far_candidate != Vector2i(-9999, -9999), "found a distance-2 candidate hex from B")
+	if far_candidate == Vector2i(-9999, -9999):
+		return
+	var near_candidate := b_hex # distance 0 from itself
+
+	# BEFORE any claimant exists: B is unclaimed, so an unclaimed bounty is
+	# includable from ANY hex within CLAIM_RADIUS -- both sites see it.
+	# (ignore_fog=true throughout: this test is about the claim-distance
+	# exclusion branch, not the fog gate, which is covered above.)
+	var far_before: Dictionary = BountySystem.claimable_income_at(hex_map, far_candidate, true)
+	var near_before: Dictionary = BountySystem.claimable_income_at(hex_map, near_candidate, true)
+	_check(far_before.get(b_res, 0) >= b_amount, "setup: unclaimed B contributes to the distance-2 site before any claimant exists (got %d)" % far_before.get(b_res, 0))
+	_check(near_before.get(b_res, 0) >= b_amount, "setup: unclaimed B contributes to the distance-0 site before any claimant exists (got %d)" % near_before.get(b_res, 0))
+
+	# 1) Place synthetic city C1 at distance 1 -- the sole city within
+	# CLAIM_RADIUS (B started unclaimed), so it deterministically claims B.
+	var c1 := CityState.new()
+	c1.city_id = &"__test_claimant_city__"
+	c1.faction_id = &"empire"
+	c1.hex_pos = c1_hex
+	_gm.state.cities[c1.city_id] = c1
+	_check(BountySystem.claimant_for(b_hex) == c1.city_id, "test setup: synthetic city becomes B's claimant at distance 1")
+
+	var far_after: Dictionary = BountySystem.claimable_income_at(hex_map, far_candidate, true)
+	var near_after: Dictionary = BountySystem.claimable_income_at(hex_map, near_candidate, true)
+
+	# 2) THE GAP: a farther candidate (d=2 > claimant's d=1) must LOSE B's
+	# income once a closer claimant exists -- no double-counting a bounty
+	# that's already spoken for by someone nearer. Exact delta (not just
+	# "empty"), so this is immune to any OTHER real bounty also in range of
+	# far_candidate.
+	_check(far_before.get(b_res, 0) - far_after.get(b_res, 0) == b_amount, "farther candidate (d=2) loses exactly B's +%d once a closer (d=1) claimant exists (before=%d, after=%d)" % [b_amount, far_before.get(b_res, 0), far_after.get(b_res, 0)])
+
+	# 3) A closer candidate (d=0 < claimant's d=1) still outbids the existing
+	# claimant -- matches bounties_claimable_at's "strictly closer wins" rule.
+	_check(near_after.get(b_res, 0) == near_before.get(b_res, 0), "closer candidate (d=0) keeps B's income even after a farther (d=1) claimant exists (before=%d, after=%d)" % [near_before.get(b_res, 0), near_after.get(b_res, 0)])
+
+	_gm.state.cities.erase(c1.city_id)
 	_gm.new_game(&"empire", false, 0) # leave shared GameManager state clean
