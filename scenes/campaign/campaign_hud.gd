@@ -11,6 +11,13 @@ const REGION_PANEL_WIDTH := 260.0
 const REGION_PANEL_CONTENT_MARGIN_X := 26.0  # compact theme's left+right content margin
 const PANEL_GAP := 14.0
 const ARMY_PANEL_LEFT := REGION_PANEL_WIDTH + PANEL_GAP
+# Floor width of the army panel (actual rendered width is max(floor, grid's
+# real minimum width) — see _on_army_selected). Widened from the original 380
+# to use the dead gap between the army panel and the city panel that players
+# reported at 1920x1080: city_panel docks at screen_width - 740 (=1180 at
+# 1920), so a floor right edge of 274+620=894 still leaves a ~286px margin —
+# comfortable clearance even if either panel's content grows a bit.
+const ARMY_PANEL_FLOOR_WIDTH := 620.0
 
 # Colors for unit card portrait backgrounds by tag
 const TAG_COLORS := {
@@ -66,6 +73,8 @@ var shard_label: Label
 var shard_tooltip: PanelContainer
 var bounty_bar_label: Label
 var _bounty_bar_tooltip: PanelContainer
+var scrap_label: Label
+var _scrap_tooltip: PanelContainer
 var _faction_mechanic_label: Label
 var commander_panel: PanelContainer
 var economy_panel: PanelContainer
@@ -180,7 +189,7 @@ func _ready() -> void:
 	# END so it only ever grows away from the docked left edge.
 	army_panel.grow_horizontal = Control.GROW_DIRECTION_END
 	army_panel.offset_left = ARMY_PANEL_LEFT
-	army_panel.offset_right = ARMY_PANEL_LEFT + 380.0  # floor width; widened per-refresh to fit the grid
+	army_panel.offset_right = ARMY_PANEL_LEFT + ARMY_PANEL_FLOOR_WIDTH  # widened per-refresh to fit the grid
 	army_panel.offset_bottom = 0
 	army_panel.clip_contents = false
 
@@ -203,6 +212,7 @@ func _ready() -> void:
 
 	_create_resource_bar()
 	_create_shard_display()
+	_create_scrap_label()
 	_create_bounty_bar_label()
 	_create_economy_panel()
 	_create_city_panel()
@@ -629,15 +639,16 @@ func _on_army_selected(army_id: StringName) -> void:
 		unit_list.remove_child(child)
 		child.queue_free()
 
-	# Pack collapsed cards into a near-square grid (capped at 4/row, matching
-	# the original "four fit per row" sizing) instead of always reserving 4
-	# full columns — a 1-3 unit army no longer forces a wide, mostly-empty
-	# row. The panel's actual width then hugs the grid automatically: it's a
-	# PanelContainer, so its rendered size is whatever's bigger of the coded
-	# floor (ARMY_PANEL_LEFT+380 set in _ready) and this grid's real minimum
-	# width, which shrinks/grows with the column count set here.
+	# Pack collapsed cards into a near-square grid (capped at 6/row — raised
+	# from 4 so a big army spreads into the wider floor width instead of just
+	# piling into more rows) instead of always reserving a fixed column count
+	# — a 1-3 unit army no longer forces a wide, mostly-empty row. The panel's
+	# actual width then hugs the grid automatically: it's a PanelContainer, so
+	# its rendered size is whatever's bigger of the coded floor
+	# (ARMY_PANEL_LEFT+ARMY_PANEL_FLOOR_WIDTH set in _ready) and this grid's
+	# real minimum width, which shrinks/grows with the column count set here.
 	var unit_count: int = maxi(army.units.size(), 1)
-	var cols: int = clampi(ceili(sqrt(float(unit_count))), 1, 4)
+	var cols: int = clampi(ceili(sqrt(float(unit_count))), 1, 6)
 	unit_list.columns = cols
 
 	# Create unit cards
@@ -653,18 +664,22 @@ func _on_army_selected(army_id: StringName) -> void:
 	# minimum height of 0 unless we hand it back an explicit measurement of
 	# the grid we just built. Cap the measurement (rather than trusting it
 	# unbounded) so a huge army still scrolls in a bounded box instead of
-	# growing off-screen.
+	# growing off-screen. Cap raised 280->380 (more rows visible before the
+	# box scrolls); the panel's own height clamp below was raised to match so
+	# the taller box isn't cut off.
 	var grid_h: float = unit_list.get_combined_minimum_size().y
-	unit_scroll.custom_minimum_size.y = clampf(grid_h, 40.0, 280.0)
+	unit_scroll.custom_minimum_size.y = clampf(grid_h, 40.0, 380.0)
 
 	# Panel height now hugs the VBox's real measured content (header row +
 	# separator + the scroll box just sized above + action button row(s))
 	# plus the compact theme panel's own top+bottom content margin (24px) —
 	# not the old static "150 + rows*52" guess, which had drifted out of
 	# sync with the actual card/row size (assumed ~52px/row; real rows
-	# measured ~37px) and left a ~80px dead band above the button row.
+	# measured ~37px) and left a ~80px dead band above the button row. Upper
+	# clamp raised 460->560 to fit the taller UnitScroll cap above without
+	# clipping it; still well clear of the TopBar (52px tall) at 1920x1080.
 	var content_h: float = vbox_ref.get_combined_minimum_size().y + 24.0
-	army_panel.offset_top = -clampf(content_h, 150.0, 460.0)
+	army_panel.offset_top = -clampf(content_h, 150.0, 560.0)
 
 func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContainer:
 	var card := PanelContainer.new()
@@ -1769,6 +1784,7 @@ func _update_resource_display() -> void:
 
 	# Update shard display
 	_update_shard_display()
+	_update_scrap_display()
 	_update_bounty_bar_display()
 
 	# Update faction mechanic display
@@ -2023,6 +2039,7 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 				effects.append("Fortress (≤30): +20% defense, +8 morale in battle")
 			elif fs.border_vigilance >= 75:
 				effects.append("War Footing (≥75): +15% attack in battle")
+			effects.append("Fortresses (see Scrap) pull vigilance upward and harden dragon-raid defense")
 			tooltip = "\n".join(effects)
 		&"forsaken":
 			var effects: PackedStringArray = []
@@ -9615,6 +9632,107 @@ func _on_bounty_bar_hover() -> void:
 	var bar_bottom: float = ($TopBar as Control).get_global_rect().end.y
 	_bounty_bar_tooltip.global_position = Vector2(label_rect.position.x, maxf(label_rect.end.y, bar_bottom) + 4.0)
 	_bounty_bar_tooltip.visible = true
+
+# ── Scrap Display (Cinderguard) ───────────────────────────────
+# Scrap (FactionState.scavenge_stockpile) had zero UI presence before this —
+# players could see it named in the Frontier Orders dilemma title but had no
+# way to check it, or understand where it comes from/goes, between turns.
+# Same standalone-label + clamped-tooltip pattern as shard_label/bounty_bar_label.
+
+func _create_scrap_label() -> void:
+	scrap_label = Label.new()
+	scrap_label.name = "ScrapLabel"
+	scrap_label.add_theme_font_size_override("font_size", 12)
+	scrap_label.add_theme_color_override("font_color", Color(0.8, 0.55, 0.3))
+	scrap_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	scrap_label.visible = false
+	scrap_label.mouse_entered.connect(_on_scrap_label_hover)
+	scrap_label.mouse_exited.connect(func():
+		if _scrap_tooltip:
+			_scrap_tooltip.visible = false)
+
+	var hbox: HBoxContainer = $TopBar/HBoxContainer
+	var spacer := hbox.get_node("Spacer")
+	hbox.add_child(scrap_label)
+	hbox.move_child(scrap_label, spacer.get_index())
+
+	# Create tooltip panel (hidden)
+	_scrap_tooltip = PanelContainer.new()
+	_scrap_tooltip.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.border_width_left = 1
+	style.border_width_top = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_color = Color(0.8, 0.55, 0.3, 0.6)
+	style.corner_radius_top_left = 4
+	style.corner_radius_top_right = 4
+	style.corner_radius_bottom_right = 4
+	style.corner_radius_bottom_left = 4
+	style.content_margin_left = 8.0
+	style.content_margin_top = 6.0
+	style.content_margin_right = 8.0
+	style.content_margin_bottom = 6.0
+	_scrap_tooltip.add_theme_stylebox_override("panel", style)
+	_scrap_tooltip.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	var tooltip_label := Label.new()
+	tooltip_label.name = "TooltipText"
+	tooltip_label.add_theme_font_size_override("font_size", 12)
+	tooltip_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	_scrap_tooltip.add_child(tooltip_label)
+	add_child(_scrap_tooltip)
+
+func _update_scrap_display() -> void:
+	if scrap_label == null or GameManager.state == null:
+		return
+	var pid := GameManager.state.player_faction_id
+	if GameManager.MINOR_FACTION_PARENTS.get(pid, pid) != &"cinderguard":
+		scrap_label.visible = false
+		return
+	var fs: FactionState = GameManager.state.faction_states.get(pid)
+	if fs == null:
+		scrap_label.visible = false
+		return
+	scrap_label.visible = true
+	scrap_label.text = "  |  Scrap: %d" % int(fs.scavenge_stockpile)
+
+func _on_scrap_label_hover() -> void:
+	if _scrap_tooltip == null or GameManager.state == null:
+		return
+	var pid := GameManager.state.player_faction_id
+	var fs: FactionState = GameManager.state.faction_states.get(pid)
+	if fs == null:
+		return
+
+	var text := "Scrap — salvage for the border works: %d\n" % int(fs.scavenge_stockpile)
+	text += "Sources: settlements each turn, surviving dragon raids, razed rubble, Smelt Surplus orders.\n"
+	text += "Spent on: border fortresses (Watchtower 10 / Palisade 20 / Fort 35) via Frontier Orders.\n"
+	text += "Fortresses: +2% army defense per fortress level (network), raise vigilance, harden raid defense."
+
+	var fort_names := ["None", "Watchtower", "Palisade", "Border Fort"]
+	var settlement_lines: Array[String] = []
+	for cid in fs.owned_cities:
+		var city: CityState = GameManager.state.cities.get(cid)
+		if city and city.is_settlement:
+			var lvl: int = fs.border_fortresses.get(cid, 0)
+			settlement_lines.append("  %s: %s" % [city.get_display_name(), fort_names[mini(lvl, 3)]])
+	text += "\nSettlements:"
+	if settlement_lines.is_empty():
+		text += "\n  (none)"
+	else:
+		for line in settlement_lines:
+			text += "\n" + line
+
+	text += "\nVigilance: %d (target %d)" % [fs.border_vigilance, fs.vigilance_target]
+
+	var tooltip_label: Label = _scrap_tooltip.get_node("TooltipText")
+	tooltip_label.text = text
+	# Position tooltip directly below the scrap label, but never under the TopBar
+	var label_rect := scrap_label.get_global_rect()
+	var bar_bottom: float = ($TopBar as Control).get_global_rect().end.y
+	_scrap_tooltip.global_position = Vector2(label_rect.position.x, maxf(label_rect.end.y, bar_bottom) + 4.0)
+	_scrap_tooltip.visible = true
 
 ## Shard Reserve: lists claimed shards; Shardhorde can consume them for realm
 ## resonance, Tainted Jade can shatter them for taint power.
