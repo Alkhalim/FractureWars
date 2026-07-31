@@ -12,10 +12,12 @@
 
 **Files:** Modify `scripts/resources/building_data.gd` (+`settlement_allowed: bool = false` @export), `scripts/systems/campaign/city_system.gd` (`is_building_allowed_for` settlement branch gains `or building.settlement_allowed`), ~22-30 `data/buildings/*.tres` (tag two chains per faction), CREATE 4 new `data/buildings/*.tres` (tier-2 settlement buildings), `scripts/autoloads/turn_manager.gd` (AI settlement priorities gain the faction's tagged chain heads), tests append to `tests/test_settlement_partition.gd`.
 
-Chain selection rule (per faction, tag the WHOLE chain tier-1→tier-2, not just tier 1):
-- MILITARY tree: the faction's basic unit-unlocking barracks line (the tier-1 building whose `unlocks_units` carries the faction's basic units, plus its `upgrades_from` successor). Settlements can then recruit and defend.
-- SCIENCE/CULTURAL tree: the faction's basic shrine/temple line (tech and/or loyalty income). Where a faction has several, prefer the one with `research_speed_bonus`/tech income; fall back to the loyalty shrine.
-- Implementer lists every tagged id per faction in the report — the coordinator will show the table to the user.
+Chain selection rule (USER-REVISED 2026-08-01: 3-4 city trees per faction, NEVER defensive/wall trees; tag the WHOLE chain tier-1→tier-2, not just tier 1):
+1. MILITARY tree: the faction's basic unit-unlocking barracks line (the tier-1 building whose `unlocks_units` carries the faction's basic units, plus its `upgrades_from` successor). Settlements can then recruit and defend.
+2. SCIENCE/CULTURAL tree: the faction's basic shrine/temple line (tech and/or loyalty income). Where a faction has several, prefer the one with `research_speed_bonus`/tech income; fall back to the loyalty shrine.
+3. CAPTIVE/PRISONER tree, IF the faction has one (user-directed): any chain whose income/cost/effects involve CAPTIVES(6) — e.g. skulloath blood altars, cinderguard captive forges, tainted_jade/ivoryscar captive lines. Identify by scanning for resource key 6 in income_bonus/build_cost/special_effects and captive-themed effects. Factions without a captive economy simply skip this slot.
+4. FOURTH slot (to reach 3-4 total): for factions WITHOUT a captive tree, add ONE faction-flavor chain tied to the faction's signature mechanic (e.g. a harmony/lunar/storm line) — implementer's judgment, but NEVER a defensive/wall chain (`defense_bonus`-primary or category defensive buildings are EXCLUDED from tagging across the board; frontier_watchpost covers settlement defense). Factions WITH a captive tree already sit at 3 — a fourth is optional there, use judgment on roster size.
+- Implementer lists every tagged id per faction in the report — the coordinator will show the table to the user for override.
 
 Tier-2 settlement buildings (universal, `settlement_only = true`, `upgrades_from` the tier-1, `required_capital_level = 2`, build_time 3, no upkeep — matching the tier-1 conventions; costs stated post-cost-sweep, i.e. these ARE the final values):
 | id | display_name | cost | effect |
