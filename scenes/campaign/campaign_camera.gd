@@ -130,12 +130,10 @@ func _is_mouse_over_ui() -> bool:
 	return false
 
 func _clamp_position() -> void:
-	# Hex map bounds in pixels (flat-top hex: h_spacing = radius * 1.5, v_spacing = radius * sqrt(3))
-	const HEX_RADIUS := 32.0
-	const HEX_H_SPACING := HEX_RADIUS * 1.5 # 48.0
-	const HEX_V_SPACING := HEX_RADIUS * 1.732 # ~55.42
-	var map_w := float(HexMapData.MAP_WIDTH) * HEX_H_SPACING
-	var map_h := float(HexMapData.MAP_HEIGHT) * HEX_V_SPACING
+	# Bounds MUST use the shared render metrics (HexMapData) — a stale local
+	# radius (32 vs 38) once walled off the eastern ~16% of the map.
+	var map_w := float(HexMapData.MAP_WIDTH) * HexMapData.HEX_H_SPACING
+	var map_h := float(HexMapData.MAP_HEIGHT) * HexMapData.HEX_V_SPACING
 	# Account for zoom: allow camera center to move so the viewport edge reaches map edges
 	var vp_half := get_viewport_rect().size / zoom / 2.0
 	var margin := MAP_MARGIN

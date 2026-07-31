@@ -4,10 +4,10 @@ const TERRAIN_NAMES := ["Plains", "Forest", "Mountains", "Desert", "Swamp", "Wet
 const REALM_NAMES := ["Divine", "Void", "Elemental", "Nature", "Mortal"]
 
 # Hex outer radius (center to vertex) for flat-top hexes
-const HEX_RADIUS := 38.0  # +20% over the original 32 — more room for tile detail and buildings
+const HEX_RADIUS := HexMapData.HEX_RADIUS  # single source of truth (shared with camera clamp)
 # Derived spacing
-const HEX_H_SPACING := HEX_RADIUS * 1.5 # 36.0 - horizontal center-to-center
-const HEX_V_SPACING := HEX_RADIUS * 1.732 # sqrt(3) * radius ≈ 41.57
+const HEX_H_SPACING := HexMapData.HEX_H_SPACING # radius * 1.5 - horizontal center-to-center
+const HEX_V_SPACING := HexMapData.HEX_V_SPACING # sqrt(3) * radius
 const HEX_V_OFFSET := HEX_V_SPACING * 0.5 # Odd column vertical shift
 
 # Maps neighbor direction index → hex polygon edge start corner.

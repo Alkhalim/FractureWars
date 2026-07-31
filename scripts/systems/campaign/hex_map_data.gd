@@ -4,6 +4,13 @@ extends RefCounted
 static var MAP_WIDTH := 117
 static var MAP_HEIGHT := 78
 
+# Render metrics — single source of truth for hex pixel geometry (flat-top).
+# campaign.gd (rendering) and campaign_camera.gd (pan clamp) must both read
+# these; a stale duplicate once made the camera clamp wall off ~16% of the map.
+const HEX_RADIUS := 38.0
+const HEX_H_SPACING := HEX_RADIUS * 1.5
+const HEX_V_SPACING := HEX_RADIUS * 1.732
+
 var tiles: Dictionary = {} # Vector2i -> TileState
 var _region_tiles_cache: Dictionary = {} # region_id (StringName) -> Array[Vector2i]
 var _faction_affinity_cache: Dictionary = {} # faction_id (StringName) -> Enums.Realm (or -1 if no FactionData)
