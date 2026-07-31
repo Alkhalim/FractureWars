@@ -283,6 +283,28 @@ func population_food_consumption(city: CityState) -> int:
 func get_province_population(city: CityState) -> int:
 	return LoyaltySystem.get_province_population(city.region_id, city.faction_id)
 
+# Coastal waters: cities adjacent to open water get a real fishing/trade
+# bump — +2 food and +1 gold per 2 water(8) hex neighbors (int div), scaled
+# by the city's HexHelper neighbor count (6 max). PURE (city in, delta out,
+# no mutation) — the single source of truth calculate_city_income() folds
+# this into real income. A landlocked city (0 water neighbors) returns {},
+# i.e. gains exactly 0.
+func apply_coastal_income_bonus(city: CityState) -> Dictionary:
+	var hex_map := GameManager.state.hex_map
+	if hex_map == null:
+		return {}
+	var water_neighbors := 0
+	for n in HexHelper.get_neighbors(city.hex_pos):
+		var tile: HexMapData.TileState = hex_map.get_tile(n)
+		if tile != null and tile.terrain == Enums.TerrainType.WATER:
+			water_neighbors += 1
+	if water_neighbors <= 0:
+		return {}
+	return {
+		Enums.ResourceType.FOOD: water_neighbors * 2,
+		Enums.ResourceType.GOLD: water_neighbors / 2,
+	}
+
 func calculate_city_income(city: CityState) -> Dictionary:
 	# Evacuated (Cinderguard dragon-raid "Evacuate" choice): the settlement is
 	# offline for a fixed number of turns — no income at all, not even the
@@ -361,6 +383,11 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	if city.is_mobile_camp:
 		for res_type in income:
 			income[res_type] = int(float(income[res_type]) * 0.8)
+
+	# Coastal waters bonus: added last so it isn't itself diluted by the
+	# region-effects/mobile-camp scaling above — the advertised formula
+	# (+2 food, +1 gold per 2 water neighbors) always lands exactly.
+	_merge_income_delta(income, apply_coastal_income_bonus(city))
 
 	return income
 
@@ -2141,6 +2168,11 @@ const TILE_INCOME := {
 	Enums.TerrainType.SWAMP:     {0: 1, 3: 2, 5: 1},
 	Enums.TerrainType.WETLANDS:     {0: 2, 3: 2, 5: 0},
 	Enums.TerrainType.TUNDRA:    {0: 1, 3: 1, 1: 1},
+	# Coastal waters: fishing/trade — food-primary, small gold trickle. Was
+	# absent entirely (water tiles were skipped in the adjacency loop below),
+	# which made the preview promise income a founded coastal city never
+	# actually got from calculate_city_income().
+	Enums.TerrainType.WATER:     {3: 4, 0: 1},
 }
 
 const SETTLEMENT_FOUNDING_COST := {
@@ -2219,7 +2251,7 @@ func calculate_settlement_income_preview(hex_pos: Vector2i) -> Dictionary:
 			if not HexHelper.is_valid(ring_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
 				continue
 			var rtile := hex_map.get_tile(ring_coord)
-			if rtile == null or rtile.terrain == Enums.TerrainType.WATER:
+			if rtile == null:
 				continue
 			if is_in_settlement_sphere(ring_coord):
 				continue
@@ -2246,6 +2278,7 @@ func _get_primary_resource(terrain: Enums.TerrainType) -> int:
 		Enums.TerrainType.SWAMP: return 3  # Food
 		Enums.TerrainType.WETLANDS: return 0  # Gold
 		Enums.TerrainType.TUNDRA: return 1  # Iron
+		Enums.TerrainType.WATER: return 3  # Food
 	return -1
 
 # ── Commander influence helpers ───────────────────────────────
