@@ -191,6 +191,10 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 						if fs.resources.get(Enums.ResourceType.IRON, 0) >= 30:
 							fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) - 30
 							fs.forge_shift_queued = 20
+					"forge_smelt":
+						if fs.resources.get(Enums.ResourceType.IRON, 0) >= 40:
+							fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) - 40
+							fs.scavenge_stockpile += 20
 		"dragon_raid":
 			var raid_target: StringName = fs.dragon_raid_target
 			match choice_effect:
@@ -4685,6 +4689,8 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 				{"label": "Stand Down", "description": "-10 Vigilance. More food and loyalty, less iron.", "effect": "forge_peace"},
 				{"label": "Emergency Mobilization", "description": "+20 Vigilance instantly. Costs 30 Iron.", "effect": "forge_emergency", "cost": {1: 30}},
 			]
+			if fs.resources.get(Enums.ResourceType.IRON, 0) >= 40:
+				fort_choices.append({"label": "Smelt Surplus", "description": "Convert 40 iron into 20 scrap for the fortress works.", "effect": "forge_smelt"})
 			# Fortress building option (if settlements exist with room to upgrade)
 			for cid in settlement_ids:
 				var flv: int = fs.border_fortresses.get(cid, 0)

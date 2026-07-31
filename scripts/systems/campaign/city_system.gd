@@ -2418,9 +2418,6 @@ func compute_faction_income_modifier_effects(faction_id: StringName, fs: Faction
 			if city and (city.buildings.has(&"ember_foundry") or city.buildings.has(&"molten_core_forge")) and local_captives >= 4:
 				local_captives -= 4
 				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + 18
-			# Border vigilance: +iron production scaling
-			if mech_fs.border_vigilance >= 30:
-				delta[Enums.ResourceType.IRON] = delta.get(Enums.ResourceType.IRON, 0) + int(mech_fs.border_vigilance * 0.06)
 		&"forsaken":
 			# Shadow Barracks: consume captives as thrall fuel (blood-binding)
 			if city and (city.buildings.has(&"wretched_pit") or city.buildings.has(&"necromancer_sanctum")) and local_captives >= 3:
