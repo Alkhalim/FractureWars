@@ -30,7 +30,7 @@ extends Resource
 @export var garrison_hp_ratio: float = 1.0 # 0.0 = destroyed, 1.0 = full; heals over time when not sieged
 @export var garrison_units: Array[Dictionary] = [] # Independent cities: persistent garrison [{unit_id, count}]
 @export var building_recruit_queues: Dictionary = {} # building_id -> Array[Dict] (per-building training queues)
-@export var is_mobile_camp: bool = false # Sunblessed: camp is mobile (moving with army, 80% income)
+@export var is_mobile_camp: bool = false # Sunblessed: PERMANENT camp identity (set once by setup_sunblessed_camp, never cleared -- keeps full faction building access despite is_settlement=true). The separate "currently marching, 80% income" check lives in CitySystem._camp_is_currently_marching, derived from the linked army's is_camp flag, not this field.
 @export var production_disabled_turns: int = 0 # >0: evacuated/offline, calculate_city_income() returns {}
 
 const GROWTH_THRESHOLDS := [200, 400, 700, 1100] # pop needed for levels 2-5

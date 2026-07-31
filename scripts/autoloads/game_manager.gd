@@ -2181,7 +2181,14 @@ func setup_sunblessed_camp(army_id: StringName) -> StringName:
 	# Check if army has a mobile camp city — re-use it instead of creating new
 	if army.camp_city_id != &"" and state.cities.has(army.camp_city_id):
 		var city: CityState = state.cities[army.camp_city_id]
-		city.is_mobile_camp = false
+		# is_mobile_camp now doubles as the camp's PERMANENT identity marker
+		# (see is_building_allowed_for) as well as the pre-existing "currently
+		# on the move" signal consumed by calculate_city_income — settling
+		# back down must NOT clear it, or the settlement-building partition
+		# would wrongly re-apply to a re-settled camp. calculate_city_income
+		# derives the actual "is it moving right now" 80%-income check from
+		# the army's own is_camp flag instead, so this stays true here.
+		city.is_mobile_camp = true
 		city.hex_pos = army.hex_pos
 		city_system.invalidate_city_hex_index()
 		city.region_id = tile.region_id if tile else &""
@@ -2199,6 +2206,9 @@ func setup_sunblessed_camp(army_id: StringName) -> StringName:
 	city.population = 30
 	city.is_capital = false
 	city.is_settlement = true
+	# Permanent camp identity (see is_building_allowed_for): Sunblessed camps
+	# keep full faction building access, unlike founded frontier settlements.
+	city.is_mobile_camp = true
 	city.original_faction_id = army.faction_id
 	city.loyalty = 60
 	city.class_loyalty = {
@@ -2234,7 +2244,10 @@ func break_sunblessed_camp(army_id: StringName) -> bool:
 		# Save buildings and build queue to army for persistence
 		army.camp_saved_buildings = city.buildings.duplicate()
 		army.camp_saved_build_queue = city.build_queue.duplicate()
-		# Convert to mobile camp instead of erasing
+		# Already true (permanent camp identity, set at setup_sunblessed_camp)
+		# for any camp created/settled post-fix; kept as an explicit backfill
+		# so a pre-fix save's still-settled camp gets correctly marked the
+		# moment it's broken, instead of staying misclassified indefinitely.
 		city.is_mobile_camp = true
 	army.is_camp = false
 	return true

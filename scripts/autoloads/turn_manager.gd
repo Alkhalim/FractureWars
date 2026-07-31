@@ -798,7 +798,10 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 				# settlement priority list instead of the faction's city
 				# build table (extractor/landmark steps above already ran
 				# first, unchanged — they're the settlement's best builds).
-				var city_priority_list: Array = SETTLEMENT_BUILD_PRIORITY if city.is_settlement else priority_list
+				# Sunblessed mobile camps (is_mobile_camp) are excluded here
+				# too, mirroring is_building_allowed_for -- they keep the
+				# faction's normal city build priorities.
+				var city_priority_list: Array = SETTLEMENT_BUILD_PRIORITY if (city.is_settlement and not city.is_mobile_camp) else priority_list
 				for priority_id in city_priority_list:
 					if built:
 						break

@@ -379,8 +379,13 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	# Apply region/faction-wide building effects
 	apply_region_effects(income, city)
 
-	# Mobile camp penalty: 80% income when Sunblessed camp is on the move
-	if city.is_mobile_camp:
+	# Mobile camp penalty: 80% income while a Sunblessed camp is actually on
+	# the move. is_mobile_camp is now the camp's PERMANENT identity marker
+	# (true for its whole life, settled or not — see is_building_allowed_for
+	# and setup_sunblessed_camp), so "currently moving" is derived from the
+	# linked army's is_camp flag (false while the army is marching with a
+	# broken camp; true while it's anchored/settled and the camp can build).
+	if city.is_mobile_camp and _camp_is_currently_marching(city):
 		for res_type in income:
 			income[res_type] = int(float(income[res_type]) * 0.8)
 
@@ -390,6 +395,18 @@ func calculate_city_income(city: CityState) -> Dictionary:
 	_merge_income_delta(income, apply_coastal_income_bonus(city))
 
 	return income
+
+## True if `city` is a Sunblessed camp currently broken from its settled
+## state (following its army, not anchored) -- i.e. the linked army's
+## camp_city_id points here and that army's is_camp flag is false. Callers
+## already gate on city.is_mobile_camp first (only true for camps at all),
+## so this per-faction army scan only ever runs for the rare camp-city case,
+## never on the 246-building get_available_buildings hot path.
+func _camp_is_currently_marching(city: CityState) -> bool:
+	for army: ArmyState in GameManager.get_faction_armies(city.faction_id):
+		if army.camp_city_id == city.city_id:
+			return not army.is_camp
+	return false
 
 # Ordered special-building effect entries per parent faction. Effects compound
 # sequentially (percentage bonuses apply to the running income), so the cache
@@ -1592,8 +1609,14 @@ func has_dependent_upgrade(city: CityState, building_id: StringName) -> bool:
 ## class identity, not an early-game state. ONE shared predicate used by both
 ## get_available_buildings (menu) and start_building (commit path) so the two
 ## can never drift out of sync again.
+## Sunblessed mobile camps (city.is_mobile_camp, a PERMANENT camp identity
+## marker set by setup_sunblessed_camp regardless of settled/marching
+## sub-state -- see calculate_city_income for the separate "currently
+## marching" signal) are excluded from the settlement branch: the camp
+## mechanic keeps full faction-roster access (minus settlement_only, same as
+## any other city), it just never graduated into being a real settlement.
 func is_building_allowed_for(city: CityState, building: BuildingData) -> bool:
-	if city.is_settlement:
+	if city.is_settlement and not city.is_mobile_camp:
 		return building.settlement_only \
 			or building.requires_region_resource != &"" \
 			or building.requires_region_landmark != &""

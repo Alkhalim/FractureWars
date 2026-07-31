@@ -102,6 +102,17 @@ func _run() -> void:
 	# settlement-grade buildings, not an arbitrary fallback. ──
 	_run_ai_settlement_priority(gm, tm)
 
+	# ── Fix round 1: Sunblessed mobile camps are a distinct city-class
+	# mechanic, not a founded frontier settlement -- they keep full faction
+	# building access despite is_settlement == true. ──
+	_run_sunblessed_camp_tests(gm)
+
+	# ── Fix round 1 (reviewer minor): a settlement holding a legacy city
+	# building does NOT get offered that building's tier-2 upgrade --
+	# upgrading IS building, and the partition applies to all NEW
+	# construction, not just base buildings. ──
+	_run_legacy_upgrade_not_offered_test(gm)
+
 	_finish()
 
 func _run_ai_settlement_priority(gm, tm) -> void:
@@ -157,6 +168,132 @@ func _run_ai_settlement_priority(gm, tm) -> void:
 	gm.state.cities.erase(settlement.city_id)
 	fs.owned_cities.erase(settlement.city_id)
 	fs.resources = saved_resources
+
+## Fix round 1: Sunblessed mobile camps set is_settlement = true (see
+## setup_sunblessed_camp) but are NOT founded frontier settlements -- they're
+## a distinct city-class mechanic and must keep full faction-roster access
+## (city.is_mobile_camp is the permanent camp-identity marker that carves
+## them out of the settlement branch in is_building_allowed_for). Exercises
+## the REAL setup_sunblessed_camp path end-to-end, not a synthetic stand-in,
+## since that's exactly the function the reviewer flagged.
+func _run_sunblessed_camp_tests(gm) -> void:
+	var cs = gm.city_system
+	var sfs: FactionState = gm.state.faction_states.get(&"sunblessed")
+	if sfs == null:
+		_check(false, "found the sunblessed faction state for the camp test")
+		return
+	# Reuse a real, already-known-valid map tile (any existing city's hex_pos
+	# guarantees a non-water tile with buildable neighbors).
+	var anchor_hex := Vector2i(0, 0)
+	for cid in gm.state.cities:
+		var c: CityState = gm.state.cities[cid]
+		anchor_hex = c.hex_pos
+		break
+
+	var army := ArmyState.new()
+	army.army_id = &"__test_camp_army__"
+	army.faction_id = &"sunblessed"
+	army.hex_pos = anchor_hex
+	army.movement_remaining = 2.0 # units.is_empty() -> get_max_movement() == 2.0; > half of that
+	var cmd := CommanderState.new()
+	cmd.commander_id = &"__test_camp_commander__"
+	cmd.name = "Test Commander"
+	cmd.faction_id = &"sunblessed"
+	army.commander = cmd
+	gm.state.armies[army.army_id] = army
+
+	var camp_city_id: StringName = gm.setup_sunblessed_camp(army.army_id)
+	_check(camp_city_id != &"", "setup_sunblessed_camp creates a camp city")
+	if camp_city_id == &"":
+		gm.state.armies.erase(army.army_id)
+		return
+	var camp: CityState = gm.state.cities.get(camp_city_id)
+	if camp == null:
+		_check(false, "camp city registered in GameManager.state.cities")
+		gm.state.armies.erase(army.army_id)
+		return
+
+	_check(camp.is_settlement, "camp city has is_settlement == true (why the partition would apply at all)")
+	_check(camp.is_mobile_camp, "camp city has is_mobile_camp == true (permanent camp identity, set by setup_sunblessed_camp)")
+
+	var saved_resources: Dictionary = sfs.resources.duplicate()
+	sfs.resources[Enums.ResourceType.GOLD] = 100000
+	sfs.resources[Enums.ResourceType.WOOD] = 100000
+
+	# 1. Camp's available list includes a real faction city building, and
+	# start_building of it succeeds -- RED before the fix round (the camp
+	# was wrongly confined to the 4 settlement-grade buildings), GREEN after.
+	var camp_avail: Array[BuildingData] = cs.get_available_buildings(camp, true)
+	var found_city_building := false
+	for bd in camp_avail:
+		if bd.id == &"pilgrim_gardens":
+			found_city_building = true
+			break
+	_check(found_city_building, "sunblessed camp's available list includes a faction city building (pilgrim_gardens)")
+	var camp_started: bool = cs.start_building(camp_city_id, &"pilgrim_gardens")
+	_check(camp_started, "start_building accepts a faction city building (pilgrim_gardens) on a sunblessed camp")
+	if camp_started:
+		var found_in_queue := false
+		for item in camp.build_queue:
+			if item.building_id == &"pilgrim_gardens":
+				found_in_queue = true
+		_check(found_in_queue, "pilgrim_gardens actually entered the camp's build_queue")
+
+	# 2. Design call: camps are city-class, so settlement_only stays blocked
+	# for them exactly like any other non-settlement city.
+	for bd in camp_avail:
+		_check(not bd.settlement_only, "camp not offered a settlement_only building: %s" % bd.id)
+	for settlement_only_id in [&"waystation", &"resource_camp", &"frontier_watchpost", &"frontier_shrine"]:
+		var blocked: bool = not cs.start_building(camp_city_id, settlement_only_id)
+		_check(blocked, "start_building refuses settlement_only building %s on a sunblessed camp" % settlement_only_id)
+
+	sfs.resources = saved_resources
+	gm.state.cities.erase(camp_city_id)
+	sfs.owned_cities.erase(camp_city_id)
+	gm.state.armies.erase(army.army_id)
+
+## Fix round 1 (reviewer minor): a settlement holding a legacy city building
+## (as if from an old save, injected directly into city.buildings bypassing
+## the gate) must NOT be offered that building's tier-2 upgrade -- upgrading
+## IS building, and the partition governs all NEW construction, upgrades
+## included, not just fresh base buildings.
+func _run_legacy_upgrade_not_offered_test(gm) -> void:
+	var cs = gm.city_system
+	var efs: FactionState = gm.state.faction_states.get(&"empire")
+	if efs == null or efs.owned_cities.is_empty():
+		_check(false, "found the empire capital for the legacy-upgrade test")
+		return
+	var capital: CityState = null
+	for cid in efs.owned_cities:
+		var c: CityState = gm.state.cities.get(cid)
+		if c and c.is_capital:
+			capital = c
+			break
+	if capital == null:
+		_check(false, "found the empire capital for the legacy-upgrade test")
+		return
+
+	var saved_is_settlement := capital.is_settlement
+	var saved_level := capital.level
+	var had_grain_fields := capital.buildings.has(&"grain_fields")
+	capital.is_settlement = true
+	# imperial_granary requires_capital_level 2 -- bump so the partition is
+	# the ONLY reason it's excluded, isolating it from the unrelated level gate.
+	capital.level = maxi(capital.level, 2)
+	if not had_grain_fields:
+		capital.buildings.append(&"grain_fields")
+
+	var avail: Array[BuildingData] = cs.get_available_buildings(capital, true)
+	var offered_upgrade := false
+	for bd in avail:
+		if bd.id == &"imperial_granary":
+			offered_upgrade = true
+	_check(not offered_upgrade, "settlement holding a legacy grain_fields is NOT offered its tier-2 upgrade (imperial_granary) -- upgrading is building")
+
+	if not had_grain_fields:
+		capital.buildings.erase(&"grain_fields")
+	capital.level = saved_level
+	capital.is_settlement = saved_is_settlement
 
 func _finish() -> void:
 	if _fails == 0:
