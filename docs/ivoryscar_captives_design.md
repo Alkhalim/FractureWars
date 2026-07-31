@@ -4,6 +4,8 @@
 against the `city_management` branch.*
 
 > **DESIGNER DECISION (2026-08-01):** Pyramid Labor is VISIBLE and player-managed — via a dedicated **Black Pyramid management window** modeled on the Empire's Senate (top-bar button for Ivoryscar, centered management panel). The window hosts: restoration progress, captive labor allocation (the player sets how many captives/turn feed the pyramid — replacing the proposed automatic drain), relic power status, and is the natural future home for expedition management. ALSO: the pre-existing hidden tomb_scholars_hall drain (3 captives/turn, city_system.gd:2621-2626) must become visible in this window too — no invisible captive drains for this faction once the window ships. Bound Levy/Mummy recruitment competes for the same captive pool by design; the window is where that tension is managed.
+>
+> **DESIGNER DIRECTION (2026-08-01, follow-up):** the window should include **worker-allocation elements** so Ivoryscar's playstyle stands apart — not a single labor slider but allocation across multiple pyramid TRACKS, e.g.: **Restoration** (captives → Black Pyramid progress), **Excavation** (captives → relic power / expedition yield or frequency), and a third track for kit synergy (candidates at implementation-plan time: **Bone-working** — captives → discounted Bound Levy/undead recruitment — or **Overseers** — captives → loyalty/unrest management for the slave economy). The player redistributes a limited worker pool between tracks each turn (or with a reallocation cost/cooldown to make commitments matter). This is Ivoryscar's management identity the way Edicts are Empire's and Frontier Orders are Cinderguard's.
 
 ## The ask
 
