@@ -805,13 +805,11 @@ func _process_sieges(faction_id: StringName) -> void:
 		_apply_besieger_attrition(besiegers)
 		city.garrison_hp_ratio = maxf(0.0, city.garrison_hp_ratio - SIEGE_GARRISON_ATTRITION)
 
-		# Jungle Traps: extra besieger attrition (existing building behavior).
-		if city.buildings.has(&"jungle_traps"):
-			for army: ArmyState in besiegers:
-				for unit in army.units:
-					var ud := DataManager.get_unit(unit.unit_data_id)
-					if ud:
-						unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * 0.05))
+		# Attrition walls (Jungle Traps, Serpent's Maze): buildings that carry
+		# a besieger_attrition special_effect bleed the besieging armies every
+		# siege turn, on top of the baseline attrition above. Data-driven so
+		# any faction's attrition-style wall gets the same behavior.
+		_apply_wall_besieger_attrition(city, besiegers)
 
 		EventBus.siege_progress_changed.emit(city.city_id, city.siege_turns, get_siege_threshold(city))
 
@@ -835,6 +833,72 @@ func _apply_besieger_attrition(besiegers: Array) -> void:
 			var ud := DataManager.get_unit(unit.unit_data_id)
 			if ud:
 				unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * SIEGE_BESIEGER_ATTRITION))
+
+## Damage per besieger_attrition point dealt to a besieging army each siege
+## turn (attrition_sum * this constant, split evenly across the army's units).
+const WALL_ATTRITION_DAMAGE_PER_POINT := 8.0
+
+## Attrition walls: sums the besieged city's buildings' besieger_attrition
+## special_effect (Jungle Traps, Serpent's Maze — Tainted Jade's "traps" wall
+## line) and, if any, deals attrition_sum * WALL_ATTRITION_DAMAGE_PER_POINT HP
+## to each besieging army, spread evenly across its units. Unlike the flat
+## SIEGE_BESIEGER_ATTRITION drip above, this can kill units outright — see
+## _apply_army_wall_damage. Logs a turn_log line when it draws blood.
+func _apply_wall_besieger_attrition(city: CityState, besiegers: Array) -> void:
+	var attrition_sum := 0.0
+	var source_name := ""
+	for b_id in city.buildings:
+		var bd: BuildingData = DataManager.get_building(b_id)
+		if bd == null:
+			continue
+		var v: float = float(bd.special_effects.get("besieger_attrition", 0.0))
+		if v > 0.0:
+			attrition_sum += v
+			if source_name == "":
+				source_name = bd.display_name
+
+	if attrition_sum <= 0.0:
+		return
+
+	var total_dmg := attrition_sum * WALL_ATTRITION_DAMAGE_PER_POINT
+	var dealt := 0
+	for army: ArmyState in besiegers:
+		dealt += _apply_army_wall_damage(army, total_dmg)
+
+	if dealt > 0:
+		TurnManager.turn_log.append({
+			"type": "siege",
+			"text": "%s bleed the besiegers at %s: %d damage" % [source_name, city.get_display_name(), dealt],
+		})
+
+## Spreads total_dmg evenly across army's units (mirrors the per-unit HP
+## bookkeeping used elsewhere, e.g. _apply_besieger_attrition above), but —
+## unlike that flat drip — kills units whose HP drops to 0 or below and
+## removes them from the army, disbanding the army entirely if none survive
+## (mirrors the emptied-army cleanup in _desert_unpaid_units). Returns the
+## actual HP removed (<= total_dmg if a unit died before absorbing its full
+## share).
+func _apply_army_wall_damage(army: ArmyState, total_dmg: float) -> int:
+	if army == null or army.units.is_empty():
+		return 0
+	var per_unit := int(roundf(total_dmg / float(army.units.size())))
+	if per_unit <= 0:
+		return 0
+
+	var dealt := 0
+	var survivors: Array[UnitInstance] = []
+	for unit: UnitInstance in army.units:
+		var actual := mini(per_unit, unit.current_hp)
+		unit.current_hp -= actual
+		dealt += actual
+		if unit.current_hp > 0:
+			survivors.append(unit)
+	army.units = survivors
+
+	if army.units.is_empty():
+		GameManager.remove_army(army.army_id)
+
+	return dealt
 
 func _capture_city(city: CityState) -> void:
 	var old_owner := city.faction_id

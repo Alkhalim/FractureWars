@@ -77,6 +77,104 @@ func _run() -> void:
 		# Guard the actual militia-count math too: int(value*10) must equal +2, not +20.
 		_check(int(garrison_bonus * 10) == 2, "hardened_chitin_wall militia math int(value*10) == 2 (bug was +20), got %s" % [int(garrison_bonus * 10)])
 
+	# ── Task 2: Tainted Jade wall split — attrition traps vs endurance walls ──
+	# jungle_traps/serpents_maze (traps line): besieger_attrition, no terrain lock.
+	var jungle_traps = dm.get_building(&"jungle_traps")
+	if jungle_traps == null:
+		_check(false, "jungle_traps building data exists")
+	else:
+		_check(absf(float(jungle_traps.special_effects.get("besieger_attrition", -1.0)) - 2.0) < 0.001, "jungle_traps besieger_attrition == 2.0, got %s" % [jungle_traps.special_effects.get("besieger_attrition", -1.0)])
+		_check(jungle_traps.required_terrain == -1, "jungle_traps has no required_terrain (available everywhere), got %s" % [jungle_traps.required_terrain])
+		_check(jungle_traps.defense_bonus == 6, "jungle_traps defense_bonus unchanged == 6, got %s" % [jungle_traps.defense_bonus])
+
+	var serpents_maze = dm.get_building(&"serpents_maze")
+	if serpents_maze == null:
+		_check(false, "serpents_maze building data exists")
+	else:
+		_check(absf(float(serpents_maze.special_effects.get("besieger_attrition", -1.0)) - 4.0) < 0.001, "serpents_maze besieger_attrition == 4.0, got %s" % [serpents_maze.special_effects.get("besieger_attrition", -1.0)])
+		_check(not serpents_maze.special_effects.has("garrison_strength_bonus"), "serpents_maze special_effects no longer has garrison_strength_bonus (endurance identity moved to living walls), got %s" % [serpents_maze.special_effects])
+		_check(serpents_maze.defense_bonus == 10, "serpents_maze defense_bonus unchanged == 10, got %s" % [serpents_maze.defense_bonus])
+
+	# living_walls/thornwall (endurance line): unchanged — no besieger_attrition,
+	# thornwall keeps its garrison_strength_bonus.
+	var living_walls = dm.get_building(&"living_walls")
+	if living_walls == null:
+		_check(false, "living_walls building data exists")
+	else:
+		_check(living_walls.defense_bonus == 8, "living_walls defense_bonus unchanged == 8, got %s" % [living_walls.defense_bonus])
+		_check(not living_walls.special_effects.has("besieger_attrition"), "living_walls has no besieger_attrition (endurance line, not traps), got %s" % [living_walls.special_effects])
+
+	var thornwall = dm.get_building(&"thornwall")
+	if thornwall == null:
+		_check(false, "thornwall building data exists")
+	else:
+		_check(thornwall.defense_bonus == 13, "thornwall defense_bonus unchanged == 13, got %s" % [thornwall.defense_bonus])
+		_check(absf(float(thornwall.special_effects.get("garrison_strength_bonus", -1.0)) - 0.1) < 0.001, "thornwall garrison_strength_bonus unchanged ~= 0.1, got %s" % [thornwall.special_effects.get("garrison_strength_bonus", -1.0)])
+		_check(not thornwall.special_effects.has("besieger_attrition"), "thornwall has no besieger_attrition (endurance line, not traps), got %s" % [thornwall.special_effects])
+
+	# ── Functional: jungle_traps bleeds besiegers ~16 HP more per siege tick
+	# than an identical control city without the wall (attrition 2.0 * 8). ──
+	var gm = root.get_node("/root/GameManager")
+	gm.new_game(&"tainted_jade", false, 0)
+	var cs = gm.city_system
+
+	var tj_city: CityState = null
+	for cid in gm.state.cities:
+		var c: CityState = gm.state.cities[cid]
+		if c.faction_id == &"tainted_jade":
+			tj_city = c
+			break
+
+	if tj_city == null:
+		_check(false, "found a tainted_jade city for the wall-attrition test")
+	else:
+		# Runs one siege tick against a fresh single-unit besieging army and
+		# returns the total HP that army lost. with_wall toggles jungle_traps
+		# on the besieged city so the two runs are otherwise identical.
+		var run_tick := func(with_wall: bool) -> float:
+			tj_city.is_under_siege = true
+			tj_city.siege_faction = &"empire"
+			tj_city.siege_turns = 0.0
+			tj_city.garrison_hp_ratio = 1.0
+			tj_city.buildings.clear()
+			if with_wall:
+				tj_city.buildings.append(&"jungle_traps")
+
+			var ud: UnitData = dm.get_unit(&"legionary")
+			var ui := UnitInstance.new()
+			ui.init_from_data(ud, &"legionary")
+			var army := ArmyState.new()
+			army.army_id = &"__test_wall_army_%d" % randi()
+			army.faction_id = &"empire"
+			army.hex_pos = tj_city.hex_pos
+			army.units.append(ui)
+			gm.state.armies[army.army_id] = army
+			gm.movement_system.invalidate_positions()
+
+			var hp_before := 0
+			for u in army.units:
+				hp_before += u.current_hp
+
+			cs._process_sieges(&"empire")
+
+			var hp_after := 0
+			if gm.state.armies.has(army.army_id):
+				for u in gm.state.armies[army.army_id].units:
+					hp_after += u.current_hp
+			# else: army was wiped out entirely -- 0 HP remaining.
+
+			gm.state.armies.erase(army.army_id)
+			gm.movement_system.invalidate_positions()
+			tj_city.is_under_siege = false
+			tj_city.siege_faction = &""
+			tj_city.siege_turns = 0.0
+			return float(hp_before - hp_after)
+
+		var loss_control: float = run_tick.call(false)
+		var loss_with_wall: float = run_tick.call(true)
+		var delta := loss_with_wall - loss_control
+		_check(absf(delta - 16.0) < 1.0, "jungle_traps adds ~16 besieger HP loss per siege tick vs control (delta=%f, control=%f, with_wall=%f)" % [delta, loss_control, loss_with_wall])
+
 	if _fails == 0:
 		print("BUILDING REBALANCE TEST PASSED")
 		quit(0)
