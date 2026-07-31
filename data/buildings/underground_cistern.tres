@@ -16,6 +16,6 @@ population_growth_bonus = 8
 unlocks_units = Array[StringName]([])
 upgrades_from = &"desert_well"
 required_capital_level = 2
-special_effects = { "region_population_growth_bonus": 1 }
+special_effects = { "region_population_growth_bonus": 2 }
 class_loyalty_bonus = {"peasants": 3}
 upkeep_cost = {1: 3, 5: 5}

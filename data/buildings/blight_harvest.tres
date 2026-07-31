@@ -17,6 +17,6 @@ upgrades_from = &"scavenger_camp"
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
 requires_research = &"fk_bone_walls"
-special_effects = { "region_population_growth_bonus": 1 }
+special_effects = { "region_population_growth_bonus": 2 }
 class_loyalty_bonus = {"peasants": 3}
 upkeep_cost = {0: 3, 1: 5}

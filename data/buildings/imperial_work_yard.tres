@@ -17,6 +17,5 @@ defense_bonus = 0
 recruit_speed_bonus = 0
 unlocks_units = Array[StringName]([])
 required_capital_level = 2
-special_effects = { "region_population_growth_bonus": 1 }
 upgrades_from = &"labor_camp"
 upkeep_cost = {0: 5}

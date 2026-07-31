@@ -200,6 +200,9 @@ func _run() -> void:
 		_check(delta_10 > 0.0, "jungle_traps damage is nonzero for a 10-unit besieging army -- regression guard for the round-to-zero cliff (delta=%f)" % [delta_10])
 		_check(absf(delta_10 - float(expected_per_unit * 10)) < 10.0, "jungle_traps damage scales with army size: 10-unit delta ~= 10x the per-unit share (delta=%f, expected~%d)" % [delta_10, expected_per_unit * 10])
 
+	# ── Task 3: growth purge on industry + growth variance on farms ──
+	_run_task3_growth_purge(dm)
+
 	if _fails == 0:
 		print("BUILDING REBALANCE TEST PASSED")
 		quit(0)
@@ -211,3 +214,140 @@ func _check(cond: bool, label: String) -> void:
 	if not cond:
 		_fails += 1
 		print("FAIL: " + label)
+
+## Returns the income_bonus key with the highest value for a building, or -1
+## if income_bonus is empty. Ties keep whichever key Dictionary iteration
+## visits first (insertion order, i.e. .tres declaration order).
+func _largest_income_key(b: BuildingData) -> int:
+	var largest_key := -1
+	var largest_val := -2147483648
+	for k in b.income_bonus.keys():
+		var v := int(b.income_bonus[k])
+		if v > largest_val:
+			largest_val = v
+			largest_key = int(k)
+	return largest_key
+
+func _run_task3_growth_purge(dm) -> void:
+	const IRON := 1
+	const FOOD := 3
+
+	var industrial_re := RegEx.new()
+	industrial_re.compile("(?i)(mine|forge|quarry|foundry|smelter|pit|kiln|works)")
+
+	# ── INVARIANT: every building whose id/name matches the industrial regex
+	# AND whose largest income key is IRON must grant zero population growth,
+	# directly or via the hidden region_population_growth_bonus layer. This is
+	# the authority for the sweep -- it iterates every loaded building, not a
+	# fixed list, so it also catches any straggler the audit missed. ──
+	var swept := 0
+	for id in dm.buildings.keys():
+		var b: BuildingData = dm.buildings[id]
+		var name_hit: bool = industrial_re.search(String(id)) != null or industrial_re.search(b.display_name) != null
+		if not name_hit:
+			continue
+		if _largest_income_key(b) != IRON:
+			continue
+		swept += 1
+		_check(b.population_growth_bonus == 0, "%s (industrial, iron-primary) population_growth_bonus == 0, got %s" % [id, b.population_growth_bonus])
+		_check(not b.special_effects.has("region_population_growth_bonus"), "%s (industrial, iron-primary) special_effects has no region_population_growth_bonus, got %s" % [id, b.special_effects])
+	_check(swept >= 25, "invariant sweep matched a plausible number of iron-primary industrial buildings (>=25), got %d" % swept)
+
+	# ── Stragglers that dodge the naming regex (id has no mine/forge/quarry/
+	# foundry/smelter/pit/kiln/works substring) but are iron-primary industrial
+	# buildings all the same -- caught by an exhaustive by-income scan, not by
+	# name, during the sweep for this task. Pinned explicitly since the
+	# automated regex above cannot see them. ──
+	for straggler_id in [&"silver_vein", &"magma_vent", &"imperial_work_yard", &"grove_smithy"]:
+		var b: BuildingData = dm.get_building(straggler_id)
+		if b == null:
+			_check(false, "%s building data exists (straggler check)" % straggler_id)
+			continue
+		_check(_largest_income_key(b) == IRON, "%s is iron-primary (sanity check for straggler pin), largest key got %s" % [straggler_id, _largest_income_key(b)])
+		_check(b.population_growth_bonus == 0, "%s (straggler) population_growth_bonus == 0, got %s" % [straggler_id, b.population_growth_bonus])
+		_check(not b.special_effects.has("region_population_growth_bonus"), "%s (straggler) special_effects has no region_population_growth_bonus, got %s" % [straggler_id, b.special_effects])
+
+	# ── sunfire_forge: also strip the capstone-grade army_attack_bonus a
+	# tier-1 economy building had no business carrying. solar_citadel (its
+	# unrelated late-game counterpart) keeps its own +2 untouched. ──
+	var sunfire_forge = dm.get_building(&"sunfire_forge")
+	if sunfire_forge == null:
+		_check(false, "sunfire_forge building data exists")
+	else:
+		_check(not sunfire_forge.special_effects.has("army_attack_bonus"), "sunfire_forge special_effects has no army_attack_bonus, got %s" % [sunfire_forge.special_effects])
+	var solar_citadel = dm.get_building(&"solar_citadel")
+	if solar_citadel != null:
+		_check(int(solar_citadel.special_effects.get("army_attack_bonus", -1)) == 2, "solar_citadel keeps its own army_attack_bonus == 2 (unrelated capstone), got %s" % [solar_citadel.special_effects.get("army_attack_bonus", -1)])
+
+	# ── Cinderguard iron VALUES are locked -- Task 3 strips only growth
+	# fields, never touches income_bonus, on these five buildings. ──
+	var locked_iron_values := {
+		&"ember_foundry": 45,
+		&"volcanic_smelter": 35,
+		&"cinder_mine": 20,
+		&"magma_vent": 16,
+		&"molten_core_forge": 28,
+	}
+	for cg_id in locked_iron_values.keys():
+		var b: BuildingData = dm.get_building(cg_id)
+		if b == null:
+			_check(false, "%s building data exists (cinderguard locked-value check)" % cg_id)
+		else:
+			_check(int(b.income_bonus.get(IRON, -1)) == locked_iron_values[cg_id], "%s iron income_bonus[1] unchanged == %d, got %s" % [cg_id, locked_iron_values[cg_id], b.income_bonus.get(IRON, -1)])
+
+	# ── Negative-growth "sacrifice" buildings are a deliberate design (captives
+	# consumed for materials cost population), not the "industry grants growth"
+	# nonsense this task purges. They must NOT be zeroed out by an overzealous
+	# future sweep. ──
+	var blood_altar = dm.get_building(&"blood_altar")
+	if blood_altar != null:
+		_check(blood_altar.population_growth_bonus == -2, "blood_altar keeps its deliberate population_growth_bonus == -2 (sacrifice mechanic, not a growth grant), got %s" % [blood_altar.population_growth_bonus])
+	var crimson_altar = dm.get_building(&"crimson_altar")
+	if crimson_altar != null:
+		_check(crimson_altar.population_growth_bonus == -3, "crimson_altar keeps its deliberate population_growth_bonus == -3 (sacrifice mechanic, not a growth grant), got %s" % [crimson_altar.population_growth_bonus])
+
+	# ── Growth variance: every tier-2+ building whose largest income key is
+	# FOOD and which carried region_population_growth_bonus:1 is raised to 2,
+	# making granaries/orchards the real growth engines. Markets/temples
+	# (gold-primary) and Forsaken's bespoke 3/5 survivors_* buildings are
+	# untouched. Swept by income shape, not a fixed list. ──
+	var food_raised := 0
+	for id in dm.buildings.keys():
+		var b: BuildingData = dm.buildings[id]
+		if b.required_capital_level < 2:
+			continue
+		if not b.special_effects.has("region_population_growth_bonus"):
+			continue
+		if _largest_income_key(b) != FOOD:
+			continue
+		food_raised += 1
+		_check(int(b.special_effects.get("region_population_growth_bonus")) == 2, "%s (food-primary, tier2+) region_population_growth_bonus == 2, got %s" % [id, b.special_effects.get("region_population_growth_bonus")])
+	_check(food_raised >= 10, "growth-variance sweep raised a plausible number of food-primary buildings (>=10), got %d" % food_raised)
+
+	# ── Spot pin: a named granary-class building explicitly at 2. ──
+	var imperial_granary = dm.get_building(&"imperial_granary")
+	if imperial_granary == null:
+		_check(false, "imperial_granary building data exists")
+	else:
+		_check(int(imperial_granary.special_effects.get("region_population_growth_bonus", -1)) == 2, "imperial_granary (granary-class) region_population_growth_bonus == 2, got %s" % [imperial_granary.special_effects.get("region_population_growth_bonus", -1)])
+
+	# ── Forsaken's survivors_gathering/survivors_stronghold keep their bespoke
+	# 3/5 (not part of the generic food-variance raise, not zeroed either). ──
+	var survivors_gathering = dm.get_building(&"survivors_gathering")
+	if survivors_gathering != null:
+		_check(int(survivors_gathering.special_effects.get("region_population_growth_bonus", -1)) == 3, "survivors_gathering keeps region_population_growth_bonus == 3, got %s" % [survivors_gathering.special_effects.get("region_population_growth_bonus", -1)])
+	var survivors_stronghold = dm.get_building(&"survivors_stronghold")
+	if survivors_stronghold != null:
+		_check(int(survivors_stronghold.special_effects.get("region_population_growth_bonus", -1)) == 5, "survivors_stronghold keeps region_population_growth_bonus == 5, got %s" % [survivors_stronghold.special_effects.get("region_population_growth_bonus", -1)])
+
+	# ── Markets/temples (gold-primary) keep their flat +1 -- the variance rule
+	# only touches food-primary buildings. ──
+	var merchant_guild = dm.get_building(&"merchant_guild")
+	if merchant_guild != null:
+		_check(int(merchant_guild.special_effects.get("region_population_growth_bonus", -1)) == 1, "merchant_guild (gold-primary market) keeps region_population_growth_bonus == 1, got %s" % [merchant_guild.special_effects.get("region_population_growth_bonus", -1)])
+
+	# ── Wood-primary "works" buildings are out of this task's scope (only iron
+	# and food are addressed) -- guard that they were left alone. ──
+	var imperial_timberworks = dm.get_building(&"imperial_timberworks")
+	if imperial_timberworks != null:
+		_check(int(imperial_timberworks.special_effects.get("region_population_growth_bonus", -1)) == 1, "imperial_timberworks (wood-primary, out of scope) unchanged region_population_growth_bonus == 1, got %s" % [imperial_timberworks.special_effects.get("region_population_growth_bonus", -1)])

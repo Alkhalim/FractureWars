@@ -14,7 +14,6 @@ build_time = 4
 income_bonus = {1: 40, 0: 20}
 population_growth_bonus = 0
 required_capital_level = 3
-special_effects = { "region_population_growth_bonus": 1 }
 requires_research = &"blood_pact"
 upgrades_from = &"deeproot_foundry"
 class_loyalty_bonus = {"artisans": 4, "nobles": 2}
