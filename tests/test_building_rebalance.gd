@@ -626,6 +626,7 @@ func _run_task5_tail_cleanup(dm) -> void:
 		_check(hive_bulwark.defense_bonus == 12, "hive_bulwark defense_bonus == 12 (was 8), got %s" % [hive_bulwark.defense_bonus])
 		_check(absf(float(hive_bulwark.special_effects.get("garrison_strength_bonus", -1.0)) - 0.2) < 0.001, "hive_bulwark garrison_strength_bonus == 0.2 (was 0.15), got %s" % [hive_bulwark.special_effects.get("garrison_strength_bonus")])
 		_check(int(hive_bulwark.build_cost.get(IRON, -1)) == 99, "hive_bulwark build_cost kept unchanged (iron 99), got %s" % [hive_bulwark.build_cost])
+		_check(hive_bulwark.display_name == "Hive Bulwark III", "hive_bulwark display_name carries tier-3 numeral suffix like chain siblings, got %s" % [hive_bulwark.display_name])
 
 	var hardened_chitin_wall = dm.get_building(&"hardened_chitin_wall")
 	if hardened_chitin_wall != null:

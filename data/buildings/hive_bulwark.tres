@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 id = &"hive_bulwark"
-display_name = "Hive Bulwark"
+display_name = "Hive Bulwark III"
 description = "Layered chitin ramparts grown rather than built. They knit themselves shut around wounds."
 faction_id = &"shardhorde"
 category = &"defensive"

@@ -385,3 +385,123 @@ shared buildings, weight classes, unit spawning) — and the tech tree, the syst
 that should tie progression together, currently changes nothing but numbers.
 Close the dead-code gaps first, then spend the design budget where the pattern
 already works: dilemmas, exclusive forks, and unlocks.
+
+---
+
+## Building Rebalance (2026-08-01)
+
+Six-task implementation of the Part 4 (Buildings) findings above, covering the
+user's five named retune directives plus every audit-flagged redundancy.
+Branch `city_management`, commits `35d7c6f..ef9c51d` (Tasks 1-5) + this doc
+commit (Task 6). Full plan: `docs/superpowers/plans/2026-07-31-building-rebalance.md`.
+
+### 1. User directives + a live garrison bug
+`mushroom_grotto` food 14→10, growth 5→0; `sporevault` food 36→28;
+`grove_ironworks` iron 25→20, growth 2→0; `grove_smithy` lost its stray
+`region_population_growth_bonus:1`; `seasonal_shrine` income {tech 4, food
+12}→{tech 8, food 4}, growth 6→3; `jade_forge` growth 2→0. Also fixed a real
+bug: `hardened_chitin_wall`'s `garrison_strength_bonus` was `2` where the
+militia-spawn code does `int(value * 10)` — the wall was spawning **+20**
+defenders instead of the intended **+2**. Value corrected to `0.2`.
+
+### 2. Tainted Jade wall split — attrition vs. endurance
+`jungle_traps` (T1) and `serpents_maze` (T2) became the "attrition" line —
+`besieger_attrition` 2.0 / 4.0, `jungle_traps` lost its terrain gate (it's a
+playstyle choice now, not terrain-forced), `serpents_maze` lost its garrison
+bonus (that identity belongs to `living_walls`/`thornwall`, the unchanged
+"endurance" line). New generic `besieger_attrition` special-effects hook in
+`city_system.gd`'s siege tick, replacing a **hidden hardcoded 5%-max-HP**
+per-turn attrition that `jungle_traps` already applied invisibly pre-audit —
+**the audit's "flavor not backed by data" verdict was wrong for this
+building**; the flavor was backed, just not data-driven or upgradeable. It is
+now both.
+
+The first implementation (flat `attrition_sum * 8` HP pool split evenly across
+the besieging army) shipped and was caught by review as a ~22x nerf versus
+that old hardcoded behavior, with a hard zero-damage floor for armies of 33+
+(traps) or 65+ (maze) units — exactly the large siege stacks the wall is
+supposed to punish. Superseded same-day by the shipped formula: each
+besieging unit loses `maxi(1, int(unit_max_hp * attrition_sum * 0.01))` HP per
+siege turn (2%/4% of its **own** max HP, min 1), so total damage scales with
+army size instead of being capped by a flat pool.
+
+### 3. Growth purge on industry
+**Invariant now enforced:** no iron-primary industrial building (mine, forge,
+quarry, foundry, smelter, pit, kiln, works — by name or by an exhaustive
+by-income scan) may grant population growth, directly or via the hidden
+`region_population_growth_bonus` layer. `tests/test_building_rebalance.gd`
+checks this by **live-iterating every loaded `BuildingData`**, not a fixed
+list — it swept ≥25 name-matched buildings plus 4 stragglers the naming regex
+missed (`silver_vein`, `magma_vent`, `imperial_work_yard`, `grove_smithy`), so
+future buildings inherit the rule automatically instead of needing a manual
+add to an audit list.
+32 buildings were stripped (12 tier-1 growth fields + ~17 tier-2+
+`region_population_growth_bonus` removals + the 3 stragglers not already
+covered by Task 1), and 13 food buildings had their
+`region_population_growth_bonus` raised 1→2 so granaries/orchards — not
+factories — are the game's real growth engines. `sunfire_forge` also lost a
+capstone-grade `army_attack_bonus:2` a tier-1 economy building had no business
+carrying (`solar_citadel` keeps its own +2, unrelated capstone).
+
+### 4. Pure-vs-hybrid split on 9 twin chains
+Every remaining same-tier twin pair (food: `dust_fields`/`desert_well`,
+`pilgrim_gardens`/`sacred_oasis`, `highland_terrace`/`mountain_herds`,
+`hunting_ground`/`vine_shelter` + `jade_market`; iron:
+`bone_quarry`/`sandstone_pit`, `silver_vein`/`ice_quarry`,
+`sunfire_forge`/`clay_kiln`, `thunderpeak_mine`/`stone_quarry`,
+`cinder_mine`/`magma_vent`) now has a real pure-vs-flexible choice instead of
+two buildings with near-identical output: the PURE side keeps full primary
+yield (and growth, for food); the HYBRID drops primary ~70%, loses all growth,
+and gets its secondary income bumped. Invariant: pure primary ≥ 1.25× hybrid
+primary, hybrid growth == 0. Cinderguard's iron values (20/16) are locked by
+the parallel Cinderguard-rework plan, so `magma_vent` (hybrid) was
+differentiated on wood instead (+4, 10→14) while `cinder_mine` stays pure.
+
+### 5. Tail cleanup
+`hive_bulwark` chained onto `hardened_chitin_wall` as its 3rd wall tier
+(defense 8→12, garrison 0.15→0.2, cost unchanged, display name now carries
+the "III" tier suffix like its chain siblings); `resonant_crystal_forge`
+upgrade cost {gold 35, food 101}→{gold 40, food 30} (was a 100+-turn
+payback); `blessed_springs`' `dawnscale_thunderlizard` unlock moved to
+`solar_chapter_house` (Sunblessed's tier-2 barracks-line building, which
+already unlocks other mid-tier units — a passive well shouldn't gate a
+combat unit); `echo_chamber` chained onto `resonant_pylon` as its upgrade
+(cost left unchanged — audited every existing chained pair first and found no
+convention of discounting an upgrade's cost by its parent's, e.g.
+`crystal_forge`→`resonant_crystal_forge`, `cinder_mine`→`ember_foundry`);
+`codex_sanctum` swapped its `imperial_authority_bonus:3` for
+`research_speed_bonus:0.25` (Empire keeps 3 other authority sources, matching
+the cultural-building convention); `tempest_spire` added to Thunderswarm's
+`storm_doctrine` exclusive group alongside `tempest_roost` so the capstone
+fork is a real either/or.
+
+### Verification (Task 6)
+Full battery green (`test_building_rebalance`, `test_cinderguard_rework`,
+`test_bounty_system`, `test_special_resources`, `test_landmarks`,
+`test_income_breakdown_equivalence`, `test_save_roundtrip`,
+`test_faction_ai_flavor`, `test_camera_clamp`, `test_map_seed`) plus
+`test_battle_determinism` FINGERPRINT MATCH and a clean windowed screenshot
+sweep. A 40-turn AI-vs-AI econ sim (seed 7) showed no negative-food death
+spirals and confirmed Gladehost/Tainted Jade population growth is still
+functional post-purge — see `.superpowers/sdd/task-6-report.md` for the full
+per-faction numbers. (Pre-existing, unrelated to this plan: Shardhorde and
+Sunblessed both report 0 population in this seed's map-gen — a known map-gen
+artifact, not caused by the rebalance.)
+
+### Designer follow-ups (not yet decided)
+- **`chitin_hatchery`** may be a stub: a Shardhorde tier-1 military building
+  with only `recruit_speed_bonus:1` and no `unlocks_units`, income, defense,
+  or upgrade chain — every other tier-1 military building in the data has at
+  least one of those. Left untouched pending a design look.
+- **`hive_bulwark`'s `required_capital_level`** is `2`, inherited unchanged
+  from its new parent `hardened_chitin_wall` — but every other 3rd-tier
+  building in a 3-tier chain (e.g. `molten_core_forge`) requires capital level
+  3. Whether Shardhorde's 3rd wall tier should be gated a level later is an
+  availability/balance call, not a data-consistency one, so it wasn't changed
+  here.
+- **Tier-2 hybrid secondary bumps were deliberately not applied.** Task 4's
+  template bumps the hybrid's secondary income at both tiers it appears in,
+  but the tier-2 buildings (e.g. `volcanic_smelter`, the upgrade of
+  `magma_vent`) were left as-shipped — only the tier-1 buildings got the
+  secondary bump. Revisit if the tier-2 economy ends up under-differentiated
+  in practice.
