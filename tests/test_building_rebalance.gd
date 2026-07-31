@@ -203,6 +203,9 @@ func _run() -> void:
 	# ── Task 3: growth purge on industry + growth variance on farms ──
 	_run_task3_growth_purge(dm)
 
+	# ── Task 4: pure-vs-hybrid split on twin food/iron chains ──
+	_run_task4_pure_hybrid_split(dm)
+
 	if _fails == 0:
 		print("BUILDING REBALANCE TEST PASSED")
 		quit(0)
@@ -310,7 +313,13 @@ func _run_task3_growth_purge(dm) -> void:
 	# FOOD and which carried region_population_growth_bonus:1 is raised to 2,
 	# making granaries/orchards the real growth engines. Markets/temples
 	# (gold-primary) and Forsaken's bespoke 3/5 survivors_* buildings are
-	# untouched. Swept by income shape, not a fixed list. ──
+	# untouched. Swept by income shape, not a fixed list.
+	# Threshold lowered 10->9 by Task 4: underground_cistern, blessed_springs,
+	# highland_ranches, and terraced_gardens (all food-primary, tier2+ HYBRID
+	# upgrades) had region_population_growth_bonus stripped entirely as part
+	# of "hybrid loses ALL growth" -- 4 fewer eligible buildings, floor
+	# adjusted to match the new, intentional count (currently exactly 9) with
+	# no slack, so any future straggler still trips this guard. ──
 	var food_raised := 0
 	for id in dm.buildings.keys():
 		var b: BuildingData = dm.buildings[id]
@@ -322,7 +331,7 @@ func _run_task3_growth_purge(dm) -> void:
 			continue
 		food_raised += 1
 		_check(int(b.special_effects.get("region_population_growth_bonus")) == 2, "%s (food-primary, tier2+) region_population_growth_bonus == 2, got %s" % [id, b.special_effects.get("region_population_growth_bonus")])
-	_check(food_raised >= 10, "growth-variance sweep raised a plausible number of food-primary buildings (>=10), got %d" % food_raised)
+	_check(food_raised >= 9, "growth-variance sweep raised a plausible number of food-primary buildings (>=9, was >=10 pre-Task4), got %d" % food_raised)
 
 	# ── Spot pin: a named granary-class building explicitly at 2. ──
 	var imperial_granary = dm.get_building(&"imperial_granary")
@@ -351,3 +360,247 @@ func _run_task3_growth_purge(dm) -> void:
 	var imperial_timberworks = dm.get_building(&"imperial_timberworks")
 	if imperial_timberworks != null:
 		_check(int(imperial_timberworks.special_effects.get("region_population_growth_bonus", -1)) == 1, "imperial_timberworks (wood-primary, out of scope) unchanged region_population_growth_bonus == 1, got %s" % [imperial_timberworks.special_effects.get("region_population_growth_bonus", -1)])
+
+## Task 4: pure-vs-hybrid differentiation on the twin tier-1 food/iron chains
+## (plus their tier-2 upgrades). PURE keeps its full primary yield (and, for
+## food, its growth); HYBRID loses all growth and gets its secondary income
+## bumped -- and where its primary was reduced, drops to ~70% of its paired
+## PURE's primary. The generic invariant checked for every pair: hybrid
+## population_growth_bonus == 0, and pure.primary >= 1.25x hybrid.primary
+## (checked as pure*4 >= hybrid*5 to stay in integer math).
+func _run_task4_pure_hybrid_split(dm) -> void:
+	const GOLD := 0
+	const IRON := 1
+	const FOOD := 3
+	const WOOD := 5
+
+	# ── Generic per-pair invariant, tier-1: [pure_id, hybrid_id, primary_key] ──
+	var tier1_pairs := [
+		[&"dust_fields", &"desert_well", FOOD],
+		[&"pilgrim_gardens", &"sacred_oasis", FOOD],
+		[&"highland_terrace", &"mountain_herds", FOOD],
+		[&"hunting_ground", &"vine_shelter", FOOD],
+		[&"bone_quarry", &"sandstone_pit", IRON],
+		[&"silver_vein", &"ice_quarry", IRON],
+		[&"sunfire_forge", &"clay_kiln", IRON],
+		[&"thunderpeak_mine", &"stone_quarry", IRON],
+		# cinder_mine/magma_vent excluded here: iron values are LOCKED by design
+		# (20/16) and differentiated via secondary only -- pinned separately below.
+	]
+	# ── Same invariant, tier-2 upgrades of each hybrid above (pure tier-2 sibling
+	# in column 0) -- primary scaled the same ~0.7 way, growth removed. ──
+	var tier2_pairs := [
+		[&"oasis_gardens", &"underground_cistern", FOOD],
+		[&"blessed_harvest", &"blessed_springs", FOOD],
+		[&"storm_harvest", &"highland_ranches", FOOD],
+		[&"ancient_canopy", &"terraced_gardens", FOOD],
+		[&"relic_smelter", &"petrified_quarry", IRON],
+		[&"moonsilver_forge", &"moonstone_mine", IRON],
+		[&"solar_foundry", &"adobe_works", IRON],
+		[&"storm_forge", &"mountain_stoneworks", IRON],
+	]
+	var checked := 0
+	for pair_list in [tier1_pairs, tier2_pairs]:
+		for pair in pair_list:
+			var pure_id: StringName = pair[0]
+			var hybrid_id: StringName = pair[1]
+			var key: int = pair[2]
+			var pure_b: BuildingData = dm.get_building(pure_id)
+			var hybrid_b: BuildingData = dm.get_building(hybrid_id)
+			if pure_b == null or hybrid_b == null:
+				_check(false, "%s/%s pair building data exists" % [pure_id, hybrid_id])
+				continue
+			checked += 1
+			var pure_primary := int(pure_b.income_bonus.get(key, -1))
+			var hybrid_primary := int(hybrid_b.income_bonus.get(key, -1))
+			_check(hybrid_b.population_growth_bonus == 0, "%s (hybrid) population_growth_bonus == 0, got %s" % [hybrid_id, hybrid_b.population_growth_bonus])
+			_check(pure_primary * 4 >= hybrid_primary * 5, "%s pure primary (%d) >= 1.25x %s hybrid primary (%d)" % [pure_id, pure_primary, hybrid_id, hybrid_primary])
+	_check(checked == 16, "Task 4 invariant swept all 16 tier-1+tier-2 pairs, got %d" % checked)
+
+	# ── Exact before->after pins, tier-1 ──
+
+	# ivoryscar food: dust_fields PURE unchanged (12/growth5); desert_well HYBRID
+	# cut 14->8, growth 5->0, gold secondary +2 (5->7).
+	var dust_fields = dm.get_building(&"dust_fields")
+	if dust_fields != null:
+		_check(int(dust_fields.income_bonus.get(FOOD, -1)) == 12, "dust_fields (pure) food unchanged == 12, got %s" % [dust_fields.income_bonus.get(FOOD, -1)])
+		_check(dust_fields.population_growth_bonus == 5, "dust_fields (pure) growth unchanged == 5, got %s" % [dust_fields.population_growth_bonus])
+	var desert_well = dm.get_building(&"desert_well")
+	if desert_well != null:
+		_check(int(desert_well.income_bonus.get(FOOD, -1)) == 8, "desert_well (hybrid) food == 8 (was 14), got %s" % [desert_well.income_bonus.get(FOOD, -1)])
+		_check(int(desert_well.income_bonus.get(GOLD, -1)) == 7, "desert_well (hybrid) gold == 7 (was 5, +2), got %s" % [desert_well.income_bonus.get(GOLD, -1)])
+		_check(desert_well.population_growth_bonus == 0, "desert_well (hybrid) growth == 0 (was 5), got %s" % [desert_well.population_growth_bonus])
+
+	# sunblessed food: pilgrim_gardens PURE unchanged (19/growth5); sacred_oasis
+	# HYBRID cut 14->13, growth already 0, gold secondary +2 (12->14).
+	var pilgrim_gardens = dm.get_building(&"pilgrim_gardens")
+	if pilgrim_gardens != null:
+		_check(int(pilgrim_gardens.income_bonus.get(FOOD, -1)) == 19, "pilgrim_gardens (pure) food unchanged == 19, got %s" % [pilgrim_gardens.income_bonus.get(FOOD, -1)])
+		_check(pilgrim_gardens.population_growth_bonus == 5, "pilgrim_gardens (pure) growth unchanged == 5, got %s" % [pilgrim_gardens.population_growth_bonus])
+	var sacred_oasis = dm.get_building(&"sacred_oasis")
+	if sacred_oasis != null:
+		_check(int(sacred_oasis.income_bonus.get(FOOD, -1)) == 13, "sacred_oasis (hybrid) food == 13 (was 14), got %s" % [sacred_oasis.income_bonus.get(FOOD, -1)])
+		_check(int(sacred_oasis.income_bonus.get(GOLD, -1)) == 14, "sacred_oasis (hybrid) gold == 14 (was 12, +2), got %s" % [sacred_oasis.income_bonus.get(GOLD, -1)])
+		_check(sacred_oasis.population_growth_bonus == 0, "sacred_oasis (hybrid) growth == 0 (already was), got %s" % [sacred_oasis.population_growth_bonus])
+
+	# thunderswarm food: highland_terrace PURE unchanged (14/growth5);
+	# mountain_herds HYBRID cut 16->10, growth 5->0, gold secondary +2 (5->7).
+	var highland_terrace = dm.get_building(&"highland_terrace")
+	if highland_terrace != null:
+		_check(int(highland_terrace.income_bonus.get(FOOD, -1)) == 14, "highland_terrace (pure) food unchanged == 14, got %s" % [highland_terrace.income_bonus.get(FOOD, -1)])
+		_check(highland_terrace.population_growth_bonus == 5, "highland_terrace (pure) growth unchanged == 5, got %s" % [highland_terrace.population_growth_bonus])
+	var mountain_herds = dm.get_building(&"mountain_herds")
+	if mountain_herds != null:
+		_check(int(mountain_herds.income_bonus.get(FOOD, -1)) == 10, "mountain_herds (hybrid) food == 10 (was 16), got %s" % [mountain_herds.income_bonus.get(FOOD, -1)])
+		_check(int(mountain_herds.income_bonus.get(GOLD, -1)) == 7, "mountain_herds (hybrid) gold == 7 (was 5, +2), got %s" % [mountain_herds.income_bonus.get(GOLD, -1)])
+		_check(mountain_herds.population_growth_bonus == 0, "mountain_herds (hybrid) growth == 0 (was 5), got %s" % [mountain_herds.population_growth_bonus])
+
+	# tainted_jade food: hunting_ground PURE unchanged (18/growth4, explicit);
+	# vine_shelter HYBRID's primary (8) already satisfies the 1.25x invariant
+	# against 18 (2.25x), so it is left unchanged -- only growth (5->0) and
+	# wood secondary (+2, 12->14) move. jade_market (separate gold-identity
+	# building, not part of this pair) growth 4->1.
+	var hunting_ground = dm.get_building(&"hunting_ground")
+	if hunting_ground != null:
+		_check(int(hunting_ground.income_bonus.get(FOOD, -1)) == 18, "hunting_ground (pure) food unchanged == 18, got %s" % [hunting_ground.income_bonus.get(FOOD, -1)])
+		_check(hunting_ground.population_growth_bonus == 4, "hunting_ground (pure) growth unchanged == 4, got %s" % [hunting_ground.population_growth_bonus])
+	var vine_shelter = dm.get_building(&"vine_shelter")
+	if vine_shelter != null:
+		_check(int(vine_shelter.income_bonus.get(FOOD, -1)) == 8, "vine_shelter (hybrid) food unchanged == 8 (already satisfied invariant), got %s" % [vine_shelter.income_bonus.get(FOOD, -1)])
+		_check(int(vine_shelter.income_bonus.get(WOOD, -1)) == 14, "vine_shelter (hybrid) wood == 14 (was 12, +2), got %s" % [vine_shelter.income_bonus.get(WOOD, -1)])
+		_check(vine_shelter.population_growth_bonus == 0, "vine_shelter (hybrid) growth == 0 (was 5), got %s" % [vine_shelter.population_growth_bonus])
+	var jade_market = dm.get_building(&"jade_market")
+	if jade_market != null:
+		_check(jade_market.population_growth_bonus == 1, "jade_market growth == 1 (was 4, A3 gold-identity trim), got %s" % [jade_market.population_growth_bonus])
+		_check(int(jade_market.income_bonus.get(GOLD, -1)) == 25, "jade_market gold unchanged == 25 (its identity), got %s" % [jade_market.income_bonus.get(GOLD, -1)])
+
+	# ivoryscar iron: bone_quarry PURE unchanged (25); sandstone_pit HYBRID
+	# cut 22->18, wood secondary +2 (10->12). Growth was already 0 on both
+	# (Task 3 iron-primary purge) -- verify Task 4 did not re-add it.
+	var bone_quarry = dm.get_building(&"bone_quarry")
+	if bone_quarry != null:
+		_check(int(bone_quarry.income_bonus.get(IRON, -1)) == 25, "bone_quarry (pure) iron unchanged == 25, got %s" % [bone_quarry.income_bonus.get(IRON, -1)])
+		_check(bone_quarry.population_growth_bonus == 0, "bone_quarry (pure) growth stays 0, got %s" % [bone_quarry.population_growth_bonus])
+	var sandstone_pit = dm.get_building(&"sandstone_pit")
+	if sandstone_pit != null:
+		_check(int(sandstone_pit.income_bonus.get(IRON, -1)) == 18, "sandstone_pit (hybrid) iron == 18 (was 22), got %s" % [sandstone_pit.income_bonus.get(IRON, -1)])
+		_check(int(sandstone_pit.income_bonus.get(WOOD, -1)) == 12, "sandstone_pit (hybrid) wood == 12 (was 10, +2), got %s" % [sandstone_pit.income_bonus.get(WOOD, -1)])
+		_check(sandstone_pit.population_growth_bonus == 0, "sandstone_pit (hybrid) growth stays 0 (not re-added), got %s" % [sandstone_pit.population_growth_bonus])
+
+	# moonspear iron: silver_vein PURE unchanged (30); ice_quarry HYBRID cut
+	# 25->21, wood secondary +2 (8->10).
+	var silver_vein = dm.get_building(&"silver_vein")
+	if silver_vein != null:
+		_check(int(silver_vein.income_bonus.get(IRON, -1)) == 30, "silver_vein (pure) iron unchanged == 30, got %s" % [silver_vein.income_bonus.get(IRON, -1)])
+		_check(silver_vein.population_growth_bonus == 0, "silver_vein (pure) growth stays 0, got %s" % [silver_vein.population_growth_bonus])
+	var ice_quarry = dm.get_building(&"ice_quarry")
+	if ice_quarry != null:
+		_check(int(ice_quarry.income_bonus.get(IRON, -1)) == 21, "ice_quarry (hybrid) iron == 21 (was 25), got %s" % [ice_quarry.income_bonus.get(IRON, -1)])
+		_check(int(ice_quarry.income_bonus.get(WOOD, -1)) == 10, "ice_quarry (hybrid) wood == 10 (was 8, +2), got %s" % [ice_quarry.income_bonus.get(WOOD, -1)])
+		_check(ice_quarry.population_growth_bonus == 0, "ice_quarry (hybrid) growth stays 0 (not re-added), got %s" % [ice_quarry.population_growth_bonus])
+
+	# sunblessed iron: sunfire_forge PURE unchanged (25); clay_kiln HYBRID's
+	# primary (10) already satisfies the 1.25x invariant against 25 (2.5x), so
+	# it is left unchanged -- only wood secondary moves (+2, 18->20).
+	var sunfire_forge = dm.get_building(&"sunfire_forge")
+	if sunfire_forge != null:
+		_check(int(sunfire_forge.income_bonus.get(IRON, -1)) == 25, "sunfire_forge (pure) iron unchanged == 25, got %s" % [sunfire_forge.income_bonus.get(IRON, -1)])
+		_check(sunfire_forge.population_growth_bonus == 0, "sunfire_forge (pure) growth stays 0, got %s" % [sunfire_forge.population_growth_bonus])
+	var clay_kiln = dm.get_building(&"clay_kiln")
+	if clay_kiln != null:
+		_check(int(clay_kiln.income_bonus.get(IRON, -1)) == 10, "clay_kiln (hybrid) iron unchanged == 10 (already satisfied invariant), got %s" % [clay_kiln.income_bonus.get(IRON, -1)])
+		_check(int(clay_kiln.income_bonus.get(WOOD, -1)) == 20, "clay_kiln (hybrid) wood == 20 (was 18, +2), got %s" % [clay_kiln.income_bonus.get(WOOD, -1)])
+		_check(clay_kiln.population_growth_bonus == 0, "clay_kiln (hybrid) growth stays 0 (not re-added), got %s" % [clay_kiln.population_growth_bonus])
+
+	# thunderswarm iron: thunderpeak_mine PURE unchanged (35); stone_quarry
+	# HYBRID cut 28->25, wood secondary +2 (10->12).
+	var thunderpeak_mine = dm.get_building(&"thunderpeak_mine")
+	if thunderpeak_mine != null:
+		_check(int(thunderpeak_mine.income_bonus.get(IRON, -1)) == 35, "thunderpeak_mine (pure) iron unchanged == 35, got %s" % [thunderpeak_mine.income_bonus.get(IRON, -1)])
+		_check(thunderpeak_mine.population_growth_bonus == 0, "thunderpeak_mine (pure) growth stays 0, got %s" % [thunderpeak_mine.population_growth_bonus])
+	var stone_quarry = dm.get_building(&"stone_quarry")
+	if stone_quarry != null:
+		_check(int(stone_quarry.income_bonus.get(IRON, -1)) == 25, "stone_quarry (hybrid) iron == 25 (was 28), got %s" % [stone_quarry.income_bonus.get(IRON, -1)])
+		_check(int(stone_quarry.income_bonus.get(WOOD, -1)) == 12, "stone_quarry (hybrid) wood == 12 (was 10, +2), got %s" % [stone_quarry.income_bonus.get(WOOD, -1)])
+		_check(stone_quarry.population_growth_bonus == 0, "stone_quarry (hybrid) growth stays 0 (not re-added), got %s" % [stone_quarry.population_growth_bonus])
+
+	# cinderguard iron EXCEPTION: cinder_mine/magma_vent iron VALUES are LOCKED
+	# (20/16, already pinned by Task 3) -- Task 4 must not touch them. Only
+	# magma_vent's wood secondary moves, and by +4 (not +2) per the plan's
+	# explicit exception carve-out.
+	var cinder_mine = dm.get_building(&"cinder_mine")
+	if cinder_mine != null:
+		_check(int(cinder_mine.income_bonus.get(IRON, -1)) == 20, "cinder_mine (pure, locked) iron unchanged == 20, got %s" % [cinder_mine.income_bonus.get(IRON, -1)])
+		_check(not cinder_mine.income_bonus.has(WOOD), "cinder_mine (pure) has no wood income (stays pure, single-income), got %s" % [cinder_mine.income_bonus])
+		_check(cinder_mine.population_growth_bonus == 0, "cinder_mine (pure) growth stays 0, got %s" % [cinder_mine.population_growth_bonus])
+	var magma_vent = dm.get_building(&"magma_vent")
+	if magma_vent != null:
+		_check(int(magma_vent.income_bonus.get(IRON, -1)) == 16, "magma_vent (hybrid, locked) iron unchanged == 16, got %s" % [magma_vent.income_bonus.get(IRON, -1)])
+		_check(int(magma_vent.income_bonus.get(WOOD, -1)) == 14, "magma_vent (hybrid) wood == 14 (was 10, +4 exception), got %s" % [magma_vent.income_bonus.get(WOOD, -1)])
+		_check(magma_vent.population_growth_bonus == 0, "magma_vent (hybrid) growth stays 0 (not re-added), got %s" % [magma_vent.population_growth_bonus])
+
+	# ── Exact before->after pins, tier-2 upgrades of each hybrid ──
+	# (pure siblings' tier-2s -- oasis_gardens, blessed_harvest, storm_harvest,
+	# ancient_canopy, relic_smelter, moonsilver_forge, solar_foundry,
+	# storm_forge -- are unmodified by Task 4 and are not re-pinned here;
+	# they're covered by the generic invariant sweep above.)
+
+	var underground_cistern = dm.get_building(&"underground_cistern")
+	if underground_cistern != null:
+		_check(int(underground_cistern.income_bonus.get(FOOD, -1)) == 21, "underground_cistern (hybrid t2) food == 21 (was 32), got %s" % [underground_cistern.income_bonus.get(FOOD, -1)])
+		_check(int(underground_cistern.income_bonus.get(GOLD, -1)) == 12, "underground_cistern (hybrid t2) gold unchanged == 12 (secondary kept, no t2 bump), got %s" % [underground_cistern.income_bonus.get(GOLD, -1)])
+		_check(underground_cistern.population_growth_bonus == 0, "underground_cistern (hybrid t2) growth == 0 (was 8), got %s" % [underground_cistern.population_growth_bonus])
+		_check(not underground_cistern.special_effects.has("region_population_growth_bonus"), "underground_cistern (hybrid t2) region_population_growth_bonus removed, got %s" % [underground_cistern.special_effects])
+
+	var blessed_springs = dm.get_building(&"blessed_springs")
+	if blessed_springs != null:
+		_check(int(blessed_springs.income_bonus.get(FOOD, -1)) == 21, "blessed_springs (hybrid t2) food == 21 (was 34), got %s" % [blessed_springs.income_bonus.get(FOOD, -1)])
+		_check(int(blessed_springs.income_bonus.get(GOLD, -1)) == 12, "blessed_springs (hybrid t2) gold unchanged == 12 (secondary kept, no t2 bump), got %s" % [blessed_springs.income_bonus.get(GOLD, -1)])
+		_check(blessed_springs.population_growth_bonus == 0, "blessed_springs (hybrid t2) growth == 0 (was 8), got %s" % [blessed_springs.population_growth_bonus])
+		_check(not blessed_springs.special_effects.has("region_population_growth_bonus"), "blessed_springs (hybrid t2) region_population_growth_bonus removed, got %s" % [blessed_springs.special_effects])
+
+	var highland_ranches = dm.get_building(&"highland_ranches")
+	if highland_ranches != null:
+		_check(int(highland_ranches.income_bonus.get(FOOD, -1)) == 25, "highland_ranches (hybrid t2) food == 25 (was 38), got %s" % [highland_ranches.income_bonus.get(FOOD, -1)])
+		_check(int(highland_ranches.income_bonus.get(GOLD, -1)) == 12, "highland_ranches (hybrid t2) gold unchanged == 12 (secondary kept, no t2 bump), got %s" % [highland_ranches.income_bonus.get(GOLD, -1)])
+		_check(highland_ranches.population_growth_bonus == 0, "highland_ranches (hybrid t2) growth == 0 (was 8), got %s" % [highland_ranches.population_growth_bonus])
+		_check(not highland_ranches.special_effects.has("region_population_growth_bonus"), "highland_ranches (hybrid t2) region_population_growth_bonus removed, got %s" % [highland_ranches.special_effects])
+
+	var terraced_gardens = dm.get_building(&"terraced_gardens")
+	if terraced_gardens != null:
+		_check(int(terraced_gardens.income_bonus.get(FOOD, -1)) == 14, "terraced_gardens (hybrid t2) food == 14 (was 38), got %s" % [terraced_gardens.income_bonus.get(FOOD, -1)])
+		_check(terraced_gardens.population_growth_bonus == 0, "terraced_gardens (hybrid t2) growth == 0 (was 9), got %s" % [terraced_gardens.population_growth_bonus])
+		_check(not terraced_gardens.special_effects.has("region_population_growth_bonus"), "terraced_gardens (hybrid t2) region_population_growth_bonus removed, got %s" % [terraced_gardens.special_effects])
+
+	var petrified_quarry = dm.get_building(&"petrified_quarry")
+	if petrified_quarry != null:
+		_check(int(petrified_quarry.income_bonus.get(IRON, -1)) == 46, "petrified_quarry (hybrid t2) iron == 46 (was 60), got %s" % [petrified_quarry.income_bonus.get(IRON, -1)])
+		_check(int(petrified_quarry.income_bonus.get(WOOD, -1)) == 18, "petrified_quarry (hybrid t2) wood unchanged == 18 (secondary kept), got %s" % [petrified_quarry.income_bonus.get(WOOD, -1)])
+		_check(petrified_quarry.population_growth_bonus == 0, "petrified_quarry (hybrid t2) growth stays 0, got %s" % [petrified_quarry.population_growth_bonus])
+
+	var moonstone_mine = dm.get_building(&"moonstone_mine")
+	if moonstone_mine != null:
+		_check(int(moonstone_mine.income_bonus.get(IRON, -1)) == 53, "moonstone_mine (hybrid t2) iron == 53 (was 62), got %s" % [moonstone_mine.income_bonus.get(IRON, -1)])
+		_check(int(moonstone_mine.income_bonus.get(WOOD, -1)) == 14, "moonstone_mine (hybrid t2) wood unchanged == 14 (secondary kept), got %s" % [moonstone_mine.income_bonus.get(WOOD, -1)])
+		_check(moonstone_mine.population_growth_bonus == 0, "moonstone_mine (hybrid t2) growth stays 0, got %s" % [moonstone_mine.population_growth_bonus])
+
+	var adobe_works = dm.get_building(&"adobe_works")
+	if adobe_works != null:
+		_check(int(adobe_works.income_bonus.get(IRON, -1)) == 22, "adobe_works (hybrid t2) iron == 22 (was 58), got %s" % [adobe_works.income_bonus.get(IRON, -1)])
+		_check(int(adobe_works.income_bonus.get(WOOD, -1)) == 16, "adobe_works (hybrid t2) wood unchanged == 16 (secondary kept), got %s" % [adobe_works.income_bonus.get(WOOD, -1)])
+		_check(adobe_works.population_growth_bonus == 0, "adobe_works (hybrid t2) growth stays 0, got %s" % [adobe_works.population_growth_bonus])
+
+	var mountain_stoneworks = dm.get_building(&"mountain_stoneworks")
+	if mountain_stoneworks != null:
+		_check(int(mountain_stoneworks.income_bonus.get(IRON, -1)) == 60, "mountain_stoneworks (hybrid t2) iron == 60 (was 68), got %s" % [mountain_stoneworks.income_bonus.get(IRON, -1)])
+		_check(int(mountain_stoneworks.income_bonus.get(WOOD, -1)) == 16, "mountain_stoneworks (hybrid t2) wood unchanged == 16 (secondary kept), got %s" % [mountain_stoneworks.income_bonus.get(WOOD, -1)])
+		_check(mountain_stoneworks.population_growth_bonus == 0, "mountain_stoneworks (hybrid t2) growth stays 0, got %s" % [mountain_stoneworks.population_growth_bonus])
+
+	# volcanic_smelter/ember_foundry (cinderguard iron t2): iron LOCKED at
+	# 35/45 (Task 3 pin) and, per the tier-2 "secondary kept" rule plus the
+	# cinderguard exception being scoped to the tier-1 pair only, untouched
+	# here too -- confirm Task 4 did not touch them.
+	var volcanic_smelter = dm.get_building(&"volcanic_smelter")
+	if volcanic_smelter != null:
+		_check(int(volcanic_smelter.income_bonus.get(IRON, -1)) == 35, "volcanic_smelter (hybrid t2, locked) iron unchanged == 35, got %s" % [volcanic_smelter.income_bonus.get(IRON, -1)])
+		_check(int(volcanic_smelter.income_bonus.get(WOOD, -1)) == 16, "volcanic_smelter (hybrid t2, locked) wood unchanged == 16, got %s" % [volcanic_smelter.income_bonus.get(WOOD, -1)])
