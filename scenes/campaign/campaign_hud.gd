@@ -2312,6 +2312,12 @@ func _refresh_economy_panel() -> void:
 			siege_note.add_theme_font_size_override("font_size", 11)
 			siege_note.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
 			vbox.add_child(siege_note)
+		elif city.production_disabled_turns > 0:
+			var evac_note := Label.new()
+			evac_note.text = "    (Evacuated - no income, %d turns remaining)" % city.production_disabled_turns
+			evac_note.add_theme_font_size_override("font_size", 11)
+			evac_note.add_theme_color_override("font_color", Color(0.85, 0.35, 0.3))
+			vbox.add_child(evac_note)
 
 	_add_separator(vbox)
 
@@ -7970,7 +7976,10 @@ func _show_city_panel(city_id: StringName) -> void:
 		child.queue_free()
 
 	# Header row with title and close button
-	_create_panel_header(vbox, city.get_display_name(), city_panel, _on_city_panel_close)
+	var city_title := city.get_display_name()
+	if city.production_disabled_turns > 0:
+		city_title += " — Evacuated (%d turns)" % city.production_disabled_turns
+	_create_panel_header(vbox, city_title, city_panel, _on_city_panel_close)
 
 	# Show faction owner for foreign cities
 	if not is_player_city:

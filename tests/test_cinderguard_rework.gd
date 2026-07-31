@@ -178,6 +178,174 @@ func _run() -> void:
 	_check(cg_fs.scavenge_stockpile == scrap_before2 + 20, "AI smelt produces 20 scrap")
 	_check(cg_fs.vigilance_target == 50, "AI smelt tick leaves posture target untouched")
 
+	# ── Task 3: Dragon raids threaten a NAMED building with real choices ──
+
+	# Ground truth: independently compute the max-build_cost building among a
+	# known set of real building ids (never re-derive from the code under
+	# test, or a bug in the implementation could match a bug in the check).
+	var bld_ids: Array[StringName] = [&"volcanic_smelter", &"cinder_mine", &"ember_foundry"]
+	var expected_top_bld: StringName = &""
+	var expected_top_value := -1
+	for bid in bld_ids:
+		var bd: BuildingData = dm.get_building(bid)
+		if bd == null:
+			_check(false, "test building id exists in data: %s" % bid)
+			continue
+		var total := 0
+		for rt in bd.build_cost:
+			total += int(bd.build_cost[rt])
+		if total > expected_top_value:
+			expected_top_value = total
+			expected_top_bld = bid
+
+	# _get_highest_value_building() picks the priciest building by summed build_cost.
+	var priced_city := CityState.new()
+	priced_city.buildings = bld_ids.duplicate()
+	_check(_tm._get_highest_value_building(priced_city) == expected_top_bld, "highest-value building matches ground-truth build_cost sum")
+
+	# No-buildings settlement degrades gracefully: names no building.
+	var bare_city := CityState.new()
+	_check(_tm._get_highest_value_building(bare_city) == &"", "no-buildings settlement names no building")
+
+	# Save/restore raid state so this test block doesn't leak into anything else.
+	var saved_owned2: Array[StringName] = cg_fs.owned_cities.duplicate()
+	var saved_fortresses2: Dictionary = cg_fs.border_fortresses.duplicate()
+	var saved_cooldown2: int = cg_fs.dragon_raid_cooldown
+	var saved_target2: StringName = cg_fs.dragon_raid_target
+	var saved_building2: StringName = cg_fs.dragon_raid_building
+
+	# End-to-end: the raid trigger names the highest-value building of the
+	# settlement it actually picks.
+	var raid_city_id: StringName = &"__test_raid_settlement__"
+	var raid_city := CityState.new()
+	raid_city.city_id = raid_city_id
+	raid_city.faction_id = &"cinderguard"
+	raid_city.is_settlement = true
+	raid_city.population = 100
+	raid_city.buildings = bld_ids.duplicate()
+	_gm.state.cities[raid_city_id] = raid_city
+
+	cg_fs.owned_cities = [raid_city_id]
+	cg_fs.border_fortresses.clear()
+	cg_fs.dragon_raid_cooldown = 0
+	cg_fs.dragon_raid_target = &""
+	cg_fs.dragon_raid_building = &""
+	_tm._process_cinderguard_forge(cg_fs)
+	_check(cg_fs.dragon_raid_target == raid_city_id, "raid trigger targets the only settlement")
+	_check(cg_fs.dragon_raid_building == expected_top_bld, "raid trigger names the settlement's highest-value building")
+
+	_gm.state.cities.erase(raid_city_id)
+	cg_fs.owned_cities = saved_owned2
+	cg_fs.border_fortresses = saved_fortresses2
+	cg_fs.dragon_raid_cooldown = saved_cooldown2
+
+	# Forced-fail "Man the Walls" destroys THE NAMED building, not a random
+	# one. fort_lv=0 and vigilance=0 caps defense_score at 29 (< 45), so the
+	# defense fails on every possible RNG roll — deterministic without seeding.
+	var fail_city_id: StringName = &"__test_fail_settlement__"
+	var fail_city := CityState.new()
+	fail_city.city_id = fail_city_id
+	fail_city.faction_id = &"cinderguard"
+	fail_city.is_settlement = true
+	fail_city.population = 100
+	fail_city.buildings = [&"volcanic_smelter", &"cinder_mine", &"ember_foundry"]
+	_gm.state.cities[fail_city_id] = fail_city
+
+	cg_fs.dragon_raid_target = fail_city_id
+	cg_fs.dragon_raid_building = &"ember_foundry"
+	cg_fs.border_fortresses[fail_city_id] = 0
+	cg_fs.border_vigilance = 0
+	_tm._on_faction_dilemma_resolved(&"cinderguard", &"dragon_raid", "dragon_defend")
+	_check(not fail_city.buildings.has(&"ember_foundry"), "forced-fail destroys the named building")
+	_check(fail_city.buildings.has(&"volcanic_smelter") and fail_city.buildings.has(&"cinder_mine"), "forced-fail leaves the other buildings untouched")
+
+	# Edge safety: named building no longer present (e.g. stale state) falls
+	# back to destroying from what remains, instead of crashing or no-op.
+	var remaining_before := fail_city.buildings.duplicate()
+	cg_fs.dragon_raid_target = fail_city_id
+	cg_fs.dragon_raid_building = &"not_a_real_building"
+	cg_fs.border_fortresses[fail_city_id] = 0
+	cg_fs.border_vigilance = 0
+	_tm._on_faction_dilemma_resolved(&"cinderguard", &"dragon_raid", "dragon_defend")
+	_check(fail_city.buildings.size() == remaining_before.size() - 1, "missing named building falls back to destroying a remaining building")
+
+	_gm.state.cities.erase(fail_city_id)
+
+	# No-buildings settlement: forced-fail degrades gracefully — no building
+	# to name, no building to destroy, but the existing pop/loyalty damage
+	# still lands (Man-the-Walls failure falls back to existing behavior).
+	var bare_fail_id: StringName = &"__test_bare_fail_settlement__"
+	var bare_fail_city := CityState.new()
+	bare_fail_city.city_id = bare_fail_id
+	bare_fail_city.faction_id = &"cinderguard"
+	bare_fail_city.is_settlement = true
+	bare_fail_city.population = 100
+	_gm.state.cities[bare_fail_id] = bare_fail_city
+
+	cg_fs.dragon_raid_target = bare_fail_id
+	cg_fs.dragon_raid_building = &""
+	cg_fs.border_fortresses[bare_fail_id] = 0
+	cg_fs.border_vigilance = 0
+	_tm._on_faction_dilemma_resolved(&"cinderguard", &"dragon_raid", "dragon_defend")
+	_check(bare_fail_city.buildings.is_empty(), "no-buildings settlement stays buildingless after forced fail")
+	_check(bare_fail_city.population == 80, "no-buildings settlement still takes the population hit (existing behavior)")
+
+	_gm.state.cities.erase(bare_fail_id)
+
+	# Set Dragon Traps: still costs 20 iron; success rewards unchanged.
+	var trap_city_id: StringName = &"__test_trap_settlement__"
+	var trap_city := CityState.new()
+	trap_city.city_id = trap_city_id
+	trap_city.faction_id = &"cinderguard"
+	trap_city.is_settlement = true
+	_gm.state.cities[trap_city_id] = trap_city
+
+	cg_fs.dragon_raid_target = trap_city_id
+	cg_fs.border_fortresses[trap_city_id] = 3 # 3*20 + 40 + [0..29] = 100..129 -> guaranteed success
+	cg_fs.resources[Enums.ResourceType.IRON] = 50
+	cg_fs.resources[Enums.ResourceType.TECHNOLOGY] = 0
+	var scrap_before_trap: float = cg_fs.scavenge_stockpile
+	var survived_before_trap := cg_fs.dragon_raids_survived
+	_tm._on_faction_dilemma_resolved(&"cinderguard", &"dragon_raid", "dragon_trap")
+	_check(int(cg_fs.resources[Enums.ResourceType.IRON]) == 30, "dragon trap still costs 20 iron")
+	_check(cg_fs.scavenge_stockpile == scrap_before_trap + 25, "dragon trap success still grants +25 scrap (unchanged)")
+	_check(int(cg_fs.resources[Enums.ResourceType.TECHNOLOGY]) == 8, "dragon trap success still grants +8 tech (unchanged)")
+	_check(cg_fs.dragon_raids_survived == survived_before_trap + 1, "dragon trap success still increments raids survived (unchanged)")
+
+	_gm.state.cities.erase(trap_city_id)
+
+	# ── Evacuate: no damage roll; the settlement goes offline (empty income)
+	# for exactly 3 turns, then resumes. Exercised end-to-end: the dilemma
+	# applier sets the field, city_system's per-turn processing ticks it down.
+	_check(cg_fs.owned_cities.size() > 0, "sanity: cinderguard owns at least one real city for the evacuate test")
+	var evac_id: StringName = cg_fs.owned_cities[0]
+	var evac_city: CityState = _gm.state.cities[evac_id]
+	evac_city.production_disabled_turns = 0
+	_check(_gm.city_system.calculate_city_income(evac_city).size() > 0, "sanity: city produces income normally before evacuation")
+
+	cg_fs.dragon_raid_target = evac_id
+	_tm._on_faction_dilemma_resolved(&"cinderguard", &"dragon_raid", "dragon_evacuate")
+	_check(evac_city.production_disabled_turns == 3, "evacuate applier sets production_disabled_turns to 3")
+	_check(_gm.city_system.calculate_city_income(evac_city) == {}, "evacuated settlement's income is empty right after evacuating")
+
+	_gm.city_system.process_turn(&"cinderguard")
+	_check(evac_city.production_disabled_turns == 2, "production_disabled_turns ticks down 3 -> 2 after one turn")
+	_check(_gm.city_system.calculate_city_income(evac_city) == {}, "income still empty with 2 turns remaining")
+
+	_gm.city_system.process_turn(&"cinderguard")
+	_check(evac_city.production_disabled_turns == 1, "production_disabled_turns ticks down 2 -> 1")
+
+	_gm.city_system.process_turn(&"cinderguard")
+	_check(evac_city.production_disabled_turns == 0, "production_disabled_turns ticks down 1 -> 0 (3 full turns blocked)")
+	_check(_gm.city_system.calculate_city_income(evac_city).size() > 0, "income resumes once production_disabled_turns hits 0")
+
+	_gm.city_system.process_turn(&"cinderguard")
+	_check(evac_city.production_disabled_turns == 0, "production_disabled_turns does not go negative")
+
+	# Restore raid state.
+	cg_fs.dragon_raid_target = saved_target2
+	cg_fs.dragon_raid_building = saved_building2
+
 	if _fails == 0:
 		print("CINDERGUARD REWORK TEST PASSED")
 		quit(0)

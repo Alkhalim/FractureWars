@@ -219,6 +219,9 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 							if cap_city and cap_city.is_capital:
 								cap_city.population += evacuees
 								break
+						# No damage roll, but the settlement goes fully offline
+						# (no income at all) while its people are away.
+						target_city.production_disabled_turns = 3
 				"dragon_trap":
 					if fs.resources.get(Enums.ResourceType.IRON, 0) >= 20:
 						fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) - 20
@@ -246,6 +249,7 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 						else:
 							_apply_dragon_damage(fs, raid_target)
 			fs.dragon_raid_target = &""
+			fs.dragon_raid_building = &""
 		"relic_expedition":
 			match choice_effect:
 				"relic_fund":
@@ -4672,17 +4676,24 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 		var target_name := target_city.get_display_name() if target_city else str(target_id)
 		var fort_desc = ["undefended", "watchtower", "palisade", "border fort"][mini(fort_lv, 3)]
 
+		# Name the settlement's most valuable building — it's what a failed
+		# defense actually burns, so the player should see it coming.
+		fs.dragon_raid_building = _get_highest_value_building(target_city) if target_city else &""
+		var named_bld: BuildingData = DataManager.get_building(fs.dragon_raid_building) if fs.dragon_raid_building != &"" else null
+		var named_bld_name := named_bld.display_name if named_bld else ""
+		var building_clause := " Its %s lies in the fire's path." % named_bld_name if named_bld_name != "" else ""
+
 		if faction_id == GameManager.state.player_faction_id:
 			var choices := [
-				{"label": "Man the Walls", "description": "Defend with garrison. Fortress level helps. Success: +15 Scrap, +Iron, +Vigilance.", "effect": "dragon_defend"},
-				{"label": "Evacuate Villagers", "description": "Abandon the settlement to save lives. -1 Fortress level, +3 Pop to capital, -10 Vigilance.", "effect": "dragon_evacuate"},
-				{"label": "Set Dragon Traps", "description": "Spend 20 Iron to lay traps. High success: +25 Scrap, +Tech. Costs 20 Iron.", "effect": "dragon_trap", "cost": {1: 20}},
+				{"label": "Man the Walls", "description": "Defend with garrison. Fortress level helps. Success: +15 Scrap, +Iron, +Vigilance. Failure destroys %s." % (named_bld_name if named_bld_name != "" else "a building"), "effect": "dragon_defend"},
+				{"label": "Evacuate Villagers", "description": "Abandon the settlement to save lives. -1 Fortress level, +3 Pop to capital, -10 Vigilance. The settlement goes offline (no income) for 3 turns.", "effect": "dragon_evacuate"},
+				{"label": "Set Dragon Traps", "description": "Spend 20 Iron to lay traps. High success: +25 Scrap, +Tech. Failure destroys %s." % (named_bld_name if named_bld_name != "" else "a building"), "effect": "dragon_trap", "cost": {1: 20}},
 			]
 			if fs.scavenge_stockpile >= 15 and fort_lv < 3:
 				choices.append({"label": "Rush Fortifications", "description": "Spend 15 Scrap to upgrade fortress before the attack. +1 Fortress level, then defend.", "effect": "dragon_fortify"})
 			EventBus.dilemma_triggered.emit(faction_id, "dragon_raid", {
 				"title": "Dragon Raid on %s (%s | Raids survived: %d)" % [target_name, fort_desc, fs.dragon_raids_survived],
-				"description": "A fire-drake descends on %s! The settlement is %s. How do you respond?" % [target_name, fort_desc],
+				"description": "The dragon circles %s — the settlement is %s.%s How do you respond?" % [target_name, fort_desc, building_clause],
 				"choices": choices,
 			})
 		else:
@@ -4768,6 +4779,26 @@ func _ai_handle_frontier_orders(fs: FactionState, settlement_ids: Array[StringNa
 			break
 	fs.vigilance_target = 85 if at_war else 15
 
+## The raided settlement's highest-value building (max summed build_cost).
+## Returns &"" if the settlement has no buildings — callers must degrade
+## gracefully (no building to name, no building to destroy).
+func _get_highest_value_building(city: CityState) -> StringName:
+	if city == null:
+		return &""
+	var best_id: StringName = &""
+	var best_value := -1
+	for b_id in city.buildings:
+		var bd: BuildingData = DataManager.get_building(b_id)
+		if bd == null:
+			continue
+		var total := 0
+		for res_type in bd.build_cost:
+			total += int(bd.build_cost[res_type])
+		if total > best_value:
+			best_value = total
+			best_id = b_id
+	return best_id
+
 func _apply_dragon_damage(fs: FactionState, target_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(target_id)
 	if city:
@@ -4777,9 +4808,13 @@ func _apply_dragon_damage(fs: FactionState, target_id: StringName) -> void:
 		for cls in city.class_loyalty:
 			if cls != "captives":
 				city.class_loyalty[cls] = clampi(city.class_loyalty[cls] - 8, -100, 100)
-		# Destroy a random building if any
+		# Destroy the named building the dilemma warned about (if it's still
+		# there); fall back to a random building — the old behavior — when
+		# there's no named building (e.g. AI raids, or it was already gone).
 		if not city.buildings.is_empty():
-			var destroyed: StringName = city.buildings[randi() % city.buildings.size()]
+			var destroyed: StringName = fs.dragon_raid_building
+			if destroyed == &"" or not city.buildings.has(destroyed):
+				destroyed = city.buildings[randi() % city.buildings.size()]
 			var destroyed_bld: BuildingData = DataManager.get_building(destroyed)
 			city.buildings.erase(destroyed)
 			GameManager.city_system.invalidate_region_effects_cache()

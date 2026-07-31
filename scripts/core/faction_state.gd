@@ -109,6 +109,9 @@ extends Resource
 @export var forge_shift_queued: int = 0 # -10 to +10 per dilemma choice
 # Cinderguard: Dragon raid target settlement (set when raid triggers)
 @export var dragon_raid_target: StringName = &""
+# Cinderguard: the raid target's highest-value building, named in the raid
+# dilemma text and destroyed on a failed defense (instead of a random pick)
+@export var dragon_raid_building: StringName = &""
 
 # Moonspear: Lunar ritual state
 @export var lunar_ritual_extended: int = 0 # extra turns on current phase

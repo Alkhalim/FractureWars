@@ -37,6 +37,13 @@ func process_turn(faction_id: StringName) -> void:
 		if not city.is_under_siege:
 			_generate_income(city, faction_id)
 
+		# Evacuated settlements (Cinderguard dragon raid): count down toward
+		# resuming production, independent of siege status. Ticked AFTER this
+		# turn's income calculation so a fresh production_disabled_turns=3
+		# blocks exactly 3 turns of income before resuming.
+		if city.production_disabled_turns > 0:
+			city.production_disabled_turns -= 1
+
 		# Province growth: only calculate once per province, apply to capital
 		if not city.is_under_siege and not processed_provinces.has(city.region_id):
 			processed_provinces[city.region_id] = true
@@ -273,6 +280,11 @@ func get_province_population(city: CityState) -> int:
 	return LoyaltySystem.get_province_population(city.region_id, city.faction_id)
 
 func calculate_city_income(city: CityState) -> Dictionary:
+	# Evacuated (Cinderguard dragon-raid "Evacuate" choice): the settlement is
+	# offline for a fixed number of turns — no income at all, not even the
+	# base region trickle.
+	if city.production_disabled_turns > 0:
+		return {}
 	var region: RegionData = DataManager.get_region(city.region_id)
 	if region == null:
 		return {}
