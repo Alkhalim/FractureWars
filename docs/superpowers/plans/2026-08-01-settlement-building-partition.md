@@ -4,6 +4,34 @@
 
 **Goal (user decision 2026-08-01):** settlements may only build the small settlement-grade buildings, never the larger city versions of the same roles — "settlements only having the smaller settlement versions and not the larger ones of the same type." Cities keep the full faction roster (and already can't build the settlement versions).
 
+> **USER REVISION (2026-08-01, after Task 1):** "settlements still should be able to get city buildings, but only a few. like one military tree, one science tree, something like that that still gives them choices. add extra tiers to settlement buildings as well." → Task 1b below: per-faction curated access (one military chain + one science/cultural chain) via a new `settlement_allowed: bool` data field, PLUS tier-2 upgrades for all four settlement buildings. Mobile camps stay exempt (city-class) per the Task 1 fix round.
+
+---
+
+### Task 1b: Curated city-tree access + settlement building tiers
+
+**Files:** Modify `scripts/resources/building_data.gd` (+`settlement_allowed: bool = false` @export), `scripts/systems/campaign/city_system.gd` (`is_building_allowed_for` settlement branch gains `or building.settlement_allowed`), ~22-30 `data/buildings/*.tres` (tag two chains per faction), CREATE 4 new `data/buildings/*.tres` (tier-2 settlement buildings), `scripts/autoloads/turn_manager.gd` (AI settlement priorities gain the faction's tagged chain heads), tests append to `tests/test_settlement_partition.gd`.
+
+Chain selection rule (per faction, tag the WHOLE chain tier-1→tier-2, not just tier 1):
+- MILITARY tree: the faction's basic unit-unlocking barracks line (the tier-1 building whose `unlocks_units` carries the faction's basic units, plus its `upgrades_from` successor). Settlements can then recruit and defend.
+- SCIENCE/CULTURAL tree: the faction's basic shrine/temple line (tech and/or loyalty income). Where a faction has several, prefer the one with `research_speed_bonus`/tech income; fall back to the loyalty shrine.
+- Implementer lists every tagged id per faction in the report — the coordinator will show the table to the user.
+
+Tier-2 settlement buildings (universal, `settlement_only = true`, `upgrades_from` the tier-1, `required_capital_level = 2`, build_time 3, no upkeep — matching the tier-1 conventions; costs stated post-cost-sweep, i.e. these ARE the final values):
+| id | display_name | cost | effect |
+|---|---|---|---|
+| `waystation_2` | "Waystation II" | Gold 175 | Gold +14, Food +8 |
+| `resource_camp_2` | "Resource Camp II" | Gold 68, Food 149 | Wood +16, Iron +8 |
+| `frontier_watchpost_2` | "Frontier Watchpost II" | Wood 155 | Defense +8, garrison_strength_bonus 0.2 |
+| `frontier_shrine_2` | "Frontier Shrine II" | Gold 155, Wood 52 | region_loyalty_bonus 2 |
+
+- [ ] **Step 1: failing tests** — settlement availability now ALSO includes the faction's tagged military tier-1 and science tier-1 (assert via `settlement_allowed` flag AND by known id for empire at seed 0); tier-2 settlement buildings exist with the exact table values and are offered to a level-2+ settlement that owns the tier-1; cities are NOT offered the 4+4 settlement buildings (unchanged direction); mobile camps unaffected. RED.
+- [ ] **Step 2: implement** (field + predicate + tags + 4 new .tres + AI priorities: settlements walk [tagged military t1, resource_camp, waystation, tagged science t1, watchpost, shrine, then tier-2s via the existing upgrade-fallback]). GREEN.
+- [ ] **Step 3: regressions** — test_settlement_partition, test_building_rebalance (its invariant sweeps iterate all buildings — new .tres must not violate), test_faction_ai_flavor, test_battle_determinism (MATCH), test_save_roundtrip (new @export field).
+- [ ] **Step 4: commit** `feat(settlements): curated city trees + settlement building tiers`.
+
+---
+
 **Architecture:** No per-building data tagging of ~270 city buildings. Instead a mechanic-level branch keyed on `CityState.is_settlement` in BOTH `get_available_buildings` AND `start_building` (the commit path currently enforces no settlement gate at all — latent exploit). Settlement whitelist: `settlement_only` buildings ∪ region-gated extractors (`requires_region_resource`) ∪ landmark buildings (`requires_region_landmark`) — the latter two protected because AI lease/landmark claiming happens in settlements (turn_manager.gd:761-786). AI gets a settlement-specific priority list so it stops falling through to arbitrary-order fallback.
 
 **Tech Stack:** Godot 4.4 GDScript.
