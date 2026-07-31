@@ -33,14 +33,18 @@ func process_turn(faction_id: StringName) -> void:
 		if city.faction_id != faction_id:
 			continue
 
-		# Skip income/growth for cities under siege
-		if not city.is_under_siege:
+		# Skip income/growth for cities under siege. Evacuated settlements
+		# (Cinderguard dragon raid) skip income WHOLESALE like sieged cities —
+		# gating only calculate_city_income would leak the later
+		# _generate_income stages (region-completion bonus, population food
+		# consumption) into a settlement that is supposed to be fully offline.
+		if not city.is_under_siege and city.production_disabled_turns <= 0:
 			_generate_income(city, faction_id)
 
-		# Evacuated settlements (Cinderguard dragon raid): count down toward
-		# resuming production, independent of siege status. Ticked AFTER this
-		# turn's income calculation so a fresh production_disabled_turns=3
-		# blocks exactly 3 turns of income before resuming.
+		# Evacuated settlements: count down toward resuming production,
+		# independent of siege status. Ticked AFTER this turn's income
+		# calculation so a fresh production_disabled_turns=3 blocks exactly
+		# 3 turns of income before resuming.
 		if city.production_disabled_turns > 0:
 			city.production_disabled_turns -= 1
 

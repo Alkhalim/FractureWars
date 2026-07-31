@@ -342,6 +342,60 @@ func _run() -> void:
 	_gm.city_system.process_turn(&"cinderguard")
 	_check(evac_city.production_disabled_turns == 0, "production_disabled_turns does not go negative")
 
+	# Blackout completeness: evacuation must gate ALL of _generate_income —
+	# including the population-food-consumption stage — not just
+	# calculate_city_income(). Differential probe: run identical
+	# process_turn passes from the same resource baseline, once with the
+	# evacuated city at population 0 and once at population 20000. If the
+	# consumption stage leaks through the blackout, the huge population eats
+	# food and the deltas diverge; when fully offline, population is
+	# irrelevant and the deltas match exactly.
+	# The probe city must be alone in its province: food consumption is billed
+	# on PROVINCE population through every co-located city's income pass, so a
+	# sibling city would legitimately charge for the evacuated city's people
+	# (they still eat). What must NOT happen is the evacuated city billing its
+	# own consumption through its own gated income pass.
+	var res_baseline: Dictionary = cg_fs.resources.duplicate(true)
+	var lonely_region: StringName = &""
+	for other_id in _gm.state.cities:
+		var oc = _gm.state.cities[other_id]
+		if oc.faction_id != &"cinderguard" and oc.region_id != &"":
+			var has_cg_sibling := false
+			for cg_id in cg_fs.owned_cities:
+				if _gm.state.cities.has(cg_id) and _gm.state.cities[cg_id].region_id == oc.region_id:
+					has_cg_sibling = true
+					break
+			if not has_cg_sibling:
+				lonely_region = oc.region_id
+				break
+	_check(lonely_region != &"", "sanity: found a region without cinderguard cities for the blackout probe")
+
+	var probe_id: StringName = &"__test_blackout_probe__"
+	var probe_city = CityState.new()
+	probe_city.city_id = probe_id
+	probe_city.faction_id = &"cinderguard"
+	probe_city.is_settlement = true
+	probe_city.region_id = lonely_region
+	_gm.state.cities[probe_id] = probe_city
+	cg_fs.resources[Enums.ResourceType.FOOD] = 100000  # keep starvation out of the picture
+
+	probe_city.production_disabled_turns = 3
+	probe_city.population = 0
+	var res_run_base: Dictionary = cg_fs.resources.duplicate(true)
+	_gm.city_system.process_turn(&"cinderguard")
+	var food_delta_nopop: int = int(cg_fs.resources[Enums.ResourceType.FOOD]) - int(res_run_base[Enums.ResourceType.FOOD])
+
+	cg_fs.resources = res_run_base.duplicate(true)
+	probe_city.production_disabled_turns = 3
+	probe_city.population = 20000
+	_gm.city_system.process_turn(&"cinderguard")
+	var food_delta_bigpop: int = int(cg_fs.resources[Enums.ResourceType.FOOD]) - int(res_run_base[Enums.ResourceType.FOOD])
+
+	_check(food_delta_nopop == food_delta_bigpop, "evacuated city bills no food consumption through its own income pass (got %d vs %d)" % [food_delta_nopop, food_delta_bigpop])
+
+	_gm.state.cities.erase(probe_id)
+	cg_fs.resources = res_baseline
+
 	# Restore raid state.
 	cg_fs.dragon_raid_target = saved_target2
 	cg_fs.dragon_raid_building = saved_building2

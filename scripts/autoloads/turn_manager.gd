@@ -4690,7 +4690,7 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 				{"label": "Set Dragon Traps", "description": "Spend 20 Iron to lay traps. High success: +25 Scrap, +Tech. Failure destroys %s." % (named_bld_name if named_bld_name != "" else "a building"), "effect": "dragon_trap", "cost": {1: 20}},
 			]
 			if fs.scavenge_stockpile >= 15 and fort_lv < 3:
-				choices.append({"label": "Rush Fortifications", "description": "Spend 15 Scrap to upgrade fortress before the attack. +1 Fortress level, then defend.", "effect": "dragon_fortify"})
+				choices.append({"label": "Rush Fortifications", "description": "Spend 15 Scrap to upgrade fortress before the attack. +1 Fortress level, then defend. Failure still destroys %s." % (named_bld_name if named_bld_name != "" else "a building"), "effect": "dragon_fortify"})
 			EventBus.dilemma_triggered.emit(faction_id, "dragon_raid", {
 				"title": "Dragon Raid on %s (%s | Raids survived: %d)" % [target_name, fort_desc, fs.dragon_raids_survived],
 				"description": "The dragon circles %s — the settlement is %s.%s How do you respond?" % [target_name, fort_desc, building_clause],
