@@ -21,5 +21,5 @@ requires_research = &"emp_aqueducts"
 requires_capital = true
 upgrades_from = &"academy"
 class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 5, "nobles": 1}
-special_effects = {"research_speed_bonus": 0.25, "imperial_authority_bonus": 3}
+special_effects = {"research_speed_bonus": 0.25}
 upkeep_cost = {0: 8, 5: 5}

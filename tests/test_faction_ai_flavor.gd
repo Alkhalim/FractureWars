@@ -98,9 +98,9 @@ func _run() -> void:
 	var sb_city := CityState.new()
 	sb_city.faction_id = &"sunblessed"
 	sb_city.buildings.append(&"radiant_temple")
-	sb_city.buildings.append(&"blessed_springs")
+	sb_city.buildings.append(&"solar_chapter_house")
 	_check(sb_city.can_recruit(&"blessed_templeguard"), "radiant_temple unlocks blessed_templeguard")
-	_check(sb_city.can_recruit(&"dawnscale_thunderlizard"), "blessed_springs unlocks dawnscale_thunderlizard")
+	_check(sb_city.can_recruit(&"dawnscale_thunderlizard"), "solar_chapter_house unlocks dawnscale_thunderlizard")
 
 	# ── Relic defense ticks down ──
 	if iv:

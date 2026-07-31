@@ -206,6 +206,9 @@ func _run() -> void:
 	# ── Task 4: pure-vs-hybrid split on twin food/iron chains ──
 	_run_task4_pure_hybrid_split(dm)
 
+	# ── Task 5: tail cleanup (wall chain, payback fix, unlock move, doctrine gate) ──
+	_run_task5_tail_cleanup(dm)
+
 	if _fails == 0:
 		print("BUILDING REBALANCE TEST PASSED")
 		quit(0)
@@ -604,3 +607,96 @@ func _run_task4_pure_hybrid_split(dm) -> void:
 	if volcanic_smelter != null:
 		_check(int(volcanic_smelter.income_bonus.get(IRON, -1)) == 35, "volcanic_smelter (hybrid t2, locked) iron unchanged == 35, got %s" % [volcanic_smelter.income_bonus.get(IRON, -1)])
 		_check(int(volcanic_smelter.income_bonus.get(WOOD, -1)) == 16, "volcanic_smelter (hybrid t2, locked) wood unchanged == 16, got %s" % [volcanic_smelter.income_bonus.get(WOOD, -1)])
+
+## Task 5: tail cleanup -- six audited oddities (wall chain, resonant forge
+## payback fix, blessed_springs unit-unlock move, echo_chamber/resonant_pylon
+## chain, codex_sanctum authority->research swap, tempest_spire doctrine gate).
+## chitin_hatchery: NO data change (see progress.md ledger note) -- not pinned here.
+func _run_task5_tail_cleanup(dm) -> void:
+	const GOLD := 0
+	const IRON := 1
+	const FOOD := 3
+
+	# ── hive_bulwark chained as hardened_chitin_wall's upgrade (3rd wall tier) ──
+	var hive_bulwark = dm.get_building(&"hive_bulwark")
+	if hive_bulwark == null:
+		_check(false, "hive_bulwark building data exists")
+	else:
+		_check(hive_bulwark.upgrades_from == &"hardened_chitin_wall", "hive_bulwark upgrades_from == hardened_chitin_wall, got %s" % [hive_bulwark.upgrades_from])
+		_check(hive_bulwark.defense_bonus == 12, "hive_bulwark defense_bonus == 12 (was 8), got %s" % [hive_bulwark.defense_bonus])
+		_check(absf(float(hive_bulwark.special_effects.get("garrison_strength_bonus", -1.0)) - 0.2) < 0.001, "hive_bulwark garrison_strength_bonus == 0.2 (was 0.15), got %s" % [hive_bulwark.special_effects.get("garrison_strength_bonus")])
+		_check(int(hive_bulwark.build_cost.get(IRON, -1)) == 99, "hive_bulwark build_cost kept unchanged (iron 99), got %s" % [hive_bulwark.build_cost])
+
+	var hardened_chitin_wall = dm.get_building(&"hardened_chitin_wall")
+	if hardened_chitin_wall != null:
+		_check(hardened_chitin_wall.upgrades_from == &"chitin_walls", "hardened_chitin_wall still upgrades_from chitin_walls (chain root unchanged), got %s" % [hardened_chitin_wall.upgrades_from])
+
+	# ── resonant_crystal_forge: payback-fix cost {gold 35, food 101} -> {gold 40, food 30} ──
+	var resonant_crystal_forge = dm.get_building(&"resonant_crystal_forge")
+	if resonant_crystal_forge == null:
+		_check(false, "resonant_crystal_forge building data exists")
+	else:
+		_check(int(resonant_crystal_forge.build_cost.get(GOLD, -1)) == 40, "resonant_crystal_forge build_cost gold == 40 (was 35), got %s" % [resonant_crystal_forge.build_cost.get(GOLD, -1)])
+		_check(int(resonant_crystal_forge.build_cost.get(FOOD, -1)) == 30, "resonant_crystal_forge build_cost food == 30 (was 101), got %s" % [resonant_crystal_forge.build_cost.get(FOOD, -1)])
+
+	# ── blessed_springs no longer unlocks dawnscale_thunderlizard; the unlock ──
+	# moves to solar_chapter_house (sunblessed tier-2 barracks-line military
+	# building, already unlocking mid-tier units dawn_crusader/sunfire_lancer).
+	var blessed_springs = dm.get_building(&"blessed_springs")
+	if blessed_springs == null:
+		_check(false, "blessed_springs building data exists")
+	else:
+		_check(not (blessed_springs.unlocks_units as Array).has(&"dawnscale_thunderlizard"), "blessed_springs no longer unlocks_units dawnscale_thunderlizard, got %s" % [blessed_springs.unlocks_units])
+
+	var solar_chapter_house = dm.get_building(&"solar_chapter_house")
+	if solar_chapter_house == null:
+		_check(false, "solar_chapter_house building data exists")
+	else:
+		_check((solar_chapter_house.unlocks_units as Array).has(&"dawnscale_thunderlizard"), "solar_chapter_house unlocks_units contains dawnscale_thunderlizard, got %s" % [solar_chapter_house.unlocks_units])
+		_check((solar_chapter_house.unlocks_units as Array).has(&"dawn_crusader"), "solar_chapter_house still unlocks pre-existing dawn_crusader, got %s" % [solar_chapter_house.unlocks_units])
+
+	# Sweep ALL buildings: dawnscale_thunderlizard must be unlocked by exactly
+	# one building, and that building must be a military-category building.
+	var dawnscale_unlockers: Array = []
+	for id in dm.buildings.keys():
+		var b: BuildingData = dm.buildings[id]
+		if b.unlocks_units != null and (b.unlocks_units as Array).has(&"dawnscale_thunderlizard"):
+			dawnscale_unlockers.append(id)
+	_check(dawnscale_unlockers.size() == 1, "dawnscale_thunderlizard is unlocked by exactly one building, got %s" % [dawnscale_unlockers])
+	if dawnscale_unlockers.size() == 1:
+		var unlocker: BuildingData = dm.buildings[dawnscale_unlockers[0]]
+		_check(unlocker.category == &"military", "dawnscale_thunderlizard's sole unlocker (%s) is category military, got %s" % [dawnscale_unlockers[0], unlocker.category])
+
+	# ── echo_chamber chained as resonant_pylon's upgrade (shardhorde parallel- ──
+	# tech pair). No cost-subtraction convention exists elsewhere in the data
+	# (every other chained pair costs strictly MORE at the upgrade tier, full
+	# standalone price -- e.g. crystal_forge 72 total -> resonant_crystal_forge
+	# 136 total pre-fix, cinder_mine 97 total -> ember_foundry 273 total), so
+	# echo_chamber's cost is left unchanged here.
+	var echo_chamber = dm.get_building(&"echo_chamber")
+	if echo_chamber == null:
+		_check(false, "echo_chamber building data exists")
+	else:
+		_check(echo_chamber.upgrades_from == &"resonant_pylon", "echo_chamber upgrades_from == resonant_pylon, got %s" % [echo_chamber.upgrades_from])
+		_check(int(echo_chamber.build_cost.get(GOLD, -1)) == 105, "echo_chamber build_cost gold unchanged == 105 (no discount convention found in data), got %s" % [echo_chamber.build_cost.get(GOLD, -1)])
+
+	var resonant_pylon = dm.get_building(&"resonant_pylon")
+	if resonant_pylon != null:
+		_check(resonant_pylon.upgrades_from == &"", "resonant_pylon remains the chain root (no upgrades_from), got %s" % [resonant_pylon.upgrades_from])
+
+	# ── codex_sanctum: imperial_authority_bonus swapped for research_speed_bonus 0.25 ──
+	var codex_sanctum = dm.get_building(&"codex_sanctum")
+	if codex_sanctum == null:
+		_check(false, "codex_sanctum building data exists")
+	else:
+		_check(not codex_sanctum.special_effects.has("imperial_authority_bonus"), "codex_sanctum special_effects no longer has imperial_authority_bonus, got %s" % [codex_sanctum.special_effects])
+		_check(absf(float(codex_sanctum.special_effects.get("research_speed_bonus", -1.0)) - 0.25) < 0.001, "codex_sanctum research_speed_bonus == 0.25, got %s" % [codex_sanctum.special_effects.get("research_speed_bonus")])
+
+	# ── tempest_roost / tempest_spire: consistent storm_doctrine capstone fork ──
+	var tempest_roost = dm.get_building(&"tempest_roost")
+	var tempest_spire = dm.get_building(&"tempest_spire")
+	if tempest_roost == null or tempest_spire == null:
+		_check(false, "tempest_roost and tempest_spire building data exist")
+	else:
+		_check(tempest_roost.exclusive_group == &"storm_doctrine", "tempest_roost still in storm_doctrine group, got %s" % [tempest_roost.exclusive_group])
+		_check(tempest_spire.exclusive_group == &"storm_doctrine", "tempest_spire now in storm_doctrine group (was empty), got %s" % [tempest_spire.exclusive_group])

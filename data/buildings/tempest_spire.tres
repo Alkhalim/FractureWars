@@ -16,6 +16,7 @@ population_growth_bonus = 2
 recruit_speed_bonus = 1
 unlocks_units = Array[StringName]([&"stormforged_champion", &"lightning_golem", &"tempest_eagle"])
 required_capital_level = 3
+exclusive_group = &"storm_doctrine"
 requires_research = &"storm_forge"
 upgrades_from = &"stormrider_eyrie"
 class_loyalty_bonus = {"nobles": 5}
