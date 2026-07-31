@@ -639,24 +639,63 @@ func _on_army_selected(army_id: StringName) -> void:
 		unit_list.remove_child(child)
 		child.queue_free()
 
-	# Pack collapsed cards into a near-square grid (capped at 6/row — raised
-	# from 4 so a big army spreads into the wider floor width instead of just
-	# piling into more rows) instead of always reserving a fixed column count
-	# — a 1-3 unit army no longer forces a wide, mostly-empty row. The panel's
-	# actual width then hugs the grid automatically: it's a PanelContainer, so
-	# its rendered size is whatever's bigger of the coded floor
-	# (ARMY_PANEL_LEFT+ARMY_PANEL_FLOOR_WIDTH set in _ready) and this grid's
-	# real minimum width, which shrinks/grows with the column count set here.
-	var unit_count: int = maxi(army.units.size(), 1)
-	var cols: int = clampi(ceili(sqrt(float(unit_count))), 1, 6)
-	unit_list.columns = cols
-
-	# Create unit cards
+	# Create unit cards FIRST (before deciding column count) so their real
+	# content-driven minimum widths are known — a name/tag mix can make one
+	# unit's card noticeably wider than another's, so no single width can be
+	# assumed in advance.
 	for unit in army.units:
 		var unit_data := DataManager.get_unit(unit.unit_data_id)
 		if unit_data:
 			var card := _create_unit_card(unit, unit_data)
 			unit_list.add_child(card)
+
+	# Pack cards by filling the panel's width FIRST, replacing the old purely
+	# sqrt(count)-based near-square formula (clampi(ceili(sqrt(unit_count)),
+	# 1, 6)), which ignored available width entirely: a 1-4 unit army
+	# (cols = ceili(sqrt(n)) = 1-2) left a large empty band on the right of
+	# the ~620px-wide floor — the horizontal version of the dead-space
+	# problem this project has already fixed twice before (vertically, for
+	# UnitScroll and the panel height below).
+	# col_width is measured off the cards just built above (their real
+	# minimum width) plus the grid's own h_separation; usable width is the
+	# floor width minus the compact theme's PanelContainer content margins
+	# (REGION_PANEL_CONTENT_MARGIN_X — shared with region_panel's margin,
+	# see its declaration above).
+	var unit_count: int = maxi(army.units.size(), 1)
+	var h_sep: float = float(unit_list.get_theme_constant(&"h_separation"))
+	var card_w: float = 0.0
+	for child in unit_list.get_children():
+		card_w = maxf(card_w, (child as Control).get_combined_minimum_size().x)
+	var col_width: float = card_w + h_sep
+	var usable_width: float = ARMY_PANEL_FLOOR_WIDTH - REGION_PANEL_CONTENT_MARGIN_X
+	var max_cols := maxi(1, int(usable_width / maxf(col_width, 1.0)))
+	# unit_count (never more columns than units) and a hard 6/row
+	# readability ceiling (unchanged intent from the old formula) both still
+	# cap columns — filling width just decides how far toward that cap
+	# small/medium armies actually go, instead of always defaulting to a
+	# near-square shape regardless of room available. Rows fall out of
+	# GridContainer's own layout (ceili(unit_count / cols)); no separate
+	# variable is needed since the grid wraps automatically.
+	var cols: int = mini(mini(unit_count, max_cols), 6)
+	unit_list.columns = cols
+
+	# Shrink the panel's own width to what THIS row of cards actually needs,
+	# instead of always rendering at the full 620px floor — the fix for the
+	# dead band itself. Never shrink below what the header row (title/
+	# movement/units-count/close button) or the action-button row (Merge/
+	# Split/Disband) need — measured live off both rather than guessed, since
+	# the header's text length varies with faction name and the "[CAMP]"
+	# suffix — or their content would get squashed.
+	var header_row: Control = army_panel.get_node("VBox/HeaderRow")
+	var content_min_w: float = maxf(header_row.get_combined_minimum_size().x, action_row.get_combined_minimum_size().x)
+	var old_min_width: int = ceili(content_min_w + REGION_PANEL_CONTENT_MARGIN_X)
+	var panel_width: int = clampi(ceili(cols * col_width + REGION_PANEL_CONTENT_MARGIN_X), old_min_width, int(ARMY_PANEL_FLOOR_WIDTH))
+	# anchor_left/anchor_right are both 0.0 (see _ready), so offset_right is
+	# an absolute x position from the panel's left edge — this can only move
+	# the right edge LEFT of the old fixed 894 (274+620), so it only ever
+	# improves (never breaks) the 286px clearance to the city panel's x=1180
+	# left edge measured at the earlier art gate.
+	army_panel.offset_right = ARMY_PANEL_LEFT + panel_width
 
 	# UnitScroll deliberately does NOT propagate its content's true height
 	# upward (that's what lets a huge army scroll instead of growing the
@@ -9706,8 +9745,9 @@ func _on_scrap_label_hover() -> void:
 		return
 
 	var text := "Scrap — salvage for the border works: %d\n" % int(fs.scavenge_stockpile)
-	text += "Sources: settlements each turn, surviving dragon raids, razed rubble, Smelt Surplus orders.\n"
+	text += "Sources: settlements each turn, surviving dragon raids, razed rubble, Smelt Surplus orders (40 iron → 20 scrap).\n"
 	text += "Spent on: border fortresses (Watchtower 10 / Palisade 20 / Fort 35) via Frontier Orders.\n"
+	text += "Also spent on: Rush Fortifications during a dragon raid — 15 scrap to rush a fortress level before the attack.\n"
 	text += "Fortresses: +2% army defense per fortress level (network), raise vigilance, harden raid defense."
 
 	var fort_names := ["None", "Watchtower", "Palisade", "Border Fort"]

@@ -113,5 +113,39 @@ func _process(_delta: float) -> bool:
 		if city_panel2:
 			print("CITY PANEL modulate.a (frame 108): ", city_panel2.modulate.a)
 		_shot("win_army_panel_late.png")
+
+	# ── Phase 4 (review-fix follow-up): small army — the army-panel width
+	# fix (Finding 2) is specifically about 1-4 unit armies leaving a dead
+	# band in the ~620px floor width, which the phase-3 army (5 units) does
+	# not exercise. No 1-2 unit cinderguard army necessarily exists in a
+	# fresh new_game, so build one directly the same way the test suite
+	# builds detached armies (see tests/test_battle_determinism.gd,
+	# tests/test_movement_cache_keys.gd: construct ArmyState/UnitInstance by
+	# hand and register it in GameManager.state.armies — there is no
+	# higher-level "create_army" API), reusing the phase-3 army's own
+	# hex_pos so ArmyState.hex_pos stays a valid key for
+	# GameManager.get_armies_at_tile() (used by the panel's Merge-button
+	# check). Uses cinderguard_warden — CityState.FACTION_BASIC_UNITS[&"cinderguard"].
+	if _frames == 110:
+		var gm: Node = root.get_node("/root/GameManager")
+		var base_army: ArmyState = gm.state.armies.get(_army_id)
+		var small_army := ArmyState.new()
+		small_army.army_id = &"__test_small_army__"
+		small_army.faction_id = gm.state.player_faction_id
+		small_army.hex_pos = base_army.hex_pos if base_army else Vector2i.ZERO
+		var u1 := UnitInstance.new()
+		u1.unit_data_id = &"cinderguard_warden"
+		small_army.units.append(u1)
+		gm.state.armies[small_army.army_id] = small_army
+		_hud.call("_on_army_selected", small_army.army_id)
+		var small_panel: Control = _hud.get("army_panel")
+		if small_panel:
+			print("SMALL ARMY PANEL rect (frame 110): ", small_panel.get_global_rect())
+
+	if _frames == 114:
+		var small_panel2: Control = _hud.get("army_panel")
+		if small_panel2:
+			print("SMALL ARMY PANEL rect (frame 114): ", small_panel2.get_global_rect())
+		_shot("win_army_panel_small.png")
 		quit()
 	return false
