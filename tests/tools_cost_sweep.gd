@@ -17,8 +17,14 @@ extends SceneTree
 ##   godot --headless -s res://tests/tools_cost_sweep.gd -- apply
 ## print (default if no arg given): dumps a CSV `id,field,resource,old,new` to
 ## stdout for review, writes NOTHING to disk. apply: rewrites the .tres files.
-## Committed for provenance -- rerunning `print` after `apply` should show
-## old==new for every row (idempotent on an already-swept tree).
+## Committed for provenance.
+##
+## WARNING -- NOT IDEMPOTENT (review-verified 2026-08-01): the tool has no
+## memory of having run; every `apply` multiplies the CURRENT values again.
+## Running apply a second time on an already-swept tree double-sweeps
+## (x2.25 buildings / x0.25 units). The x1.5/x0.5 sweep for the 2026-08-01
+## rebalance has ALREADY BEEN APPLIED (commit 5778993) -- do not re-run
+## `apply` unless you intend a fresh multiplication on top of current data.
 
 const BUILDING_MULT := 1.5
 const UNIT_MULT := 0.5
