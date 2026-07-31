@@ -406,9 +406,15 @@ func _start_faction_turn() -> void:
 		_ai_assign_commanders(faction_id)
 		_consolidate_ai_armies(faction_id)
 		await get_tree().process_frame
-		_execute_ai_city_management(faction_id)
-		await get_tree().process_frame
+		# Settlement founding gets first claim on this turn's freshly-generated
+		# income, BEFORE city management's build walk spends it -- founding
+		# costs a 120g/60w/45f lump sum that has to accumulate across turns,
+		# and city management greedily builds anything affordable the moment
+		# it can, so evaluating settlement affordability after it ran meant
+		# checking a stock that had usually just been drained to near-zero.
 		_execute_ai_settlement_building(faction_id)
+		await get_tree().process_frame
+		_execute_ai_city_management(faction_id)
 		GameManager.diplomacy_system.execute_ai_diplomacy(faction_id)
 		await get_tree().process_frame
 		GameManager.research_system.execute_ai_research(faction_id)
@@ -858,8 +864,17 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 						break
 					for b in available:
 						if b.id == priority_id:
-							GameManager.city_system.start_building(city_id, b.id)
-							built = true
+							# Only claim the city's one build-per-turn slot on
+							# SUCCESS. A priority entry can be "available"
+							# (eligible) yet still fail start_building() on
+							# affordability alone -- marking it handled
+							# regardless used to permanently shadow every
+							# later priority the same turn (and every turn
+							# after, since the walk always restarts at index
+							# 0). On failure we fall through and keep walking
+							# to the next priority instead.
+							if GameManager.city_system.start_building(city_id, b.id):
+								built = true
 							break
 				if not built:
 					for b in available:
@@ -1002,7 +1017,47 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 	if fs == null:
 		return
 
-	# Check if any capital can found a settlement
+	# Pending target: keep marching/founding regardless of this turn's live
+	# gold balance. found_settlement() deducts the cost unconditionally the
+	# instant the army arrives -- it never re-checks affordability -- so
+	# gating the WALK on the same can_afford_settlement() check used to pick
+	# a target used to stall an already-committed march indefinitely the
+	# moment gold dipped below the threshold mid-route (routine, since the
+	# AI's build/recruit spending draws from the same pool every turn). This
+	# was the dominant reason so few settlements ever got founded: rare
+	# affordable windows were picking targets that then never arrived.
+	if _ai_settlement_targets.has(faction_id):
+		var target_hex: Vector2i = _ai_settlement_targets[faction_id]
+		# Check if any army is at the target
+		var army_at := GameManager.get_army_at_tile(target_hex)
+		if army_at and army_at.faction_id == faction_id:
+			var sponsor_city_id: StringName = &""
+			for cid in fs.owned_cities:
+				var c: CityState = GameManager.state.cities.get(cid)
+				if c and c.is_capital and c.can_found_settlement:
+					sponsor_city_id = cid
+					break
+			if sponsor_city_id != &"":
+				GameManager.found_settlement(faction_id, target_hex, sponsor_city_id)
+			_ai_settlement_targets.erase(faction_id)
+			return
+		# Otherwise move an army there
+		var armies := GameManager.get_faction_armies(faction_id)
+		if armies.size() > 0:
+			var closest_army: ArmyState = null
+			var closest_dist := 9999
+			for army in armies:
+				var d := HexHelper.hex_distance(army.hex_pos, target_hex)
+				if d < closest_dist:
+					closest_dist = d
+					closest_army = army
+			if closest_army and closest_army.movement_remaining > 0:
+				_ai_move_army_safe(closest_army, target_hex, faction_id)
+		return
+
+	# No pending target yet: only look for a NEW one if we can currently
+	# afford to found -- this is where the affordability gate belongs (a
+	# fresh commitment), not on an already-chosen target's march above.
 	if not GameManager.can_afford_settlement(faction_id):
 		return
 
@@ -1010,29 +1065,6 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 		var city: CityState = GameManager.state.cities.get(city_id)
 		if city == null or not city.is_capital or not city.can_found_settlement:
 			continue
-
-		# Check if we already have a pending target
-		if _ai_settlement_targets.has(faction_id):
-			var target_hex: Vector2i = _ai_settlement_targets[faction_id]
-			# Check if any army is at the target
-			var army_at := GameManager.get_army_at_tile(target_hex)
-			if army_at and army_at.faction_id == faction_id:
-				GameManager.found_settlement(faction_id, target_hex, city_id)
-				_ai_settlement_targets.erase(faction_id)
-				return
-			# Otherwise move an army there
-			var armies := GameManager.get_faction_armies(faction_id)
-			if armies.size() > 0:
-				var closest_army: ArmyState = null
-				var closest_dist := 9999
-				for army in armies:
-					var d := HexHelper.hex_distance(army.hex_pos, target_hex)
-					if d < closest_dist:
-						closest_dist = d
-						closest_army = army
-				if closest_army and closest_army.movement_remaining > 0:
-					_ai_move_army_safe(closest_army, target_hex, faction_id)
-			return
 
 		# Evaluate best settlement tile (limit to 20 closest candidates)
 		var valid_tiles := GameManager.city_system.get_valid_settlement_tiles(faction_id, city.region_id)
@@ -1073,6 +1105,7 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 
 		if best_tile != Vector2i(-1, -1) and best_score > 5:
 			_ai_settlement_targets[faction_id] = best_tile
+			return  # one target at a time -- stop scanning further capitals
 
 # ── Empire/Default AI (Defend + Expand) ──────────────────────
 

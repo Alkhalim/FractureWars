@@ -1543,9 +1543,20 @@ func _init_cities() -> void:
 								best_tile = cn
 						if best_tile != Vector2i(-1, -1):
 							city.building_tiles[building] = best_tile
-					# Grant player a free settlement founding on turn 1
-					if owning_faction == state.player_faction_id:
-						city.can_found_settlement = true
+					# Grant every major faction (player and AI alike) a free
+					# settlement founding on turn 1. Previously player-only:
+					# AI capitals only ever regained the ability on a capital
+					# level-up (see _process_upgrade), and with capitals
+					# typically taking ~15-20 turns to first level up, most AI
+					# factions got at most one narrow window in a 40-turn game
+					# to align "flag true" with "can currently afford 120g/
+					# 60w/45f" -- measured result: ~0-1 settlements founded
+					# TOTAL across an entire game, not per faction. Starting
+					# every faction with the ability from turn 1 (like the
+					# player always had) is the dominant fix for that;
+					# subsequent foundings still gate on the same level-up
+					# recharge for everyone.
+					city.can_found_settlement = true
 				faction_cities_placed += 1
 				var fs: FactionState = state.faction_states.get(owning_faction)
 				if fs:

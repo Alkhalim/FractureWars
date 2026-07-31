@@ -1114,8 +1114,11 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 	var upkeep_red_pct: float = float(r_eff.get("upkeep_reduction_pct", 0)) / 100.0
 
 	# Field units that draw gold upkeep, so bankruptcy desertion can pick the
-	# most expensive ones first. Garrisons and elderbeasts are exempt.
+	# lowest-value ones first. Garrisons and elderbeasts are exempt from
+	# desertion (but still tracked in gold_upkeep_total below -- they still
+	# cost gold every turn and count toward whether the faction is solvent).
 	var desertion_candidates: Array = []
+	var gold_upkeep_total := 0
 	for army: ArmyState in GameManager.get_faction_armies(faction_id):
 		# Terrain upkeep modifier (jungle/desert/wastes etc.)
 		var terrain_mult: float = TurnManager.get_terrain_upkeep_modifier(army)
@@ -1135,6 +1138,7 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 						cost = int(cost * 0.80)
 					elif res_type == Enums.ResourceType.GOLD:
 						cost = int(cost * 0.80)
+						gold_upkeep_total += cost
 						if can_desert and cost > 0:
 							desertion_candidates.append({"army": army, "unit": unit, "gold": cost})
 					fs.resources[res_type] -= cost
@@ -1143,6 +1147,8 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 			var level_mult := 1.0 + (army.commander.level - 1) * 0.5
 			for res_type in CommanderSystem.COMMANDER_UPKEEP:
 				var cost := int(CommanderSystem.COMMANDER_UPKEEP[res_type] * level_mult)
+				if res_type == Enums.ResourceType.GOLD:
+					gold_upkeep_total += cost
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= cost
 
@@ -1162,37 +1168,62 @@ func _deduct_upkeep(faction_id: StringName) -> void:
 				var cost: int = upkeep[res_type]
 				if upkeep_red_pct > 0:
 					cost = int(cost * (1.0 - upkeep_red_pct))
+				if res_type == Enums.ResourceType.GOLD:
+					gold_upkeep_total += cost
 				if fs.resources.has(res_type):
 					fs.resources[res_type] -= cost
 
-	# Bankruptcy desertion: if the treasury is in the red after upkeep AND the
-	# standing army costs more gold than the economy earns, the highest-paid
-	# soldiers desert until the army is affordable again. This trims an
-	# over-recruited army down to what income supports instead of leaving the
-	# faction in a silent, permanent negative-gold softlock. Deserters' unpaid
-	# wages are credited back. See docs/economy_audit.md §1.
+	# Bankruptcy desertion: trigger EARLY -- either the treasury is already in
+	# the red, or this turn's recurring gold income (gross production minus
+	# every gold upkeep line above) has gone negative. Catching the flow
+	# going negative, not just waiting for the stock to follow, means the
+	# brake bites before the death spiral compounds, applies equally to the
+	# player and every AI faction (this runs once per faction per turn
+	# regardless of who controls it), and only ever trims a couple of units
+	# (see _desert_unpaid_units) instead of gutting the whole army in one
+	# pass like the original design did. See docs/economy_audit.md §1.
 	# City-less nomads (Shardhorde/Sunblessed) are exempt — their zero-gold
 	# economy is a separate structural issue, not an over-recruit.
-	if has_city and fs.resources.get(Enums.ResourceType.GOLD, 0) < 0 and not desertion_candidates.is_empty():
-		_desert_unpaid_units(faction_id, fs, desertion_candidates)
+	if has_city and not desertion_candidates.is_empty():
+		var gold_income_gross: int = GameManager.diplomacy_system.get_faction_resource_income(faction_id, Enums.ResourceType.GOLD)
+		var stock_negative: bool = fs.resources.get(Enums.ResourceType.GOLD, 0) < 0
+		var recurring_negative: bool = (gold_income_gross - gold_upkeep_total) < 0
+		if stock_negative or recurring_negative:
+			_desert_unpaid_units(faction_id, fs, desertion_candidates, gold_income_gross)
 
-## Removes the most expensive field units until the army's gold upkeep no longer
-## exceeds the faction's gold income ("desert until income balances"), crediting
-## back each deserter's unpaid wages. Does nothing if the army is already
-## affordable (the deficit is then building/commander-driven, not the army).
-func _desert_unpaid_units(faction_id: StringName, fs: FactionState, candidates: Array) -> void:
-	var gold_income: int = GameManager.diplomacy_system.get_faction_resource_income(faction_id, Enums.ResourceType.GOLD)
+## Cap on how many field units the bankruptcy brake can shed in a single
+## turn. The original design deserted every unit needed to reach income
+## parity in one pass -- for a faction that over-recruited, that meant the
+## ENTIRE army could vaporize the instant gold went negative (observed:
+## 8/8 units gone in one turn). Trimming a couple of units per turn instead
+## gives the player/AI a chance to react (disband voluntarily, raise income,
+## retreat) before the brake finishes the job over several turns.
+const MAX_DESERTIONS_PER_TURN := 2
+
+## Removes at most MAX_DESERTIONS_PER_TURN of the army's LOWEST-VALUE field
+## units (summed recruit cost, cheapest first -- a militia is more
+## expendable than an elite recruit) once the standing army's gold upkeep
+## exceeds `gold_income`, crediting back each deserter's unpaid wages.
+## `gold_income` is GROSS: get_faction_resource_income() sums
+## calculate_city_income() directly, before _generate_income applies the
+## loyalty multiplier, class bonuses, research income %, or the debt penalty
+## -- so a low-loyalty faction's army isn't punished twice by scaling both
+## the trigger AND the afford check off the same shrunken number. Does
+## nothing if the army is already affordable (the deficit is then
+## building/commander-driven, not the army's fault).
+func _desert_unpaid_units(faction_id: StringName, fs: FactionState, candidates: Array, gold_income: int) -> void:
 	var army_gold_upkeep := 0
 	for entry in candidates:
 		army_gold_upkeep += int(entry["gold"])
 	if army_gold_upkeep <= gold_income:
 		return  # army is affordable; the shortfall isn't the army's fault
 
-	candidates.sort_custom(func(a, b): return a["gold"] > b["gold"])
+	candidates.sort_custom(func(a, b): return _unit_recruit_value(a["unit"]) < _unit_recruit_value(b["unit"]))
 	var deserted_names: Array = []
 	var emptied_armies: Array[StringName] = []
+	var shed := 0
 	for entry in candidates:
-		if army_gold_upkeep <= gold_income:
+		if shed >= MAX_DESERTIONS_PER_TURN or army_gold_upkeep <= gold_income:
 			break
 		var army: ArmyState = entry["army"]
 		var unit: UnitInstance = entry["unit"]
@@ -1204,12 +1235,24 @@ func _desert_unpaid_units(faction_id: StringName, fs: FactionState, candidates: 
 		fs.resources[Enums.ResourceType.GOLD] = fs.resources.get(Enums.ResourceType.GOLD, 0) + int(entry["gold"])
 		var ud := DataManager.get_unit(unit.unit_data_id)
 		deserted_names.append(ud.display_name if ud else String(unit.unit_data_id))
+		shed += 1
 		if army.units.is_empty() and not emptied_armies.has(army.army_id):
 			emptied_armies.append(army.army_id)
 	for army_id in emptied_armies:
 		GameManager.remove_army(army_id)
 	if not deserted_names.is_empty():
 		EventBus.units_deserted.emit(faction_id, deserted_names, deserted_names.size())
+
+## Summed recruit cost across every resource type -- the "how expendable is
+## this unit" metric the desertion brake sorts by (cheapest first).
+func _unit_recruit_value(unit: UnitInstance) -> int:
+	var ud := DataManager.get_unit(unit.unit_data_id)
+	if ud == null:
+		return 0
+	var total := 0
+	for res_type in ud.recruit_cost:
+		total += int(ud.recruit_cost[res_type])
+	return total
 
 func get_building_upkeep(building: BuildingData) -> Dictionary:
 	if not building.upkeep_cost.is_empty():
