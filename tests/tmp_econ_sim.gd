@@ -50,6 +50,7 @@ func _log_round() -> void:
 		var pop := 0
 		var loy_sum := 0.0
 		var loy_n := 0
+		var upkeep := 0
 		for cid in fs.owned_cities:
 			var c = _gm.state.cities.get(cid)
 			if c == null:
@@ -62,9 +63,16 @@ func _log_round() -> void:
 			for cls in c.class_loyalty:
 				loy_sum += float(c.class_loyalty[cls])
 				loy_n += 1
+			# Building upkeep (gold) -- was missing entirely, so this column
+			# understated the true drain and made faction economies look
+			# healthier than they actually are. See _deduct_upkeep's building
+			# loop in city_system.gd for the real deduction this mirrors.
+			for bid in c.buildings:
+				var bld = _dm.get_building(bid)
+				if bld:
+					upkeep += int(_gm.city_system.get_building_upkeep(bld).get(0, 0))
 		var armies := 0
 		var units := 0
-		var upkeep := 0
 		for aid in _gm.state.armies:
 			var a = _gm.state.armies[aid]
 			if a.faction_id != fid or a.is_garrison:
