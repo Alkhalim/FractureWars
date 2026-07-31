@@ -1585,6 +1585,20 @@ func has_dependent_upgrade(city: CityState, building_id: StringName) -> bool:
 			return true
 	return false
 
+## The settlement/city building partition (user decision 2026-08-01):
+## settlements build only settlement-grade buildings plus region-gated
+## extractor/landmark buildings; cities build everything except the
+## settlement-grade set. Settlements never graduate, so this is a permanent
+## class identity, not an early-game state. ONE shared predicate used by both
+## get_available_buildings (menu) and start_building (commit path) so the two
+## can never drift out of sync again.
+func is_building_allowed_for(city: CityState, building: BuildingData) -> bool:
+	if city.is_settlement:
+		return building.settlement_only \
+			or building.requires_region_resource != &"" \
+			or building.requires_region_landmark != &""
+	return not building.settlement_only
+
 func get_available_buildings(city: CityState, include_slot_blocked: bool = false) -> Array[BuildingData]:
 	# Build a set of all ancestor building IDs in chains already used by this city
 	# e.g. if city has "imperial_granary" (upgrades_from "grain_fields"), "grain_fields" is used
@@ -1686,8 +1700,9 @@ func get_available_buildings(city: CityState, include_slot_blocked: bool = false
 		# Skip capital-only buildings in non-capital cities
 		if building.requires_capital and not city.is_capital:
 			continue
-		# Frontier structures are settlement-exclusive
-		if building.settlement_only and not city.is_settlement:
+		# Settlement/city building partition (both directions; see
+		# is_building_allowed_for)
+		if not is_building_allowed_for(city, building):
 			continue
 		# Skip if no valid adjacent tile available (identical result to
 		# get_valid_tiles_for_building, with the tile query memoized)
@@ -1744,6 +1759,12 @@ func start_building(city_id: StringName, building_id: StringName, tile_pos: Vect
 		return false
 
 	# Validate
+	# Settlement/city building partition (both directions; see
+	# is_building_allowed_for) -- closes the commit-path hole: the menu gate
+	# at get_available_buildings never covered this path, so a settlement
+	# could always start_building() a full-city building directly.
+	if not is_building_allowed_for(city, building):
+		return false
 	var is_upgrade := building.upgrades_from != &""
 	if is_upgrade:
 		if not city.buildings.has(building.upgrades_from):

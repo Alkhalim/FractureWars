@@ -720,6 +720,13 @@ func _consolidate_ai_armies(faction_id: StringName) -> void:
 
 # ── AI City Management ───────────────────────────────────────
 
+## Settlements are a permanent class identity (they never graduate) and can
+## only build the 4 settlement-grade buildings plus region-gated
+## extractor/landmark buildings (see CitySystem.is_building_allowed_for). The
+## AI walks this list instead of the faction's city build-priority table
+## whenever city.is_settlement is true.
+const SETTLEMENT_BUILD_PRIORITY: Array[StringName] = [&"resource_camp", &"waystation", &"frontier_watchpost", &"frontier_shrine"]
+
 func _execute_ai_city_management(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null:
@@ -787,7 +794,12 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 
 			if available.size() > 0:
 				var built := false
-				for priority_id in priority_list:
+				# Settlements are a permanent class identity: walk the fixed
+				# settlement priority list instead of the faction's city
+				# build table (extractor/landmark steps above already ran
+				# first, unchanged — they're the settlement's best builds).
+				var city_priority_list: Array = SETTLEMENT_BUILD_PRIORITY if city.is_settlement else priority_list
+				for priority_id in city_priority_list:
 					if built:
 						break
 					for b in available:
