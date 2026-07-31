@@ -59,6 +59,101 @@ func _run() -> void:
 	_check(int(cfs.resources[Enums.ResourceType.IRON]) == 60, "smelt consumed 40 iron")
 	_check(cfs.scavenge_stockpile == scrap_before + 20, "smelt produced 20 scrap")
 
+	# ── Task 2: vigilance is a chosen posture, not a coinflip ──────────
+	# Isolate _process_cinderguard_forge from real settlements/buildings so
+	# the drift and economics math can be checked exactly.
+	var real_owned_cities: Array[StringName] = cg_fs.owned_cities.duplicate()
+	cg_fs.owned_cities = []
+
+	# Target-seeking drift: rises ~4/turn toward the target, no auto-centering to 50.
+	cg_fs.vigilance_target = 85
+	cg_fs.border_vigilance = 50
+	_tm._process_cinderguard_forge(cg_fs)
+	_check(cg_fs.border_vigilance == 54, "drift +4 toward target 85 (tick 1)")
+	_tm._process_cinderguard_forge(cg_fs)
+	_check(cg_fs.border_vigilance == 58, "drift +4 toward target 85 (tick 2)")
+	_tm._process_cinderguard_forge(cg_fs)
+	_check(cg_fs.border_vigilance == 62, "drift +4 toward target 85 (tick 3), not centered back to 50")
+
+	# Posture economics: war footing (>=60) pays iron for gold+food.
+	cg_fs.vigilance_target = 80
+	cg_fs.border_vigilance = 80
+	cg_fs.resources[Enums.ResourceType.IRON] = 100
+	cg_fs.resources[Enums.ResourceType.GOLD] = 100
+	cg_fs.resources[Enums.ResourceType.FOOD] = 100
+	_tm._process_cinderguard_forge(cg_fs)
+	_check(cg_fs.border_vigilance == 80, "vigilance holds when already at target (no auto-center)")
+	_check(int(cg_fs.resources[Enums.ResourceType.IRON]) == 132, "war footing (80) nets +int(80*0.4)=32 iron")
+	_check(int(cg_fs.resources[Enums.ResourceType.GOLD]) == 92, "war footing (80) costs -int(80*0.1)=8 gold")
+	_check(int(cg_fs.resources[Enums.ResourceType.FOOD]) == 92, "war footing (80) costs -int(80*0.1)=8 food")
+
+	# Mid-band (41-59): flat +2 iron, no gold/food cost.
+	cg_fs.vigilance_target = 50
+	cg_fs.border_vigilance = 50
+	cg_fs.resources[Enums.ResourceType.IRON] = 100
+	cg_fs.resources[Enums.ResourceType.GOLD] = 100
+	cg_fs.resources[Enums.ResourceType.FOOD] = 100
+	_tm._process_cinderguard_forge(cg_fs)
+	_check(int(cg_fs.resources[Enums.ResourceType.IRON]) == 102, "mid-band nets flat +2 iron")
+	_check(int(cg_fs.resources[Enums.ResourceType.GOLD]) == 100, "mid-band gold untouched")
+	_check(int(cg_fs.resources[Enums.ResourceType.FOOD]) == 100, "mid-band food untouched")
+
+	# Fortress mode (<=40): old flat iron tiers gone (iron +0), loyalty/pop/food perk kept.
+	cg_fs.vigilance_target = 15
+	cg_fs.border_vigilance = 15
+	cg_fs.resources[Enums.ResourceType.IRON] = 100
+	cg_fs.resources[Enums.ResourceType.GOLD] = 100
+	cg_fs.resources[Enums.ResourceType.FOOD] = 100
+	_tm._process_cinderguard_forge(cg_fs)
+	_check(int(cg_fs.resources[Enums.ResourceType.IRON]) == 100, "fortress mode grants no iron (old flat tiers removed)")
+	_check(int(cg_fs.resources[Enums.ResourceType.FOOD]) == 106, "fortress mode still grants +6 food")
+	_check(int(cg_fs.resources[Enums.ResourceType.GOLD]) == 104, "fortress mode still grants +4 gold")
+
+	# Threshold-crossing turn_log entries at 30/75 (matches the battle-sim tiers).
+	_tm.turn_log.clear()
+	cg_fs.vigilance_target = 90
+	cg_fs.border_vigilance = 72
+	_tm._process_cinderguard_forge(cg_fs) # 72 -> 76, crosses 75 upward
+	var crossed_war := false
+	for entry in _tm.turn_log:
+		if "War Footing" in str(entry.text):
+			crossed_war = true
+	_check(crossed_war, "crossing 75 upward logs a War Footing turn_log entry")
+
+	_tm.turn_log.clear()
+	cg_fs.vigilance_target = 10
+	cg_fs.border_vigilance = 33
+	_tm._process_cinderguard_forge(cg_fs) # 33 -> 29, crosses 30 downward
+	var crossed_fortress := false
+	for entry in _tm.turn_log:
+		if "Fortress doctrine" in str(entry.text):
+			crossed_fortress = true
+	_check(crossed_fortress, "crossing 30 downward logs a Fortress doctrine turn_log entry")
+
+	cg_fs.owned_cities = real_owned_cities
+
+	# ── AI posture selection: War Footing at war, Fortress Doctrine at peace ──
+	var no_settlements: Array[StringName] = []
+	cg_fs.border_fortresses.clear()
+	cg_fs.scavenge_stockpile = 0
+	cg_fs.resources[Enums.ResourceType.IRON] = 50
+	_gm._set_relation(&"cinderguard", &"empire", Enums.FactionRelation.WAR)
+	_tm._ai_handle_frontier_orders(cg_fs, no_settlements)
+	_check(cg_fs.vigilance_target == 85, "AI sets War Footing target (85) while at war")
+
+	_gm._set_relation(&"cinderguard", &"empire", Enums.FactionRelation.HOSTILE)
+	_tm._ai_handle_frontier_orders(cg_fs, no_settlements)
+	_check(cg_fs.vigilance_target == 15, "AI sets Fortress Doctrine target (15) when not at war")
+
+	# AI smelts surplus iron instead of touching posture when iron is very high.
+	cg_fs.vigilance_target = 50
+	cg_fs.resources[Enums.ResourceType.IRON] = 350
+	var scrap_before2: float = cg_fs.scavenge_stockpile
+	_tm._ai_handle_frontier_orders(cg_fs, no_settlements)
+	_check(int(cg_fs.resources[Enums.ResourceType.IRON]) == 310, "AI smelts 40 iron when surplus > 300")
+	_check(cg_fs.scavenge_stockpile == scrap_before2 + 20, "AI smelt produces 20 scrap")
+	_check(cg_fs.vigilance_target == 50, "AI smelt tick leaves posture target untouched")
+
 	if _fails == 0:
 		print("CINDERGUARD REWORK TEST PASSED")
 		quit(0)

@@ -579,17 +579,13 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 
 		# ── Cinderguard: Forge Mode — clear attack/defense trade-off ──
 		elif parent_fid == &"cinderguard":
-			if fs.border_vigilance <= 25:
+			if fs.border_vigilance <= 30:
 				# Fortress mode: significant defense
 				f.defense += int(f.defense * 0.20)
 				f.base_morale += 8
-			elif fs.border_vigilance <= 40:
-				f.defense += int(f.defense * 0.10)
-			elif fs.border_vigilance >= 85:
+			elif fs.border_vigilance >= 75:
 				# War forge: attack power
 				f.attack += int(f.attack * 0.15)
-			elif fs.border_vigilance >= 70:
-				f.attack += int(f.attack * 0.08)
 			# Research: vigilance_defense_scaling (+X% defense per 10 vigilance)
 			var cg_scaling: int = r_eff.get("vigilance_defense_scaling", 0)
 			if cg_scaling > 0 and fs.border_vigilance > 0:

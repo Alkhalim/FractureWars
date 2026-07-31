@@ -2007,19 +2007,22 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			tooltip = "\n".join(effects)
 		&"cinderguard":
 			var effects: PackedStringArray = []
-			if fs.border_vigilance <= 30:
-				effects.append("Fortress Mode: +2 pop/city, +2 loyalty")
-				effects.append("+6 food, +4 gold, +1 diplomacy/turn")
-			elif fs.border_vigilance >= 75:
-				var iron := 8 if fs.border_vigilance >= 90 else 5
-				effects.append("War Footing: +%d iron/turn, -3 food" % iron)
+			effects.append("Posture target: %d" % fs.vigilance_target)
+			if fs.border_vigilance >= 60:
+				var iron := int(fs.border_vigilance * 0.4)
+				var upkeep := int(fs.border_vigilance * 0.1)
+				effects.append("War Footing: +%d iron/turn, -%d gold, -%d food" % [iron, upkeep, upkeep])
 				if fs.border_vigilance >= 85:
 					effects.append("-1 diplomacy/turn")
+			elif fs.border_vigilance <= 40:
+				effects.append("Fortress Mode: +2 pop/city, +2 loyalty")
+				effects.append("+6 food, +4 gold, +1 diplomacy/turn")
 			else:
-				var iron := 2 if fs.border_vigilance >= 50 else 1
-				effects.append("Balanced: +%d iron/turn" % iron)
-				if fs.border_vigilance <= 45:
-					effects.append("+1 capital pop")
+				effects.append("Balanced: +2 iron/turn")
+			if fs.border_vigilance <= 30:
+				effects.append("Fortress (≤30): +20% defense, +8 morale in battle")
+			elif fs.border_vigilance >= 75:
+				effects.append("War Footing (≥75): +15% attack in battle")
 			tooltip = "\n".join(effects)
 		&"forsaken":
 			var effects: PackedStringArray = []

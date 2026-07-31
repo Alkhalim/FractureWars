@@ -56,6 +56,10 @@ extends Resource
 # Cinderguard unique: Border Vigilance (0-100, player-managed via events)
 # High: aggressive patrol (+iron, +attack). Low: defensive posture (+defense, +pop)
 @export var border_vigilance: int = 50
+# Cinderguard unique: player-chosen posture target. border_vigilance drifts
+# toward this by 4/turn (Posture Orders dilemma sets it: War Footing 85,
+# Balanced Watch 50, Fortress Doctrine 15).
+@export var vigilance_target: int = 50
 
 # Cinderguard unique: Scavenge stockpile (accumulated from dragon raids + scavenging)
 # Spent to erect border fortresses at settlements

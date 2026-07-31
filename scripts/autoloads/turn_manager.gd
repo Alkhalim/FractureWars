@@ -184,13 +184,9 @@ func _on_faction_dilemma_resolved(faction_id: StringName, dilemma_type: StringNa
 						fs.border_fortresses[target_cid] = flv + 1
 			else:
 				match choice_effect:
-					"forge_war": fs.forge_shift_queued = 10
-					"forge_balanced": fs.forge_shift_queued = 0
-					"forge_peace": fs.forge_shift_queued = -10
-					"forge_emergency":
-						if fs.resources.get(Enums.ResourceType.IRON, 0) >= 30:
-							fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) - 30
-							fs.forge_shift_queued = 20
+					"forge_war": fs.vigilance_target = 85
+					"forge_balanced": fs.vigilance_target = 50
+					"forge_peace": fs.vigilance_target = 15
 					"forge_smelt":
 						if fs.resources.get(Enums.ResourceType.IRON, 0) >= 40:
 							fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) - 40
@@ -4552,15 +4548,32 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 	drift += cg_r_eff.get("vigilance_per_turn", 0)
 	drift += fs.forge_shift_queued
 	fs.forge_shift_queued = 0
-	if drift == 0:
-		if fs.border_vigilance > 50:
-			drift = -1
-		elif fs.border_vigilance < 50:
-			drift = 1
+	# Seek the player-chosen posture target at up to 4/turn (building drift stacks on top).
+	# No auto-centering: vigilance holds wherever the target and building drift leave it.
+	var target_gap: int = fs.vigilance_target - fs.border_vigilance
+	drift += clampi(target_gap, -4, 4)
+	var vigilance_before := fs.border_vigilance
 	fs.border_vigilance = clampi(fs.border_vigilance + drift, 0, 100)
 
-	# ── Vigilance mode bonuses (unchanged core) ──
-	if fs.border_vigilance <= 30:
+	# ── Threshold-crossing feedback (matches the battle/UI 30 / 75 tiers) ──
+	if vigilance_before < 75 and fs.border_vigilance >= 75:
+		turn_log.append({type = "vigilance", text = "The forges shift to War Footing — armies strike +15% harder"})
+	elif vigilance_before > 30 and fs.border_vigilance <= 30:
+		turn_log.append({type = "vigilance", text = "The border settles into Fortress doctrine — +20% defense"})
+
+	# ── Posture economics: war footing pays for its own iron; fortress mode keeps its perks ──
+	if fs.border_vigilance >= 60:
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + int(fs.border_vigilance * 0.4)
+		fs.resources[Enums.ResourceType.GOLD] = maxi(0, fs.resources.get(Enums.ResourceType.GOLD, 0) - int(fs.border_vigilance * 0.1))
+		fs.resources[Enums.ResourceType.FOOD] = maxi(0, fs.resources.get(Enums.ResourceType.FOOD, 0) - int(fs.border_vigilance * 0.1))
+		if fs.border_vigilance >= 85:
+			for other_id in GameManager.state.faction_states:
+				if other_id == faction_id or GameManager.is_npc_faction(other_id):
+					continue
+				var other_fs: FactionState = GameManager.state.faction_states[other_id]
+				if not other_fs.is_defeated:
+					GameManager.diplomacy_system.modify_standing(faction_id, other_id, -1, "War mobilization")
+	elif fs.border_vigilance <= 40:
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
 			if city:
@@ -4576,25 +4589,8 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 			var other_fs: FactionState = GameManager.state.faction_states[other_id]
 			if not other_fs.is_defeated:
 				GameManager.diplomacy_system.modify_standing(faction_id, other_id, 1, "Peaceful borders")
-	elif fs.border_vigilance >= 75:
-		var iron_bonus := 8 if fs.border_vigilance >= 90 else 5
-		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
-		fs.resources[Enums.ResourceType.FOOD] = maxi(0, fs.resources.get(Enums.ResourceType.FOOD, 0) - 3)
-		if fs.border_vigilance >= 85:
-			for other_id in GameManager.state.faction_states:
-				if other_id == faction_id or GameManager.is_npc_faction(other_id):
-					continue
-				var other_fs: FactionState = GameManager.state.faction_states[other_id]
-				if not other_fs.is_defeated:
-					GameManager.diplomacy_system.modify_standing(faction_id, other_id, -1, "War mobilization")
 	else:
-		var iron_bonus := 2 if fs.border_vigilance >= 50 else 1
-		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
-		if fs.border_vigilance <= 45:
-			for city_id in fs.owned_cities:
-				var city: CityState = GameManager.state.cities.get(city_id)
-				if city and city.is_capital:
-					city.population += 1
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 2
 
 	# ── Scavenging: settlements generate scrap ──
 	# Each settlement produces scavenge based on level + fortress level
@@ -4684,10 +4680,9 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 	if GameManager.state.current_turn % 4 == 2:
 		if faction_id == GameManager.state.player_faction_id:
 			var fort_choices := [
-				{"label": "War Footing", "description": "+10 Vigilance. More iron and attack, less food.", "effect": "forge_war"},
-				{"label": "Maintain Balance", "description": "No shift. Let buildings determine drift.", "effect": "forge_balanced"},
-				{"label": "Stand Down", "description": "-10 Vigilance. More food and loyalty, less iron.", "effect": "forge_peace"},
-				{"label": "Emergency Mobilization", "description": "+20 Vigilance instantly. Costs 30 Iron.", "effect": "forge_emergency", "cost": {1: 30}},
+				{"label": "War Footing", "description": "Set posture target to 85. Vigilance drifts up ~4/turn: iron flows, but gold and food pay for it.", "effect": "forge_war"},
+				{"label": "Balanced Watch", "description": "Set posture target to 50. Vigilance settles to a steady patrol.", "effect": "forge_balanced"},
+				{"label": "Fortress Doctrine", "description": "Set posture target to 15. Vigilance drifts down ~4/turn: population, loyalty and food grow, no iron windfall.", "effect": "forge_peace"},
 			]
 			if fs.resources.get(Enums.ResourceType.IRON, 0) >= 40:
 				fort_choices.append({"label": "Smelt Surplus", "description": "Convert 40 iron into 20 scrap for the fortress works.", "effect": "forge_smelt"})
@@ -4736,7 +4731,7 @@ func _ai_handle_dragon_raid(fs: FactionState, target_id: StringName) -> void:
 			_apply_dragon_damage(fs, target_id)
 
 func _ai_handle_frontier_orders(fs: FactionState, settlement_ids: Array[StringName]) -> void:
-	# Priority: build fortresses > manage vigilance
+	# Priority: build fortresses > smelt surplus iron > set posture target
 	for cid in settlement_ids:
 		var flv: int = fs.border_fortresses.get(cid, 0)
 		if flv < 3:
@@ -4745,16 +4740,21 @@ func _ai_handle_frontier_orders(fs: FactionState, settlement_ids: Array[StringNa
 				fs.scavenge_stockpile -= cost_scrap
 				fs.border_fortresses[cid] = flv + 1
 				return
-	# Vigilance management
+	if fs.resources.get(Enums.ResourceType.IRON, 0) > 300:
+		fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) - 40
+		fs.scavenge_stockpile += 20
+		return
+	# Posture: War Footing while at war, Fortress Doctrine otherwise
+	# (rebels/shard_guardians are always at WAR with everyone — skip them so
+	# "at peace" is actually reachable, matching the diplomacy loops above)
 	var at_war := false
 	for other_id in GameManager.state.faction_states:
+		if GameManager.is_npc_faction(other_id):
+			continue
 		if GameManager.get_relation(fs.faction_data_id, other_id) == Enums.FactionRelation.WAR:
 			at_war = true
 			break
-	if at_war and fs.border_vigilance < 70:
-		fs.forge_shift_queued = 10
-	elif not at_war and fs.border_vigilance > 60:
-		fs.forge_shift_queued = -10
+	fs.vigilance_target = 85 if at_war else 15
 
 func _apply_dragon_damage(fs: FactionState, target_id: StringName) -> void:
 	var city: CityState = GameManager.state.cities.get(target_id)
