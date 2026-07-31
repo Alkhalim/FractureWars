@@ -1034,7 +1034,7 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 			var sponsor_city_id: StringName = &""
 			for cid in fs.owned_cities:
 				var c: CityState = GameManager.state.cities.get(cid)
-				if c and c.is_capital and c.can_found_settlement:
+				if c and c.can_found_settlement:
 					sponsor_city_id = cid
 					break
 			if sponsor_city_id != &"":
@@ -1063,7 +1063,7 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
-		if city == null or not city.is_capital or not city.can_found_settlement:
+		if city == null or not city.can_found_settlement:
 			continue
 
 		# Evaluate best settlement tile (limit to 20 closest candidates)

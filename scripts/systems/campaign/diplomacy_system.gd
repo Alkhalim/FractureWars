@@ -1454,7 +1454,7 @@ func generate_ai_offer_to_player() -> void:
 			if standing >= -20:
 				candidates.append({faction_id = other_id, offer_type = &"non_aggression", priority = 1})
 		elif relation == Enums.FactionRelation.NEUTRAL:
-			if standing >= 5:
+			if standing >= 5 and not _has_active_trade(other_id, player_id):
 				candidates.append({faction_id = other_id, offer_type = &"trade_relations", priority = 2})
 		elif relation == Enums.FactionRelation.FRIENDLY and not is_trade_only:
 			if standing >= 20:
@@ -1509,6 +1509,19 @@ func get_treaties_between(faction_a: StringName, faction_b: StringName) -> Array
 		   (treaty.faction_a == faction_b and treaty.faction_b == faction_a):
 			result.append(treaty)
 	return result
+
+## True if this faction pair already has an active TRADE_DEAL or
+## TRADE_RELATIONS treaty. Used to keep the AI-offer-to-player candidate list
+## (generate_ai_offer_to_player) from re-proposing trade at a pair that
+## already has a deal -- the dialog it drives (campaign_hud's "sends an
+## envoy" popup) re-asks the player every cooldown cycle otherwise, even
+## though the underlying propose_trade_relations(force_accept=true) call
+## would just silently no-op on accept.
+func _has_active_trade(faction_a: StringName, faction_b: StringName) -> bool:
+	for treaty in get_treaties_between(faction_a, faction_b):
+		if treaty.treaty_type == Enums.TreatyType.TRADE_DEAL or treaty.treaty_type == Enums.TreatyType.TRADE_RELATIONS:
+			return true
+	return false
 
 # ── Free Passage ───────────────────────────────────────────
 

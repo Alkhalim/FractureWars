@@ -622,13 +622,14 @@ func _process_upgrade(city: CityState) -> void:
 	city.upgrade_turns_remaining -= 1
 	if city.upgrade_turns_remaining <= 0:
 		city.level = mini(city.level + 1, 5)
-		# Grant settlement founding ability on capital level-up
-		if city.is_capital:
-			city.can_found_settlement = true
-		# Cinderguard: any city/settlement can found new settlements on level-up
-		var cg_parent: StringName = GameManager.MINOR_FACTION_PARENTS.get(city.faction_id, city.faction_id)
-		if cg_parent == &"cinderguard" and city.level >= 2:
-			city.can_found_settlement = true
+		# Grant settlement founding ability on ANY owned city's level-up
+		# (capital included; player and AI alike). Previously capital-only,
+		# which throttled foundings to ~1 window per faction per 40 turns since
+		# capitals level up far less often than the empire's cities as a whole
+		# (see turn_manager.gd/campaign.gd/campaign_hud.gd's matching
+		# can_found_settlement checks — none of them require is_capital either,
+		# so any city holding a charge can sponsor a new settlement).
+		city.can_found_settlement = true
 
 func can_start_upgrade(city: CityState) -> bool:
 	if city.upgrade_turns_remaining > 0:

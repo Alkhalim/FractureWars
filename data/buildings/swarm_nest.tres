@@ -14,4 +14,4 @@ build_time = 3
 income_bonus = {}
 population_growth_bonus = 2
 required_capital_level = 2
-special_effects = { "recruit_cost_discount_pct": 0.1 }
+special_effects = { "recruit_cost_discount_pct": 10 }

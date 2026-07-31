@@ -7821,6 +7821,7 @@ func _show_senate_dilemma_dialog(faction_id: StringName, dilemma: Dictionary) ->
 	btn_row.add_child(btn_b)
 
 	add_child(_senate_dilemma_dialog)
+	_senate_dilemma_dialog.move_to_front() # Land above an already-open city panel
 
 func _can_afford_senate_choice(fs: FactionState, choice: Dictionary) -> bool:
 	if fs == null:
@@ -7922,6 +7923,7 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 			vbox.add_child(cd)
 
 	add_child(_faction_dilemma_dialog)
+	_faction_dilemma_dialog.move_to_front() # Land above an already-open city panel
 
 # ── City management panel ────────────────────────────────────
 
@@ -8194,8 +8196,8 @@ func _show_city_panel(city_id: StringName) -> void:
 		garrison_label.add_theme_color_override("font_color", Color(0.7, 0.6, 0.5))
 		vbox.add_child(garrison_label)
 
-	# Settlement founding button (only for player capitals that can found)
-	if is_player_city and city.is_capital and city.can_found_settlement:
+	# Settlement founding button (any player-owned city holding a charge — task F)
+	if is_player_city and city.can_found_settlement:
 		var can_afford_found := GameManager.can_afford_settlement(GameManager.state.player_faction_id)
 		var found_fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
 		var found_btn := GameManager.make_cost_button(
@@ -8411,6 +8413,7 @@ func _show_city_panel(city_id: StringName) -> void:
 func _hide_city_panel() -> void:
 	if city_panel:
 		city_panel.visible = false
+		_set_city_panel_placement_fade(false) # Safety net: never re-show pre-faded (task #41)
 	_shown_city_id = &""
 	_on_loyalty_panel_close()
 
@@ -8749,6 +8752,7 @@ func _on_build_pressed(city_id: StringName, building_id: StringName) -> void:
 	# Enter tile selection mode
 	_pending_building_city_id = city_id
 	_pending_building_id = building_id
+	_set_city_panel_placement_fade(true)
 	building_tile_selection_requested.emit(city_id, building_id, valid_tiles)
 
 func confirm_building_tile(tile_pos: Vector2i) -> void:
@@ -8758,6 +8762,7 @@ func confirm_building_tile(tile_pos: Vector2i) -> void:
 	var building_id := _pending_building_id
 	_pending_building_city_id = &""
 	_pending_building_id = &""
+	_set_city_panel_placement_fade(false)
 	if GameManager.city_system.start_building(city_id, building_id, tile_pos):
 		AudioManager.play_sfx(&"building_start")
 		_show_city_panel(city_id)
@@ -8767,7 +8772,23 @@ func confirm_building_tile(tile_pos: Vector2i) -> void:
 func cancel_building_tile() -> void:
 	_pending_building_city_id = &""
 	_pending_building_id = &""
+	_set_city_panel_placement_fade(false)
 	building_tile_selection_cancelled.emit()
+
+## Task #41: while the player is choosing a map tile for a building (city
+## panel stays open behind the map), fade the panel down so it doesn't
+## obscure the placement overlay, and let clicks fall through to the map so a
+## right-click-to-cancel over the panel's screen rect still reaches
+## campaign.gd's _unhandled_input. Restored to opaque + blocking on every
+## placement exit path: confirm (confirm_building_tile), cancel
+## (cancel_building_tile), and panel-close (_hide_city_panel /
+## _close_city_panel below double as a safety net so a stale fade can never
+## survive the panel being closed and reopened).
+func _set_city_panel_placement_fade(active: bool) -> void:
+	if city_panel == null:
+		return
+	city_panel.modulate.a = 0.2 if active else 1.0
+	city_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE if active else Control.MOUSE_FILTER_STOP
 
 func _on_building_hover(building_id: StringName) -> void:
 	var building: BuildingData = DataManager.get_building(building_id)
@@ -9063,7 +9084,7 @@ static func _format_building_special_effect(key: String, value) -> String:
 		"lunar_phase_tech_bonus": return "+%d Lunar Phase Tech Bonus" % [int(value)]
 		"recruit_cost_discount_pct": return "-%d%% Recruit Costs" % [int(value)]
 		"garrison_strength_bonus": return "+%d Garrison Militia" % [int(float(value) * 10)]
-		"commander_xp_bonus": return "+%d%% Commander XP" % [int(value)]
+		"commander_xp_bonus": return "+%d%% Commander XP" % [int(float(value) * 100)]
 		"diplomacy_standing_bonus": return "+%d Diplomacy Standing/turn" % [int(value)]
 		"region_population_growth_bonus": return "+%d Regional Growth" % [int(value)]
 		"region_loyalty_bonus": return "+%d Regional Loyalty" % [int(value)]
@@ -13506,3 +13527,4 @@ func _toggle_army_overview() -> void:
 func _close_city_panel() -> void:
 	if city_panel and city_panel.visible:
 		city_panel.visible = false
+		_set_city_panel_placement_fade(false) # Safety net: never re-show pre-faded (task #41)

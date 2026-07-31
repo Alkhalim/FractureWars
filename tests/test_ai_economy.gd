@@ -112,6 +112,10 @@ func _run() -> void:
 	# it keeps walking to a later, affordable entry the same turn. ──
 	_run_batch2_priority_walk_test(dm, gm, tm)
 
+	# ── Quick-fix Item A: a faction pair with an active trade deal must not
+	# keep getting re-proposed via the AI-offer-to-player dialog. ──
+	_run_trade_rerequest_test(gm)
+
 	if _fails == 0:
 		print("AI ECONOMY TEST PASSED")
 		quit(0)
@@ -123,6 +127,56 @@ func _check(cond: bool, label: String) -> void:
 	if not cond:
 		_fails += 1
 		print("FAIL: " + label)
+
+## Quick-fix Item A: diplomacy_system.generate_ai_offer_to_player() drives the
+## "X sends an envoy" popup (campaign_hud._show_ai_diplomacy_offer). Its NEUTRAL
+## candidate branch offered "trade_relations" purely off standing, never
+## checking whether the pair already has an active TRADE_DEAL/TRADE_RELATIONS
+## treaty -- so a faction the player already trades with kept re-proposing
+## trade every cooldown cycle. Neutralizes every other major to ALLIED (a
+## relation no candidate branch matches) so the target faction is the only
+## possible candidate, proving the assertion isn't a coincidence of priority
+## ties with unrelated factions.
+func _run_trade_rerequest_test(gm) -> void:
+	var eb = root.get_node("/root/EventBus")
+	gm.new_game(&"empire", false, 42)
+	var player_id: StringName = gm.state.player_faction_id
+	var ds = gm.diplomacy_system
+	var target: StringName = &"skulloath"
+	# Neutralize EVERY other non-NPC faction (mirrors generate_ai_offer_to_player's
+	# own iteration exactly, so no faction in the roster -- major or minor -- can
+	# sneak in a higher-priority candidate and mask the assertion).
+	for fid in gm.state.faction_states:
+		if fid == player_id or fid == target or gm.is_npc_faction(fid):
+			continue
+		gm._set_relation(fid, player_id, Enums.FactionRelation.ALLIED)
+	gm._set_relation(target, player_id, Enums.FactionRelation.NEUTRAL)
+	# Delta, not an absolute -- some pairs start with historical-grudge standing
+	# (e.g. WAR's -30 baseline) baked in by new_game, so push it comfortably
+	# past the >=5 trade_relations threshold regardless of that baseline.
+	ds.init_standing(target, player_id, 60, "test setup")
+	gm.state.current_turn = 10
+	ds._ai_offer_cooldown = 0
+
+	var offers: Array = []
+	var cb := func(fid, otype, _data): offers.append([fid, otype])
+	eb.ai_diplomacy_offer.connect(cb)
+	ds.generate_ai_offer_to_player()
+	eb.ai_diplomacy_offer.disconnect(cb)
+	# Sanity: without an active deal yet, the target IS offered -- proves this
+	# test setup would actually catch a regression, not just vacuously pass.
+	_check(offers.has([target, &"trade_relations"]), "sanity: with no active deal, target is offered trade_relations, got %s" % [offers])
+
+	var result: Dictionary = ds.propose_trade_relations(target, player_id, true)
+	_check(result.get("accepted", false), "sanity: trade_relations treaty was established, got %s" % [result])
+	_check(ds._has_active_trade(target, player_id), "sanity: _has_active_trade reports true right after establishing the treaty")
+
+	ds._ai_offer_cooldown = 0
+	offers.clear()
+	eb.ai_diplomacy_offer.connect(cb)
+	ds.generate_ai_offer_to_player()
+	eb.ai_diplomacy_offer.disconnect(cb)
+	_check(offers.is_empty(), "item A: no new trade proposal to a faction pair with an active deal, got %s" % [offers])
 
 ## Crafts an insolvent faction (all cities sieged -> zero gold production,
 ## but the gold STOCK left comfortably positive) so only the new "recurring

@@ -2590,9 +2590,21 @@ func _create_bounty_markers() -> void:
 			glyph.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
 			glyph.position = Vector2(-4, -8)
 			marker.add_child(glyph)
+		# Claim ring — overlays the icon's baked-in gold border once claimed,
+		# recolored by claimant relation (task #39). Unclaimed/fogged bounties
+		# are left alone (invisible ring), so the gold border shows through.
+		var claim_ring := Line2D.new()
+		claim_ring.name = "ClaimRing"
+		claim_ring.points = _make_circle(9.5, 16)
+		claim_ring.closed = true
+		claim_ring.width = 1.8
+		claim_ring.antialiased = true
+		claim_ring.default_color = Color(0, 0, 0, 0)
+		marker.add_child(claim_ring)
 		marker.visible = GameManager.explored_tiles.has(coord)
 		bounty_markers_node.add_child(marker)
 		_bounty_markers[coord] = marker
+	_update_bounty_claim_rings()
 
 	# Special deposits — distinct diamond marker, tile-centered (specials
 	# dominate their tile, unlike the bounty's corner-flag treatment).
@@ -2683,6 +2695,34 @@ func _refresh_bounty_marker_visibility() -> void:
 	for coord in _bounty_markers:
 		var marker: Node2D = _bounty_markers[coord]
 		marker.visible = GameManager.explored_tiles.has(coord)
+	_update_bounty_claim_rings()
+
+## Recolors each bounty's claim ring by the claimant's relation to the player
+## (task #39) -- exact same color source as city ownership rings
+## (_relation_ring_color), so "self" is the same blue, "enemy" the same red,
+## etc. Unclaimed bounties, and bounties whose claimant city the player
+## hasn't explored, keep the ring invisible so the baked-in gold icon border
+## shows through unchanged. Cheap no-op for non-bounty tiles (specials/
+## landmarks share _bounty_markers but have no "ClaimRing" child).
+func _update_bounty_claim_rings() -> void:
+	var map = GameManager.state.hex_map
+	if map == null:
+		return
+	for coord in _bounty_markers:
+		var marker: Node2D = _bounty_markers[coord]
+		if not is_instance_valid(marker):
+			continue
+		var ring: Line2D = marker.get_node_or_null("ClaimRing")
+		if ring == null:
+			continue
+		var tile = map.get_tile(coord)
+		var claimant := BountySystem.claimant_for(coord) if tile else &""
+		var color := Color(0, 0, 0, 0) # unclaimed: invisible, gold icon border shows through
+		if claimant != &"":
+			var claimant_city: CityState = GameManager.state.cities.get(claimant)
+			if claimant_city and GameManager.explored_tiles.has(claimant_city.hex_pos):
+				color = _relation_ring_color(claimant_city.faction_id)
+		ring.default_color = color
 
 func _create_city_marker(city: CityState) -> void:
 	var marker := Node2D.new()
@@ -3318,7 +3358,7 @@ func _update_city_glow_states() -> void:
 		var build_glow = marker.get_node_or_null("BuildGlow")
 		var settle_glow = marker.get_node_or_null("SettleGlow")
 		var has_building_action := _city_has_available_action(city)
-		var has_settle_action := city.is_capital and city.can_found_settlement
+		var has_settle_action := city.can_found_settlement
 
 		# Glow radius must clear the town footprint or it hides beneath it
 		var glow_r := 14.0 if city.is_settlement else _town_radius(city.level) * 1.5
