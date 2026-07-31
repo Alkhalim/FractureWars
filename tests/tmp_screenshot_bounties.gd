@@ -194,18 +194,45 @@ func _process(_delta: float) -> bool:
 					break
 			if bounty_coord != Vector2i(-9999, -9999):
 				map.get_tile(bounty_coord).bounty_id = &"orchards"
+				# Mark it explored -- bounties_claimable_at/claimable_income_at
+				# are fog-gated (player-facing anti-spoiler), and a freshly
+				# scripted tile.bounty_id assignment does not itself touch
+				# GameManager.explored_tiles the way real exploration would.
+				gm.explored_tiles[bounty_coord] = true
+				# Re-open placement mode so the resource gradient (Task B fix)
+				# is recomputed WITH the now-claimable orchards bounty folded
+				# in -- the first _on_settlement_placement_requested call above
+				# ran before the bounty existed.
+				_campaign.call("_cancel_settlement_placement")
+				_campaign.call("_on_settlement_placement_requested", capital.city_id)
 			print("SETTLE-PREVIEW BOUNTY CRAFTED AT: ", bounty_coord, " claimant=[", BountySystem.claimant_for(bounty_coord), "]")
 			print("SETTLE-PREVIEW TILE: ", settle_hex, " in_valid_set=", found_valid)
+			print("SETTLE-PREVIEW CLAIMABLE INCOME AT TILE: ", BountySystem.claimable_income_at(map, settle_hex))
 			var cam: Camera2D = _campaign.get("camera")
 			if cam:
 				cam.position = _campaign.call("_hex_to_pixel", settle_hex)
 				cam.zoom = Vector2(1.5, 1.5)
 			_campaign.call("_show_settlement_preview", settle_hex)
+			var panel: Node = _campaign.get("_settlement_preview_panel")
+			if panel:
+				var lines: Array = []
+				for child in (panel.get_child(0) as Node).get_children():
+					if child is Label:
+						lines.append(child.text)
+				print("SETTLE-PREVIEW PANEL LINES: ", lines)
+			else:
+				print("WARNING: _settlement_preview_panel is null after _show_settlement_preview")
 
 	if _frames == 64:
 		var img3 := root.get_viewport().get_texture().get_image()
 		img3.save_png("user://win_settle_preview.png")
 		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_settle_preview.png"))
+
+	# ── Phase 3b: bounty-aware gradient + panel together (Task B) ──────────
+	if _frames == 65:
+		var img3b := root.get_viewport().get_texture().get_image()
+		img3b.save_png("user://win_bounty_preview.png")
+		print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://win_bounty_preview.png"))
 
 	# ── Phase 4: special-deposit diamond marker + hover tooltip ────────────
 	if _frames == 66:

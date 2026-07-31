@@ -422,6 +422,43 @@ static func bounties_claimable_at(hex_pos: Vector2i) -> Array[Dictionary]:
 					result.append({id = tile.bounty_id, name = BOUNTY_TYPES[tile.bounty_id].name, hex = h})
 	return result
 
+## Flat resource income the bounties claimable at hex_pos would grant if a
+## settlement stood there right now -- an income-only projection of
+## bounties_claimable_at, aggregated the same way income_bonus_for_city sums
+## an EXISTING city's claims. Used by the settlement preview gradient/panel
+## (campaign.gd) and the AI's site-scorer (turn_manager.gd) so an unclaimed
+## deposit within CLAIM_RADIUS isn't invisible to either.
+##
+## `ignore_fog`: bounties_claimable_at gates on GameManager.explored_tiles as
+## a player-facing anti-spoiler measure (don't preview a bounty the player
+## hasn't scouted yet); this helper mirrors that gate by default for the same
+## UI reason. GameManager.explored_tiles is documented elsewhere as
+## "player fog only" (turn_manager.gd), so the AI site-scorer passes
+## ignore_fog=true -- the AI's own settlement decisions must not be blinded
+## by the human player's exploration.
+static func claimable_income_at(map: HexMapData, hex_pos: Vector2i, ignore_fog: bool = false) -> Dictionary:
+	var total := {}
+	for dx in range(-CLAIM_RADIUS - 1, CLAIM_RADIUS + 2):
+		for dy in range(-CLAIM_RADIUS - 1, CLAIM_RADIUS + 2):
+			var h := Vector2i(hex_pos.x + dx, hex_pos.y + dy)
+			var d := HexHelper.hex_distance(hex_pos, h)
+			if d > CLAIM_RADIUS:
+				continue
+			var tile = map.get_tile(h)
+			if tile == null or tile.bounty_id == &"":
+				continue
+			if not ignore_fog and not GameManager.explored_tiles.has(h):
+				continue
+			var current := claimant_for(h)
+			if current != &"":
+				var cur_city: CityState = GameManager.state.cities.get(current)
+				if cur_city == null or d >= HexHelper.hex_distance(cur_city.hex_pos, h):
+					continue # already claimed by someone at least as close
+			var def: Dictionary = BOUNTY_TYPES.get(tile.bounty_id, {})
+			for res_type in def.get("income", {}):
+				total[res_type] = total.get(res_type, 0) + def.income[res_type]
+	return total
+
 const _RES_NAMES := {0: "Gold", 1: "Iron", 2: "Technology", 3: "Food", 4: "Shard Essence", 5: "Wood", 6: "Captives"}
 
 ## Human-readable one-line bonus text for tooltips.

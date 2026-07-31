@@ -1,6 +1,8 @@
 extends SceneTree
-## Playtest Round 2, Task A: ocean tiles get REAL coastal income + an honest
-## settlement-founding preview.
+## Playtest Round 2.
+##
+## Task A: ocean tiles get REAL coastal income + an honest settlement-founding
+## preview.
 ##
 ## Two independent fixes, tested separately:
 ## 1) calculate_city_income() (city_system.gd) now folds in a coastal-waters
@@ -13,6 +15,17 @@ extends SceneTree
 ##    TILE_INCOME/_get_primary_resource now know about WATER -- so the
 ##    preview stops promising coastal income a founded city never actually
 ##    got.
+##
+## Task B: the settlement preview numbers/gradient and the AI's site score
+## must count claimable bounty income too. New static helper
+## BountySystem.claimable_income_at(map, hex_pos, ignore_fog := false) sums
+## BOUNTY_TYPES[id].income over the bounties a settlement at hex_pos would
+## claim (same claim rule as bounties_claimable_at). Fog-gated by default
+## (matches bounties_claimable_at's existing player-fog anti-spoiler gate for
+## the UI preview/gradient); `ignore_fog=true` is for the AI site-scorer only
+## -- GameManager.explored_tiles is documented elsewhere (turn_manager.gd) as
+## "player fog only", so gating the AI's own settlement decisions on the human
+## player's scouting would make the AI blind to most of the map, not smarter.
 ##
 ## Run: godot --headless --path . -s res://tests/test_playtest_round2.gd
 
@@ -28,12 +41,13 @@ func _run() -> void:
 
 	_run_real_income_tests()
 	_run_preview_tests()
+	_run_bounty_income_tests()
 
 	if _fails == 0:
-		print("PLAYTEST ROUND 2 TASK A TEST PASSED")
+		print("PLAYTEST ROUND 2 TEST PASSED")
 		quit(0)
 	else:
-		print("PLAYTEST ROUND 2 TASK A TEST FAILED (%d)" % _fails)
+		print("PLAYTEST ROUND 2 TEST FAILED (%d)" % _fails)
 		quit(1)
 
 func _check(cond: bool, label: String) -> void:
@@ -260,3 +274,102 @@ func _run_preview_tests() -> void:
 				water_found = true
 				break
 		_check(not water_found, "get_valid_settlement_tiles never returns a WATER tile as foundable")
+
+# ── Task B: BountySystem.claimable_income_at() ──────────────────────────────
+
+## Scans the seed-0 map for a bounty type WITH an `income` entry that would
+## actually be self-claimed by a settlement standing exactly on its hex --
+## same "distance 0 beats any existing claimant" trick test_bounty_system.gd
+## already relies on for bounties_claimable_at (a claimant, if any, is at
+## distance 1-2 since bounty placement forbids being ON a major city's own
+## tile). Returns {} (Vector2i(-9999,-9999), &"") if no such tile exists.
+func _find_self_claiming_income_bounty() -> Dictionary:
+	var hex_map = _gm.state.hex_map
+	for coord in hex_map.tiles:
+		var tile = hex_map.tiles[coord]
+		if tile.bounty_id == &"":
+			continue
+		var def: Dictionary = BountySystem.BOUNTY_TYPES.get(tile.bounty_id, {})
+		if def.get("income", {}).is_empty():
+			continue # need an income-bearing type for a meaningful assertion
+		# Probe with the fog gate open just long enough to check claim
+		# eligibility via the EXISTING production query (not the function
+		# under test) -- this is only locating a valid fixture, not asserting.
+		_gm.explored_tiles[coord] = true
+		var claimable: Array = BountySystem.bounties_claimable_at(coord)
+		_gm.explored_tiles.erase(coord)
+		for entry in claimable:
+			if entry.hex == coord:
+				return {hex = coord, type_id = tile.bounty_id}
+	return {}
+
+## Finds a land hex with no bounty anywhere within CLAIM_RADIUS+1 (the full
+## scan window claimable_income_at/bounties_claimable_at use) -- a "bare"
+## site with zero claimable income.
+func _find_bare_hex() -> Vector2i:
+	var hex_map = _gm.state.hex_map
+	for coord in hex_map.tiles:
+		var tile = hex_map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.WATER:
+			continue
+		var any_nearby := false
+		for dx in range(-BountySystem.CLAIM_RADIUS - 1, BountySystem.CLAIM_RADIUS + 2):
+			for dy in range(-BountySystem.CLAIM_RADIUS - 1, BountySystem.CLAIM_RADIUS + 2):
+				var h := Vector2i(coord.x + dx, coord.y + dy)
+				if HexHelper.hex_distance(coord, h) > BountySystem.CLAIM_RADIUS:
+					continue
+				var t = hex_map.get_tile(h)
+				if t and t.bounty_id != &"":
+					any_nearby = true
+					break
+			if any_nearby:
+				break
+		if not any_nearby:
+			return coord
+	return Vector2i(-1, -1)
+
+func _run_bounty_income_tests() -> void:
+	_gm.new_game(&"empire", false, 0)
+	var hex_map = _gm.state.hex_map
+
+	var fixture := _find_self_claiming_income_bounty()
+	_check(not fixture.is_empty(), "found a real seed-0 income-bearing bounty that self-claims standing on its own hex")
+	if fixture.is_empty():
+		return
+	var bounty_hex: Vector2i = fixture.hex
+	var bounty_type: StringName = fixture.type_id
+
+	# Expected income derived directly from BOUNTY_TYPES -- NOT via the
+	# function under test, so this isn't a tautology.
+	var expected: Dictionary = {}
+	var def: Dictionary = BountySystem.BOUNTY_TYPES.get(bounty_type, {})
+	for res_type in def.get("income", {}):
+		expected[res_type] = def.income[res_type]
+
+	# RED/GREEN case 1: default call is fog-gated, same as bounties_claimable_at.
+	# The tile starts unexplored (a fresh new_game only marks capital surroundings).
+	_check(not _gm.explored_tiles.has(bounty_hex), "test setup: %s's hex starts unexplored" % bounty_type)
+	var fogged: Dictionary = BountySystem.claimable_income_at(hex_map, bounty_hex)
+	_check(fogged.is_empty(), "claimable_income_at is fog-gated by default on an unexplored bounty (got %s)" % [fogged])
+
+	# ignore_fog=true is the AI site-scorer's path -- must see the bounty
+	# regardless of the human player's exploration.
+	var unfogged: Dictionary = BountySystem.claimable_income_at(hex_map, bounty_hex, true)
+	_check(unfogged == expected, "claimable_income_at(ignore_fog=true) returns %s's income %s regardless of player fog (got %s)" % [bounty_type, expected, unfogged])
+
+	# Once explored, the default (fog-gated) call matches too.
+	_gm.explored_tiles[bounty_hex] = true
+	var got: Dictionary = BountySystem.claimable_income_at(hex_map, bounty_hex)
+	_check(got == expected, "claimable_income_at returns %s's income %s once its hex is explored (got %s)" % [bounty_type, expected, got])
+	_gm.explored_tiles.erase(bounty_hex)
+
+	# Bare hex (no bounty within CLAIM_RADIUS) -> {} either way.
+	var bare := _find_bare_hex()
+	_check(bare != Vector2i(-1, -1), "found a bare hex with no bounty within CLAIM_RADIUS")
+	if bare != Vector2i(-1, -1):
+		var bare_fogged: Dictionary = BountySystem.claimable_income_at(hex_map, bare)
+		_check(bare_fogged.is_empty(), "claimable_income_at returns {} on a bare hex (got %s)" % [bare_fogged])
+		var bare_unfogged: Dictionary = BountySystem.claimable_income_at(hex_map, bare, true)
+		_check(bare_unfogged.is_empty(), "claimable_income_at(ignore_fog=true) also returns {} on a bare hex (got %s)" % [bare_unfogged])
+
+	_gm.new_game(&"empire", false, 0) # leave shared GameManager state clean

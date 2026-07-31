@@ -5522,6 +5522,9 @@ func _on_settlement_placement_requested(city_id: StringName) -> void:
 		var total := 0
 		for res in income:
 			total += income[res]
+		var bounty_income := BountySystem.claimable_income_at(GameManager.state.hex_map, coord)
+		for res in bounty_income:
+			total += bounty_income[res]
 		resource_values[coord] = total
 		min_val = mini(min_val, total)
 		max_val = maxi(max_val, total)
@@ -5700,6 +5703,14 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 			b_lbl.add_theme_font_size_override("font_size", 11)
 			b_lbl.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
 			vbox.add_child(b_lbl)
+
+	# Fold claimable-bounty income into the headline total (per-bounty numbers
+	# are already visible above via describe(); non-income/deferred effects --
+	# loyalty, recruit discounts, "deferred" text -- are NOT numeric here and
+	# stay out of the total, same as describe() never invents a number for them).
+	var bounty_income := BountySystem.claimable_income_at(GameManager.state.hex_map, hex_coord)
+	for res_type in bounty_income:
+		total_value += bounty_income[res_type]
 
 	var total_label := Label.new()
 	total_label.text = "Total: %d resources/turn" % total_value

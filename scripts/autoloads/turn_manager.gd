@@ -983,6 +983,14 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 			var income_score := 0
 			for res_type in income:
 				income_score += income[res_type]
+			# Claimable bounties count toward the score too (user directive: AI
+			# must actively prioritize bounties when placing settlements).
+			# ignore_fog=true: GameManager.explored_tiles is player-fog only --
+			# the AI's own site scoring must not be blind to bounties the human
+			# player simply hasn't scouted.
+			var bounty_income := BountySystem.claimable_income_at(GameManager.state.hex_map, tile_pos, true)
+			for res_type in bounty_income:
+				income_score += bounty_income[res_type]
 			var dist_penalty: int = keyed[i][0] * 2
 			var total_score := income_score - dist_penalty
 			if total_score > best_score:
