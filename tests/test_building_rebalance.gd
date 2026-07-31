@@ -209,6 +209,9 @@ func _run() -> void:
 	# ── Task 5: tail cleanup (wall chain, payback fix, unlock move, doctrine gate) ──
 	_run_task5_tail_cleanup(dm)
 
+	# ── Balance batch (2026-07): utility-building cost trim + hive_bulwark tier ──
+	_run_balance_batch_utility_trim(dm)
+
 	if _fails == 0:
 		print("BUILDING REBALANCE TEST PASSED")
 		quit(0)
@@ -701,3 +704,53 @@ func _run_task5_tail_cleanup(dm) -> void:
 	else:
 		_check(tempest_roost.exclusive_group == &"storm_doctrine", "tempest_roost still in storm_doctrine group, got %s" % [tempest_roost.exclusive_group])
 		_check(tempest_spire.exclusive_group == &"storm_doctrine", "tempest_spire now in storm_doctrine group (was empty), got %s" % [tempest_spire.exclusive_group])
+
+## Balance batch (2026-07): the final whole-branch review flagged 9 buildings
+## (imperial_highway, paved_roads, the 4-member sanctified_temple_* quartet,
+## rift_stabilizer, extractor_shardglass, worldshard_monolith) as >40-turn
+## effect-payoff outliers. User decision: trim each build_cost value x0.75,
+## ceil, nothing else touched (income/upkeep/level/etc. unchanged). Values
+## below are pre-trim (post Task-D x1.5 cost-sweep) -> post-trim.
+## Also: hive_bulwark required_capital_level 2 -> 3 (every other 3-tier chain
+## in the data is 1/2/3; hive_bulwark was the one outlier at 1/2/2).
+func _run_balance_batch_utility_trim(dm) -> void:
+	const GOLD := 0
+	const IRON := 1
+	const TECH := 2
+	const SHARD := 4
+	const WOOD := 5
+
+	var expected_costs := {
+		&"imperial_highway": {GOLD: 192, IRON: 195, TECH: 84, WOOD: 270},
+		&"paved_roads": {GOLD: 45, IRON: 39, WOOD: 92},
+		&"sanctified_temple_harvest": {GOLD: 238, WOOD: 63},
+		&"sanctified_temple_knowledge": {GOLD: 72, TECH: 90, WOOD: 114},
+		&"sanctified_temple_order": {GOLD: 306, WOOD: 81},
+		&"sanctified_temple_war": {GOLD: 112, IRON: 124, WOOD: 195},
+		&"rift_stabilizer": {GOLD: 248, IRON: 68, WOOD: 45},
+		&"extractor_shardglass": {GOLD: 135, IRON: 45},
+		&"worldshard_monolith": {GOLD: 114, IRON: 219, SHARD: 106},
+	}
+	for id in expected_costs.keys():
+		var b: BuildingData = dm.get_building(id)
+		if b == null:
+			_check(false, "%s building data exists" % id)
+			continue
+		var exp: Dictionary = expected_costs[id]
+		for res_type in exp.keys():
+			_check(int(b.build_cost.get(res_type, -1)) == int(exp[res_type]), "%s build_cost[%d] == %d (x0.75 ceil trim), got %s" % [id, res_type, exp[res_type], b.build_cost.get(res_type, -1)])
+		_check((b.build_cost as Dictionary).size() == (exp as Dictionary).size(), "%s build_cost has no extra/missing resource keys, got %s" % [id, b.build_cost])
+
+	# ── hive_bulwark: level-gate fixed to the 1/2/3 chain convention ──
+	var chitin_walls = dm.get_building(&"chitin_walls")
+	var hardened_chitin_wall = dm.get_building(&"hardened_chitin_wall")
+	var hive_bulwark2 = dm.get_building(&"hive_bulwark")
+	if chitin_walls == null or hardened_chitin_wall == null or hive_bulwark2 == null:
+		_check(false, "chitin_walls/hardened_chitin_wall/hive_bulwark chain all exist")
+	else:
+		_check(chitin_walls.required_capital_level == 1, "chitin_walls (chain tier 1) required_capital_level == 1, got %s" % [chitin_walls.required_capital_level])
+		_check(hardened_chitin_wall.required_capital_level == 2, "hardened_chitin_wall (chain tier 2) required_capital_level == 2, got %s" % [hardened_chitin_wall.required_capital_level])
+		_check(hive_bulwark2.required_capital_level == 3, "hive_bulwark (chain tier 3) required_capital_level == 3 (was 2), got %s" % [hive_bulwark2.required_capital_level])
+		# Unaffected by the utility-cost trim above (not one of the 9 outliers)
+		# or by the level bump -- cost is untouched.
+		_check(int(hive_bulwark2.build_cost.get(IRON, -1)) == 149, "hive_bulwark build_cost unaffected by this batch, still 149, got %s" % [hive_bulwark2.build_cost])
