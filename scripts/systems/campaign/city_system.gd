@@ -2243,15 +2243,27 @@ func calculate_settlement_income_preview(hex_pos: Vector2i) -> Dictionary:
 	for res_type in base:
 		income[res_type] = base[res_type]
 
+	# Coastal waters: computed EXACTLY like apply_coastal_income_bonus() --
+	# same input set (HexHelper.get_neighbors(hex_pos), i.e. ring-1 ONLY, no
+	# settlement-sphere gate, since the real formula has neither) and the
+	# same formula (+2 food per water neighbor, +1 gold per 2 water
+	# neighbors). This is a true parity mirror now: a founded coastal city's
+	# real calculate_city_income() water contribution is always exactly what
+	# this preview shows. Ring 2-3 water tiles (the loop below) are skipped
+	# entirely -- the real formula never looks past ring 1, so honoring the
+	# old generic max(1, adj_income[res]/3) fallback for them would still
+	# over-promise.
+	var water_neighbors := 0
+	for n in HexHelper.get_neighbors(hex_pos):
+		var ntile := hex_map.get_tile(n)
+		if ntile != null and ntile.terrain == Enums.TerrainType.WATER:
+			water_neighbors += 1
+	if water_neighbors > 0:
+		income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + water_neighbors * 2
+		income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + water_neighbors / 2
+
 	# Adjacency bonus from surrounding tiles within 2 radius
 	var center_terrain: int = tile.terrain
-	# Mirrors apply_coastal_income_bonus()'s real formula (+2 food per water
-	# neighbor, +1 gold per 2 water neighbors) instead of letting water fall
-	# through the generic max(1, adj_income[res]/3) path below, which only
-	# yielded ~+1 food +1 gold each -- honesty fix so the preview never
-	# promises more (or a different mix) than a founded coastal city actually
-	# gets from calculate_city_income().
-	var water_neighbor_count := 0
 	for r in range(1, SETTLEMENT_SPHERE_RADIUS + 1):
 		var ring := _get_hex_ring(hex_pos, r)
 		for ring_coord in ring:
@@ -2263,11 +2275,7 @@ func calculate_settlement_income_preview(hex_pos: Vector2i) -> Dictionary:
 			if is_in_settlement_sphere(ring_coord):
 				continue
 			if rtile.terrain == Enums.TerrainType.WATER:
-				water_neighbor_count += 1
-				income[Enums.ResourceType.FOOD] = income.get(Enums.ResourceType.FOOD, 0) + 2
-				if water_neighbor_count % 2 == 0:
-					income[Enums.ResourceType.GOLD] = income.get(Enums.ResourceType.GOLD, 0) + 1
-				continue
+				continue # handled above (ring-1 only, exact real-formula parity)
 			var adj_income: Dictionary = TILE_INCOME.get(rtile.terrain, {})
 			# If same terrain as center, +1 to primary resource
 			if rtile.terrain == center_terrain:

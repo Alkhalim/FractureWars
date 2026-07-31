@@ -41,6 +41,7 @@ func _run() -> void:
 
 	_run_real_income_tests()
 	_run_preview_tests()
+	_run_preview_real_parity_tests()
 	_run_coastal_breakdown_label_test()
 	_run_bounty_income_tests()
 	_run_bounty_claim_exclusion_tests()
@@ -240,30 +241,16 @@ func _legacy_settlement_income_preview(hex_pos: Vector2i) -> Dictionary:
 						income[res_type] = income.get(res_type, 0) + max(1, adj_income[res_type] / 3)
 	return income
 
-## Counts the ring tiles calculate_settlement_income_preview()'s adjacency
-## loop (radius 1..SETTLEMENT_SPHERE_RADIUS, excluding tiles already inside
-## another city's settlement sphere -- same eligibility check the production
-## loop applies to every terrain) would see as WATER for hex_pos. Independent
-## of the amounts the production code adds per water tile -- this only counts
-## which ring tiles ARE water, so comparing it against the honest formula
-## below isn't a tautology.
+## Counts ONLY the immediate ring-1 neighbors of hex_pos that are WATER --
+## via HexHelper.get_neighbors() + a direct hex_map.get_tile() lookup (the
+## exact same independent math _count_water_neighbors() above already uses),
+## NOT the production ring/sphere helpers (_get_hex_ring, is_in_settlement_
+## sphere). This is deliberately narrower than the preview's full 3-ring
+## adjacency loop: apply_coastal_income_bonus() -- the real formula this
+## mirrors -- only ever looks at ring-1 (HexHelper.get_neighbors), so ring-2/3
+## water tiles are NOT part of the count a correct preview should honor.
 func _count_preview_water_neighbors(hex_pos: Vector2i) -> int:
-	var cs = _gm.city_system
-	var hex_map = _gm.state.hex_map
-	var n := 0
-	for r in range(1, 4): # SETTLEMENT_SPHERE_RADIUS(3) + 1
-		var ring: Array = cs._get_hex_ring(hex_pos, r)
-		for ring_coord in ring:
-			if not HexHelper.is_valid(ring_coord, HexMapData.MAP_WIDTH, HexMapData.MAP_HEIGHT):
-				continue
-			var rtile = hex_map.get_tile(ring_coord)
-			if rtile == null:
-				continue
-			if cs.is_in_settlement_sphere(ring_coord):
-				continue
-			if rtile.terrain == Enums.TerrainType.WATER:
-				n += 1
-	return n
+	return _count_water_neighbors(hex_pos)
 
 func _run_preview_tests() -> void:
 	var cs = _gm.city_system
@@ -290,19 +277,22 @@ func _run_preview_tests() -> void:
 	_check(new_total > legacy_total, "(b) coastal tile's total settlement preview income (%d) exceeds its pre-fix total (%d)" % [new_total, legacy_total])
 
 	# (d) Water composition honesty: the legacy oracle skips water entirely
-	# (contributes exactly 0), so new-vs-legacy isolates precisely what the
-	# water special-case adds. It must equal the REAL apply_coastal_income_bonus
-	# formula (+2 food per water neighbor, +1 gold per 2 water neighbors),
-	# not the old generic max(1, adj_income[res]/3) approximation (~+1
-	# food/+1 gold per neighbor).
+	# (contributes exactly 0) at every ring, and current production also
+	# skips ring-2/3 water entirely -- so new-vs-legacy isolates precisely
+	# the RING-1-ONLY water special-case's contribution. It must equal the
+	# REAL apply_coastal_income_bonus formula (+2 food per ring-1 water
+	# neighbor, +1 gold per 2 ring-1 water neighbors) for N = ring-1 water
+	# neighbors ONLY, not the old generic max(1, adj_income[res]/3)
+	# approximation (~+1 food/+1 gold per neighbor) and not a count that
+	# includes ring-2/3 water (which contributes nothing, on either side).
 	var water_n := _count_preview_water_neighbors(coastal_hex)
-	_check(water_n > 0, "(d) test fixture has at least one water ring tile counted by the preview's own adjacency loop")
+	_check(water_n > 0, "(d) test fixture has at least one ring-1 water neighbor counted independently of the preview's adjacency loop")
 	var water_food_delta: int = new_food - legacy_food
 	var new_gold: int = new_income.get(Enums.ResourceType.GOLD, 0)
 	var legacy_gold: int = legacy_income.get(Enums.ResourceType.GOLD, 0)
 	var water_gold_delta: int = new_gold - legacy_gold
-	_check(water_food_delta == water_n * 2, "(d) water's FOOD contribution to the preview (%d) equals the real formula's +2/neighbor for N=%d water ring tiles (expected %d)" % [water_food_delta, water_n, water_n * 2])
-	_check(water_gold_delta == water_n / 2, "(d) water's GOLD contribution to the preview (%d) equals the real formula's +1-per-2-neighbors for N=%d water ring tiles (expected %d)" % [water_gold_delta, water_n, water_n / 2])
+	_check(water_food_delta == water_n * 2, "(d) water's FOOD contribution to the preview (%d) equals the real formula's +2/neighbor for N=%d ring-1 water neighbors (expected %d)" % [water_food_delta, water_n, water_n * 2])
+	_check(water_gold_delta == water_n / 2, "(d) water's GOLD contribution to the preview (%d) equals the real formula's +1-per-2-neighbors for N=%d ring-1 water neighbors (expected %d)" % [water_gold_delta, water_n, water_n / 2])
 
 	# Regression guard (unrelated to the honesty fix): WATER must still never
 	# be a foundable tile itself.
@@ -316,6 +306,46 @@ func _run_preview_tests() -> void:
 				water_found = true
 				break
 		_check(not water_found, "get_valid_settlement_tiles never returns a WATER tile as foundable")
+
+# ── Fix round 1: exact preview/real coastal parity ──────────────────────────
+
+## THE cross-check the whole deliverable is about: the settlement preview's
+## water contribution (isolated via the same new-vs-legacy delta as (d) above)
+## must equal calculate_city_income()'s REAL water contribution for a city
+## standing on that exact hex -- apply_coastal_income_bonus()'s own returned
+## dict, used here as ground truth (not a re-derived formula), across
+## several distinct coastal candidates so this isn't a single-tile fluke.
+func _run_preview_real_parity_tests() -> void:
+	var cs = _gm.city_system
+	var hex_map = _gm.state.hex_map
+	var checked := 0
+	for coord in hex_map.tiles:
+		if checked >= 3:
+			break
+		var tile = hex_map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.WATER:
+			continue
+		if _count_water_neighbors(coord) <= 0:
+			continue
+		checked += 1
+
+		# Ground truth: a real city standing on this exact hex.
+		var synth := CityState.new()
+		synth.city_id = &"__test_parity_city__"
+		synth.hex_pos = coord
+		var real_bonus: Dictionary = cs.apply_coastal_income_bonus(synth)
+		var real_food: int = real_bonus.get(Enums.ResourceType.FOOD, 0)
+		var real_gold: int = real_bonus.get(Enums.ResourceType.GOLD, 0)
+
+		var new_income: Dictionary = cs.calculate_settlement_income_preview(coord)
+		var legacy_income: Dictionary = _legacy_settlement_income_preview(coord)
+		var preview_food_delta: int = new_income.get(Enums.ResourceType.FOOD, 0) - legacy_income.get(Enums.ResourceType.FOOD, 0)
+		var preview_gold_delta: int = new_income.get(Enums.ResourceType.GOLD, 0) - legacy_income.get(Enums.ResourceType.GOLD, 0)
+
+		_check(preview_food_delta == real_food, "(f) preview water FOOD contribution at %s (%d) matches apply_coastal_income_bonus's real ground truth (%d)" % [coord, preview_food_delta, real_food])
+		_check(preview_gold_delta == real_gold, "(f) preview water GOLD contribution at %s (%d) matches apply_coastal_income_bonus's real ground truth (%d)" % [coord, preview_gold_delta, real_gold])
+
+	_check(checked >= 3, "(f) found at least 3 coastal candidate tiles on the seed-0 map for the preview/real parity cross-check (found %d)" % checked)
 
 # ── Deliverable 2 (deferred from Task A): "Coastal waters" breakdown row ───
 
