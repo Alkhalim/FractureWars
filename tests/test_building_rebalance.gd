@@ -112,8 +112,11 @@ func _run() -> void:
 		_check(absf(float(thornwall.special_effects.get("garrison_strength_bonus", -1.0)) - 0.1) < 0.001, "thornwall garrison_strength_bonus unchanged ~= 0.1, got %s" % [thornwall.special_effects.get("garrison_strength_bonus", -1.0)])
 		_check(not thornwall.special_effects.has("besieger_attrition"), "thornwall has no besieger_attrition (endurance line, not traps), got %s" % [thornwall.special_effects])
 
-	# ── Functional: jungle_traps bleeds besiegers ~16 HP more per siege tick
-	# than an identical control city without the wall (attrition 2.0 * 8). ──
+	# ── Functional: jungle_traps bleeds besiegers 2% max_hp per UNIT per siege
+	# tick (attrition 2.0 -> 2%), not a flat pool split across the army --
+	# a flat pool rounds to 0 per unit once the army is large enough to
+	# dilute it, which would make the wall inert for exactly the large siege
+	# stacks it's meant to punish. ──
 	var gm = root.get_node("/root/GameManager")
 	gm.new_game(&"tainted_jade", false, 0)
 	var cs = gm.city_system
@@ -125,13 +128,20 @@ func _run() -> void:
 			tj_city = c
 			break
 
+	var legionary_ud: UnitData = dm.get_unit(&"legionary")
+
 	if tj_city == null:
 		_check(false, "found a tainted_jade city for the wall-attrition test")
+	elif legionary_ud == null:
+		_check(false, "found legionary unit data for the wall-attrition test")
 	else:
-		# Runs one siege tick against a fresh single-unit besieging army and
-		# returns the total HP that army lost. with_wall toggles jungle_traps
-		# on the besieged city so the two runs are otherwise identical.
-		var run_tick := func(with_wall: bool) -> float:
+		var expected_per_unit := maxi(1, int(legionary_ud.max_hp * 2.0 * 0.01))
+
+		# Runs one siege tick against a fresh besieging army of unit_count
+		# legionaries and returns the total HP that army lost. with_wall
+		# toggles jungle_traps on the besieged city so paired runs are
+		# otherwise identical.
+		var run_tick := func(with_wall: bool, unit_count: int) -> float:
 			tj_city.is_under_siege = true
 			tj_city.siege_faction = &"empire"
 			tj_city.siege_turns = 0.0
@@ -140,14 +150,14 @@ func _run() -> void:
 			if with_wall:
 				tj_city.buildings.append(&"jungle_traps")
 
-			var ud: UnitData = dm.get_unit(&"legionary")
-			var ui := UnitInstance.new()
-			ui.init_from_data(ud, &"legionary")
 			var army := ArmyState.new()
 			army.army_id = &"__test_wall_army_%d" % randi()
 			army.faction_id = &"empire"
 			army.hex_pos = tj_city.hex_pos
-			army.units.append(ui)
+			for i in unit_count:
+				var ui := UnitInstance.new()
+				ui.init_from_data(legionary_ud, &"legionary")
+				army.units.append(ui)
 			gm.state.armies[army.army_id] = army
 			gm.movement_system.invalidate_positions()
 
@@ -170,10 +180,25 @@ func _run() -> void:
 			tj_city.siege_turns = 0.0
 			return float(hp_before - hp_after)
 
-		var loss_control: float = run_tick.call(false)
-		var loss_with_wall: float = run_tick.call(true)
-		var delta := loss_with_wall - loss_control
-		_check(absf(delta - 16.0) < 1.0, "jungle_traps adds ~16 besieger HP loss per siege tick vs control (delta=%f, control=%f, with_wall=%f)" % [delta, loss_control, loss_with_wall])
+		# 1-unit differential: delta == 2% of that unit's max_hp (min 1 HP).
+		var loss_control_1: float = run_tick.call(false, 1)
+		var loss_with_wall_1: float = run_tick.call(true, 1)
+		var delta_1 := loss_with_wall_1 - loss_control_1
+		_check(absf(delta_1 - float(expected_per_unit)) < 1.0, "jungle_traps adds 2%% max_hp (%d HP) besieger loss per siege tick for a 1-unit army (delta=%f, control=%f, with_wall=%f)" % [expected_per_unit, delta_1, loss_control_1, loss_with_wall_1])
+		# Double-apply guard: if a leftover old 5%-flat-per-unit path fired
+		# alongside the new hook, delta would show ~7% (5%+2%) instead of 2% --
+		# assert it stays near 2% only, well below what a stacked ~7% would be.
+		_check(delta_1 < float(expected_per_unit) * 2.0, "jungle_traps delta stays within tolerance of 2%% max_hp only, not a double-applied ~7%% (old 5%% path + new 2%%) (delta=%f, expected~%d)" % [delta_1, expected_per_unit])
+
+		# Large-army regression guard: a flat pool split across N units
+		# rounds to 0 per unit once N is large enough to dilute it (the flaw
+		# this per-unit-percentage design replaces) -- assert every unit in a
+		# 10-unit army still takes real, nonzero, size-scaling damage.
+		var loss_control_10: float = run_tick.call(false, 10)
+		var loss_with_wall_10: float = run_tick.call(true, 10)
+		var delta_10 := loss_with_wall_10 - loss_control_10
+		_check(delta_10 > 0.0, "jungle_traps damage is nonzero for a 10-unit besieging army -- regression guard for the round-to-zero cliff (delta=%f)" % [delta_10])
+		_check(absf(delta_10 - float(expected_per_unit * 10)) < 10.0, "jungle_traps damage scales with army size: 10-unit delta ~= 10x the per-unit share (delta=%f, expected~%d)" % [delta_10, expected_per_unit * 10])
 
 	if _fails == 0:
 		print("BUILDING REBALANCE TEST PASSED")

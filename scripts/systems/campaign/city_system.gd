@@ -834,16 +834,19 @@ func _apply_besieger_attrition(besiegers: Array) -> void:
 			if ud:
 				unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * SIEGE_BESIEGER_ATTRITION))
 
-## Damage per besieger_attrition point dealt to a besieging army each siege
-## turn (attrition_sum * this constant, split evenly across the army's units).
-const WALL_ATTRITION_DAMAGE_PER_POINT := 8.0
-
 ## Attrition walls: sums the besieged city's buildings' besieger_attrition
 ## special_effect (Jungle Traps, Serpent's Maze — Tainted Jade's "traps" wall
-## line) and, if any, deals attrition_sum * WALL_ATTRITION_DAMAGE_PER_POINT HP
-## to each besieging army, spread evenly across its units. Unlike the flat
-## SIEGE_BESIEGER_ATTRITION drip above, this can kill units outright — see
-## _apply_army_wall_damage. Logs a turn_log line when it draws blood.
+## line) and, if any, deals attrition_sum% of EACH besieging unit's max HP
+## per siege turn (e.g. jungle_traps 2.0 -> 2% per unit; serpents_maze 4.0 ->
+## 4%; the two don't stack in practice since maze replaces traps on upgrade,
+## but the sum applies if somehow both are present). Per-unit percentage
+## (not a flat pool split across the army) so large siege stacks — the
+## fantasy this wall targets — still take real, size-scaling damage; a flat
+## shared pool rounds to 0 per unit once an army is large enough to dilute
+## it, which would make the wall inert exactly when it matters most. Unlike
+## the flat SIEGE_BESIEGER_ATTRITION drip above, this can kill units
+## outright — see _apply_army_wall_damage. Logs a turn_log line when it
+## draws blood.
 func _apply_wall_besieger_attrition(city: CityState, besiegers: Array) -> void:
 	var attrition_sum := 0.0
 	var source_name := ""
@@ -860,10 +863,9 @@ func _apply_wall_besieger_attrition(city: CityState, besiegers: Array) -> void:
 	if attrition_sum <= 0.0:
 		return
 
-	var total_dmg := attrition_sum * WALL_ATTRITION_DAMAGE_PER_POINT
 	var dealt := 0
 	for army: ArmyState in besiegers:
-		dealt += _apply_army_wall_damage(army, total_dmg)
+		dealt += _apply_army_wall_damage(army, attrition_sum)
 
 	if dealt > 0:
 		TurnManager.turn_log.append({
@@ -871,23 +873,25 @@ func _apply_wall_besieger_attrition(city: CityState, besiegers: Array) -> void:
 			"text": "%s bleed the besiegers at %s: %d damage" % [source_name, city.get_display_name(), dealt],
 		})
 
-## Spreads total_dmg evenly across army's units (mirrors the per-unit HP
-## bookkeeping used elsewhere, e.g. _apply_besieger_attrition above), but —
-## unlike that flat drip — kills units whose HP drops to 0 or below and
-## removes them from the army, disbanding the army entirely if none survive
-## (mirrors the emptied-army cleanup in _desert_unpaid_units). Returns the
-## actual HP removed (<= total_dmg if a unit died before absorbing its full
-## share).
-func _apply_army_wall_damage(army: ArmyState, total_dmg: float) -> int:
+## Deals attrition_pct% of each besieging unit's max HP (min 1 HP per unit,
+## mirroring the floor used by _apply_besieger_attrition/_apply_terrain_attrition
+## elsewhere in this file), but — unlike those flat drips — kills units whose
+## HP drops to 0 or below and removes them from the army, disbanding the
+## army entirely if none survive (mirrors the emptied-army cleanup in
+## _desert_unpaid_units). Returns the actual HP removed (<= the nominal
+## per-unit total if a unit died before absorbing its full share).
+func _apply_army_wall_damage(army: ArmyState, attrition_pct: float) -> int:
 	if army == null or army.units.is_empty():
-		return 0
-	var per_unit := int(roundf(total_dmg / float(army.units.size())))
-	if per_unit <= 0:
 		return 0
 
 	var dealt := 0
 	var survivors: Array[UnitInstance] = []
 	for unit: UnitInstance in army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud == null:
+			survivors.append(unit)
+			continue
+		var per_unit := maxi(1, int(ud.max_hp * attrition_pct * 0.01))
 		var actual := mini(per_unit, unit.current_hp)
 		unit.current_hp -= actual
 		dealt += actual
