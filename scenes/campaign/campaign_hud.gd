@@ -2011,11 +2011,11 @@ func _update_faction_mechanic_display(fs: FactionState) -> void:
 			if fs.border_vigilance >= 60:
 				var iron := int(fs.border_vigilance * 0.4)
 				var upkeep := int(fs.border_vigilance * 0.1)
-				effects.append("War Footing: +%d iron/turn, -%d gold, -%d food" % [iron, upkeep, upkeep])
+				effects.append("War economy (≥60): +%d iron/turn, -%d gold, -%d food" % [iron, upkeep, upkeep])
 				if fs.border_vigilance >= 85:
 					effects.append("-1 diplomacy/turn")
 			elif fs.border_vigilance <= 40:
-				effects.append("Fortress Mode: +2 pop/city, +2 loyalty")
+				effects.append("Garrison economy (≤40): +2 pop/city, +2 loyalty")
 				effects.append("+6 food, +4 gold, +1 diplomacy/turn")
 			else:
 				effects.append("Balanced: +2 iron/turn")

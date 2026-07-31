@@ -130,6 +130,30 @@ func _run() -> void:
 			crossed_fortress = true
 	_check(crossed_fortress, "crossing 30 downward logs a Fortress doctrine turn_log entry")
 
+	# Exit logging: leaving a combat band (dropping out of War Footing, or
+	# rising out of Fortress doctrine) must ALSO log a turn_log entry — a
+	# player silently losing +15% attack or +20% defense is a transparency
+	# bug just as much as silently gaining it.
+	_tm.turn_log.clear()
+	cg_fs.vigilance_target = 10
+	cg_fs.border_vigilance = 76
+	_tm._process_cinderguard_forge(cg_fs) # 76 -> 72, drops below 75 (exits War Footing)
+	var left_war := false
+	for entry in _tm.turn_log:
+		if "War Footing" in str(entry.text) and "cool" in str(entry.text):
+			left_war = true
+	_check(left_war, "dropping below 75 logs a War Footing EXIT turn_log entry")
+
+	_tm.turn_log.clear()
+	cg_fs.vigilance_target = 90
+	cg_fs.border_vigilance = 28
+	_tm._process_cinderguard_forge(cg_fs) # 28 -> 32, rises above 30 (exits Fortress doctrine)
+	var left_fortress := false
+	for entry in _tm.turn_log:
+		if "Fortress doctrine" in str(entry.text) and "stirs" in str(entry.text):
+			left_fortress = true
+	_check(left_fortress, "rising above 30 logs a Fortress doctrine EXIT turn_log entry")
+
 	cg_fs.owned_cities = real_owned_cities
 
 	# ── AI posture selection: War Footing at war, Fortress Doctrine at peace ──

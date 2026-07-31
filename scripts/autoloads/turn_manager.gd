@@ -4556,10 +4556,22 @@ func _process_cinderguard_forge(fs: FactionState) -> void:
 	fs.border_vigilance = clampi(fs.border_vigilance + drift, 0, 100)
 
 	# ── Threshold-crossing feedback (matches the battle/UI 30 / 75 tiers) ──
-	if vigilance_before < 75 and fs.border_vigilance >= 75:
+	# Bands: Fortress (<=30), neutral, War Footing (>=75). Log every band
+	# transition in EITHER direction — a player silently losing the +15%
+	# attack or +20% defense bonus is just as much a transparency problem
+	# as silently gaining it.
+	var was_war := vigilance_before >= 75
+	var is_war := fs.border_vigilance >= 75
+	var was_fortress := vigilance_before <= 30
+	var is_fortress := fs.border_vigilance <= 30
+	if is_war and not was_war:
 		turn_log.append({type = "vigilance", text = "The forges shift to War Footing — armies strike +15% harder"})
-	elif vigilance_before > 30 and fs.border_vigilance <= 30:
-		turn_log.append({type = "vigilance", text = "The border settles into Fortress doctrine — +20% defense"})
+	elif was_war and not is_war:
+		turn_log.append({type = "vigilance", text = "The forges cool below War Footing — the +15% attack edge is lost"})
+	if is_fortress and not was_fortress:
+		turn_log.append({type = "vigilance", text = "The border settles into Fortress doctrine — +20% defense, +8 morale"})
+	elif was_fortress and not is_fortress:
+		turn_log.append({type = "vigilance", text = "The border stirs from Fortress doctrine — the defensive bonuses lapse"})
 
 	# ── Posture economics: war footing pays for its own iron; fortress mode keeps its perks ──
 	if fs.border_vigilance >= 60:
