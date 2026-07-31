@@ -106,23 +106,67 @@ static func _has_water_neighbor(map: HexMapData, coord: Vector2i) -> bool:
 			return true
 	return false
 
+## Radius-limited hex range around `center` (every coord with hex_distance <=
+## radius), via the standard cube-coordinate range walk. Used to stamp OUTWARD
+## from each city instead of scanning every land tile against every city.
+static func _hex_range(center: Vector2i, radius: int) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var c := HexHelper.offset_to_cube(center.x, center.y)
+	for dx in range(-radius, radius + 1):
+		var lo := maxi(-radius, -dx - radius)
+		var hi := mini(radius, -dx + radius)
+		for dy in range(lo, hi + 1):
+			var dz := -dx - dy
+			result.append(HexHelper.cube_to_offset(c + Vector3i(dx, dy, dz)))
+	return result
+
+## Precomputes the three tile-keyed validity lookups ONCE per rebalance pass by
+## stamping outward FROM EACH CITY (~90 cities x ~19-37 cells each) instead of
+## the O(cities) scan per tile that is_valid_bounty_spot does without this.
+## Feed the result into is_valid_bounty_spot's `stamps` param for bulk queries
+## (see rebalance_for_cities); omit it entirely for one-off single-coord calls.
+static func _build_validity_stamps() -> Dictionary:
+	var major_blocked := {}
+	var near_independent := {}
+	var settle_too_close := {}
+	for city_id in GameManager.state.cities:
+		var city: CityState = GameManager.state.cities[city_id]
+		if city.faction_id == &"independent":
+			for h in _hex_range(city.hex_pos, CLAIM_RADIUS):
+				near_independent[h] = true
+		else:
+			for h in _hex_range(city.hex_pos, CLAIM_RADIUS):
+				major_blocked[h] = true
+		for h in _hex_range(city.hex_pos, 3): # "distance < 4" == radius 3
+			settle_too_close[h] = true
+	return {major_blocked = major_blocked, near_independent = near_independent, settle_too_close = settle_too_close}
+
 ## Placement validity (post-city): never free for majors; claimable by an
 ## independent town or grabbable by a future settlement.
-static func is_valid_bounty_spot(map: HexMapData, coord: Vector2i) -> bool:
+## `stamps`, if given, must be a Dictionary from _build_validity_stamps() —
+## swaps the O(cities) scans below for O(1) lookups. Both paths implement the
+## exact same rule (only the lookup mechanism differs), so results are
+## identical either way; omit `stamps` for one-off queries (tests, UI).
+static func is_valid_bounty_spot(map: HexMapData, coord: Vector2i, stamps: Dictionary = {}) -> bool:
 	var tile = map.get_tile(coord)
 	if tile == null or tile.terrain == Enums.TerrainType.WATER:
 		return false
 	if tile.special_id != &"" or tile.landmark_id != &"":
 		return false
 	var near_independent := false
-	for city_id in GameManager.state.cities:
-		var city: CityState = GameManager.state.cities[city_id]
-		var d := HexHelper.hex_distance(city.hex_pos, coord)
-		if d <= CLAIM_RADIUS:
-			if city.faction_id == &"independent":
-				near_independent = true
-			else:
-				return false # major (or other) city would auto-claim: forbidden
+	if stamps.is_empty():
+		for city_id in GameManager.state.cities:
+			var city: CityState = GameManager.state.cities[city_id]
+			var d := HexHelper.hex_distance(city.hex_pos, coord)
+			if d <= CLAIM_RADIUS:
+				if city.faction_id == &"independent":
+					near_independent = true
+				else:
+					return false # major (or other) city would auto-claim: forbidden
+	else:
+		if stamps.major_blocked.has(coord):
+			return false # major (or other) city would auto-claim: forbidden
+		near_independent = stamps.near_independent.has(coord)
 	if near_independent:
 		return true
 	# Grabbable: a foundable land tile within CLAIM_RADIUS
@@ -134,13 +178,17 @@ static func is_valid_bounty_spot(map: HexMapData, coord: Vector2i) -> bool:
 			var tt = map.get_tile(t_coord)
 			if tt == null or tt.terrain == Enums.TerrainType.WATER or tt.terrain == Enums.TerrainType.MOUNTAINS:
 				continue
-			var far_enough := true
-			for city_id2 in GameManager.state.cities:
-				if HexHelper.hex_distance(GameManager.state.cities[city_id2].hex_pos, t_coord) < 4:
-					far_enough = false
-					break
-			if far_enough:
-				return true
+			if stamps.is_empty():
+				var far_enough := true
+				for city_id2 in GameManager.state.cities:
+					if HexHelper.hex_distance(GameManager.state.cities[city_id2].hex_pos, t_coord) < 4:
+						far_enough = false
+						break
+				if far_enough:
+					return true
+			else:
+				if not stamps.settle_too_close.has(t_coord):
+					return true
 	return false
 
 ## Post-city rebalance: relocate invalid map-gen bounties, then top up the
@@ -149,6 +197,10 @@ static func is_valid_bounty_spot(map: HexMapData, coord: Vector2i) -> bool:
 static func rebalance_for_cities(map: HexMapData, salt: int) -> void:
 	var coords: Array = map.tiles.keys()
 	coords.sort()
+	# Precompute the city-stamped validity lookups ONCE for this whole pass
+	# (see _build_validity_stamps) instead of re-scanning every city for every
+	# tile below — the two candidate-building loops touch every land tile.
+	var stamps := _build_validity_stamps()
 	# 1. Strip invalid bounties (map-gen ran before cities existed, so any
 	#    deposit that now falls within CLAIM_RADIUS of a major city, or off
 	#    the settlement-adjacency rule, gets cleared here). Their type is not
@@ -158,7 +210,7 @@ static func rebalance_for_cities(map: HexMapData, salt: int) -> void:
 		var tile = map.tiles[coord]
 		if tile.bounty_id == &"":
 			continue
-		if is_valid_bounty_spot(map, coord):
+		if is_valid_bounty_spot(map, coord, stamps):
 			placed.append(coord)
 		else:
 			tile.bounty_id = &""
@@ -167,7 +219,7 @@ static func rebalance_for_cities(map: HexMapData, salt: int) -> void:
 	var candidates: Array[Vector2i] = []
 	for coord in coords:
 		var tile = map.tiles[coord]
-		if tile.bounty_id == &"" and is_valid_bounty_spot(map, coord):
+		if tile.bounty_id == &"" and is_valid_bounty_spot(map, coord, stamps):
 			candidates.append(coord)
 	# 3. Top up ring targets + global density via a shared placement helper:
 	var counts := {}
