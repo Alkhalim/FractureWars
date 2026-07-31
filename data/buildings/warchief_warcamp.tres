@@ -19,3 +19,5 @@ requires_research = &"ancestor_call"
 upgrades_from = &"raiders_den"
 class_loyalty_bonus = {"peasants": -4, "nobles": 4}
 upkeep_cost = {0: 3, 1: 5}
+
+settlement_allowed = true

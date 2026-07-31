@@ -18,3 +18,5 @@ required_capital_level = 1
 requires_research = &"garrison_doctrine"
 class_loyalty_bonus = {"peasants": -3, "nobles": 2}
 upkeep_cost = {0: 2, 1: 3}
+
+settlement_allowed = true

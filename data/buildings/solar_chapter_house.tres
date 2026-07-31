@@ -20,3 +20,5 @@ required_capital_level = 2
 requires_research = &"pilgrim_zeal"
 class_loyalty_bonus = {"nobles": 4}
 upkeep_cost = {0: 3, 1: 5}
+
+settlement_allowed = true

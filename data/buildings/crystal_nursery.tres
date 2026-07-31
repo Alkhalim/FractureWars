@@ -19,3 +19,5 @@ requires_research = &"pack_hunting"
 required_terrain = 7
 class_loyalty_bonus = {}
 upkeep_cost = {1: 3, 5: 2}
+
+settlement_allowed = true

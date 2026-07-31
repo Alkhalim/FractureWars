@@ -20,3 +20,5 @@ class_loyalty_bonus = {"peasants": 1, "scholars": 3, "nobles": 1}
 upgrades_from = &"moon_shrine"
 special_effects = {"research_speed_bonus": 0.15, "lunar_phase_tech_bonus": 5}
 upkeep_cost = {0: 5, 5: 3}
+
+settlement_allowed = true

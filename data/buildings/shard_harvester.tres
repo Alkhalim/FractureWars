@@ -16,3 +16,5 @@ population_growth_bonus = 2
 required_capital_level = 1
 required_terrain = 7
 upkeep_cost = {1: 2, 5: 3}
+
+settlement_allowed = true

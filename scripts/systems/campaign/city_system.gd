@@ -1615,11 +1615,17 @@ func has_dependent_upgrade(city: CityState, building_id: StringName) -> bool:
 ## marching" signal) are excluded from the settlement branch: the camp
 ## mechanic keeps full faction-roster access (minus settlement_only, same as
 ## any other city), it just never graduated into being a real settlement.
+## Task 1b: settlements ALSO get each faction's 3-4 curated city trees
+## (BuildingData.settlement_allowed, tagged on both tiers of each chain) --
+## e.g. the faction's basic barracks and basic shrine -- so a settlement can
+## recruit, defend, and develop with real faction identity instead of only
+## the 4 generic settlement-grade buildings.
 func is_building_allowed_for(city: CityState, building: BuildingData) -> bool:
 	if city.is_settlement and not city.is_mobile_camp:
 		return building.settlement_only \
 			or building.requires_region_resource != &"" \
-			or building.requires_region_landmark != &""
+			or building.requires_region_landmark != &"" \
+			or building.settlement_allowed
 	return not building.settlement_only
 
 func get_available_buildings(city: CityState, include_slot_blocked: bool = false) -> Array[BuildingData]:

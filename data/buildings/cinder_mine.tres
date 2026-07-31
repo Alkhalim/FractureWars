@@ -18,3 +18,5 @@ required_capital_level = 1
 required_terrain = 2
 class_loyalty_bonus = {"artisans": 1}
 upkeep_cost = {0: 2, 5: 3}
+
+settlement_allowed = true

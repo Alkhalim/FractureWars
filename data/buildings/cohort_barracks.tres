@@ -20,3 +20,5 @@ required_capital_level = 1
 requires_research = &"imperial_drill"
 class_loyalty_bonus = {"peasants": -4, "nobles": 2}
 upkeep_cost = {0: 2, 1: 3}
+
+settlement_allowed = true

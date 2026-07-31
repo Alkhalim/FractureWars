@@ -19,3 +19,5 @@ requires_research = &"death_whispers"
 required_terrain = 6
 class_loyalty_bonus = {"peasants": -2, "nobles": 1}
 upkeep_cost = {1: 3, 5: 2}
+
+settlement_allowed = true

@@ -17,3 +17,5 @@ required_capital_level = 1
 requires_research = &"ts_runic_forging"
 class_loyalty_bonus = {"peasants": 1}
 upkeep_cost = {0: 2, 1: 3}
+
+settlement_allowed = true

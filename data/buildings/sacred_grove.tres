@@ -20,3 +20,5 @@ required_terrain = 1
 class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 3, "nobles": 1}
 special_effects = {"harmony_bonus": 2}
 upkeep_cost = {0: 3, 5: 2}
+
+settlement_allowed = true

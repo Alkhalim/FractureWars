@@ -17,3 +17,5 @@ required_capital_level = 2
 upgrades_from = &"resonant_pylon"
 requires_research = &"sh_crystal_scouts"
 special_effects = { "research_speed_bonus": 0.1 }
+
+settlement_allowed = true

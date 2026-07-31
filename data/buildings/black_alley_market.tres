@@ -17,3 +17,5 @@ unlocks_units = Array[StringName]([])
 required_capital_level = 1
 class_loyalty_bonus = {"artisans": 1, "nobles": 1}
 upkeep_cost = {1: 2, 5: 3}
+
+settlement_allowed = true

@@ -19,3 +19,5 @@ upgrades_from = &"thrall_quarters"
 class_loyalty_bonus = {"captives": -8, "artisans": 2}
 special_effects = {"captive_conversion_rate": 0.20, "taint_generation": 2}
 upkeep_cost = {0: 5}
+
+settlement_allowed = true

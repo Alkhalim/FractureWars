@@ -895,6 +895,18 @@ func load_game(slot: int) -> void:
 	state = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GameState
 	if state == null:
 		return
+	# Old-save backfill (Task 1b, camp-fix follow-up): saves from before
+	# ba9c8bc may have a settled Sunblessed camp with is_mobile_camp == false
+	# (that fix's old semantics cleared the flag on settle instead of keeping
+	# it as a permanent identity marker). army.camp_city_id is set ONLY by
+	# setup_sunblessed_camp and never repurposed by any other mechanic, so
+	# it's a reliable discriminator regardless of save age -- backfill
+	# unconditionally rather than leaving pre-fix camps misclassified until
+	# the player happens to break camp.
+	for aid in state.armies:
+		var backfill_army: ArmyState = state.armies[aid]
+		if backfill_army.camp_city_id != &"" and state.cities.has(backfill_army.camp_city_id):
+			state.cities[backfill_army.camp_city_id].is_mobile_camp = true
 	state.deserialize_hex_map()
 	state.hex_map.build_region_cache()
 	TurnManager.deserialize_state(state.turn_manager_state)

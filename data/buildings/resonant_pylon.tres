@@ -16,3 +16,5 @@ population_growth_bonus = 0
 required_capital_level = 1
 requires_research = &"crystal_growth"
 special_effects = { "morale_bonus": 2 }
+
+settlement_allowed = true

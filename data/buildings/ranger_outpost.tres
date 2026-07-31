@@ -18,3 +18,5 @@ required_capital_level = 1
 requires_research = &"forest_ambush"
 class_loyalty_bonus = {"nobles": 2, "peasants": -2}
 upkeep_cost = {0: 2, 5: 3}
+
+settlement_allowed = true

@@ -727,6 +727,43 @@ func _consolidate_ai_armies(faction_id: StringName) -> void:
 ## whenever city.is_settlement is true.
 const SETTLEMENT_BUILD_PRIORITY: Array[StringName] = [&"resource_camp", &"waystation", &"frontier_watchpost", &"frontier_shrine"]
 
+## Task 1b: each major faction's curated tier-1 military-barracks id and
+## tier-1 science/cultural-shrine id (see data/buildings/*.tres
+## settlement_allowed tags -- 3-4 curated chains per faction, of which these
+## two are always present). Walked ahead of / interleaved with the 4
+## universal settlement buildings above, in the plan's exact order:
+## [military t1, resource_camp, waystation, science t1, watchpost, shrine].
+## Tier-2s of these chains are deliberately NOT listed here -- once a tier-1
+## is built, the existing "any available upgrade" fallback a few lines below
+## the priority walk picks it up on its own.
+const SETTLEMENT_FACTION_CHAIN_HEADS: Dictionary = {
+	&"empire": {"military": &"cohort_barracks", "science": &"village_gathering_place"},
+	&"skulloath": {"military": &"raiders_den", "science": &"ancestor_shrine"},
+	&"gladehost": {"military": &"ranger_outpost", "science": &"sacred_grove"},
+	&"tainted_jade": {"military": &"serpent_pit", "science": &"root_altar"},
+	&"shardhorde": {"military": &"crystal_nursery", "science": &"resonant_pylon"},
+	&"moonspear": {"military": &"sentinel_hall", "science": &"moon_shrine"},
+	&"sunblessed": {"military": &"pilgrim_training_grounds", "science": &"sunfire_altar"},
+	&"thunderswarm": {"military": &"warriors_longhouse", "science": &"lightning_shrine"},
+	&"cinderguard": {"military": &"cinder_watchtower", "science": &"ember_shrine"},
+	&"forsaken": {"military": &"wretched_pit", "science": &"blighted_shrine"},
+	&"ivoryscar": {"military": &"seekers_lodge", "science": &"ancestor_crypt"},
+}
+
+## Builds the settlement build-priority list for a given faction: its curated
+## chain heads interleaved with the 4 universal settlement buildings, falling
+## back to the plain universal list for minor/unmapped factions (resolved
+## through MINOR_FACTION_PARENTS, same convention as faction_build_priorities
+## below).
+func _settlement_build_priority_for(faction_id: StringName) -> Array:
+	var heads: Dictionary = SETTLEMENT_FACTION_CHAIN_HEADS.get(faction_id, {})
+	if heads.is_empty():
+		var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, &"")
+		heads = SETTLEMENT_FACTION_CHAIN_HEADS.get(parent_id, {})
+	if heads.is_empty():
+		return SETTLEMENT_BUILD_PRIORITY
+	return [heads.military, &"resource_camp", &"waystation", heads.science, &"frontier_watchpost", &"frontier_shrine"]
+
 func _execute_ai_city_management(faction_id: StringName) -> void:
 	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
 	if fs == null:
@@ -801,7 +838,7 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 				# Sunblessed mobile camps (is_mobile_camp) are excluded here
 				# too, mirroring is_building_allowed_for -- they keep the
 				# faction's normal city build priorities.
-				var city_priority_list: Array = SETTLEMENT_BUILD_PRIORITY if (city.is_settlement and not city.is_mobile_camp) else priority_list
+				var city_priority_list: Array = _settlement_build_priority_for(faction_id) if (city.is_settlement and not city.is_mobile_camp) else priority_list
 				for priority_id in city_priority_list:
 					if built:
 						break

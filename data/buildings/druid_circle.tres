@@ -20,3 +20,5 @@ upgrades_from = &"sacred_grove"
 class_loyalty_bonus = {"peasants": 1, "artisans": 1, "scholars": 4, "nobles": 1}
 special_effects = {"research_speed_bonus": 0.15}
 upkeep_cost = {0: 5, 5: 3}
+
+settlement_allowed = true

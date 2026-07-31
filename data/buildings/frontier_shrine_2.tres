@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"frontier_shrine_2"
+display_name = "Frontier Shrine II"
+description = "The modest shrine grows into a real waypoint of faith, and settlers further afield feel the pull of home."
+faction_id = &""
+category = &"cultural"
+build_cost = {0: 155, 5: 52}
+build_time = 3
+required_capital_level = 2
+settlement_only = true
+special_effects = { "region_loyalty_bonus": 2 }
+upgrades_from = &"frontier_shrine"

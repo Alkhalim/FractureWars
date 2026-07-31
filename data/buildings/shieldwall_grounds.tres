@@ -21,3 +21,5 @@ requires_research = &"emp_battle_mages"
 class_loyalty_bonus = {"peasants": -3, "artisans": 1, "nobles": 4}
 upgrades_from = &"cohort_barracks"
 upkeep_cost = {0: 3, 1: 5}
+
+settlement_allowed = true

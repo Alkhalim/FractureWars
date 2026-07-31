@@ -18,3 +18,5 @@ required_capital_level = 1
 requires_research = &"sacrificial_altars"
 class_loyalty_bonus = {"captives": -5}
 upkeep_cost = {0: 3}
+
+settlement_allowed = true

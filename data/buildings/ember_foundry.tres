@@ -19,3 +19,5 @@ upgrades_from = &"cinder_mine"
 class_loyalty_bonus = {"artisans": 2, "peasants": -3}
 special_effects = {"vigilance_drift": 2}
 upkeep_cost = {0: 3, 5: 5}
+
+settlement_allowed = true

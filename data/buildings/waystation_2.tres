@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BuildingData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/building_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = &"waystation_2"
+display_name = "Waystation II"
+description = "The old waystation grows into a proper caravanserai, drawing bigger trains and richer merchants."
+faction_id = &""
+category = &"economic"
+build_cost = {0: 175}
+build_time = 3
+income_bonus = {0: 14, 3: 8}
+required_capital_level = 2
+settlement_only = true
+upgrades_from = &"waystation"

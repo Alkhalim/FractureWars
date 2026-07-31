@@ -21,3 +21,5 @@ upgrades_from = &"crystal_nursery"
 class_loyalty_bonus = {}
 special_effects = {"army_attack_bonus": 1}
 upkeep_cost = {1: 5, 5: 3}
+
+settlement_allowed = true

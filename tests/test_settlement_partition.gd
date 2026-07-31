@@ -34,14 +34,38 @@ func _run() -> void:
 		return
 
 	# ── Partition: a settlement's available list contains ONLY allowed classes ──
-	# (waystation, resource_camp, frontier_watchpost, frontier_shrine, or
-	# region-gated extractor/landmark buildings)
+	# (waystation, resource_camp, frontier_watchpost, frontier_shrine,
+	# region-gated extractor/landmark buildings, OR one of the faction's
+	# Task 1b curated settlement_allowed chain buildings.)
 	var saved_is_settlement := capital.is_settlement
 	capital.is_settlement = true
+	# Empire's tagged military tier-1 (cohort_barracks) is research-gated
+	# (requires_research imperial_drill, checked earlier in
+	# get_available_buildings than the partition) -- grant it so this test
+	# actually exercises the curated-chain branch, not just the always-free
+	# science tier-1 (village_gathering_place, which carries no gate).
+	if not efs.completed_research.has(&"imperial_drill"):
+		efs.completed_research.append(&"imperial_drill")
+	# The starting capital already owns cohort_barracks (a new-game default
+	# building, unrelated to this task) -- "already owned" buildings are
+	# never re-offered regardless of settlement_allowed, so pull it
+	# temporarily to prove the flag itself grants availability on a
+	# settlement that doesn't have it yet, same as any real frontier
+	# settlement would start out.
+	var had_cohort_barracks := capital.buildings.has(&"cohort_barracks")
+	if had_cohort_barracks:
+		capital.buildings.erase(&"cohort_barracks")
 	var settlement_avail: Array[BuildingData] = cs.get_available_buildings(capital, true)
 	_check(not settlement_avail.is_empty(), "settlement offers at least one building")
 	for bd in settlement_avail:
-		_check(bd.settlement_only or bd.requires_region_resource != &"" or bd.requires_region_landmark != &"", "settlement offered only settlement-grade/extractor/landmark: %s" % bd.id)
+		_check(bd.settlement_only or bd.requires_region_resource != &"" or bd.requires_region_landmark != &"" or bd.settlement_allowed, "settlement offered only settlement-grade/extractor/landmark/curated-chain: %s" % bd.id)
+	var settlement_avail_ids: Array = []
+	for bd in settlement_avail:
+		settlement_avail_ids.append(bd.id)
+	_check(settlement_avail_ids.has(&"cohort_barracks"), "settlement offers empire's tagged military tier-1 (cohort_barracks), got %s" % [settlement_avail_ids])
+	_check(settlement_avail_ids.has(&"village_gathering_place"), "settlement offers empire's tagged science/cultural tier-1 (village_gathering_place), got %s" % [settlement_avail_ids])
+	if had_cohort_barracks:
+		capital.buildings.append(&"cohort_barracks")
 
 	# ── COMMIT PATH enforced (the latent hole): start_building a city
 	# building (market_square) on the settlement must be REFUSED even though
@@ -98,6 +122,15 @@ func _run() -> void:
 	for bd in city_avail:
 		_check(not bd.settlement_only, "city not offered settlement building: %s" % bd.id)
 
+	# ── Task 1b: universal tier-2 settlement buildings exist with exact
+	# post-cost-sweep values, and are offered to a level-2+ settlement that
+	# already owns the tier-1 -- never to a city. ──
+	_run_settlement_tier2_tests(gm)
+
+	# ── Task 1b: every major faction has 3-4 curated settlement_allowed
+	# chains (both tiers tagged), and none of them is category defensive. ──
+	_run_chain_tagging_invariant()
+
 	# ── AI: a settlement with a free slot + resources builds one of the 4
 	# settlement-grade buildings, not an arbitrary fallback. ──
 	_run_ai_settlement_priority(gm, tm)
@@ -116,6 +149,7 @@ func _run() -> void:
 	_finish()
 
 func _run_ai_settlement_priority(gm, tm) -> void:
+	var dm = root.get_node("/root/DataManager")
 	var faction_id: StringName = &"skulloath"
 	var fs: FactionState = gm.state.faction_states.get(faction_id)
 	if fs == null or fs.owned_cities.is_empty():
@@ -149,22 +183,38 @@ func _run_ai_settlement_priority(gm, tm) -> void:
 	fs.resources[Enums.ResourceType.FOOD] = 100000
 	fs.resources[Enums.ResourceType.IRON] = 100000
 
+	# Task 1b: raiders_den (skulloath's tagged military tier-1) is
+	# research-gated (bone_rituals) -- grant it so the settlement actually has
+	# it available, exercising the NEW curated-chain-first priority order
+	# instead of silently falling back to the pre-existing universal 4.
+	var had_research := fs.completed_research.has(&"bone_rituals")
+	if not had_research:
+		fs.completed_research.append(&"bone_rituals")
+
 	tm._execute_ai_city_management(faction_id)
 
 	var built_id: StringName = &""
 	for item in settlement.build_queue:
-		if (tm.SETTLEMENT_BUILD_PRIORITY as Array).has(item.building_id):
+		var bd: BuildingData = dm.get_building(item.building_id)
+		if bd and (bd.settlement_only or bd.settlement_allowed):
 			built_id = item.building_id
 			break
 	if built_id == &"":
 		for bid in settlement.buildings:
-			if (tm.SETTLEMENT_BUILD_PRIORITY as Array).has(bid):
+			var bd2: BuildingData = dm.get_building(bid)
+			if bd2 and (bd2.settlement_only or bd2.settlement_allowed):
 				built_id = bid
 				break
-	_check(built_id != &"", "AI-managed settlement builds one of the 4 settlement-grade buildings (buildings=%s queue=%s)" % [settlement.buildings, settlement.build_queue])
+	_check(built_id != &"", "AI-managed settlement builds a settlement-grade or curated-chain building (buildings=%s queue=%s)" % [settlement.buildings, settlement.build_queue])
+	# Task 1b: with its tagged tier-1 available and unlimited resources, the
+	# new settlement priority walk puts raiders_den FIRST -- pin the actual
+	# pick, not just its validity, so a priority-order regression trips this.
+	_check(built_id == &"raiders_den", "settlement AI prioritizes skulloath's tagged military tier-1 (raiders_den) over the universal 4, got %s" % built_id)
 	if built_id != &"":
 		print("NOTE: settlement AI picked %s" % built_id)
 
+	if not had_research:
+		fs.completed_research.erase(&"bone_rituals")
 	gm.state.cities.erase(settlement.city_id)
 	fs.owned_cities.erase(settlement.city_id)
 	fs.resources = saved_resources
@@ -294,6 +344,135 @@ func _run_legacy_upgrade_not_offered_test(gm) -> void:
 		capital.buildings.erase(&"grain_fields")
 	capital.level = saved_level
 	capital.is_settlement = saved_is_settlement
+
+## Task 1b: the 4 universal settlement buildings each get a tier-2 upgrade
+## (waystation_2/resource_camp_2/frontier_watchpost_2/frontier_shrine_2),
+## exact post-cost-sweep values per the plan table, offered to a level-2+
+## settlement that already owns the tier-1 (upgrades_from) -- never to a city.
+func _run_settlement_tier2_tests(gm) -> void:
+	var dm = root.get_node("/root/DataManager")
+	var cs = gm.city_system
+
+	var expected := {
+		&"waystation_2": {"upg": &"waystation", "cost": {0: 175}, "income": {0: 14, 3: 8}},
+		&"resource_camp_2": {"upg": &"resource_camp", "cost": {0: 68, 3: 149}, "income": {5: 16, 1: 8}},
+		&"frontier_watchpost_2": {"upg": &"frontier_watchpost", "cost": {5: 155}, "defense": 8, "garrison": 0.2},
+		&"frontier_shrine_2": {"upg": &"frontier_shrine", "cost": {0: 155, 5: 52}, "loyalty": 2},
+	}
+	for id in expected.keys():
+		var b: BuildingData = dm.get_building(id)
+		if b == null:
+			_check(false, "%s building data exists" % id)
+			continue
+		var exp: Dictionary = expected[id]
+		_check(b.settlement_only, "%s settlement_only == true" % id)
+		_check(b.upgrades_from == exp.upg, "%s upgrades_from == %s, got %s" % [id, exp.upg, b.upgrades_from])
+		_check(b.required_capital_level == 2, "%s required_capital_level == 2, got %s" % [id, b.required_capital_level])
+		_check(b.build_time == 3, "%s build_time == 3, got %s" % [id, b.build_time])
+		_check(b.upkeep_cost.is_empty(), "%s has no upkeep, got %s" % [id, b.upkeep_cost])
+		for k in (exp.cost as Dictionary).keys():
+			_check(int(b.build_cost.get(k, -1)) == int((exp.cost as Dictionary)[k]), "%s build_cost[%s] == %s, got %s" % [id, k, (exp.cost as Dictionary)[k], b.build_cost.get(k, -1)])
+		if exp.has("income"):
+			for k in (exp.income as Dictionary).keys():
+				_check(int(b.income_bonus.get(k, -1)) == int((exp.income as Dictionary)[k]), "%s income_bonus[%s] == %s, got %s" % [id, k, (exp.income as Dictionary)[k], b.income_bonus.get(k, -1)])
+		if exp.has("defense"):
+			_check(b.defense_bonus == int(exp.defense), "%s defense_bonus == %s, got %s" % [id, exp.defense, b.defense_bonus])
+		if exp.has("garrison"):
+			_check(absf(float(b.special_effects.get("garrison_strength_bonus", -1.0)) - float(exp.garrison)) < 0.001, "%s garrison_strength_bonus == %s, got %s" % [id, exp.garrison, b.special_effects.get("garrison_strength_bonus")])
+		if exp.has("loyalty"):
+			_check(int(b.special_effects.get("region_loyalty_bonus", -1)) == int(exp.loyalty), "%s region_loyalty_bonus == %s, got %s" % [id, exp.loyalty, b.special_effects.get("region_loyalty_bonus")])
+
+	# ── Offering: a level-2 settlement owning waystation is offered waystation_2 ──
+	var efs: FactionState = gm.state.faction_states.get(&"empire")
+	if efs == null or efs.owned_cities.is_empty():
+		_check(false, "found the empire capital for the tier-2 offering test")
+		return
+	var capital: CityState = null
+	for cid in efs.owned_cities:
+		var c: CityState = gm.state.cities.get(cid)
+		if c and c.is_capital:
+			capital = c
+			break
+	if capital == null:
+		_check(false, "found the empire capital for the tier-2 offering test")
+		return
+
+	var saved_is_settlement := capital.is_settlement
+	var saved_level := capital.level
+	var had_waystation := capital.buildings.has(&"waystation")
+	var had_tile := capital.building_tiles.has(&"waystation")
+	var saved_tile: Vector2i = capital.building_tiles.get(&"waystation", Vector2i.ZERO)
+
+	capital.is_settlement = true
+	capital.level = maxi(capital.level, 2)
+	if not had_waystation:
+		capital.buildings.append(&"waystation")
+	capital.building_tiles[&"waystation"] = capital.hex_pos
+
+	var avail: Array[BuildingData] = cs.get_available_buildings(capital, true)
+	var offered_tier2 := false
+	for bd in avail:
+		if bd.id == &"waystation_2":
+			offered_tier2 = true
+	_check(offered_tier2, "level-2 settlement owning waystation is offered waystation_2, got %s" % [avail.map(func(b): return b.id)])
+
+	# Cities never offered the new tier-2s either (settlement_only, same
+	# direction pin as the base 4).
+	capital.is_settlement = false
+	var city_avail: Array[BuildingData] = cs.get_available_buildings(capital, true)
+	for bd in city_avail:
+		_check(bd.id != &"waystation_2" and bd.id != &"resource_camp_2" and bd.id != &"frontier_watchpost_2" and bd.id != &"frontier_shrine_2", "city not offered tier-2 settlement building: %s" % bd.id)
+
+	if not had_waystation:
+		capital.buildings.erase(&"waystation")
+	if had_tile:
+		capital.building_tiles[&"waystation"] = saved_tile
+	else:
+		capital.building_tiles.erase(&"waystation")
+	capital.level = saved_level
+	capital.is_settlement = saved_is_settlement
+
+## Task 1b: every one of the 11 major factions has 3-4 curated
+## settlement_allowed chains (a military tier-1+tier-2 and a science/cultural
+## tier-1+tier-2 at minimum, plus a captive and/or flavor chain), and NONE of
+## those chains is a defensive/wall chain -- the live invariant the plan
+## calls for, computed from the actual tagged data (not a fixed list) so any
+## future drift trips it. A "chain" = one connected group of tagged buildings
+## for that faction, grouped by their ultimate (possibly-untagged)
+## upgrades_from root ancestor.
+func _run_chain_tagging_invariant() -> void:
+	var dm = root.get_node("/root/DataManager")
+	var majors: Array[StringName] = [
+		&"empire", &"skulloath", &"gladehost", &"moonspear", &"sunblessed",
+		&"shardhorde", &"thunderswarm", &"cinderguard", &"forsaken",
+		&"ivoryscar", &"tainted_jade",
+	]
+	for faction_id in majors:
+		var roots: Dictionary = {} # ultimate root id -> true
+		var tagged_count := 0
+		for id in dm.buildings.keys():
+			var b: BuildingData = dm.buildings[id]
+			if b.faction_id != faction_id or not b.settlement_allowed:
+				continue
+			tagged_count += 1
+			var cur: BuildingData = b
+			var cur_id: StringName = id
+			var guard := 0
+			while cur.upgrades_from != &"" and guard < 10:
+				cur_id = cur.upgrades_from
+				var anc: BuildingData = dm.get_building(cur_id)
+				if anc == null:
+					break
+				cur = anc
+				guard += 1
+			roots[cur_id] = true
+		var n := roots.size()
+		_check(n >= 3 and n <= 4, "%s has 3-4 curated settlement chains, got %d (%s)" % [faction_id, n, roots.keys()])
+		_check(tagged_count >= n * 2, "%s tagged both tiers of each chain (>= 2 buildings per chain), got %d tagged across %d chains" % [faction_id, tagged_count, n])
+		for root_id in roots.keys():
+			var root_b: BuildingData = dm.get_building(root_id)
+			if root_b:
+				_check(root_b.category != &"defensive", "%s curated chain root %s is not category defensive, got %s" % [faction_id, root_id, root_b.category])
 
 func _finish() -> void:
 	if _fails == 0:

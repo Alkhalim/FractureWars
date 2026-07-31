@@ -23,5 +23,6 @@ extends Resource
 @export var requires_research: StringName = &"" # Research ID required to unlock this building
 @export var exclusive_group: StringName = &"" # Doctrine fork: only ONE building per group can exist faction-wide
 @export var settlement_only: bool = false # If true, can only be built in settlements (frontier structures)
+@export var settlement_allowed: bool = false # Task 1b: this building's WHOLE chain (tier-1+tier-2) is one of a faction's 3-4 curated settlement trees -- also offered to settlements despite not being settlement_only. Never set on defensive/wall buildings or requires_capital chains.
 @export var requires_region_resource: StringName = &"" # tier-2 Special deposit required in the city's region
 @export var requires_region_landmark: StringName = &"" # tier-3 Landmark required in the city's region

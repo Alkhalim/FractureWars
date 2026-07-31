@@ -19,3 +19,5 @@ upgrades_from = &"shard_harvester"
 class_loyalty_bonus = {}
 special_effects = {"research_speed_bonus": 0.15}
 upkeep_cost = {1: 3, 5: 5}
+
+settlement_allowed = true

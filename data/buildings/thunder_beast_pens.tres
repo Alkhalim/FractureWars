@@ -23,3 +23,5 @@ class_loyalty_bonus = {}
 upgrades_from = &"storm_kennels"
 requires_capital = false
 upkeep_cost = {0: 3, 1: 5}
+
+settlement_allowed = true
