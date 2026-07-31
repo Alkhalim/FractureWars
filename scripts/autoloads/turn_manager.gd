@@ -736,7 +736,7 @@ func _execute_ai_city_management(faction_id: StringName) -> void:
 		&"moonspear": [&"sentinel_hall", &"frost_pastures", &"silver_vein", &"moon_shrine", &"starlight_market", &"frost_kennels", &"pilgrims_rest", &"frost_walls"],
 		&"sunblessed": [&"pilgrim_training_grounds", &"pilgrim_gardens", &"sunfire_altar", &"sunfire_forge", &"golden_bazaar", &"sacred_oasis", &"sacred_aviary", &"sacred_ward"],
 		&"thunderswarm": [&"warriors_longhouse", &"highland_terrace", &"thunderpeak_mine", &"lightning_shrine", &"windtrade_post", &"storm_kennels", &"mountain_watchtower"],
-		&"cinderguard": [&"cinder_watchtower", &"oasis_farm", &"cinder_mine", &"sandstone_walls", &"ember_shrine", &"desert_bazaar", &"scorpion_pit"],
+		&"cinderguard": [&"cinder_watchtower", &"oasis_farm", &"cinder_mine", &"magma_vent", &"sandstone_walls", &"ember_shrine", &"desert_bazaar", &"scorpion_pit"],
 		&"forsaken": [&"wretched_pit", &"scavenger_camp", &"scrap_pit", &"black_alley_market", &"crypt_court", &"thrall_quarters", &"makeshift_barricades"],
 		&"ivoryscar": [&"seekers_lodge", &"dust_fields", &"bone_quarry", &"relic_shrine", &"caravan_depot", &"relic_workshop", &"ancestor_crypt", &"bone_palisade"],
 	}
