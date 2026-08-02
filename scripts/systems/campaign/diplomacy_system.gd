@@ -376,6 +376,64 @@ func propose_resource_lease(owner: StringName, lessee: StringName, special_id: S
 	EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.RESOURCE_LEASE, owner, lessee)
 	return {accepted = true, reason = "Lease agreed."}
 
+## ── Bounty leases ─────────────────────────────────────────
+## Ride TreatyType.RESOURCE_LEASE with a different terms shape:
+## {bounty_hex, bounty_id, gold_per_turn} instead of {special_id, gold_per_turn}.
+## Required scope for bounty-gated techs (designer directive 2026-08-01):
+## a faction without map access to a gate bounty negotiates for it here.
+
+func lease_for_bounty(bounty_hex: Vector2i) -> TreatyInstance:
+	for treaty_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.terms.get("bounty_hex", Vector2i(-9999, -9999)) == bounty_hex:
+			return t
+	return null
+
+func faction_leases_bounty_type(faction_id: StringName, type_id: StringName) -> bool:
+	for treaty_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.faction_b == faction_id and t.terms.get("bounty_id", &"") == type_id:
+			return true
+	return false
+
+func propose_bounty_lease(owner: StringName, lessee: StringName, bounty_hex: Vector2i, gold_per_turn: int, duration: int) -> Dictionary:
+	if GameManager.get_relation(owner, lessee) == Enums.FactionRelation.WAR:
+		return {accepted = false, reason = "At war."}
+	var tile = GameManager.state.hex_map.get_tile(bounty_hex)
+	if tile == null or tile.bounty_id == &"":
+		return {accepted = false, reason = "No bounty there."}
+	var claimant_city: CityState = GameManager.state.cities.get(BountySystem.claimant_for(bounty_hex))
+	if claimant_city == null or claimant_city.faction_id != owner:
+		return {accepted = false, reason = "Owner does not hold this bounty."}
+	if lease_for_bounty(bounty_hex) != null:
+		return {accepted = false, reason = "Already leased to another faction."}
+	if lessee != GameManager.state.player_faction_id:
+		# AI lessee wants it only if it unlocks a bounty-locked tech.
+		var wants := false
+		for entry in GameManager.research_system.get_bounty_locked_research(lessee):
+			if entry.missing_types.has(tile.bounty_id):
+				wants = true
+				break
+		if not wants:
+			return {accepted = false, reason = "Not interested in this lease."}
+	elif owner != GameManager.state.player_faction_id:
+		# AI owner deciding whether to lease out to the player (mirrors specials).
+		var standing := get_standing(owner, lessee)
+		var min_pay := 8 + int(_get_faction_greed(owner) * 4.0)
+		if gold_per_turn < min_pay or standing < 0:
+			return {accepted = false, reason = "They want more for this lease."}
+	var treaty := TreatyInstance.new()
+	treaty.treaty_id = GameManager.state.generate_id()
+	treaty.treaty_type = Enums.TreatyType.RESOURCE_LEASE
+	treaty.faction_a = owner
+	treaty.faction_b = lessee
+	treaty.turns_remaining = duration
+	treaty.terms = {bounty_hex = bounty_hex, bounty_id = tile.bounty_id, gold_per_turn = gold_per_turn}
+	GameManager.state.diplomacy_state.treaties[treaty.treaty_id] = treaty
+	modify_standing(owner, lessee, 3, "Bounty lease")
+	EventBus.treaty_created.emit(treaty.treaty_id, Enums.TreatyType.RESOURCE_LEASE, owner, lessee)
+	return {accepted = true, reason = "Lease agreed."}
+
 func gift_resources(from: StringName, to: StringName, res_type: int, amount: int) -> bool:
 	var from_fs: FactionState = GameManager.state.faction_states.get(from)
 	var to_fs: FactionState = GameManager.state.faction_states.get(to)
@@ -724,8 +782,16 @@ func process_treaties(faction_id: StringName) -> void:
 			var pay: int = treaty.terms.get("gold_per_turn", 0)
 			var lessee_fs: FactionState = GameManager.state.faction_states.get(treaty.faction_b)
 			var owner_fs: FactionState = GameManager.state.faction_states.get(treaty.faction_a)
-			var still_extracted: bool = treaty.terms.get("special_id", &"") in SpecialResourceSystem.extracted_specials_of_faction(treaty.faction_a)
-			if lessee_fs == null or owner_fs == null or lessee_fs.resources.get(Enums.ResourceType.GOLD, 0) < pay or not still_extracted:
+			var still_valid: bool
+			if treaty.terms.has("bounty_hex"):
+				var bhex: Vector2i = treaty.terms["bounty_hex"]
+				var btile = GameManager.state.hex_map.get_tile(bhex)
+				var bcity: CityState = GameManager.state.cities.get(BountySystem.claimant_for(bhex))
+				still_valid = btile != null and btile.bounty_id == treaty.terms.get("bounty_id", &"") \
+					and bcity != null and bcity.faction_id == treaty.faction_a
+			else:
+				still_valid = treaty.terms.get("special_id", &"") in SpecialResourceSystem.extracted_specials_of_faction(treaty.faction_a)
+			if lessee_fs == null or owner_fs == null or lessee_fs.resources.get(Enums.ResourceType.GOLD, 0) < pay or not still_valid:
 				if not to_expire.has(treaty_id):
 					to_expire.append(treaty_id) # defaulted or supply lost -> lease ends
 			else:

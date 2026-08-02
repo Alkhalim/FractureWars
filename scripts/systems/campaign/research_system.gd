@@ -340,6 +340,8 @@ func is_bounty_locked(faction_id: StringName, data: ResearchData) -> bool:
 			any_on_map = true
 		if BountySystem.faction_has_bounty_type(faction_id, type_id):
 			return false
+		if GameManager.diplomacy_system.faction_leases_bounty_type(faction_id, type_id):
+			return false
 	return any_on_map
 
 ## tech_cost, or double it when the tech is gated but none of its required

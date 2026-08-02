@@ -3239,15 +3239,24 @@ func _build_treaty_icons(player_id: StringName, faction_id: StringName) -> HBoxC
 			Enums.TreatyType.RESOURCE_LEASE:
 				icon.text = "L"
 				icon.add_theme_color_override("font_color", Color(0.65, 0.45, 0.85))
-				var rl_special: StringName = treaty.terms.get("special_id", &"")
-				var rl_def: Dictionary = SpecialResourceSystem.SPECIAL_TYPES.get(rl_special, {})
-				var rl_name: String = rl_def.get("name", String(rl_special))
 				var rl_gpt: int = treaty.terms.get("gold_per_turn", 0)
 				var is_owner := treaty.faction_a == player_id
-				if is_owner:
-					tooltip_lines.append("Resource Lease: %s (earning %d gold/turn)" % [rl_name, rl_gpt])
+				if treaty.terms.has("bounty_id"):
+					var rl_bounty: StringName = treaty.terms.get("bounty_id", &"")
+					var rl_bdef: Dictionary = BountySystem.BOUNTY_TYPES.get(rl_bounty, {})
+					var rl_bname: String = rl_bdef.get("name", String(rl_bounty))
+					if is_owner:
+						tooltip_lines.append("Bounty Lease: %s (earning %d gold/turn)" % [rl_bname, rl_gpt])
+					else:
+						tooltip_lines.append("Bounty Lease: %s (paying %d gold/turn)" % [rl_bname, rl_gpt])
 				else:
-					tooltip_lines.append("Resource Lease: %s (paying %d gold/turn)" % [rl_name, rl_gpt])
+					var rl_special: StringName = treaty.terms.get("special_id", &"")
+					var rl_def: Dictionary = SpecialResourceSystem.SPECIAL_TYPES.get(rl_special, {})
+					var rl_name: String = rl_def.get("name", String(rl_special))
+					if is_owner:
+						tooltip_lines.append("Resource Lease: %s (earning %d gold/turn)" % [rl_name, rl_gpt])
+					else:
+						tooltip_lines.append("Resource Lease: %s (paying %d gold/turn)" % [rl_name, rl_gpt])
 		icon.custom_minimum_size = Vector2(14, 0)
 		icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		hbox.add_child(icon)
@@ -4329,6 +4338,26 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	for sp in their_specials:
 		if SpecialResourceSystem.lease_for_special(faction_id, sp) == null:
 			offers.append({id = "lease_in_%s" % sp, label = "Request lease of %s (pay 14g/turn, 10 turns)" % SpecialResourceSystem.SPECIAL_TYPES[sp].name})
+	# Bounty leases: trade access to gate bounties (bounty-gated techs, Task 4)
+	var my_bounties := BountySystem.bounties_of_faction(player_id)
+	var blease_out_count := 0
+	for entry in my_bounties:
+		if blease_out_count >= 4:
+			break
+		if GameManager.diplomacy_system.lease_for_bounty(entry.hex) == null:
+			offers.append({id = "blease_out_%d_%d" % [entry.hex.x, entry.hex.y], label = "Lease out bounty: %s (10g/turn, 10 turns)" % entry.name})
+			blease_out_count += 1
+	var their_bounties := BountySystem.bounties_of_faction(faction_id)
+	var blease_in_count := 0
+	for entry in their_bounties:
+		if blease_in_count >= 4:
+			break
+		if BountySystem.faction_has_bounty_type(player_id, entry.id):
+			continue
+		if GameManager.diplomacy_system.lease_for_bounty(entry.hex) != null:
+			continue
+		offers.append({id = "blease_in_%d_%d" % [entry.hex.x, entry.hex.y], label = "Request bounty lease: %s (pay 14g/turn, 10 turns)" % entry.name})
+		blease_in_count += 1
 	var player_fs: FactionState = GameManager.state.faction_states.get(player_id)
 	if player_fs and player_fs.owned_shards.size() > 0:
 		offers.append({id = "shard", label = "Offer Shard"})
@@ -5026,6 +5055,28 @@ func _execute_combined_offers(target: StringName) -> void:
 			var lease_result2 := GameManager.diplomacy_system.propose_resource_lease(target, player_id, sp2, 14, 10)
 			results.append("Request Lease of %s: %s" % [sp2_name, lease_result2.reason])
 			if lease_result2.accepted:
+				any_accepted = true
+			else:
+				any_rejected = true
+		elif offer_key_s.begins_with("blease_out_"):
+			var bcoords := offer_key_s.substr("blease_out_".length()).split("_")
+			var bhex := Vector2i(int(bcoords[0]), int(bcoords[1]))
+			var btile = GameManager.state.hex_map.get_tile(bhex)
+			var bname: String = BountySystem.BOUNTY_TYPES[btile.bounty_id].name if btile and BountySystem.BOUNTY_TYPES.has(btile.bounty_id) else "bounty"
+			var blease_result := GameManager.diplomacy_system.propose_bounty_lease(player_id, target, bhex, 10, 10)
+			results.append("Lease Out Bounty %s: %s" % [bname, blease_result.reason])
+			if blease_result.accepted:
+				any_accepted = true
+			else:
+				any_rejected = true
+		elif offer_key_s.begins_with("blease_in_"):
+			var bcoords2 := offer_key_s.substr("blease_in_".length()).split("_")
+			var bhex2 := Vector2i(int(bcoords2[0]), int(bcoords2[1]))
+			var btile2 = GameManager.state.hex_map.get_tile(bhex2)
+			var bname2: String = BountySystem.BOUNTY_TYPES[btile2.bounty_id].name if btile2 and BountySystem.BOUNTY_TYPES.has(btile2.bounty_id) else "bounty"
+			var blease_result2 := GameManager.diplomacy_system.propose_bounty_lease(target, player_id, bhex2, 14, 10)
+			results.append("Request Bounty Lease of %s: %s" % [bname2, blease_result2.reason])
+			if blease_result2.accepted:
 				any_accepted = true
 			else:
 				any_rejected = true

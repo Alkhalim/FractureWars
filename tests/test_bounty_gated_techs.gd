@@ -39,6 +39,7 @@ func _run() -> void:
 	var dm = root.get_node("/root/DataManager")
 	_run_gate_sweep_verification(dm)
 	_run_gate_core_test(gm)
+	_run_bounty_lease_test(gm)
 	if _fails == 0:
 		print("BOUNTY GATED TECHS TEST PASSED")
 		quit(0)
@@ -197,3 +198,52 @@ func _run_gate_core_test(gm) -> void:
 	# leaving it empty here would corrupt that invariant for any test run
 	# after this one within the same process.
 	data.requires_bounty_types = [&"orchards"] as Array[StringName]
+
+func _run_bounty_lease_test(gm) -> void:
+	gm.new_game(&"empire", false, 0)
+	var ds = gm.diplomacy_system
+	var rs = gm.research_system
+	var player_id: StringName = gm.state.player_faction_id
+	var other: StringName = &"skulloath"
+	var other_fs = gm.state.faction_states[other]
+	var map = gm.state.hex_map
+	# Empire and skulloath are permanently at WAR by default (game_manager.gd
+	# _init_diplomacy) -- neutralize so the lease's war-gate check passes,
+	# mirroring the test_ai_economy.gd convention of forcing relation for setup.
+	gm._set_relation(other, player_id, Enums.FactionRelation.NEUTRAL)
+	# Plant wild_horses next to a skulloath city so skulloath is claimant.
+	var other_city: CityState = gm.state.cities.get(other_fs.owned_cities[0])
+	var spot := Vector2i.ZERO
+	for coord in map.tiles:
+		var d: int = maxi(absi(coord.x - other_city.hex_pos.x), absi(coord.y - other_city.hex_pos.y))
+		var t = map.get_tile(coord)
+		if d >= 1 and d <= 2 and t and t.bounty_id == &"" and BountySystem.claimant_for(coord) == other_city.city_id:
+			spot = coord
+			t.bounty_id = &"wild_horses"
+			break
+	_check(BountySystem.faction_has_bounty_type(other, &"wild_horses"), "skulloath claims the planted wild_horses")
+	ds.init_standing(other, player_id, 40, "test setup")
+	var res: Dictionary = ds.propose_bounty_lease(other, player_id, spot, 14, 10)
+	_check(res.get("accepted", false), "AI owner leases bounty to player (got %s)" % [res])
+	_check(ds.lease_for_bounty(spot) != null, "lease_for_bounty finds the treaty")
+	_check(ds.faction_leases_bounty_type(player_id, &"wild_horses"), "player has leased-in wild_horses")
+	_check(ds.propose_bounty_lease(other, player_id, spot, 14, 10).get("accepted", true) == false, "double-lease refused")
+	# Lease satisfies the research gate:
+	var data: ResearchData = root.get_node("/root/DataManager").research[&"emp_war_machines"]
+	data.requires_bounty_types = [&"wild_horses"] as Array[StringName]  # temporary override
+	var fs = gm.state.faction_states[player_id]
+	for prereq in data.prerequisites:
+		if not fs.completed_research.has(prereq):
+			fs.completed_research.append(prereq)
+	_check(not rs.is_bounty_locked(player_id, data), "leased-in type unlocks the gate")
+	data.requires_bounty_types = [&"titanstone_quarry"] as Array[StringName]  # restore Task-3 value
+	# Per-turn processing: player pays, owner earns; losing the claim expires it.
+	var gold_p: int = fs.resources[Enums.ResourceType.GOLD]
+	var gold_o: int = other_fs.resources.get(Enums.ResourceType.GOLD, 0)
+	ds.process_treaties(other)  # leases process on faction_a's turn
+	_check(fs.resources[Enums.ResourceType.GOLD] == gold_p - 14, "lessee paid 14 gold")
+	_check(other_fs.resources[Enums.ResourceType.GOLD] == gold_o + 14, "owner earned 14 gold")
+	map.get_tile(spot).bounty_id = &""  # bounty gone -> lease must expire
+	ds.process_treaties(other)
+	_check(ds.lease_for_bounty(spot) == null, "lease expired when the bounty vanished")
+	_check(not ds.faction_leases_bounty_type(player_id, &"wild_horses"), "leased access gone after expiry")
