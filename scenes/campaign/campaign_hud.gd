@@ -6197,6 +6197,11 @@ func _refresh_research_panel() -> void:
 		_research_tree.hud_ref = self
 		_research_tree_clip.add_child(_research_tree)
 	else:
+		# Bounty claims/leases can change between panel openings (turn/
+		# treaty resolution) while this tree instance is reused across the
+		# whole session -- refresh the gate cache so a tech that was locked
+		# at first open doesn't stay visually locked forever.
+		_research_tree._refresh_bounty_gate_state()
 		_research_tree.queue_redraw()
 	vbox.move_child(_research_tree_clip, 1)
 
@@ -6520,8 +6525,17 @@ class _RadialTechTree extends Control:
 		# Collision avoidance
 		_resolve_overlaps()
 
-		# Bounty-gate display cache -- recomputed on every panel rebuild, cheap
-		# and can't go stale mid-frame (claims/leases only change on turn/treaty).
+		_refresh_bounty_gate_state()
+		_positions_built = true
+
+	## Bounty-gate display cache: research_id -> 0 met/ungated, 1 locked,
+	## 2 map-absent (cost doubled). Called once from _calculate_positions()
+	## (panel first build / explicit rebuild) AND from _refresh_research_panel()
+	## on every panel (re)open, since claims/leases can change turn-to-turn
+	## while this same _RadialTechTree instance is reused for its whole
+	## session (pan/zoom + layout persist -- see _refresh_research_panel).
+	## Cheap: only scans techs that actually carry a bounty gate.
+	func _refresh_bounty_gate_state() -> void:
 		_bounty_gate_state.clear()
 		var rs: ResearchSystem = GameManager.research_system
 		for research_id in _node_data:
@@ -6534,8 +6548,6 @@ class _RadialTechTree extends Control:
 				_bounty_gate_state[research_id] = 2
 			else:
 				_bounty_gate_state[research_id] = 0
-
-		_positions_built = true
 
 	func _resolve_overlaps() -> void:
 		# Ring-constrained relaxation: nodes keep their EXACT tier radius and
@@ -6855,9 +6867,12 @@ class _RadialTechTree extends Control:
 
 			# Bounty-lock marker: distinguishes "resource-locked" (red, gated on
 			# a bounty type) from an ordinary unaffordable/locked-prereq node.
+			# Bottom-left corner: top-right is the unlock star (real collision
+			# in shipped data -- emp_aqueducts/emp_harbor_cities are both
+			# gated AND unlock a building) and top-left is the queue badge.
 			if _bounty_gate_state.get(research_id, 0) == 1:
-				draw_circle(pos + Vector2(node_r * 0.7, -node_r * 0.7), 4.0 * _zoom, Color.WHITE)
-				draw_circle(pos + Vector2(node_r * 0.7, -node_r * 0.7), 3.0 * _zoom, Color(0.9, 0.75, 0.3))
+				draw_circle(pos + Vector2(-node_r * 0.7, node_r * 0.7), 4.0 * _zoom, Color.WHITE)
+				draw_circle(pos + Vector2(-node_r * 0.7, node_r * 0.7), 3.0 * _zoom, Color(0.9, 0.75, 0.3))
 
 			# Unlock glow for nodes that gate buildings/units
 			if _unlock_nodes.has(research_id) and not is_completed:
@@ -6929,9 +6944,12 @@ class _RadialTechTree extends Control:
 			var ud := DataManager.get_unit(uid)
 			if ud:
 				unlock_lines.append("Unlocks: %s" % ud.display_name)
-		# Bounty-gate requirement line (one line, colored by lock state)
+		# Bounty-gate requirement line (one line, colored by lock state).
+		# bounty_line_color is only read when bounty_line != "", which only
+		# happens inside the match below (all 3 arms set both) -- no
+		# meaningful default needed.
 		var bounty_line: String = ""
-		var bounty_line_color := Color(0.85, 0.65, 0.3)
+		var bounty_line_color: Color
 		if not data.requires_bounty_types.is_empty():
 			var names: Array[String] = []
 			for t in data.requires_bounty_types:
@@ -6972,7 +6990,13 @@ class _RadialTechTree extends Control:
 			status_text = "IN PROGRESS (%d/%d)" % [fs.research_progress, data.research_time]
 			status_color = Color(0.9, 0.8, 0.3)
 		else:
-			status_text = "%d turns | %d Tech" % [data.research_time, GameManager.research_system.effective_tech_cost(data)]
+			# Cost doubling is read from the cache (state == 2), not a live
+			# effective_tech_cost() call -- _process() queue_redraw()s every
+			# frame while the tree is visible, so this runs once per hovered
+			# node per frame and a live call would re-scan the whole map's
+			# bounty tiles that often.
+			var displayed_cost: int = data.tech_cost * 2 if _bounty_gate_state.get(_hovered_id, 0) == 2 else data.tech_cost
+			status_text = "%d turns | %d Tech" % [data.research_time, displayed_cost]
 			status_color = Color(0.6, 0.58, 0.5)
 		draw_string(font, Vector2(box_pos.x + 8, y), status_text, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, status_color)
 		y += 14
