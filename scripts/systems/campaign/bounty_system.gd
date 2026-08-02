@@ -40,6 +40,9 @@ const BOUNTY_TYPES := {
 	&"clay_pits": {name = "Clay Pits", terrains = [5, 0], income = {5: 5}, deferred = "-15% wood component of build costs"},
 	&"peat_bogs": {name = "Peat Bogs", terrains = [4, 5], income = {5: 6}, deferred = "-10% building upkeep in region"},
 	&"dye_gardens": {name = "Dye Gardens", terrains = [9, 5], coastal = true, income = {0: 8}, deferred = "gold counts toward trade deals only"},
+	&"coal_seams": {name = "Coal Seams", terrains = [2, 6], income = {1: 6}},
+	&"bone_fields": {name = "Bone Fields", terrains = [3, 7], recruit_discount = {undead = 10}},
+	&"bronze_ore": {name = "Bronze Ore", terrains = [2, 3], income = {0: 3, 1: 4}},
 }
 
 ## Deterministic coordinate hash — same idiom as map_generator.gd (no RNG).
