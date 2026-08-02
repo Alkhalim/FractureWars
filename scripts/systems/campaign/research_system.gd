@@ -27,7 +27,7 @@ func get_available_research(faction_id: StringName) -> Array[ResearchData]:
 			if not fs.completed_research.has(prereq):
 				prereqs_met = false
 				break
-		if prereqs_met:
+		if prereqs_met and not is_bounty_locked(faction_id, data):
 			result.append(data)
 	return result
 
@@ -38,15 +38,19 @@ func start_research(faction_id: StringName, research_id: StringName) -> bool:
 	var data: ResearchData = DataManager.research.get(research_id)
 	if data == null:
 		return false
+	# Bounty gate -- start-only check (designer decision 2026-08-01)
+	if is_bounty_locked(faction_id, data):
+		return false
 	# Already researching this one
 	if fs.current_research_id == research_id:
 		return false
 	# Check tech cost
+	var cost := effective_tech_cost(data)
 	var tech_available: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
-	if tech_available < data.tech_cost:
+	if tech_available < cost:
 		return false
 	# Deduct tech cost
-	fs.resources[Enums.ResourceType.TECHNOLOGY] = tech_available - data.tech_cost
+	fs.resources[Enums.ResourceType.TECHNOLOGY] = tech_available - cost
 	# Pause current research (save progress)
 	if fs.current_research_id != &"" and fs.research_progress > 0:
 		fs.paused_research_progress[fs.current_research_id] = fs.research_progress
@@ -128,7 +132,7 @@ func _advance_queue(faction_id: StringName, fs: FactionState) -> void:
 			if not fs.completed_research.has(prereq):
 				prereqs_met = false
 				break
-		if prereqs_met and start_research(faction_id, next_id):
+		if prereqs_met and not is_bounty_locked(faction_id, nd) and start_research(faction_id, next_id):
 			fs.research_queue.remove_at(i)
 			return
 		i += 1
@@ -318,6 +322,70 @@ func execute_ai_socketing(faction_id: StringName) -> void:
 				break
 		if fs.owned_shards.is_empty():
 			break
+
+# ── Bounty Gate ─────────────────────────────────────────────
+
+## Bounty gate (start-only, designer decision 2026-08-01): a tech listing
+## requires_bounty_types can be STARTED only while the faction holds a
+## bounty of any listed type (city claim; Task 4 adds leased-in access).
+## If NONE of the listed types exist anywhere on this map, the gate is not
+## a lock -- effective_tech_cost doubles instead (design doc §7 fallback).
+func is_bounty_locked(faction_id: StringName, data: ResearchData) -> bool:
+	if data.requires_bounty_types.is_empty():
+		return false
+	var on_map := BountySystem.types_on_map(GameManager.state.hex_map)
+	var any_on_map := false
+	for type_id in data.requires_bounty_types:
+		if on_map.has(type_id):
+			any_on_map = true
+		if BountySystem.faction_has_bounty_type(faction_id, type_id):
+			return false
+	return any_on_map
+
+## tech_cost, or double it when the tech is gated but none of its required
+## bounty types exist on this map ("improvised without the real material").
+func effective_tech_cost(data: ResearchData) -> int:
+	if data.requires_bounty_types.is_empty():
+		return data.tech_cost
+	var on_map := BountySystem.types_on_map(GameManager.state.hex_map)
+	for type_id in data.requires_bounty_types:
+		if on_map.has(type_id):
+			return data.tech_cost
+	return data.tech_cost * 2
+
+## Techs whose ONLY unmet gate is the bounty (prereqs met, not completed,
+## faction-eligible). Feeds the tech-tree locked display and the AI's
+## gate-aware settlement scoring.
+func get_bounty_locked_research(faction_id: StringName) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var fs: FactionState = GameManager.state.faction_states.get(faction_id)
+	if fs == null:
+		return result
+	# Faction-eligibility mirrors get_available_research exactly (:20-23).
+	var parent_id: StringName = GameManager.MINOR_FACTION_PARENTS.get(fs.faction_data_id, fs.faction_data_id)
+	for research_id in DataManager.research:
+		var data: ResearchData = DataManager.research[research_id]
+		if data.requires_bounty_types.is_empty():
+			continue
+		if fs.completed_research.has(research_id) or fs.current_research_id == research_id:
+			continue
+		if data.faction_id != &"" and data.faction_id != fs.faction_data_id and data.faction_id != parent_id:
+			continue
+		var prereqs_met := true
+		for prereq in data.prerequisites:
+			if not fs.completed_research.has(prereq):
+				prereqs_met = false
+				break
+		if not prereqs_met:
+			continue
+		if not is_bounty_locked(faction_id, data):
+			continue
+		var missing: Array[StringName] = []
+		for type_id in data.requires_bounty_types:
+			if not BountySystem.faction_has_bounty_type(faction_id, type_id):
+				missing.append(type_id)
+		result.append({data = data, missing_types = missing})
+	return result
 
 # ── AI Research ─────────────────────────────────────────────
 

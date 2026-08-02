@@ -10,6 +10,7 @@ func _run() -> void:
 	var gm = root.get_node("/root/GameManager")
 	gm.new_game(&"empire", false, 0)
 	_run_new_bounty_types_test(gm)
+	_run_gate_core_test(gm)
 	if _fails == 0:
 		print("BOUNTY GATED TECHS TEST PASSED")
 		quit(0)
@@ -64,3 +65,82 @@ func _run_new_bounty_types_test(gm) -> void:
 	# Cleanup so later test sections see an unmodified map
 	for s in spots:
 		map.get_tile(s).bounty_id = &""
+
+func _run_gate_core_test(gm) -> void:
+	gm.new_game(&"empire", false, 0)
+	var rs = gm.research_system
+	var player_id: StringName = gm.state.player_faction_id
+	var fs = gm.state.faction_states[player_id]
+	var dm = root.get_node("/root/DataManager")
+	var map = gm.state.hex_map
+	# Pick a tier-2+ empire tech with no prereqs beyond what we control:
+	# gate emp_aqueducts (tier 3) on wild_horses for the test.
+	var data: ResearchData = dm.research.get(&"emp_aqueducts")
+	_check(data != null, "emp_aqueducts exists")
+	data.requires_bounty_types = [&"wild_horses"] as Array[StringName]
+	# Complete its prereqs so the bounty is the only gate.
+	for prereq in data.prerequisites:
+		if not fs.completed_research.has(prereq):
+			fs.completed_research.append(prereq)
+	fs.resources[Enums.ResourceType.TECHNOLOGY] = 10000
+
+	# Case 1: type exists on map (plant one far away), faction holds none -> LOCKED
+	var far_tile = null
+	for coord in map.tiles:
+		var t = map.get_tile(coord)
+		if t and t.bounty_id == &"" and BountySystem.claimant_for(coord) == &"":
+			far_tile = t
+			break
+	_check(far_tile != null, "found an unclaimed clean tile")
+	far_tile.bounty_id = &"wild_horses"
+	_check(rs.is_bounty_locked(player_id, data), "locked while type on map but unheld")
+	_check(not rs.start_research(player_id, &"emp_aqueducts"), "start_research refuses while locked")
+	var avail: Array[ResearchData] = rs.get_available_research(player_id)
+	var listed := false
+	for a in avail:
+		if a.id == &"emp_aqueducts":
+			listed = true
+	_check(not listed, "locked tech excluded from get_available_research")
+	var locked_list: Array[Dictionary] = rs.get_bounty_locked_research(player_id)
+	var found_entry := false
+	for e in locked_list:
+		if e.data.id == &"emp_aqueducts" and e.missing_types.has(&"wild_horses"):
+			found_entry = true
+	_check(found_entry, "get_bounty_locked_research reports the tech + missing type")
+
+	# Case 2: faction claims the type -> UNLOCKED, normal cost
+	var city: CityState = gm.state.cities.get(fs.owned_cities[0])
+	var near_tile = null
+	var near_coord := Vector2i.ZERO
+	for coord in map.tiles:
+		# NOTE (Task 1 correction applied here too): BountySystem claim radius
+		# is measured in hex distance, not Chebyshev grid distance.
+		var d: int = HexHelper.hex_distance(city.hex_pos, coord)
+		var t = map.get_tile(coord)
+		if d >= 1 and d <= 2 and t and t.bounty_id == &"":
+			near_tile = t
+			near_coord = coord
+			break
+	near_tile.bounty_id = &"wild_horses"
+	_check(BountySystem.faction_has_bounty_type(player_id, &"wild_horses"), "claim within radius detected")
+	_check(not rs.is_bounty_locked(player_id, data), "unlocked once claimed")
+	_check(rs.effective_tech_cost(data) == data.tech_cost, "normal cost while type on map")
+	var tech_before: int = fs.resources[Enums.ResourceType.TECHNOLOGY]
+	_check(rs.start_research(player_id, &"emp_aqueducts"), "start_research succeeds once claimed")
+	_check(fs.resources[Enums.ResourceType.TECHNOLOGY] == tech_before - data.tech_cost, "normal cost deducted")
+	rs.cancel_research(player_id)
+
+	# Case 3: type absent from the whole map -> researchable at 2x cost
+	near_tile.bounty_id = &""
+	far_tile.bounty_id = &""
+	for coord in map.tiles:  # strip any scatter-placed wild_horses
+		var t = map.get_tile(coord)
+		if t and t.bounty_id == &"wild_horses":
+			t.bounty_id = &""
+	_check(not rs.is_bounty_locked(player_id, data), "not locked when type absent map-wide")
+	_check(rs.effective_tech_cost(data) == data.tech_cost * 2, "cost doubles when type absent map-wide")
+	tech_before = fs.resources[Enums.ResourceType.TECHNOLOGY]
+	_check(rs.start_research(player_id, &"emp_aqueducts"), "start succeeds via fallback")
+	_check(fs.resources[Enums.ResourceType.TECHNOLOGY] == tech_before - data.tech_cost * 2, "doubled cost deducted")
+	rs.cancel_research(player_id)
+	data.requires_bounty_types = [] as Array[StringName]  # undo for later sections

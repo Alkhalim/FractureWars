@@ -17,3 +17,4 @@ extends Resource
 @export var unlocks_units: Array[StringName] = [] # Unit IDs unlocked globally when researched
 @export var socket_realm: int = -1 # Realm of crystal that fits this socket (-1 = no socket)
 @export var socket_bonus: Dictionary = {} # Bonus effects when a crystal is socketed
+@export var requires_bounty_types: Array[StringName] = [] # Any-of bounty-type gate, checked when research STARTS only (never pauses running research). Empty = no gate.

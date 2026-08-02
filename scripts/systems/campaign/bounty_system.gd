@@ -462,6 +462,28 @@ static func claimable_income_at(map: HexMapData, hex_pos: Vector2i, ignore_fog: 
 				total[res_type] = total.get(res_type, 0) + def.income[res_type]
 	return total
 
+## True if any of this faction's cities currently claims a bounty of this
+## type. Claim-based only -- leased-in access is a diplomacy concern and is
+## ORed in by ResearchSystem.is_bounty_locked, not here.
+static func faction_has_bounty_type(faction_id: StringName, type_id: StringName) -> bool:
+	for entry in bounties_of_faction(faction_id):
+		if entry.id == type_id:
+			return true
+	return false
+
+## Set (Dictionary keys -> true) of bounty type ids present anywhere on the
+## map. ~66% of types roll onto a given map (ROSTER_ROLL_PCT) -- gate
+## fallbacks key off absence.
+static func types_on_map(map: HexMapData) -> Dictionary:
+	var found := {}
+	if map == null:
+		return found
+	for coord in map.tiles:
+		var tid: StringName = map.tiles[coord].bounty_id
+		if tid != &"":
+			found[tid] = true
+	return found
+
 const _RES_NAMES := {0: "Gold", 1: "Iron", 2: "Technology", 3: "Food", 4: "Shard Essence", 5: "Wood", 6: "Captives"}
 
 ## Human-readable one-line bonus text for tooltips.
