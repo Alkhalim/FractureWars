@@ -10,6 +10,7 @@ description = "Hide and leather goods fuel trade."
 tech_cost = 117
 research_time = 10
 prerequisites = Array[StringName]([&"caravan_routes", &"sk_yurt_camps"])
+requires_bounty_types = Array[StringName]([&"furs"])
 effects = { "income_gold_pct": 8, "upkeep_reduction_pct": 5 }
 shard_bonuses = {}
 tier = 3

@@ -10,6 +10,7 @@ description = "Great ports bring wealth from sea trade."
 tech_cost = 117
 research_time = 10
 prerequisites = Array[StringName]([&"merchant_guilds", &"road_network"])
+requires_bounty_types = Array[StringName]([&"fisheries"])
 effects = { "income_gold_pct": 10, "trade_income_bonus": 10 }
 shard_bonuses = {}
 tier = 3

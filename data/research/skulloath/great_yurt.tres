@@ -10,6 +10,7 @@ description = "The Great Yurt rises above all, a palace of hide and bone."
 tech_cost = 135
 research_time = 13
 prerequisites = Array[StringName]([&"caravan_routes"])
+requires_bounty_types = Array[StringName]([&"bone_fields"])
 effects = { "capital_building_slots": 3 }
 shard_bonuses = {}
 tier = 3

@@ -10,6 +10,7 @@ description = "Armaments forged harder than any known metal."
 tech_cost = 162
 research_time = 15
 prerequisites = Array[StringName]([&"industrial_revolution"])
+requires_bounty_types = Array[StringName]([&"bronze_ore", &"copper_vein"])
 effects = { "unit_defense_pct": 12, "unit_attack_pct": 4 }
 shard_bonuses = {}
 tier = 4

@@ -10,6 +10,7 @@ description = "Delve deeper for richer ore."
 tech_cost = 162
 research_time = 15
 prerequisites = Array[StringName]([&"storm_forge", &"dragon_roost"])
+requires_bounty_types = Array[StringName]([&"granite"])
 effects = { "income_gold_pct": 15, "shard_harvest_bonus": 10 }
 shard_bonuses = {}
 tier = 4

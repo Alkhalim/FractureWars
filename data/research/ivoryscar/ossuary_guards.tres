@@ -10,6 +10,7 @@ description = "The ossuary guards stand eternal vigil among the bones."
 tech_cost = 63
 research_time = 6
 prerequisites = Array[StringName]([&"relic_weapons"])
+requires_bounty_types = Array[StringName]([&"bone_fields"])
 effects = { "city_defense_pct": 15 }
 shard_bonuses = {}
 tier = 2

@@ -10,6 +10,7 @@ description = "Where the Sunblessed rest, oases spring forth, deepening Wisdom o
 tech_cost = 117
 research_time = 11
 prerequisites = Array[StringName]([&"sun_blessed_harvest", &"pilgrim_zeal"])
+requires_bounty_types = Array[StringName]([&"salt_flats"])
 effects = { "income_food_pct": 15, "income_gold_pct": 10, "wisdom_per_turn": 2 }
 shard_bonuses = {}
 tier = 3

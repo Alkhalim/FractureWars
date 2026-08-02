@@ -10,6 +10,7 @@ description = "The wasteland foundry burns eternal, yielding godsteel."
 tech_cost = 135
 research_time = 13
 prerequisites = Array[StringName]([&"master_smithing", &"garrison_doctrine"])
+requires_bounty_types = Array[StringName]([&"titanstone_quarry"])
 effects = { "income_iron_pct": 20, "unit_attack_pct": 6 }
 shard_bonuses = {}
 tier = 3

@@ -10,6 +10,7 @@ description = "Specialized crystal harvesters."
 tech_cost = 81
 research_time = 7
 prerequisites = Array[StringName]([&"sh_crystal_tunnels"])
+requires_bounty_types = Array[StringName]([&"crystal_springs"])
 effects = { "shard_harvest_bonus": 8, "income_gold_pct": 5, "shard_essence_pct": 10 }
 shard_bonuses = {}
 tier = 2

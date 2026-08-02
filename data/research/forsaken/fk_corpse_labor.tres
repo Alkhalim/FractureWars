@@ -10,6 +10,7 @@ description = "The thralls toil endlessly."
 tech_cost = 81
 research_time = 7
 prerequisites = Array[StringName]([&"fk_dark_harvest"])
+requires_bounty_types = Array[StringName]([&"bone_fields"])
 effects = { "upkeep_reduction_pct": 5, "recruitment_cost_reduction": 5 }
 shard_bonuses = {}
 tier = 2

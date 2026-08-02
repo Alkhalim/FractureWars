@@ -10,6 +10,7 @@ description = "Obsidian trade goods fetch high prices in distant markets."
 tech_cost = 63
 research_time = 6
 prerequisites = Array[StringName]([&"superior_alloys"])
+requires_bounty_types = Array[StringName]([&"obsidian_flows"])
 effects = { "income_gold_pct": 15 }
 shard_bonuses = {}
 tier = 2

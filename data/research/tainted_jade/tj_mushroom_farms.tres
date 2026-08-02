@@ -10,6 +10,7 @@ description = "Cultivated fungi feed the jungle tribes."
 tech_cost = 45
 research_time = 5
 prerequisites = Array[StringName]([&"exotic_harvest"])
+requires_bounty_types = Array[StringName]([&"peat_bogs"])
 effects = { "income_food_pct": 8, "population_growth_pct": 10 }
 shard_bonuses = {}
 tier = 2

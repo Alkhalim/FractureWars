@@ -3,6 +3,28 @@ extends SceneTree
 ## bounty types added for gate variety (designer directive 2026-08-01).
 var _fails := 0
 
+## Task 3: the approved 30-tech gate list (`.superpowers/sdd/2026-08-01-
+## bounty-gated-techs/task-3-brief.md`), applied to data by
+## `tests/tools_bounty_gate_sweep.gd`. This is the spec this section verifies
+## against.
+const EXPECTED_GATES := {
+	&"sk_horse_lords": [&"wild_horses"], &"sk_leather_works": [&"furs"],
+	&"great_yurt": [&"bone_fields"], &"sb_dawn_cavalry": [&"wild_horses"],
+	&"oasis_blessing": [&"salt_flats"], &"sb_sun_forging": [&"bronze_ore"],
+	&"ms_lunar_knights": [&"wild_horses"], &"ms_silver_mines": [&"copper_vein"],
+	&"adamantine_forge": [&"titanstone_quarry"], &"cg_master_alloys": [&"bronze_ore", &"copper_vein"],
+	&"volcanic_glass": [&"obsidian_flows"], &"cg_war_forges": [&"coal_seams"],
+	&"emp_war_machines": [&"titanstone_quarry"], &"emp_aqueducts": [&"orchards"],
+	&"road_network": [&"granite"], &"emp_harbor_cities": [&"fisheries"],
+	&"gh_herb_gardens": [&"herb_meadows"], &"gh_root_bridges": [&"timber_giants"],
+	&"gh_forest_trade": [&"amber_groves"], &"mining_expertise": [&"copper_vein"],
+	&"ts_deep_mines": [&"granite"], &"storm_forge": [&"coal_seams"],
+	&"iv_stone_masons": [&"marble"], &"ossuary_guards": [&"bone_fields"],
+	&"fk_corpse_labor": [&"bone_fields"], &"fk_bone_walls": [&"basalt_columns"],
+	&"jungle_pharmacy": [&"herb_meadows"], &"tj_mushroom_farms": [&"peat_bogs"],
+	&"venomcraft": [&"dye_gardens"], &"sh_shard_miners": [&"crystal_springs"],
+}
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -10,6 +32,12 @@ func _run() -> void:
 	var gm = root.get_node("/root/GameManager")
 	gm.new_game(&"empire", false, 0)
 	_run_new_bounty_types_test(gm)
+	# Must run BEFORE _run_gate_core_test: that section temporarily mutates
+	# emp_aqueducts.requires_bounty_types and restores it to [&"orchards"]
+	# (the Task 3 sweep value) at the end, which this section's EXPECTED_GATES
+	# check for emp_aqueducts depends on running first, before the mutation.
+	var dm = root.get_node("/root/DataManager")
+	_run_gate_sweep_verification(dm)
 	_run_gate_core_test(gm)
 	if _fails == 0:
 		print("BOUNTY GATED TECHS TEST PASSED")
@@ -65,6 +93,27 @@ func _run_new_bounty_types_test(gm) -> void:
 	# Cleanup so later test sections see an unmodified map
 	for s in spots:
 		map.get_tile(s).bounty_id = &""
+
+func _run_gate_sweep_verification(dm) -> void:
+	for tech_id in EXPECTED_GATES:
+		var data: ResearchData = dm.research.get(tech_id)
+		_check(data != null, "%s exists" % tech_id)
+		if data == null:
+			continue
+		_check(data.requires_bounty_types == (EXPECTED_GATES[tech_id] as Array[StringName]),
+			"%s gated on %s (got %s)" % [tech_id, EXPECTED_GATES[tech_id], data.requires_bounty_types])
+	# Global invariants over ALL research data:
+	var gated_count := 0
+	for research_id in dm.research:
+		var d: ResearchData = dm.research[research_id]
+		if d.requires_bounty_types.is_empty():
+			continue
+		gated_count += 1
+		_check(d.tier >= 2, "%s: gated tech is tier 2+ (tier %d)" % [research_id, d.tier])
+		_check(EXPECTED_GATES.has(research_id), "%s: gated tech is in the approved list" % research_id)
+		for type_id in d.requires_bounty_types:
+			_check(BountySystem.BOUNTY_TYPES.has(type_id), "%s: gate type %s exists" % [research_id, type_id])
+	_check(gated_count == 30, "exactly 30 gated techs (got %d)" % gated_count)
 
 func _run_gate_core_test(gm) -> void:
 	gm.new_game(&"empire", false, 0)
@@ -143,4 +192,8 @@ func _run_gate_core_test(gm) -> void:
 	_check(rs.start_research(player_id, &"emp_aqueducts"), "start succeeds via fallback")
 	_check(fs.resources[Enums.ResourceType.TECHNOLOGY] == tech_before - data.tech_cost * 2, "doubled cost deducted")
 	rs.cancel_research(player_id)
-	data.requires_bounty_types = [] as Array[StringName]  # undo for later sections
+	# Restore to the Task 3 sweep value (NOT empty): emp_aqueducts is
+	# permanently gated on orchards by tests/tools_bounty_gate_sweep.gd, and
+	# leaving it empty here would corrupt that invariant for any test run
+	# after this one within the same process.
+	data.requires_bounty_types = [&"orchards"] as Array[StringName]

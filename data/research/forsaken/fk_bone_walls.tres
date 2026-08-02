@@ -10,6 +10,7 @@ description = "Walls reinforced with blood-warded stone from the catacombs."
 tech_cost = 81
 research_time = 7
 prerequisites = Array[StringName]([&"death_whispers"])
+requires_bounty_types = Array[StringName]([&"basalt_columns"])
 effects = { "defense_bonus": 3, "city_defense_pct": 10 }
 shard_bonuses = {}
 tier = 2

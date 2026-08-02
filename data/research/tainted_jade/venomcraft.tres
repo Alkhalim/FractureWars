@@ -10,6 +10,7 @@ description = "Venom distilled from jungle serpents coats every blade."
 tech_cost = 45
 research_time = 5
 prerequisites = Array[StringName]([&"tj_poison_blades"])
+requires_bounty_types = Array[StringName]([&"dye_gardens"])
 effects = { "poison_damage_pct": 5, "unit_attack_pct": 2 }
 shard_bonuses = {}
 tier = 2

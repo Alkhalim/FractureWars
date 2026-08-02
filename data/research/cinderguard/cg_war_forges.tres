@@ -10,6 +10,7 @@ description = "Massive depots supply weapons to the frontier endlessly."
 tech_cost = 162
 research_time = 15
 prerequisites = Array[StringName]([&"cg_foundry_cities", &"cg_industrial_might"])
+requires_bounty_types = Array[StringName]([&"coal_seams"])
 effects = { "recruitment_cost_reduction": 15, "income_gold_pct": 10 }
 shard_bonuses = {}
 tier = 4

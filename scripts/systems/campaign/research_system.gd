@@ -397,11 +397,15 @@ func execute_ai_research(faction_id: StringName) -> void:
 	if available.is_empty():
 		return
 
-	# Filter by affordability
+	# Filter by affordability. Use effective_tech_cost, not raw tech_cost --
+	# a bounty-gated tech researchable only via the map-absent 2x fallback
+	# (Task 3 review fix) would otherwise be misclassified as affordable at
+	# its base cost, get picked as `best`, then silently fail start_research
+	# at the real (doubled) cost with the return value discarded below.
 	var tech_available: int = fs.resources.get(Enums.ResourceType.TECHNOLOGY, 0)
 	var affordable: Array[ResearchData] = []
 	for data in available:
-		if data.tech_cost <= tech_available:
+		if effective_tech_cost(data) <= tech_available:
 			affordable.append(data)
 	if affordable.is_empty():
 		return

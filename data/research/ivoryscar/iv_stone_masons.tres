@@ -10,6 +10,7 @@ description = "Master builders of stone monuments."
 tech_cost = 81
 research_time = 7
 prerequisites = Array[StringName]([&"relic_weapons"])
+requires_bounty_types = Array[StringName]([&"marble"])
 effects = { "income_gold_pct": 5, "defense_bonus": 2 }
 shard_bonuses = {}
 tier = 2

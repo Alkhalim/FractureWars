@@ -10,6 +10,7 @@ description = "Sacred silver mines enrich the faith."
 tech_cost = 117
 research_time = 10
 prerequisites = Array[StringName]([&"crescent_shield", &"ms_moon_shields"])
+requires_bounty_types = Array[StringName]([&"copper_vein"])
 effects = { "income_gold_pct": 10 }
 shard_bonuses = {}
 tier = 3

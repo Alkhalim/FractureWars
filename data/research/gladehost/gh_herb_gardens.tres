@@ -10,6 +10,7 @@ description = "Cultivated healing herbs sustain armies."
 tech_cost = 81
 research_time = 7
 prerequisites = Array[StringName]([&"healing_salves"])
+requires_bounty_types = Array[StringName]([&"herb_meadows"])
 effects = { "income_food_pct": 8, "trade_income_bonus": 3 }
 shard_bonuses = {}
 tier = 2

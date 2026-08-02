@@ -10,6 +10,7 @@ description = "Jungle remedies mend wounds that steel cannot."
 tech_cost = 63
 research_time = 6
 prerequisites = Array[StringName]([&"exotic_harvest"])
+requires_bounty_types = Array[StringName]([&"herb_meadows"])
 effects = { "unit_regen_pct": 3, "income_food_pct": 5 }
 shard_bonuses = {}
 tier = 2

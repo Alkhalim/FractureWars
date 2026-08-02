@@ -10,6 +10,7 @@ description = "Water networks boost city growth."
 tech_cost = 117
 research_time = 10
 prerequisites = Array[StringName]([&"logistics_reform_emp"])
+requires_bounty_types = Array[StringName]([&"orchards"])
 effects = { "income_food_pct": 10 }
 shard_bonuses = {}
 tier = 3

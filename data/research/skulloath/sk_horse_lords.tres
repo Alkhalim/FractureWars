@@ -10,6 +10,7 @@ description = "Horse lords encircle and flank with devastating precision."
 tech_cost = 117
 research_time = 10
 prerequisites = Array[StringName]([&"sk_mounted_archers", &"steppe_ambush"])
+requires_bounty_types = Array[StringName]([&"wild_horses"])
 effects = { "unit_speed_bonus": 2, "unit_attack_pct": 4, "flanking_damage_bonus": 8 }
 shard_bonuses = {}
 tier = 3

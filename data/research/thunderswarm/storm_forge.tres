@@ -10,6 +10,7 @@ description = "Storm-forged steel fetches the highest price in all lands."
 tech_cost = 117
 research_time = 11
 prerequisites = Array[StringName]([&"mining_expertise", &"stonecutter_guild"])
+requires_bounty_types = Array[StringName]([&"coal_seams"])
 effects = { "income_iron_pct": 15, "income_gold_pct": 10 }
 shard_bonuses = {}
 tier = 3

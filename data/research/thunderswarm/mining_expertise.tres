@@ -10,6 +10,7 @@ description = "The mountains yield their iron to those who know their secrets."
 tech_cost = 81
 research_time = 8
 prerequisites = Array[StringName]([&"peak_fortresses"])
+requires_bounty_types = Array[StringName]([&"copper_vein"])
 effects = { "income_iron_pct": 30 }
 shard_bonuses = {}
 tier = 2

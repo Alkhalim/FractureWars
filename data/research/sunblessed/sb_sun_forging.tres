@@ -10,6 +10,7 @@ description = "Weapons forged in concentrated sunlight."
 tech_cost = 117
 research_time = 10
 prerequisites = Array[StringName]([&"sb_sun_shields", &"sb_dawn_cavalry"])
+requires_bounty_types = Array[StringName]([&"bronze_ore"])
 effects = { "unit_attack_pct": 4, "unit_defense_pct": 6 }
 shard_bonuses = {}
 tier = 3
