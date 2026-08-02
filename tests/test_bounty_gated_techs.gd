@@ -40,6 +40,8 @@ func _run() -> void:
 	_run_gate_sweep_verification(dm)
 	_run_gate_core_test(gm)
 	_run_bounty_lease_test(gm)
+	var tm = root.get_node("/root/TurnManager")
+	_run_ai_gate_scoring_test(gm, tm)
 	if _fails == 0:
 		print("BOUNTY GATED TECHS TEST PASSED")
 		quit(0)
@@ -247,3 +249,51 @@ func _run_bounty_lease_test(gm) -> void:
 	ds.process_treaties(other)
 	_check(ds.lease_for_bounty(spot) == null, "lease expired when the bounty vanished")
 	_check(not ds.faction_leases_bounty_type(player_id, &"wild_horses"), "leased access gone after expiry")
+
+## Task 6: AI settlement scoring reaches for research-gate bounties.
+func _run_ai_gate_scoring_test(gm, tm) -> void:
+	gm.new_game(&"empire", false, 0)
+	var map = gm.state.hex_map
+	# skulloath has 3 gates incl. sk_horse_lords -> wild_horses. Ensure the
+	# type is on the map but unheld by skulloath -> it lands in the wanted set.
+	var wanted := {}
+	for entry in gm.research_system.get_bounty_locked_research(&"skulloath"):
+		for t in entry.missing_types:
+			wanted[t] = true
+	# Force determinism: plant an unclaimed wild_horses far from all cities
+	# if scatter didn't roll it this seed, then rebuild the wanted set.
+	if not wanted.has(&"wild_horses"):
+		for coord in map.tiles:
+			var t = map.get_tile(coord)
+			if t and t.bounty_id == &"" and BountySystem.claimant_for(coord) == &"":
+				t.bounty_id = &"wild_horses"
+				break
+		wanted = {}
+		for entry in gm.research_system.get_bounty_locked_research(&"skulloath"):
+			for t2 in entry.missing_types:
+				wanted[t2] = true
+	# NOTE: sk_horse_lords is tier 3 -- if its prereqs aren't met at turn 1 it
+	# won't appear in get_bounty_locked_research. Complete them first:
+	var fs = gm.state.faction_states[&"skulloath"]
+	var data: ResearchData = root.get_node("/root/DataManager").research[&"sk_horse_lords"]
+	for prereq in data.prerequisites:
+		if not fs.completed_research.has(prereq):
+			fs.completed_research.append(prereq)
+	wanted = {}
+	for entry in gm.research_system.get_bounty_locked_research(&"skulloath"):
+		for t3 in entry.missing_types:
+			wanted[t3] = true
+	_check(wanted.has(&"wild_horses"), "wild_horses is in skulloath's wanted set (got %s)" % [wanted])
+	# The bonus helper: a tile adjacent to an unclaimed wanted bounty scores +15.
+	var bounty_coord := Vector2i(-9999, -9999)
+	for coord in map.tiles:
+		var t = map.get_tile(coord)
+		if t and t.bounty_id == &"wild_horses" and BountySystem.claimant_for(coord) == &"":
+			bounty_coord = coord
+			break
+	_check(bounty_coord != Vector2i(-9999, -9999), "an unclaimed wild_horses exists")
+	var near := bounty_coord + Vector2i(1, 0)
+	_check(tm._settlement_gate_bonus(near, wanted) == 15, "wanted-bounty-adjacent tile gets +15")
+	_check(tm._settlement_gate_bonus(near, {}) == 0, "empty wanted set -> 0")
+	var far := bounty_coord + Vector2i(30, 30)
+	_check(tm._settlement_gate_bonus(far, wanted) == 0, "far tile gets 0")

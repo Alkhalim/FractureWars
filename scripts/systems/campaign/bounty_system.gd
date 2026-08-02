@@ -400,7 +400,11 @@ static func bounties_of_faction(faction_id: StringName) -> Array[Dictionary]:
 
 ## Bounties a NEW city founded at hex_pos would claim: within CLAIM_RADIUS and
 ## either unclaimed or strictly closer to hex_pos than to the current claimant.
-static func bounties_claimable_at(hex_pos: Vector2i) -> Array[Dictionary]:
+## `ignore_fog`: see claimable_income_at's doc -- bounties_claimable_at gates
+## on GameManager.explored_tiles as a player-facing anti-spoiler measure by
+## default; callers scoring on the AI's behalf (turn_manager.gd) must not be
+## blinded by the human player's fog, so they pass ignore_fog=true.
+static func bounties_claimable_at(hex_pos: Vector2i, ignore_fog: bool = false) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var map = GameManager.state.hex_map
 	if map == null:
@@ -414,7 +418,7 @@ static func bounties_claimable_at(hex_pos: Vector2i) -> Array[Dictionary]:
 			var tile = map.get_tile(h)
 			if tile == null or tile.bounty_id == &"":
 				continue
-			if not GameManager.explored_tiles.has(h):
+			if not ignore_fog and not GameManager.explored_tiles.has(h):
 				continue
 			var current := claimant_for(h)
 			if current == &"":

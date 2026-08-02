@@ -111,6 +111,38 @@ func _log_round() -> void:
 			(loy_sum / maxf(loy_n, 1)), (1 if fs.is_defeated else 0),
 			iron_income, wood_income, vigilance, vigilance_target, scrap, pumps_str])
 
+## Task 6 (bounty-gated-techs, AI settlement scoring): summary of how many
+## bounty-gated techs each major faction actually finished by game end --
+## the thing the CSV columns can't show (TECHNOLOGY stockpile is a scalar,
+## not a per-tech breakdown). Printed once at quit() time, not per-round.
+func _log_gated_tech_completions() -> void:
+	var gated_ids: Array[StringName] = []
+	for research_id in _dm.research:
+		var d: ResearchData = _dm.research[research_id]
+		if not d.requires_bounty_types.is_empty():
+			gated_ids.append(research_id)
+	print("# gated_tech_summary: %d gated techs in data" % gated_ids.size())
+	var total := 0
+	for fid in _gm.state.faction_states:
+		if _gm.MINOR_FACTION_PARENTS.has(fid):
+			continue
+		var fs = _gm.state.faction_states[fid]
+		var done: Array[StringName] = []
+		for rid in gated_ids:
+			if fs.completed_research.has(rid):
+				done.append(rid)
+		total += done.size()
+		print("# gated_tech_summary,%s,%d,%s" % [fid, done.size(), ";".join(done)])
+		# Diagnostics: is this faction's research pipeline stalled at all (not
+		# just for gated techs), and how many gated techs are it currently
+		# blocked on only by the bounty gate.
+		var avail: Array = _gm.research_system.get_available_research(fid)
+		var locked: Array = _gm.research_system.get_bounty_locked_research(fid)
+		print("# research_diag,%s,completed=%d,current=%s,tech_bank=%d,available=%d,bounty_locked=%d" % [
+			fid, fs.completed_research.size(), str(fs.current_research_id),
+			int(fs.resources.get(2, 0)), avail.size(), locked.size()])
+	print("# gated_tech_summary_total,%d" % total)
+
 func _process(_delta: float) -> bool:
 	if _gm == null or _gm.state == null:
 		return false
@@ -119,6 +151,7 @@ func _process(_delta: float) -> bool:
 		_last_logged = turn
 		_log_round()
 	if turn > _turns:
+		_log_gated_tech_completions()
 		quit()
 		return false
 	# The observer faction sits at faction_order[0] and is treated as a PLAYER

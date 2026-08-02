@@ -1009,6 +1009,18 @@ func _ai_recruit_with_composition(city: CityState, faction_id: StringName, censu
 
 # ── AI Settlement Building ───────────────────────────────────
 
+## Flat settlement-scoring bonus when a candidate tile can claim a bounty
+## type the faction needs for a bounty-locked tech (designer directive:
+## the AI reaches for gate bounties deliberately). +15 ~ 7 hexes of
+## dist_penalty -- redirects close calls without dominating raw income.
+func _settlement_gate_bonus(tile_pos: Vector2i, wanted_types: Dictionary) -> int:
+	if wanted_types.is_empty():
+		return 0
+	for b in BountySystem.bounties_claimable_at(tile_pos, true):
+		if wanted_types.has(b.id):
+			return 15
+	return 0
+
 func _execute_ai_settlement_building(faction_id: StringName) -> void:
 	if faction_id == &"shardhorde":
 		return # Shardhorde uses elderbeasts, not settlements
@@ -1081,6 +1093,11 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 		keyed.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 		var eval_count := mini(keyed.size(), 20)
 
+		var wanted_gate_types := {}
+		for entry in GameManager.research_system.get_bounty_locked_research(faction_id):
+			for t in entry.missing_types:
+				wanted_gate_types[t] = true
+
 		var best_tile := Vector2i(-1, -1)
 		var best_score := -999
 		for i in eval_count:
@@ -1097,6 +1114,7 @@ func _execute_ai_settlement_building(faction_id: StringName) -> void:
 			var bounty_income := BountySystem.claimable_income_at(GameManager.state.hex_map, tile_pos, true)
 			for res_type in bounty_income:
 				income_score += bounty_income[res_type]
+			income_score += _settlement_gate_bonus(tile_pos, wanted_gate_types)
 			var dist_penalty: int = keyed[i][0] * 2
 			var total_score := income_score - dist_penalty
 			if total_score > best_score:
