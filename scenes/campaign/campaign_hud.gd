@@ -6308,6 +6308,10 @@ class _RadialTechTree extends Control:
 	var _glow_edges_cache: Dictionary = {}
 	var _glow_cache_research_id: StringName = &"__unset__"
 	var _glow_cache_completed_count: int = -1
+	# Bounty-gate display cache: research_id -> 0 met/ungated, 1 locked,
+	# 2 map-absent (cost doubled). Populated once per _calculate_positions()
+	# rebuild -- NEVER call is_bounty_locked per-node inside _draw (per-frame).
+	var _bounty_gate_state: Dictionary = {}
 
 	const TIER_RADII := [0, 230, 440, 670, 920, 1180]
 	const NODE_RADIUS := 26.0
@@ -6515,6 +6519,22 @@ class _RadialTechTree extends Control:
 
 		# Collision avoidance
 		_resolve_overlaps()
+
+		# Bounty-gate display cache -- recomputed on every panel rebuild, cheap
+		# and can't go stale mid-frame (claims/leases only change on turn/treaty).
+		_bounty_gate_state.clear()
+		var rs: ResearchSystem = GameManager.research_system
+		for research_id in _node_data:
+			var rdata: ResearchData = _node_data[research_id]
+			if rdata.requires_bounty_types.is_empty():
+				continue
+			if rs.is_bounty_locked(player_faction_id, rdata):
+				_bounty_gate_state[research_id] = 1
+			elif rs.effective_tech_cost(rdata) > rdata.tech_cost:
+				_bounty_gate_state[research_id] = 2
+			else:
+				_bounty_gate_state[research_id] = 0
+
 		_positions_built = true
 
 	func _resolve_overlaps() -> void:
@@ -6788,7 +6808,9 @@ class _RadialTechTree extends Control:
 				if not fs.completed_research.has(prereq):
 					prereqs_met = false
 					break
-			var can_afford := true
+			# Bounty-gated techs render through the same "locked" red branch as
+			# an unaffordable tech -- visible but not startable (design doc §5).
+			var can_afford: bool = _bounty_gate_state.get(research_id, 0) != 1
 
 			# Node size carries hierarchy: higher tiers are bigger, and the whole
 			# node scales with zoom so the layout stays proportionate (the old
@@ -6830,6 +6852,12 @@ class _RadialTechTree extends Control:
 			draw_circle(pos + Vector2(1.5, 2.5) * _zoom, node_r + 2.0 * _zoom, Color(0.0, 0.0, 0.0, 0.4))
 			draw_circle(pos, node_r, node_color)
 			draw_arc(pos, node_r, 0, TAU, 24, border_color, ring_w)
+
+			# Bounty-lock marker: distinguishes "resource-locked" (red, gated on
+			# a bounty type) from an ordinary unaffordable/locked-prereq node.
+			if _bounty_gate_state.get(research_id, 0) == 1:
+				draw_circle(pos + Vector2(node_r * 0.7, -node_r * 0.7), 4.0 * _zoom, Color.WHITE)
+				draw_circle(pos + Vector2(node_r * 0.7, -node_r * 0.7), 3.0 * _zoom, Color(0.9, 0.75, 0.3))
 
 			# Unlock glow for nodes that gate buildings/units
 			if _unlock_nodes.has(research_id) and not is_completed:
@@ -6901,7 +6929,24 @@ class _RadialTechTree extends Control:
 			var ud := DataManager.get_unit(uid)
 			if ud:
 				unlock_lines.append("Unlocks: %s" % ud.display_name)
-		var total_lines := eff_count + unlock_lines.size()
+		# Bounty-gate requirement line (one line, colored by lock state)
+		var bounty_line: String = ""
+		var bounty_line_color := Color(0.85, 0.65, 0.3)
+		if not data.requires_bounty_types.is_empty():
+			var names: Array[String] = []
+			for t in data.requires_bounty_types:
+				names.append(BountySystem.BOUNTY_TYPES[t].name)
+			match _bounty_gate_state.get(_hovered_id, 0):
+				1:
+					bounty_line = "Requires: %s (claim or lease one)" % " / ".join(names)
+					bounty_line_color = Color(0.85, 0.4, 0.35)
+				2:
+					bounty_line = "%s not on this map - cost doubled" % " / ".join(names)
+					bounty_line_color = Color(0.6, 0.58, 0.52)
+				_:
+					bounty_line = "Requires: %s (met)" % " / ".join(names)
+					bounty_line_color = Color(0.4, 0.8, 0.4)
+		var total_lines := eff_count + unlock_lines.size() + (1 if bounty_line != "" else 0)
 		var box_w := 280.0
 		var box_h := 58.0 + total_lines * 14.0
 		var box_pos := node_screen + Vector2(NODE_RADIUS + 12, -box_h * 0.5)
@@ -6927,10 +6972,13 @@ class _RadialTechTree extends Control:
 			status_text = "IN PROGRESS (%d/%d)" % [fs.research_progress, data.research_time]
 			status_color = Color(0.9, 0.8, 0.3)
 		else:
-			status_text = "%d turns | %d Tech" % [data.research_time, data.tech_cost]
+			status_text = "%d turns | %d Tech" % [data.research_time, GameManager.research_system.effective_tech_cost(data)]
 			status_color = Color(0.6, 0.58, 0.5)
 		draw_string(font, Vector2(box_pos.x + 8, y), status_text, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, status_color)
 		y += 14
+		if bounty_line != "":
+			draw_string(font, Vector2(box_pos.x + 8, y), bounty_line, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, bounty_line_color)
+			y += 14
 		# Show ALL effects (no cap)
 		for key in data.effects:
 			var desc := _format_effect(key, data.effects[key])
@@ -7092,6 +7140,9 @@ class _RadialTechTree extends Control:
 		for prereq in data.prerequisites:
 			if not fs.completed_research.has(prereq):
 				return
+		if GameManager.research_system.is_bounty_locked(player_faction_id, data):
+			AudioManager.play_sfx(&"error_buzz")
+			return
 		var result := GameManager.research_system.start_research(player_faction_id, research_id)
 		if result and hud_ref:
 			hud_ref._refresh_research_panel()
@@ -7158,7 +7209,7 @@ func _show_research_detail(data: ResearchData) -> void:
 
 	# Cost + Time
 	var cost_label := Label.new()
-	cost_label.text = "Research Cost: %d Tech  |  %d turns" % [data.tech_cost, data.research_time]
+	cost_label.text = "Research Cost: %d Tech  |  %d turns" % [GameManager.research_system.effective_tech_cost(data), data.research_time]
 	cost_label.add_theme_font_size_override("font_size", 12)
 	cost_label.add_theme_color_override("font_color", RESOURCE_COLORS.get(2, Color.WHITE))
 	vbox.add_child(cost_label)
@@ -7211,6 +7262,31 @@ func _show_research_detail(data: ResearchData) -> void:
 			pl.add_theme_font_size_override("font_size", 11)
 			pl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
 			vbox.add_child(pl)
+
+	# Required Resources (bounty gate)
+	if not data.requires_bounty_types.is_empty():
+		_add_separator(vbox)
+		var req_header := Label.new()
+		req_header.text = "Required Resources"
+		req_header.add_theme_font_size_override("font_size", 13)
+		req_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+		vbox.add_child(req_header)
+		var req_player_id := GameManager.state.player_faction_id
+		var req_on_map := BountySystem.types_on_map(GameManager.state.hex_map)
+		for type_id in data.requires_bounty_types:
+			var type_name: String = BountySystem.BOUNTY_TYPES[type_id].name
+			var req_label := Label.new()
+			if BountySystem.faction_has_bounty_type(req_player_id, type_id) or GameManager.diplomacy_system.faction_leases_bounty_type(req_player_id, type_id):
+				req_label.text = "  " + type_name
+				req_label.add_theme_color_override("font_color", Color(0.4, 0.8, 0.4))
+			elif not req_on_map.has(type_id):
+				req_label.text = "  %s — not on this map (cost doubled)" % type_name
+				req_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
+			else:
+				req_label.text = "  %s — claim or lease to unlock" % type_name
+				req_label.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
+			req_label.add_theme_font_size_override("font_size", 11)
+			vbox.add_child(req_label)
 
 	dialog.add_child(vbox)
 	add_child(dialog)
