@@ -396,6 +396,18 @@ func faction_leases_bounty_type(faction_id: StringName, type_id: StringName) -> 
 			return true
 	return false
 
+## Bounty leases held INTO faction_id from other factions, for UI display.
+## Mirrors SpecialResourceSystem.leased_in_specials -- kept a separate list
+## rather than merged into it because the terms shape differs (bounty_id
+## instead of special_id); see that function's header comment.
+func leased_in_bounties(faction_id: StringName) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for treaty_id in GameManager.state.diplomacy_state.treaties:
+		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[treaty_id]
+		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.faction_b == faction_id and t.terms.has("bounty_id"):
+			result.append({bounty_id = t.terms.get("bounty_id", &""), from = t.faction_a, turns_remaining = t.turns_remaining})
+	return result
+
 func propose_bounty_lease(owner: StringName, lessee: StringName, bounty_hex: Vector2i, gold_per_turn: int, duration: int) -> Dictionary:
 	if GameManager.get_relation(owner, lessee) == Enums.FactionRelation.WAR:
 		return {accepted = false, reason = "At war."}
@@ -416,6 +428,10 @@ func propose_bounty_lease(owner: StringName, lessee: StringName, bounty_hex: Vec
 				break
 		if not wants:
 			return {accepted = false, reason = "Not interested in this lease."}
+		# Affordability guard, mirrors _evaluate_lease_as_lessee's specials-lease check.
+		var lessee_fs: FactionState = GameManager.state.faction_states.get(lessee)
+		if lessee_fs == null or lessee_fs.resources.get(Enums.ResourceType.GOLD, 0) < gold_per_turn * 3:
+			return {accepted = false, reason = "Cannot afford this lease."}
 	elif owner != GameManager.state.player_faction_id:
 		# AI owner deciding whether to lease out to the player (mirrors specials).
 		var standing := get_standing(owner, lessee)

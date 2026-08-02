@@ -4206,11 +4206,18 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 				var you_get := res_b_name if treaty.faction_a == player_id else res_a_name
 				detail_text = " — Sharing %.0f%% (You get: %s)" % [share, you_get]
 			elif treaty.treaty_type == Enums.TreatyType.RESOURCE_LEASE:
-				var rl_special: StringName = treaty.terms.get("special_id", &"")
-				var rl_def: Dictionary = SpecialResourceSystem.SPECIAL_TYPES.get(rl_special, {})
-				var rl_name: String = rl_def.get("name", String(rl_special))
 				var rl_gpt: int = treaty.terms.get("gold_per_turn", 0)
-				detail_text = " — %s, %d gold/turn" % [rl_name, rl_gpt]
+				if treaty.terms.has("bounty_id"):
+					type_name = "Bounty Lease"
+					var rl_bounty: StringName = treaty.terms.get("bounty_id", &"")
+					var rl_bdef: Dictionary = BountySystem.BOUNTY_TYPES.get(rl_bounty, {})
+					var rl_bname: String = rl_bdef.get("name", String(rl_bounty))
+					detail_text = " — %s, %d gold/turn" % [rl_bname, rl_gpt]
+				else:
+					var rl_special: StringName = treaty.terms.get("special_id", &"")
+					var rl_def: Dictionary = SpecialResourceSystem.SPECIAL_TYPES.get(rl_special, {})
+					var rl_name: String = rl_def.get("name", String(rl_special))
+					detail_text = " — %s, %d gold/turn" % [rl_name, rl_gpt]
 			var t_lbl := Label.new()
 			t_lbl.text = "  " + type_name + dur_text + detail_text
 			t_lbl.add_theme_font_size_override("font_size", 10)
@@ -6314,8 +6321,10 @@ class _RadialTechTree extends Control:
 	var _glow_cache_research_id: StringName = &"__unset__"
 	var _glow_cache_completed_count: int = -1
 	# Bounty-gate display cache: research_id -> 0 met/ungated, 1 locked,
-	# 2 map-absent (cost doubled). Populated once per _calculate_positions()
-	# rebuild -- NEVER call is_bounty_locked per-node inside _draw (per-frame).
+	# 2 map-absent (cost doubled). Refreshed by _refresh_bounty_gate_state(),
+	# called from _calculate_positions() and from _refresh_research_panel() on
+	# every panel (re)open -- NEVER call is_bounty_locked per-node inside
+	# _draw (per-frame). See _refresh_bounty_gate_state's doc-comment.
 	var _bounty_gate_state: Dictionary = {}
 
 	const TIER_RADII := [0, 230, 440, 670, 920, 1180]
@@ -9842,6 +9851,16 @@ func _on_bounty_bar_hover() -> void:
 		var ffd: FactionData = DataManager.get_faction(entry_l.from)
 		text += "\n  %s — via %s (%d turns)" % [sdef2.name, (ffd.display_name if ffd else String(entry_l.from)), entry_l.turns_remaining]
 	if leased_in.is_empty():
+		text += "\n  (none)"
+
+	text += "\nBounties leased in:"
+	var leased_in_bounties: Array[Dictionary] = GameManager.diplomacy_system.leased_in_bounties(pid)
+	for entry_bl in leased_in_bounties:
+		var bdef2: Dictionary = BountySystem.BOUNTY_TYPES.get(entry_bl.bounty_id, {})
+		var bname2: String = bdef2.get("name", String(entry_bl.bounty_id))
+		var bfd: FactionData = DataManager.get_faction(entry_bl.from)
+		text += "\n  %s — via %s (%d turns)" % [bname2, (bfd.display_name if bfd else String(entry_bl.from)), entry_bl.turns_remaining]
+	if leased_in_bounties.is_empty():
 		text += "\n  (none)"
 
 	text += "\nLandmarks:"

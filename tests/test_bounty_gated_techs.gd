@@ -225,11 +225,25 @@ func _run_bounty_lease_test(gm) -> void:
 			break
 	_check(BountySystem.faction_has_bounty_type(other, &"wild_horses"), "skulloath claims the planted wild_horses")
 	ds.init_standing(other, player_id, 40, "test setup")
+	var specials_leased_in_before: int = SpecialResourceSystem.leased_in_specials(player_id).size()
 	var res: Dictionary = ds.propose_bounty_lease(other, player_id, spot, 14, 10)
 	_check(res.get("accepted", false), "AI owner leases bounty to player (got %s)" % [res])
 	_check(ds.lease_for_bounty(spot) != null, "lease_for_bounty finds the treaty")
 	_check(ds.faction_leases_bounty_type(player_id, &"wild_horses"), "player has leased-in wild_horses")
 	_check(ds.propose_bounty_lease(other, player_id, spot, 14, 10).get("accepted", true) == false, "double-lease refused")
+	# Review finding 1 regression pin: bounty leases (terms = {bounty_hex,
+	# bounty_id, gold_per_turn}) must not leak into the specials-only
+	# leased_in_specials() list (terms = {special_id, gold_per_turn}) -- a
+	# stray entry there fed an unguarded SPECIAL_TYPES[] index in
+	# campaign_hud.gd's Resources-chip hover tooltip and crashed it.
+	var specials_leased_in_after: Array[Dictionary] = SpecialResourceSystem.leased_in_specials(player_id)
+	_check(specials_leased_in_after.size() == specials_leased_in_before, "bounty lease does not inflate leased_in_specials count")
+	var found_bounty_leak := false
+	for entry in specials_leased_in_after:
+		if entry.special_id == &"":
+			found_bounty_leak = true
+	_check(not found_bounty_leak, "leased_in_specials contains no empty-special_id (bounty) entries")
+	_check(ds.leased_in_bounties(player_id).size() == 1 and ds.leased_in_bounties(player_id)[0].bounty_id == &"wild_horses", "leased_in_bounties lists the bounty lease")
 	# Lease satisfies the research gate:
 	var data: ResearchData = root.get_node("/root/DataManager").research[&"emp_war_machines"]
 	data.requires_bounty_types = [&"wild_horses"] as Array[StringName]  # temporary override

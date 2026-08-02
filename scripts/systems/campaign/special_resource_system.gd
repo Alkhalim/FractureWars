@@ -126,11 +126,17 @@ static func lease_for_special(owner: StringName, special_id: StringName) -> Trea
 	return null
 
 ## Specials leased INTO faction_id from other factions, for UI display.
+## Bounty leases ride the same RESOURCE_LEASE treaty_type with a different
+## terms shape ({bounty_hex, bounty_id, gold_per_turn} instead of
+## {special_id, gold_per_turn}) -- the terms.has("special_id") check keeps
+## those out of this specials-only listing (see leased_in_bounties for the
+## bounty-lease equivalent).
 static func leased_in_specials(faction_id: StringName) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for t_id in GameManager.state.diplomacy_state.treaties:
 		var t: TreatyInstance = GameManager.state.diplomacy_state.treaties[t_id]
-		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.faction_b == faction_id:
+		if t.treaty_type == Enums.TreatyType.RESOURCE_LEASE and t.faction_b == faction_id \
+				and t.terms.has("special_id"):
 			result.append({special_id = t.terms.get("special_id", &""), from = t.faction_a, turns_remaining = t.turns_remaining})
 	return result
 
