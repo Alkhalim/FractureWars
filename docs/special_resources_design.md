@@ -33,7 +33,7 @@ whoever owns) a location *matters*. Three payoffs:
 
 | | **Bounties** | **Specials** (faction-affinity) | **Landmarks** (name confirmed 2026-07-29) |
 |---|---|---|---|
-| Types in roster | 22 | 8 | 7 |
+| Types in roster | 25 | 8 | 7 |
 | Per map | 4-8 deposits each (~60-70% of types spawn) | 1-3 deposits each (affinity ones guaranteed reachable) | **exactly 5 spawn, max 1 per type** |
 | Visual | small icon in the **top-right corner of the terrain tile**, tooltip on hover | deposit art overlay per resource (shared style) | **replaces the terrain tile entirely; unique hand-made art per Landmark** |
 | Placement | terrain-appropriate, spread widely | narrow terrain bands | terrain-fitting, **roughly evenly distributed across the map**, each **adjacent to a neutral/independent city** at spawn |
@@ -77,7 +77,7 @@ starts the resource's effect once built (build cost ~T3-equivalent).
 Each map rolls 5 of the 7 — every campaign is missing two Landmarks, so no
 fixed "always rush X" meta.
 
-### Tier 1 — Bounty resources (22 types, common, not flavor-locked)
+### Tier 1 — Bounty resources (25 types, common, not flavor-locked)
 
 | Resource | Terrains | Bonus (claiming city's owner) |
 |---|---|---|
@@ -103,6 +103,19 @@ fixed "always rush X" meta.
 | Clay Pits | Wetlands, Plains | -15% wood component of build costs |
 | Peat Bogs | Swamp, Wetlands | -10% building upkeep in region |
 | Dye Gardens | Jungle, Coastal | +8 gold from trade deals only |
+| Coal Seams | Mountains, Tundra | +6 iron |
+| Bone Fields | Desert, Shard Wastes | -10% recruit cost for `undead` |
+| Bronze Ore | Mountains, Desert | +3 gold, +4 iron |
+
+> **Added by the bounty-gated-techs feature (IMPLEMENTED 2026-08-03, see
+> `docs/bounty_gated_techs_design.md`):** Coal Seams, Bone Fields, and Bronze
+> Ore bring the roster from 22 to 25 types, giving tech gates more terrain
+> variety to hook into (forge/construct-flavored mountain deposits, a
+> desert/wastes necro-flavored deposit). `BountySystem.ROSTER_ROLL_PCT` is
+> still **66** — unchanged by the roster expansion, so ~2/3 of the (now 25)
+> types spawn per map. These three postdate the 2026-07-31 art pass below and
+> have no dedicated corner icon yet — they render via the existing
+> polygon-fallback path until hand-made art is added.
 
 ### Tier 2 — Specials (8 faction-affinity types)
 

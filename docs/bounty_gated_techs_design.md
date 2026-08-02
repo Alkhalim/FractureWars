@@ -1,6 +1,17 @@
 # Bounty-Gated Technologies Design Proposal
 
-Status: PROPOSAL — not implemented. Every id/line ref below was verified against the current repo.
+Status: IMPLEMENTED 2026-08-03 — see docs/superpowers/plans/2026-08-01-bounty-gated-techs.md.
+
+## As-built deviations from this proposal
+
+- **Start-only gate, no continuous check** — per the 2026-08-01 designer decision below, `start_research()` is the sole choke point (Task 2); there is no pause/resume plumbing for a bounty lost mid-research, despite §2's default recommendation to reuse the pause mechanism.
+- **3 new bounty types shipped**, resolving Open Question 2: `coal_seams` (Mountains/Tundra, +6 iron), `bone_fields` (Desert/Shard Wastes, 10% undead recruit discount), `bronze_ore` (Mountains/Desert, +3 gold/+4 iron) — `BountySystem.BOUNTY_TYPES` is now 25 entries, not 22.
+- **30 gates shipped across 11 factions** (vs. the 12-gate/8-faction sample in §3) — Forsaken, Tainted Jade, and Shardhorde did get gates via looser flavor matches (see §3 notes), so every playable faction has at least one bounty-gated tech.
+- **Map-absence fallback: Option 1 only** — a gate type absent from the map falls back to a flat **2× `tech_cost`**, no bounty requirement (§7 Option 1). Option 3 (an explicit "this material doesn't exist this game" tech-tree annotation) did not ship as a separate UI callout; the fallback cost is silently effective via `effective_tech_cost()`.
+- **Leases ride `RESOURCE_LEASE`**, not a new `BOUNTY_ACCESS` treaty type (§4's recommended option, not the alternative) — `terms` carries `{bounty_hex, bounty_id, gold_per_turn}` alongside the existing `special_id` shape.
+- **AI settlement scoring: flat +15 bonus**, matching §6's suggested magnitude, added in `turn_manager.gd`'s settlement-tile scorer when a tile's `bounty_id` is in the AI's bounty-locked-research wanted set.
+- **AI research affordability uses `effective_tech_cost`** (the map-absence-adjusted cost), not the raw `tech_cost`, so the AI correctly prices the fallback-cost path when scoring bounty-locked techs.
+- **Conquest-targeting weighting NOT implemented** — §6's suggestion to also weight enemy-army/city attack priority toward bounty-holding targets was deliberately deferred; only settlement-founding placement got the bounty-aware bonus.
 
 > **DESIGNER DECISION (2026-08-01):** the bounty is required only to **initiate** the research (checked at research start). Losing the bounty mid-research does **not** pause or cancel it. This resolves the start-vs-continuous Open Question — the simpler start-only model is chosen; the continuous-check/pause plumbing proposed below is NOT needed.
 
