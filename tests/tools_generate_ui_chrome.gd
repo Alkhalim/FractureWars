@@ -16,15 +16,16 @@ extends SceneTree
 ##   & <godot> --headless --path . --import
 ##
 ## Output: assets/sprites/ui/generated/<set_id>_{frame,btn_normal,btn_hover,
-## btn_pressed,btn_disabled,notification}.png plus a per-set contact sheet
-## assets/sprites/ui/generated/_contact_<set_id>.png (also copied to the
-## session scratchpad) proving all 6 pieces plus a 400x260 nine-patch-
+## btn_pressed,btn_disabled,notification,seal}.png plus a per-set contact
+## sheet assets/sprites/ui/generated/_contact_<set_id>.png (also copied to
+## the session scratchpad) proving all 7 pieces plus a 400x260 nine-patch-
 ## stretched sample of the frame piece via a real StyleBoxTexture draw. On a
 ## full default run (all 12 sets: neutral + the 11 major factions) also
 ## produces assets/sprites/ui/generated/_contact_factions.png (also copied
 ## to the scratchpad) — one row per set with a frame thumb, all 4 button
-## states, and a magnified seal close-up cropped from the real baked frame
-## corner, for the Task 2 ART GATE.
+## states, a magnified seal close-up cropped from the real baked frame
+## corner, and (Task 5b round 2) the real 64x64 `<id>_seal.png` at native
+## size, for the ART GATE.
 
 const OUT_DIR := "res://assets/sprites/ui/generated"
 const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-Gamedesign-Beyond-FractureWars-FractureWars/60f5a753-2e0c-4d4a-bf21-4fb3197d9a6c/scratchpad"
@@ -33,135 +34,321 @@ const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-G
 ## Geometry CONTRACT — Task 3 of the UI-overhaul plan copies these verbatim
 ## into game_manager.gd's StyleBoxTexture factories. Corner/top-center seals
 ## must live entirely inside the margin bands below so nine-patch stretching
-## never distorts them.
+## never distorts them. Task 5b round 2 (ART GATE seal-readability request):
+## FRAME_MARGIN 24 -> 32 (moves together with game_manager.gd's _FRAME_MARGIN
+## and _FRAME_CONTENT — content margin must stay >= texture margin, see that
+## file's GOTCHA comment) so the corner seals have more room; frame/
+## notification seal draw radii scaled up to match (see _paint_frame /
+## _paint_notification below); SEAL_SIZE is the new standalone wax-seal piece
+## (transparent background, no nine-patch margin of its own — it's placed by
+## whoever consumes it, not stretched).
 ## ─────────────────────────────────────────────────────────────────────────
 const FRAME_SIZE := Vector2i(192, 192)       # frame nine-patch canvas
-const FRAME_MARGIN := 24                     # nine-patch texture margin, all 4 sides (corner seals live inside this band)
+const FRAME_MARGIN := 32                     # nine-patch texture margin, all 4 sides (corner seals live inside this band)
 const BTN_SIZE := Vector2i(96, 48)           # button nine-patch canvas
 const BTN_MARGIN := 12                       # button nine-patch margin
 const NOTIF_SIZE := Vector2i(224, 224)
 const NOTIF_MARGIN := 32
+const SEAL_SIZE := Vector2i(64, 64)          # standalone wax-seal piece, transparent bg, no nine-patch
 
-const PIECES := ["frame", "btn_normal", "btn_hover", "btn_pressed", "btn_disabled", "notification"]
+const PIECES := ["frame", "btn_normal", "btn_hover", "btn_pressed", "btn_disabled", "notification", "seal"]
 
-const CONTACT_VP_SIZE := Vector2i(940, 380)
+const CONTACT_VP_SIZE := Vector2i(940, 410)  # +30 (Task 5b round 2) for the new standalone-seal row
 const STRETCH_SAMPLE_SIZE := Vector2(400.0, 260.0)
 
 ## Task 2's multi-set contact sheet — one row per SETS entry (12 with neutral
 ## + the 11 factions), each row showing a frame thumb, all 4 button states,
-## and a magnified seal close-up cropped from the corner cell of the same
-## baked frame texture (so it proves motif legibility straight off the real
-## bake, not a re-rendered approximation).
+## a magnified seal close-up cropped from the corner cell of the same baked
+## frame texture (so it proves motif legibility straight off the real bake,
+## not a re-rendered approximation), and (Task 5b round 2) the standalone
+## `<id>_seal.png` at its REAL 64x64 size, unscaled — the magnified crop can
+## flatter small-scale legibility, so the real-size column is the honest
+## check.
 const FACTIONS_CONTACT_ROW_H := 100.0
 const FACTIONS_CONTACT_HEADER_H := 50.0
-const FACTIONS_CONTACT_VP_SIZE := Vector2i(760, 1270)
+const FACTIONS_CONTACT_VP_SIZE := Vector2i(820, 1270)
 
 ## Per-set palette table — data, not code branches (Task 2 appends the 11
 ## faction rows here; painters below stay unchanged and read only these
 ## fields). Keep in sync with scripts/ui/ui_palette.gd (Task 3): that file
 ## duplicates these values for runtime color decisions; this table is
 ## tool-side and bakes pixels.
+## Record shape (Task 5b round 2, ART GATE 3-color-presence request):
+## {parchment, parchment_dark, ink, heraldry, secondary, accent, motif}.
+## `seal` (round 1's field name) is RETIRED — its role (the wax-seal disc
+## color) is now `secondary`, so every SETS row needed a rename, not just a
+## value tweak. Color ROLES, all now visibly distinct per set instead of
+## round 1's "everything reads as heraldry" monochrome:
+##   heraldry  (primary)   -> pressed-button fill, bar fills (unchanged role)
+##   secondary             -> frame's INNER wobble-border line (outer line
+##                             stays `ink`), button HOVER border emphasis
+##                             (replaces heraldry there), seal wax disc
+##   accent    (tertiary)  -> seal emboss-highlight ring AND the seal's
+##                             motif fill (both were heraldry-derived in
+##                             round 1, reading as "dark-on-dark"; _paint_seal
+##                             now feeds the motif painter a `pal` copy with
+##                             `heraldry` swapped for `accent` instead of
+##                             touching any `_motif_*` function — geometry
+##                             stays untouched, only which color the existing
+##                             heraldry-reads resolve to), plus the frame's
+##                             thin title-bar underline
+## `accent` is now REQUIRED on every row (round 1 made it optional, wired
+## only for forsaken/tainted_jade) since _paint_seal's emboss ring and motif
+## recolor are unconditional now — every set needs a real value.
 const SETS := {
-	&"neutral": {
+	&"neutral": {  # no chart (base/unthemed style) — secondary invented as a
+		# cool ink-well grey-blue (hue ~174 deg from the warm gold heraldry,
+		# strong separation); accent a pale warm gold-cream emboss highlight.
 		parchment = Color(0.85, 0.79, 0.66),
 		parchment_dark = Color(0.24, 0.21, 0.17),
 		ink = Color(0.16, 0.13, 0.10),
 		heraldry = Color(0.62, 0.52, 0.30),
-		seal = Color(0.40, 0.32, 0.16),
+		secondary = Color(0.26, 0.29, 0.32),
+		accent = Color(0.85, 0.77, 0.47),
 		motif = &"quill",
 	},
-	# ── 11 major faction sets — heraldry seeded from each FactionData.color
-	# (data/factions/<id>.tres), hand-tuned toward ink-compatible saturation
-	# (s ~0.35-0.60, v ~0.36-0.62, matching neutral's heraldry weight).
+	# ── 11 major faction sets. Task 5b round 1 (docs/faction_color_alignment.md,
+	# the designer-approved SoB colour chart) replaced 10 of these 11 rows'
+	# heraldry/ink/parchment with values derived from each faction's chart
+	# Primary/Secondary/Tertiary colors (heraldry=chart Primary, ink=darkest
+	# chart color, parchment=lightest chart color pulled into the readability
+	# band — hand-tuned per-row where a raw chart value fought contrast; see
+	# the doc's per-faction table for exact reasoning). Task 5b round 2 (ART
+	# GATE feedback: palettes read monochrome — primary dominated, secondary
+	# looked like darker-primary, tertiary was nearly absent) reworked
+	# `secondary`/`accent` so all three chart colors are genuinely visible:
+	# wherever the chart's Secondary/Tertiary color was still "free" (not
+	# already spent on ink/parchment in round 1), it was pulled in here
+	# directly — see each row's comment for exactly which chart color feeds
+	# which field. Two factions (cinderguard, forsaken) had their chart
+	# Secondary REASSIGNED here from `ink` to `secondary` so it reads as its
+	# own hue instead of matching the border color — `ink` for those two
+	# became a small generic near-neutral-dark tone instead (ink was never
+	# required to be literally chart-sourced; several rows already synthesize
+	# it). Three factions (skulloath, ivoryscar, and — for `accent` only —
+	# thunderswarm/cinderguard/neutral/empire) have all 3 chart hues already
+	# claimed by ink/parchment/heraldry with nothing left over, so their
+	# `secondary`/`accent` are INVENTED complementary tones, documented as
+	# such per-row — not a chart-fidelity gap, a mathematical one (3 chart
+	# colors, more than 3 chrome roles once secondary+accent are real roles).
+	# Empire is not on the chart; its heraldry/ink/parchment stay untouched,
+	# only secondary/accent are new (also invented, see its row).
+	# All heraldry stays hand-tuned toward ink-compatible saturation
+	# (s ~0.35-0.60, v ~0.36-0.62, matching neutral's heraldry weight) —
+	# UNCHANGED from round 1 (this request only touches secondary/accent/the
+	# 2 reassigned inks).
 	# `parchment` is the BINDING readability band: v 0.70-0.88, s <= 0.25 for
-	# all 11 (verified via the palette_design2.py scratch script). `parchment_
-	# dark` (stain tone) and `seal`/`ink` are NOT band-bound, same as neutral.
-	&"empire": {  # clean warm — stays close to neutral's warm cream
+	# all 11 (verified via a scratch HSV script per Task 5b's report) —
+	# UNCHANGED from round 1.
+	# `parchment_dark` (stain tone) is re-derived from `parchment` via the
+	# same relative darkening every row already used (same hue, s+~0.10,
+	# v*~0.30) — UNCHANGED from round 1.
+	&"empire": {  # clean warm heraldry/ink/parchment stay close to neutral's
+		# warm cream (unchanged from round 1 — not on the chart). secondary/
+		# accent invented for round 2: a Roman gold/bronze secondary (~177
+		# deg from the blue heraldry) fits the laurel_shield motif; accent a
+		# pale ivory/banner-white emboss highlight.
 		parchment = Color(0.86, 0.82, 0.73),
 		parchment_dark = Color(0.26, 0.24, 0.19),
 		ink = Color(0.15, 0.13, 0.10),
 		heraldry = Color(0.29, 0.36, 0.50),
-		seal = Color(0.17, 0.22, 0.33),
+		secondary = Color(0.45, 0.38, 0.20),
+		accent = Color(0.88, 0.83, 0.69),
 		motif = &"laurel_shield",
 	},
-	&"skulloath": {  # aged/darker — low end of the readability band, dusty
-		parchment = Color(0.72, 0.64, 0.62),
-		parchment_dark = Color(0.22, 0.17, 0.16),
-		ink = Color(0.13, 0.08, 0.08),
-		heraldry = Color(0.42, 0.19, 0.20),
-		seal = Color(0.27, 0.11, 0.12),
+	&"skulloath": {  # SoB chart: primary Black #000000, secondary Maroon
+		# #950a0a, tertiary Bone #f2ebe3. Ink = primary (near-black, kept
+		# just off literal 0/0/0 for warmth); heraldry = secondary maroon
+		# (raw hex is too saturated/bright for a pressed-button fill,
+		# hand-tuned per mapping rule 1); parchment = tertiary bone pulled
+		# into the readability band — replaces the old dusty-rose tone.
+		# Round 2: all 3 chart hues are already claimed above, so secondary/
+		# accent are INVENTED — a deep aged-horn brown secondary (wax-seal
+		# disc/inner-border/hover, ~27 deg off the maroon heraldry) and a
+		# pale trophy-gold accent (emboss/motif), fitting a skull-and-bone
+		# trophy aesthetic.
+		parchment = Color(0.78, 0.73, 0.68),
+		parchment_dark = Color(0.23, 0.21, 0.18),
+		ink = Color(0.06, 0.04, 0.04),
+		heraldry = Color(0.50, 0.21, 0.21),
+		secondary = Color(0.32, 0.24, 0.18),
+		accent = Color(0.80, 0.70, 0.36),
 		motif = &"horned_skull",
 	},
-	&"gladehost": {  # greenish
-		parchment = Color(0.76, 0.83, 0.70),
-		parchment_dark = Color(0.22, 0.25, 0.18),
-		ink = Color(0.12, 0.14, 0.10),
-		heraldry = Color(0.33, 0.44, 0.26),
-		seal = Color(0.20, 0.29, 0.15),
+	&"gladehost": {  # SoB chart: primary Teal #3bbcbc, secondary Beige
+		# #EFE7db, tertiary Autumn Red #F17363. heraldry = primary teal
+		# (tuned darker than raw hex for pressed-button contrast); parchment
+		# = secondary beige, pulled a touch below the raw hex's v=0.937 to
+		# stay inside the 0.70-0.88 band; ink synthesized as a deep
+		# teal-grey (not chart-literal).
+		# Round 2: secondary = beige's OWN hue, darkened into wax-seal
+		# weight (v~0.30) — beige itself stays parchment at a much lighter
+		# value, so reusing the hue at a different value isn't a conflict,
+		# and it reads as clearly different from the teal heraldry (~144
+		# deg apart). accent = tertiary autumn red, brightened for emboss
+		# pop (now WIRED — round 1 only recorded it as unused data).
+		parchment = Color(0.85, 0.81, 0.75),
+		parchment_dark = Color(0.26, 0.23, 0.20),
+		ink = Color(0.10, 0.13, 0.13),
+		heraldry = Color(0.19, 0.42, 0.42),
+		secondary = Color(0.30, 0.26, 0.20),
+		accent = Color(0.92, 0.43, 0.37),
 		motif = &"leaf",
 	},
-	&"moonspear": {  # cool blue-grey
-		parchment = Color(0.74, 0.76, 0.82),
-		parchment_dark = Color(0.20, 0.21, 0.25),
+	&"moonspear": {  # SoB chart: primary Blue #3847cb, secondary Light Gray
+		# #8c8c8c, tertiary Silver #c0c0c0. heraldry = primary, tuned to a
+		# vivid-but-button-safe blue; parchment is a light cool tint (not
+		# literally chart-sourced any more — round 2 frees the chart's
+		# secondary/tertiary greys for their own roles below instead of
+		# blending both into parchment); ink stays the existing navy-black.
+		# Round 2: secondary = chart Secondary Light Gray's hue, tuned;
+		# accent = chart Tertiary Silver, brighter still — both are
+		# essentially achromatic (the chart itself gives moonspear a
+		# saturated-blue-primary + neutral-greys identity), so secondary and
+		# accent read apart from heraldry mainly by saturation/value, not
+		# hue — a chart-faithful "steel and silver" look, not an execution
+		# gap.
+		parchment = Color(0.75, 0.76, 0.81),
+		parchment_dark = Color(0.20, 0.21, 0.24),
 		ink = Color(0.11, 0.12, 0.15),
-		heraldry = Color(0.36, 0.39, 0.55),
-		seal = Color(0.21, 0.23, 0.36),
+		heraldry = Color(0.26, 0.29, 0.58),
+		secondary = Color(0.39, 0.40, 0.42),
+		accent = Color(0.77, 0.77, 0.80),
 		motif = &"crescent",
 	},
-	&"sunblessed": {  # golden
+	&"sunblessed": {  # SoB chart: primary Gold #f7e689, secondary Mint
+		# Green #98FF98, tertiary Silver #c0c0c0. heraldry = primary gold,
+		# darkened well below the raw hex's v=0.969 — its pressed-state text
+		# is UIPalette.PARCHMENT (light), so heraldry needs real separation
+		# from that value to stay readable. Parchment/ink unchanged (never
+		# chart-sourced for this faction).
+		# GATE round-1 self-critique: a first pass at heraldry v=0.55 only
+		# reached ~2.6:1 WCAG contrast against the PARCHMENT-colored
+		# pressed-state text — pushed down to v=0.46 for ~3.47:1.
+		# Round 2: secondary = chart Secondary Mint Green, tamed from its
+		# raw v=1.0 into wax-seal weight (v~0.42) — genuinely GREEN against
+		# the gold heraldry (~69 deg apart), unlike round 1's unused mint
+		# note. accent = chart Tertiary Silver (now WIRED).
 		parchment = Color(0.87, 0.81, 0.66),
 		parchment_dark = Color(0.26, 0.24, 0.17),
 		ink = Color(0.16, 0.13, 0.10),
-		heraldry = Color(0.62, 0.52, 0.25),
-		seal = Color(0.40, 0.33, 0.14),
+		heraldry = Color(0.46, 0.42, 0.18),
+		secondary = Color(0.19, 0.42, 0.19),
+		accent = Color(0.78, 0.80, 0.78),
 		motif = &"sun",
 	},
-	&"shardhorde": {  # crystal-cold
-		parchment = Color(0.83, 0.77, 0.85),
-		parchment_dark = Color(0.25, 0.21, 0.26),
-		ink = Color(0.15, 0.10, 0.15),
-		heraldry = Color(0.55, 0.28, 0.49),
-		seal = Color(0.36, 0.16, 0.31),
+	&"shardhorde": {  # SoB chart: primary Brown #964b00, secondary Olive
+		# Green #5a8000, tertiary Dark Lavender #734F96. heraldry = primary
+		# brown; parchment = a warm neutral tint from the brown family,
+		# banded; ink deepened to match.
+		# Round 2: secondary = chart Secondary Olive Green (same hue round 1
+		# already used for the old `seal` field, kept — just renamed/
+		# re-darkened slightly). accent = chart Tertiary Dark Lavender,
+		# brightened for emboss pop (now WIRED — round 1 only recorded it as
+		# unused data after the old magenta heraldry was retired).
+		parchment = Color(0.82, 0.76, 0.71),
+		parchment_dark = Color(0.25, 0.22, 0.19),
+		ink = Color(0.13, 0.11, 0.08),
+		heraldry = Color(0.50, 0.35, 0.20),
+		secondary = Color(0.25, 0.30, 0.12),
+		accent = Color(0.73, 0.57, 0.88),
 		motif = &"crystal_shard",
 	},
-	&"thunderswarm": {  # storm-grey
-		parchment = Color(0.73, 0.75, 0.78),
-		parchment_dark = Color(0.19, 0.21, 0.23),
-		ink = Color(0.11, 0.12, 0.14),
-		heraldry = Color(0.50, 0.44, 0.22),
-		seal = Color(0.33, 0.28, 0.13),
+	&"thunderswarm": {  # SoB chart: primary Orange #f28536, secondary Dark
+		# Brown #6c4837, tertiary Cream #fffdd0. heraldry = primary orange,
+		# darkened for pressed-state text contrast; parchment = tertiary
+		# cream pulled into the readability band; ink deepened to match the
+		# secondary's dark brown.
+		# Round 2: secondary = chart Secondary Dark Brown (same hue round 1
+		# already used for `ink`/old `seal`, kept — the chart's own orange
+		# primary + dark-brown secondary sit only ~6 deg apart in hue, so
+		# this pairing is close by chart design, not by under-tuning; value
+		# keeps them apart instead). accent is INVENTED (tertiary cream is
+		# already spent on parchment) — a pale spark-gold "lightning flash"
+		# highlight, distinctly brighter than both.
+		parchment = Color(0.82, 0.82, 0.70),
+		parchment_dark = Color(0.25, 0.24, 0.18),
+		ink = Color(0.13, 0.10, 0.08),
+		heraldry = Color(0.52, 0.34, 0.21),
+		secondary = Color(0.30, 0.19, 0.13),
+		accent = Color(0.90, 0.87, 0.59),
 		motif = &"bolt",
 	},
-	&"cinderguard": {  # ember-warm
-		parchment = Color(0.85, 0.74, 0.68),
-		parchment_dark = Color(0.26, 0.21, 0.18),
-		ink = Color(0.15, 0.11, 0.09),
-		heraldry = Color(0.52, 0.32, 0.21),
-		seal = Color(0.34, 0.20, 0.11),
+	&"cinderguard": {  # SoB chart: primary Crimson #c4092e, secondary
+		# Charcoal #42525d, tertiary White #f5f5f5. heraldry = primary,
+		# retuned from ember-orange to a true crimson; parchment kept warm
+		# but desaturated a touch toward the tertiary white.
+		# Round 2 REASSIGNMENT: round 1 put chart-secondary charcoal on
+		# `ink`, which meant the wax-seal disc (old `seal`, a darkened-
+		# heraldry derivative) never showed charcoal's own hue anywhere.
+		# Charcoal now IS `secondary` (~148 deg from the crimson heraldry);
+		# `ink` becomes a small generic near-neutral-dark tone instead (not
+		# chart-literal — several other rows already do this). accent is
+		# INVENTED (tertiary white was nudged into parchment, not free) — a
+		# warm ember-gold emboss highlight.
+		parchment = Color(0.85, 0.77, 0.72),
+		parchment_dark = Color(0.26, 0.21, 0.19),
+		ink = Color(0.07, 0.06, 0.06),
+		heraldry = Color(0.52, 0.21, 0.25),
+		secondary = Color(0.28, 0.35, 0.40),
+		accent = Color(0.85, 0.69, 0.38),
 		motif = &"anvil_flame",
 	},
-	&"forsaken": {  # grey-cold
-		parchment = Color(0.76, 0.74, 0.79),
-		parchment_dark = Color(0.22, 0.20, 0.24),
-		ink = Color(0.12, 0.10, 0.13),
-		heraldry = Color(0.36, 0.26, 0.40),
-		seal = Color(0.23, 0.15, 0.26),
+	&"forsaken": {  # SoB chart: primary Purple #9a0174, secondary Slate
+		# Gray #708090, tertiary Gold #ffd700. heraldry = primary purple;
+		# parchment stays grey-violet (slate-tinted, not chart-literal).
+		# Round 2 REASSIGNMENT (same reasoning as cinderguard): round 1 put
+		# chart-secondary slate on `ink`. Slate now IS `secondary` (~106 deg
+		# from the purple heraldry); `ink` becomes a small generic
+		# near-neutral-dark tone instead. accent = chart Tertiary Gold —
+		# UNCHANGED from round 1, already wired (the doc's named concrete
+		# use: "seal emboss highlight -> gold accent").
+		parchment = Color(0.72, 0.72, 0.79),
+		parchment_dark = Color(0.20, 0.19, 0.24),
+		ink = Color(0.07, 0.06, 0.07),
+		heraldry = Color(0.42, 0.19, 0.36),
+		secondary = Color(0.31, 0.36, 0.40),
+		accent = Color(0.90, 0.78, 0.14),
 		motif = &"broken_mask",
 	},
-	&"ivoryscar": {  # sun-bleached — lightest, most desaturated parchment
-		parchment = Color(0.88, 0.86, 0.81),
-		parchment_dark = Color(0.26, 0.25, 0.22),
-		ink = Color(0.16, 0.14, 0.12),
-		heraldry = Color(0.52, 0.47, 0.34),
-		seal = Color(0.34, 0.30, 0.20),
+	&"ivoryscar": {  # SoB chart: primary Bone #f2ebe3, secondary Black
+		# #212121, tertiary Warm Gray #c9be90. parchment = primary bone,
+		# pinned safely inside the band; ink = secondary black, warmed with
+		# a touch of hue; heraldry = tertiary warm gray, darkened.
+		# GATE round-1 self-critique: pulling parchment off the v=0.880
+		# band-edge quietly ate into pressed-button contrast (3.17:1 ->
+		# 2.80:1 at first pass) — darkened heraldry to v=0.42 to recover
+		# ~3.76:1.
+		# Round 2: all 3 chart hues are already claimed above (same
+		# situation as skulloath), so secondary/accent are INVENTED — a
+		# terracotta/sandstone secondary and a gold-inlay accent, fitting
+		# the Egyptian/pyramid motif (sandstone-and-gold-inlay tombware).
+		parchment = Color(0.83, 0.80, 0.76),
+		parchment_dark = Color(0.25, 0.23, 0.20),
+		ink = Color(0.13, 0.11, 0.09),
+		heraldry = Color(0.42, 0.39, 0.26),
+		secondary = Color(0.35, 0.23, 0.17),
+		accent = Color(0.82, 0.71, 0.33),
 		motif = &"pyramid",
 	},
-	&"tainted_jade": {  # faint green parchment, corrupt-purple heraldry
-		parchment = Color(0.72, 0.80, 0.71),
-		parchment_dark = Color(0.19, 0.24, 0.19),
+	&"tainted_jade": {  # SoB chart: primary Green #30740f, secondary Dark
+		# Purple #301934, tertiary Pale Yellow #d9d45c. heraldry SWAPS to
+		# the chart's green primary (was purple pre-Task-5b — the doc calls
+		# this out explicitly: chart makes green primary, purple secondary);
+		# ink stays put (already green-hued); parchment snapped toward the
+		# chart's green tint.
+		# Round 2: secondary = chart Secondary Dark Purple (same value round
+		# 1 already used for the old `seal` field, kept unchanged — this is
+		# the doc's own "keep the dark secondary dark, lighten the emboss
+		# instead" case). accent = chart Tertiary Pale Yellow — UNCHANGED
+		# from round 1, already wired (fixes the doc's
+		# weakest-seal-contrast ledger note).
+		parchment = Color(0.73, 0.79, 0.70),
+		parchment_dark = Color(0.20, 0.24, 0.18),
 		ink = Color(0.10, 0.12, 0.09),
-		heraldry = Color(0.29, 0.22, 0.36),
-		seal = Color(0.18, 0.13, 0.23),
+		heraldry = Color(0.28, 0.46, 0.19),
+		secondary = Color(0.22, 0.11, 0.24),
+		accent = Color(0.85, 0.83, 0.38),
 		motif = &"fanged_blossom",
 	},
 }
@@ -270,8 +457,10 @@ class _ChromePainter extends Node2D:
 			draw_colored_polygon(_blob(rng, Vector2(cx, cy), r, 8, 0.35), tint)
 
 	## One or more nested hand-inked wobble lines, each `insets[i]` px inside
-	## `rect` at stroke width `widths[i]` — the frame's signature double-line
-	## border (and, doubled up, the notification's ornate variant).
+	## `rect` at stroke width `widths[i]`, all in one `color` — the frame's
+	## signature double-line border (called twice, once per color, since
+	## Task 5b round 2 split it into an `ink` outer line + `secondary` inner
+	## line) and, doubled up again, the notification's ornate variant.
 	func _paint_wobble_border(rng: RandomNumberGenerator, rect: Rect2, insets: Array, widths: Array, color: Color) -> void:
 		for i in insets.size():
 			var r2: Rect2 = rect.grow(-float(insets[i]))
@@ -407,15 +596,17 @@ class _ChromePainter extends Node2D:
 				draw_line(mid, vein_end, ink, max(1.0, r * 0.05))
 
 	## Moonspear — crescent: a lit-arc moon carved from two offset circles
-	## (the second drawn in `pal.seal` so it blends into the seal backing),
-	## plus a small spearhead hanging off the lower horn.
+	## (the second drawn in `pal.secondary` so it blends into the seal
+	## backing — Task 5b round 2 renamed the old `pal.seal` field but the
+	## blend-into-the-disc intent is unchanged), plus a small spearhead
+	## hanging off the lower horn.
 	func _motif_moonspear(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
 		var ink: Color = pal.ink
 		var moon_col: Color = Color(pal.heraldry).lightened(0.28)
 		draw_circle(center, r * 0.6, moon_col)
 		var cut_local := Vector2(r * 0.32, 0.0)
 		var cut_p := center + Vector2(cut_local.x * mirror.x, cut_local.y * mirror.y)
-		draw_circle(cut_p, r * 0.55, pal.seal)
+		draw_circle(cut_p, r * 0.55, pal.secondary)
 		draw_arc(center, r * 0.6, 0.0, TAU, 20, ink, max(1.0, r * 0.06))
 		var tip_local := Vector2(-r * 0.05, r * 0.95)
 		var spear_base_local := Vector2(-r * 0.15, r * 0.35)
@@ -456,7 +647,7 @@ class _ChromePainter extends Node2D:
 	## foot) where every cross-section stays well above that 1px floor.
 	func _motif_cinderguard(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
 		var ink: Color = pal.ink
-		var anvil_col: Color = Color(pal.heraldry).lightened(0.15)  # lightened, not darkened: too close to pal.seal's dark ember tone to survive render-time AA blending at seal scale
+		var anvil_col: Color = Color(pal.heraldry).lightened(0.15)  # lightened, not darkened: too close to pal.secondary's dark tone to survive render-time AA blending at seal scale (note: at seal scale this function receives motif_pal, whose `heraldry` is really the faction's `accent` — see _paint_seal)
 		var anvil_local := PackedVector2Array([
 			Vector2(-r * 0.55, -r * 0.25), Vector2(r * 0.55, -r * 0.25),
 			Vector2(r * 0.38, r * 0.10), Vector2(r * 0.30, r * 0.55),
@@ -654,10 +845,26 @@ class _ChromePainter extends Node2D:
 
 	## Wax-seal disc (flat base + ink rim) with the set's motif embossed
 	## inside it, sized to `r` so it always fits its caller's margin cell.
+	## Task 5b round 2 (ART GATE 3-color-presence request): the wax-seal
+	## disc is now `secondary` (was `heraldry`-derived `seal` — reading as
+	## "dark-on-dark" against the heraldry-derived motif). `accent` is
+	## unconditional now (every SETS row carries one) and does TWO jobs: an
+	## emboss-highlight ring just inside the ink rim, AND the motif fill —
+	## achieved by handing `_paint_motif` a shallow copy of `pal` with
+	## `heraldry` swapped for `accent`. Every `_motif_*` function already
+	## reads `pal.heraldry` for its base fill color, so this recolors all 11
+	## motifs to the tertiary accent WITHOUT touching a single motif's
+	## geometry — `motif_pal.secondary` still equals the real seal disc
+	## color unchanged, so e.g. moonspear's crescent cut-circle (drawn in
+	## `pal.secondary` to blend into the disc) still blends correctly.
 	func _paint_seal(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
-		draw_circle(center, r, pal.seal)
+		draw_circle(center, r, pal.secondary)
 		draw_arc(center, r, 0.0, TAU, 24, Color(Color(pal.ink).r, Color(pal.ink).g, Color(pal.ink).b, 0.85), max(1.0, r * 0.12))
-		_paint_motif(pal, center, r * 0.72, mirror)
+		var acc: Color = pal.accent
+		draw_arc(center, r * 0.82, 0.0, TAU, 20, Color(acc.r, acc.g, acc.b, 0.55), max(1.0, r * 0.08))
+		var motif_pal: Dictionary = pal.duplicate()
+		motif_pal.heraldry = pal.accent
+		_paint_motif(motif_pal, center, r * 0.72, mirror)
 
 	# ── Pieces ───────────────────────────────────────────────────────────
 
@@ -665,9 +872,13 @@ class _ChromePainter extends Node2D:
 		var rect := Rect2(Vector2.ZERO, Vector2(FRAME_SIZE))
 		draw_rect(rect, pal.parchment)
 		_paint_stains(rng, rect, 8, Color(Color(pal.parchment_dark).r, Color(pal.parchment_dark).g, Color(pal.parchment_dark).b, 0.07))
-		_paint_wobble_border(rng, rect, [2.0, 5.5], [2.0, 1.6], pal.ink)
+		# Task 5b round 2: outer line stays `ink` (border definition), inner
+		# line becomes `secondary` (previously both were `ink` — this is the
+		# "frame's inner border line" the ART GATE asked for).
+		_paint_wobble_border(rng, rect, [2.0], [2.0], pal.ink)
+		_paint_wobble_border(rng, rect, [5.5], [1.6], pal.secondary)
 		var m := float(FRAME_MARGIN)
-		var r := 9.0
+		var r := 12.0  # scaled with FRAME_MARGIN 24->32 (was 9.0 at margin 24, same ratio)
 		var corners := [
 			{c = Vector2(m * 0.5, m * 0.5), mir = Vector2(1, 1)},
 			{c = Vector2(FRAME_SIZE.x - m * 0.5, m * 0.5), mir = Vector2(-1, 1)},
@@ -676,12 +887,21 @@ class _ChromePainter extends Node2D:
 		]
 		for cd in corners:
 			_paint_seal(pal, cd.c, r, cd.mir)
+		# Task 5b round 2 (optional per the ART GATE brief, "if it reads
+		# well"): a thin accent underline evoking a title-bar rule, sitting
+		# just below the margin band (clear of the corner seals) so it never
+		# overlaps them, spanning the frame's inner width.
+		var underline_y := m + 3.0
+		var acc: Color = pal.accent
+		draw_line(Vector2(m, underline_y), Vector2(FRAME_SIZE.x - m, underline_y), Color(acc.r, acc.g, acc.b, 0.55), 1.5)
 
 	## Per-state fills exactly per the candidate sheet's parchment button:
-	## normal parchment + ink border; hover pale fill + heraldry-emphasis
-	## border overlay; pressed heraldry fill; disabled desaturated fill +
-	## faded ink. Every color is derived from `pal` so faction sets (Task 2)
-	## reskin automatically without touching this function.
+	## normal parchment + ink border; hover pale fill + secondary-emphasis
+	## border overlay (Task 5b round 2 — was heraldry, which made hover read
+	## as a duller pressed-state instead of its own thing); pressed heraldry
+	## fill; disabled desaturated fill + faded ink. Every color is derived
+	## from `pal` so faction sets (Task 2) reskin automatically without
+	## touching this function.
 	func _paint_button(rng: RandomNumberGenerator, pal: Dictionary, state: String) -> void:
 		var rect := Rect2(Vector2.ZERO, Vector2(BTN_SIZE))
 		var fill: Color
@@ -712,7 +932,10 @@ class _ChromePainter extends Node2D:
 		closed.append(wobble[0])
 		draw_polyline(closed, border, 1.6, true)
 		if state == "hover":
-			draw_polyline(closed, Color(Color(pal.heraldry).r, Color(pal.heraldry).g, Color(pal.heraldry).b, 0.85), 1.0, true)
+			# Task 5b round 2: hover emphasis border is now `secondary`
+			# (was `heraldry`, which made hover and pressed states share a
+			# color family — secondary gives hover its own distinct hue).
+			draw_polyline(closed, Color(Color(pal.secondary).r, Color(pal.secondary).g, Color(pal.secondary).b, 0.85), 1.0, true)
 
 	## Frame variant: doubled outer border (two nested wobble-line pairs)
 	## and a single larger seal at top-center instead of the 4 corners.
@@ -720,13 +943,29 @@ class _ChromePainter extends Node2D:
 		var rect := Rect2(Vector2.ZERO, Vector2(NOTIF_SIZE))
 		draw_rect(rect, pal.parchment)
 		_paint_stains(rng, rect, 14, Color(Color(pal.parchment_dark).r, Color(pal.parchment_dark).g, Color(pal.parchment_dark).b, 0.07))
-		_paint_wobble_border(rng, rect, [3.0, 6.5], [2.2, 1.8], pal.ink)
-		_paint_wobble_border(rng, rect, [12.0, 15.5], [1.8, 1.4], pal.ink)
-		var r := 13.0
+		# Task 5b round 2: only the innermost of the 4 nested lines becomes
+		# `secondary` (matching _paint_frame's outermost=ink/innermost=
+		# secondary rule applied to the whole nested stack) — keeps the
+		# structural double-border look intact while still showing the
+		# secondary hue.
+		_paint_wobble_border(rng, rect, [3.0, 6.5, 12.0], [2.2, 1.8, 1.8], pal.ink)
+		_paint_wobble_border(rng, rect, [15.5], [1.4], pal.secondary)
+		var r := 15.0  # grown from 13.0 (ART GATE seal-readability request), stays inside NOTIF_MARGIN (32)
 		var cy := float(NOTIF_MARGIN) * 0.5
 		_paint_seal(pal, Vector2(NOTIF_SIZE.x * 0.5, cy), r, Vector2.ONE)
 
-	# ── Contact sheet — lays out all 6 baked pieces plus a 400x260 sample of
+	## Task 5b round 2 — standalone wax-seal asset (`<id>_seal.png`,
+	## transparent background, no nine-patch margin): Tasks 6/7 will place
+	## these directly in dialog headers/faction panels. Same `_paint_seal`
+	## painter as the frame corners/notification top-center, just larger and
+	## with no parchment backdrop drawn first (the SubViewport is already
+	## transparent_bg — see the driver below — so skipping the backdrop
+	## `draw_rect` is what makes this piece transparent).
+	func _paint_seal_standalone(pal: Dictionary) -> void:
+		var r := 28.0
+		_paint_seal(pal, Vector2(SEAL_SIZE) * 0.5, r, Vector2.ONE)
+
+	# ── Contact sheet — lays out all 7 baked pieces plus a 400x260 sample of
 	# the frame piece drawn through a real StyleBoxTexture (draw_style_box),
 	# the same nine-patch draw path game_manager.gd uses at runtime, so
 	# corner-seal integrity under stretch is provably checked, not asserted. ──
@@ -772,6 +1011,12 @@ class _ChromePainter extends Node2D:
 		draw_string(ThemeDB.fallback_font, stretch_pos + Vector2(0, -6), "frame stretched to 400x260 (StyleBoxTexture nine-patch)", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
 		draw_style_box(sb, Rect2(stretch_pos, STRETCH_SAMPLE_SIZE))
 
+		# Task 5b round 2 — standalone seal.png at its real 64x64 size.
+		var seal_tex: Texture2D = textures["seal"]
+		var seal_pos := Vector2(500, 315)
+		draw_string(ThemeDB.fallback_font, seal_pos + Vector2(0, -6), "seal (64px, real size)", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
+		draw_texture(seal_tex, seal_pos)
+
 	## Task 2 — one composite sheet across all 12 sets (`_contact_factions.png`):
 	## a row per set with a frame thumbnail, all 4 button states, and a
 	## magnified crop of the frame's top-left FRAME_MARGIN×FRAME_MARGIN corner
@@ -794,9 +1039,19 @@ class _ChromePainter extends Node2D:
 		var btn_gap := 8.0
 		var seal_x := btn_x0 + 4.0 * (btn_w + btn_gap) + 12.0
 		var seal_thumb := 80.0
+		# Task 5b round 2 — real 64x64 standalone seal.png, unscaled, next to
+		# the existing magnified corner-crop column (the crop can flatter
+		# small-scale legibility; this column is the honest check).
+		var seal64_x := seal_x + seal_thumb + 16.0
 		var row_h := FACTIONS_CONTACT_ROW_H
 		var top := FACTIONS_CONTACT_HEADER_H
 		var btn_keys := ["btn_normal", "btn_hover", "btn_pressed", "btn_disabled"]
+
+		var col_caption_y := 44.0
+		draw_string(ThemeDB.fallback_font, Vector2(frame_x, col_caption_y), "frame", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.65, 0.61, 0.54))
+		draw_string(ThemeDB.fallback_font, Vector2(btn_x0, col_caption_y), "normal / hover / pressed / disabled", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.65, 0.61, 0.54))
+		draw_string(ThemeDB.fallback_font, Vector2(seal_x, col_caption_y), "seal (corner, ~3.3x)", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.65, 0.61, 0.54))
+		draw_string(ThemeDB.fallback_font, Vector2(seal64_x, col_caption_y), "seal (64px real)", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.65, 0.61, 0.54))
 
 		for i in set_ids.size():
 			var sid: StringName = set_ids[i]
@@ -818,11 +1073,19 @@ class _ChromePainter extends Node2D:
 
 			# Seal close-up: crop the top-left corner cell straight off the
 			# native-resolution frame texture and magnify it (80px from a
-			# 24px source cell, ~3.3x) — proves motif legibility off the real
-			# bake instead of a synthetic re-render at higher radius.
+			# FRAME_MARGIN-px source cell, ~2.5x at the new 32px margin) —
+			# proves motif legibility off the real bake instead of a
+			# synthetic re-render at higher radius.
 			var src := Rect2(Vector2.ZERO, Vector2(FRAME_MARGIN, FRAME_MARGIN))
 			var seal_rect := Rect2(Vector2(seal_x, row_y + (row_h - seal_thumb) * 0.5), Vector2(seal_thumb, seal_thumb))
 			draw_texture_rect_region(frame_tex, seal_rect, src)
+
+			# Task 5b round 2 — the real 64x64 standalone seal.png, drawn at
+			# native size (no scaling) so it shows exactly what Tasks 6/7
+			# will actually place in dialog headers/faction panels.
+			var seal64_tex: Texture2D = tset["seal"]
+			var seal64_pos := Vector2(seal64_x, row_y + (row_h - 64.0) * 0.5)
+			draw_texture(seal64_tex, seal64_pos)
 
 			if i < set_ids.size() - 1:
 				draw_line(Vector2(8, row_y + row_h), Vector2(vp_size.x - 8.0, row_y + row_h), Color(0.3, 0.28, 0.24), 1.0)
@@ -858,6 +1121,8 @@ class _ChromePainter extends Node2D:
 				_paint_button(rng, pal, "disabled")
 			"notification":
 				_paint_notification(rng, pal)
+			"seal":
+				_paint_seal_standalone(pal)
 			_:
 				push_warning("No painter for piece: %s" % piece)
 
@@ -940,6 +1205,8 @@ func _process(_delta: float) -> bool:
 						sz = FRAME_SIZE
 					"notification":
 						sz = NOTIF_SIZE
+					"seal":
+						sz = SEAL_SIZE
 					_:
 						sz = BTN_SIZE
 				_vp.size = sz
@@ -965,6 +1232,7 @@ func _process(_delta: float) -> bool:
 					"btn_pressed": ImageTexture.create_from_image(_images["%s_btn_pressed" % String(sid2)]),
 					"btn_disabled": ImageTexture.create_from_image(_images["%s_btn_disabled" % String(sid2)]),
 					"notification": ImageTexture.create_from_image(_images["%s_notification" % String(sid2)]),
+					"seal": ImageTexture.create_from_image(_images["%s_seal" % String(sid2)]),
 				}
 			_:  # "factions_contact" — 12-row cross-set sheet, all sets already baked
 				_vp.size = FACTIONS_CONTACT_VP_SIZE
@@ -979,6 +1247,7 @@ func _process(_delta: float) -> bool:
 						"btn_hover": ImageTexture.create_from_image(_images["%s_btn_hover" % String(sid3)]),
 						"btn_pressed": ImageTexture.create_from_image(_images["%s_btn_pressed" % String(sid3)]),
 						"btn_disabled": ImageTexture.create_from_image(_images["%s_btn_disabled" % String(sid3)]),
+						"seal": ImageTexture.create_from_image(_images["%s_seal" % String(sid3)]),
 					}
 				_painter.factions_textures = ftextures
 		_painter.queue_redraw()

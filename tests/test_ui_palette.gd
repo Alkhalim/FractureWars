@@ -16,6 +16,12 @@ func _run() -> void:
 	_check(UIPalette.BAR_FILL != neutral_fill, "BAR_FILL faction-dependent")
 	_check(UIPalette.INK_BODY.v < 0.4, "ink stays dark (readability)")
 	_check(UIPalette.CHIP_BG.a < 1.0 and UIPalette.CHIP_BG.v < 0.2, "chip bg dark translucent per style guide")
+	# Task 5b round 2: SECONDARY/ACCENT are new 3-color-presence fields —
+	# assert they're genuinely distinct from heraldry (PARCHMENT_ACCENT),
+	# not just present, for the faction still active (skulloath).
+	_check(UIPalette.SECONDARY != UIPalette.PARCHMENT_ACCENT, "SECONDARY differs from heraldry")
+	_check(UIPalette.ACCENT != UIPalette.PARCHMENT_ACCENT, "ACCENT differs from heraldry")
+	_check(UIPalette.SECONDARY != UIPalette.ACCENT, "SECONDARY differs from ACCENT")
 	# 2. heraldry() works cross-faction without rebuild
 	_check(UIPalette.heraldry(&"empire") != UIPalette.heraldry(&"skulloath"), "heraldry per faction")
 	# 3. Theme builder produces textured styleboxes when PNGs exist, flat fallback otherwise

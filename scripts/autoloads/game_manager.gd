@@ -84,7 +84,7 @@ func _fade_in(duration: float) -> void:
 # magic numbers that were scanned off the retired button1.png/frame1.png/
 # notification1.png marble artwork.
 const _FRAME_SIZE := Vector2i(192, 192)
-const _FRAME_MARGIN := 24
+const _FRAME_MARGIN := 32  # Task 5b round 2 (ART GATE seal-readability request): was 24, moves together with tools_generate_ui_chrome.gd's FRAME_MARGIN
 const _BTN_SIZE := Vector2i(96, 48)
 const _BTN_MARGIN := 12
 const _NOTIF_SIZE := Vector2i(224, 224)
@@ -112,7 +112,7 @@ const _FONT_WGHT_AXIS := 400.0
 # reads as a plain dark box with no visible parchment. content_margin must stay
 # >= texture_margin (a few px more, for a sliver of bare parchment) so the
 # ink border + corner seals always show clear of whatever chip fills the interior.
-const _FRAME_CONTENT := Vector4(32, 32, 32, 32)  # L T R B — 8px clear of _FRAME_MARGIN (24)
+const _FRAME_CONTENT := Vector4(40, 40, 40, 40)  # L T R B — 8px clear of _FRAME_MARGIN (32) — Task 5b round 2 grew both together
 const _BTN_CONTENT := Vector4(18, 13, 18, 13)    # L T R B — buttons have no opaque backdrop child, just clear of _BTN_MARGIN (12)
 const _NOTIF_CONTENT := Vector4(40, 58, 40, 40)  # L T R B — clear of _NOTIF_MARGIN (32); extra top clears the top-center seal
 
