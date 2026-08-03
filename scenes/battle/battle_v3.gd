@@ -969,8 +969,8 @@ func _update_strength_meter() -> void:
 	# Color intensity based on remaining power
 	var p_pct := player_power / maxf(1.0, _player_power_initial)
 	var e_pct := enemy_power / maxf(1.0, _enemy_power_initial)
-	strength_bar_player.color = Color(0.25, 0.65, 0.35, 0.9) if p_pct > 0.4 else Color(0.75, 0.55, 0.2, 0.9)
-	strength_bar_enemy.color = Color(0.75, 0.25, 0.2, 0.9) if e_pct > 0.4 else Color(0.6, 0.2, 0.15, 0.7)
+	strength_bar_player.color = Color(UIPalette.SUCCESS, 0.9) if p_pct > 0.4 else Color(UIPalette.WARN, 0.9)
+	strength_bar_enemy.color = Color(UIPalette.DANGER, 0.9) if e_pct > 0.4 else Color(UIPalette.DANGER.darkened(0.3), 0.7)
 
 	# Update label with percentage
 	var player_pct_text := "%d%%" % int(p_pct * 100)

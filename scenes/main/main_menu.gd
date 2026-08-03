@@ -15,6 +15,17 @@ func _ready() -> void:
 	if bg_tex:
 		$Background.texture = bg_tex
 
+	# Title has no color override in the .tscn, so it falls through to the
+	# theme's default Label color (dark INK_BODY) — unreadable over the dark
+	# sky background image. Explicit light override + Cinzel display face +
+	# outline (same font_outline_color/outline_size pattern battle_v3.gd uses
+	# for its player/enemy titles over busy backdrops).
+	var title_label: Label = $VBoxContainer/Title
+	title_label.theme_type_variation = &"HeaderLarge"
+	title_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
+	title_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	title_label.add_theme_constant_override("outline_size", 2)
+
 	new_game_button.pressed.connect(_on_new_game)
 	quit_button.pressed.connect(_on_quit)
 
