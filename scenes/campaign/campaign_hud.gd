@@ -2777,6 +2777,17 @@ func _create_diplomacy_panel() -> void:
 	_diplomacy_panel.anchor_right = 0.99
 	_diplomacy_panel.anchor_top = 0.01
 	_diplomacy_panel.anchor_bottom = 0.99
+	# Task 5 windowed-sweep fix: the panel's own "Diplomacy" header (drawn via
+	# _create_panel_header, close to the panel's own top edge) sat only ~11px
+	# below the screen top — nowhere near clear of the TopBar's fixed 52px
+	# height (TopBar has z_index=5, drawing over every sibling incl. this
+	# panel, same as documented on city_panel below). The bundled Vollkorn
+	# body font's taller ascenders (vs. the previous default UI font) pushed
+	# the title glyphs' ink into visibly clipping under that bar. Fix per the
+	# style guide's fit rule (min-size/offset at the panel builder, not a
+	# smaller font): an explicit offset_top clearing the TopBar, same 52px
+	# reference city_panel already uses.
+	_diplomacy_panel.offset_top = 52.0
 	_diplomacy_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_diplomacy_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_diplomacy_panel.clip_contents = true
@@ -6009,6 +6020,13 @@ func _create_research_panel() -> void:
 	_research_panel.anchor_right = 1.0
 	_research_panel.anchor_top = 0.0
 	_research_panel.anchor_bottom = 1.0
+	# Task 5 windowed-sweep fix: same TopBar-clipping issue as _diplomacy_panel
+	# above, worse here since this panel previously had only its inner
+	# MarginContainer's 6px top margin between the screen edge and the "Tech
+	# Tree..." title — the Vollkorn body font's taller ascenders made the
+	# clip under the (z_index 5) TopBar clearly visible. Same fix, same 52px
+	# reference (city_panel's established offset_top).
+	_research_panel.offset_top = 52.0
 	_research_panel.clip_contents = true
 	_research_panel.add_theme_stylebox_override("panel", _create_panel_style())
 

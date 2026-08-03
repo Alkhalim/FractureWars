@@ -90,6 +90,16 @@ const _BTN_MARGIN := 12
 const _NOTIF_SIZE := Vector2i(224, 224)
 const _NOTIF_MARGIN := 32
 
+# ── Bundled OFL fonts (Task 5, picked at the font ART GATE from 4 candidates
+# baked by tests/tools_font_candidate_sheet.gd — sheet + tool kept committed
+# for provenance). Body = Vollkorn, Display = Cinzel; both are variable-weight
+# TTFs pinned to wght=400 via FontVariation (the exact weight shown at the
+# gate) — see _load_ui_font. Licenses: assets/fonts/OFL-vollkorn.txt,
+# assets/fonts/OFL-cinzel.txt.
+const _BODY_FONT_PATH := "res://assets/fonts/Vollkorn-wght.ttf"
+const _DISPLAY_FONT_PATH := "res://assets/fonts/Cinzel-wght.ttf"
+const _FONT_WGHT_AXIS := 400.0
+
 # Content-margin knobs — the layout-reflow tuning surface for the windowed
 # panel-builder sweep (Task 3 step 6). Adjust HERE (or the geometry above),
 # never with per-panel hacks in campaign_hud.gd/campaign.gd/etc.
@@ -158,6 +168,28 @@ func _load_chrome_piece(set_id: StringName, piece: String) -> Texture2D:
 			return load(neutral_path) as Texture2D
 	return null
 
+## Loads a bundled UI font face (body or display) and pins its `wght`
+## variable axis to _FONT_WGHT_AXIS via FontVariation. Both bundled faces are
+## variable-weight TTFs — Godot 4 loads a variable .ttf as a plain FontFile at
+## whatever the file's default named instance happens to be, which can render
+## at an odd/inconsistent weight, so both are pinned explicitly here rather
+## than trusting the file default. 400 is not a guess: it's the exact weight
+## shown on both faces in the Task 5 ART GATE candidate sheet
+## (assets/fonts/_contact_font_candidates.png), so the shipped look matches
+## what was approved. Null-guarded (missing file/failed load) so every call
+## site can skip straight to Godot's built-in default font instead of
+## crashing on a null Font.
+func _load_ui_font(path: String) -> Font:
+	if not ResourceLoader.exists(path):
+		return null
+	var base := load(path) as FontFile
+	if base == null:
+		return null
+	var fv := FontVariation.new()
+	fv.base_font = base
+	fv.variation_opentype = {"wght": _FONT_WGHT_AXIS}
+	return fv
+
 ## Builds a complete Theme from the baked chrome set `set_id` (fallback chain:
 ## `set_id` PNGs -> neutral PNGs -> flat StyleBoxFlat, per piece). Also
 ## refreshes _frame_texture/_btn_texture*/_notif_texture as a side effect, so
@@ -176,6 +208,16 @@ func _build_theme_for_set(set_id: StringName) -> Theme:
 
 	var theme := Theme.new()
 
+	# ── Bundled OFL font pair (Task 5) — body is the theme-wide default;
+	# Theme.default_font/default_font_size are the fallback ANY type without
+	# its own "font"/"font_size" override reads, so this one assignment
+	# covers Label, Button (below, though it also gets an explicit size to
+	# match the brief), and every other type that doesn't set its own font. ──
+	var body_font := _load_ui_font(_BODY_FONT_PATH)
+	if body_font:
+		theme.default_font = body_font
+	theme.default_font_size = 13
+
 	# ── Button styles — each state has its own baked texture now (parchment/
 	# hover-brighter/heraldry-pressed/desaturated-disabled), so no modulate
 	# tinting is needed the way the old single-texture button1.png required. ──
@@ -193,12 +235,32 @@ func _build_theme_for_set(set_id: StringName) -> Theme:
 	theme.set_color("font_hover_color", "Button", UIPalette.INK_TITLE)
 	theme.set_color("font_pressed_color", "Button", UIPalette.PARCHMENT)
 	theme.set_color("font_disabled_color", "Button", Color(UIPalette.INK_BODY.r, UIPalette.INK_BODY.g, UIPalette.INK_BODY.b, 0.55))
-	theme.set_font_size("font_size", "Button", 15)
+	theme.set_font_size("font_size", "Button", 13)
 
 	# ── Label default — dark ink reads on the parchment fields panels now
 	# sit on; text intended for dark chips (_make_text_chip et al) keeps
 	# setting its own light font_color override, unaffected by this default. ──
 	theme.set_color("font_color", "Label", UIPalette.INK_BODY)
+
+	# ── Header type variations (display face, Task 5) — Task 6 applies
+	# `theme_type_variation = "HeaderLarge"/"HeaderMedium"` to title Labels.
+	# Both extend "Label" (set_type_variation) so anything they don't
+	# override — font_color, notably — falls through to the "Label" entry
+	# above rather than needing its own copy. Sizes match the style guide's
+	# ladder (titles 16, section headers 14); font_color is set explicitly to
+	# INK_TITLE (distinct semantic constant from body's INK_BODY, even though
+	# the two currently hold equal values) since titles are exactly what that
+	# constant exists for. ──
+	theme.set_type_variation(&"HeaderLarge", &"Label")
+	theme.set_type_variation(&"HeaderMedium", &"Label")
+	var display_font := _load_ui_font(_DISPLAY_FONT_PATH)
+	if display_font:
+		theme.set_font(&"font", &"HeaderLarge", display_font)
+		theme.set_font(&"font", &"HeaderMedium", display_font)
+	theme.set_font_size(&"font_size", &"HeaderLarge", 16)
+	theme.set_font_size(&"font_size", &"HeaderMedium", 14)
+	theme.set_color(&"font_color", &"HeaderLarge", UIPalette.INK_TITLE)
+	theme.set_color(&"font_color", &"HeaderMedium", UIPalette.INK_TITLE)
 
 	# ── PanelContainer / notification (self-guarded flat fallback inside) ──
 	theme.set_stylebox("panel", "PanelContainer", make_panel_style())
@@ -569,10 +631,24 @@ var _compact_theme: Theme
 ## (~0.875 grey) instead of cascading further up to the root theme's colors.
 ## Every font color set on "Button" in _build_theme_for_set must be mirrored
 ## here too, or compact-themed buttons silently lose their ink text.
+##
+## Font mirroring (Task 5): default_font/default_font_size ARE Theme-level
+## fallbacks (unlike colors, which have no such in-Theme fallback), so they
+## apply to every type this theme claims — including Button — without needing
+## a per-type override. Still set here explicitly (not just left to inherit)
+## because Button is claimed the same way font_color is: if this theme were
+## ever built before body_font/UIPalette are ready, silently falling to
+## Godot's stock font would be a much quieter failure than an explicit call
+## site.
 func get_compact_theme() -> Theme:
 	if _compact_theme:
 		return _compact_theme
 	var theme := Theme.new()
+	var body_font := _load_ui_font(_BODY_FONT_PATH)
+	if body_font:
+		theme.default_font = body_font
+	theme.default_font_size = 13
+	theme.set_font_size("font_size", "Button", 13)
 	theme.set_color("font_color", "Button", UIPalette.INK_BODY)
 	theme.set_color("font_hover_color", "Button", UIPalette.INK_TITLE)
 	theme.set_color("font_pressed_color", "Button", UIPalette.PARCHMENT)
