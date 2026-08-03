@@ -633,7 +633,7 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	# Dark chip backdrop so the controls never sit on raw leather
 	var backdrop := Panel.new()
 	var bstyle := StyleBoxFlat.new()
-	bstyle.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	bstyle.bg_color = UIPalette.CHIP_BG
 	bstyle.set_corner_radius_all(5)
 	backdrop.add_theme_stylebox_override("panel", bstyle)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -645,8 +645,9 @@ func create_options_panel(parent: Control) -> PanelContainer:
 
 	var title := Label.new()
 	title.text = "OPTIONS"
+	title.theme_type_variation = &"HeaderLarge"
 	title.add_theme_font_size_override("font_size", 18)
-	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
@@ -665,7 +666,7 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	var gfx_title := Label.new()
 	gfx_title.text = "GRAPHICS"
 	gfx_title.add_theme_font_size_override("font_size", 14)
-	gfx_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	gfx_title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	gfx_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(gfx_title)
 
@@ -680,7 +681,7 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	fs_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
 	fs_row.add_child(fs_label)
 	var fs_check := CheckButton.new()
-	fs_check.modulate = Color(1.0, 0.92, 0.68)
+	fs_check.modulate = UIPalette.ACCENT
 	fs_check.button_pressed = DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 	fs_check.toggled.connect(func(on: bool):
 		if on:
@@ -708,7 +709,7 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	shake_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
 	shake_row.add_child(shake_label)
 	var shake_check := CheckButton.new()
-	shake_check.modulate = Color(1.0, 0.92, 0.68)
+	shake_check.modulate = UIPalette.ACCENT
 	shake_check.button_pressed = not GameManager.has_meta("disable_screen_shake")
 	shake_check.toggled.connect(func(on: bool):
 		if on:
@@ -749,20 +750,11 @@ func _add_volume_row(parent: VBoxContainer, label_text: String, initial_value: f
 	slider.value = initial_value
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.custom_minimum_size = Vector2(140, 0)
-	# Skin the slider track to the gold/leather language
-	var track := StyleBoxFlat.new()
-	track.bg_color = Color(0.16, 0.13, 0.1)
-	track.set_corner_radius_all(3)
-	track.content_margin_top = 4.0
-	track.content_margin_bottom = 4.0
-	slider.add_theme_stylebox_override("slider", track)
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(0.78, 0.62, 0.32)
-	fill.set_corner_radius_all(3)
-	fill.content_margin_top = 4.0
-	fill.content_margin_bottom = 4.0
-	slider.add_theme_stylebox_override("grabber_area", fill)
-	slider.add_theme_stylebox_override("grabber_area_highlight", fill)
+	# Slider track/grabber-area styling comes from the ambient theme's HSlider
+	# entry (root theme sets it directly; the compact theme doesn't claim
+	# HSlider, so it cascades to root the same way ProgressBar/HeaderLarge do
+	# — see game_manager.gd::_build_theme_for_set) — no hand-rolled
+	# StyleBoxFlat override needed here.
 	row.add_child(slider)
 
 	var pct_label := Label.new()

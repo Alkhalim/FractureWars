@@ -445,8 +445,9 @@ func _show_faction_select() -> void:
 	# Title
 	var title := Label.new()
 	title.text = "CHOOSE YOUR FACTION"
+	title.theme_type_variation = &"HeaderLarge"
 	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	outer_vbox.add_child(title)
 
@@ -471,7 +472,7 @@ func _show_faction_select() -> void:
 	var list_title := Label.new()
 	list_title.text = "FACTIONS"
 	list_title.add_theme_font_size_override("font_size", 14)
-	list_title.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
+	list_title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	list_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left_outer_vbox.add_child(list_title)
 
@@ -494,10 +495,11 @@ func _show_faction_select() -> void:
 			continue
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 0)
-		# Faction color stripe
+		# Faction color stripe — cross-faction accent, not the (neutral) active
+		# theme's own heraldry, so each row reads its OWN faction's chart tone
 		var stripe := ColorRect.new()
 		stripe.custom_minimum_size = Vector2(5, 0)
-		stripe.color = faction_data.color
+		stripe.color = UIPalette.heraldry(faction_id)
 		stripe.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		row.add_child(stripe)
 		var btn := Button.new()
@@ -517,7 +519,7 @@ func _show_faction_select() -> void:
 	tutorial_cb.text = "Enable Tutorial"
 	tutorial_cb.button_pressed = true
 	tutorial_cb.add_theme_font_size_override("font_size", 13)
-	tutorial_cb.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
+	tutorial_cb.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	left_outer_vbox.add_child(tutorial_cb)
 
 	# Right side: faction info panel
@@ -544,12 +546,13 @@ func _show_faction_select() -> void:
 
 	_faction_info_label = Label.new()
 	_faction_info_label.text = "Select a faction"
+	_faction_info_label.theme_type_variation = &"HeaderLarge"
 	_faction_info_label.add_theme_font_size_override("font_size", 22)
-	_faction_info_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.6))
+	_faction_info_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	header_hbox.add_child(_faction_info_label)
 
 	var sep_top := HSeparator.new()
-	sep_top.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep_top.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	right_vbox.add_child(sep_top)
 
 	# ── Faction Overview (scrollable, shares space with leader section) ──
@@ -558,7 +561,7 @@ func _show_faction_select() -> void:
 	desc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	var desc_chip := StyleBoxFlat.new()
-	desc_chip.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	desc_chip.bg_color = UIPalette.CHIP_BG
 	desc_chip.set_corner_radius_all(5)
 	desc_chip.set_content_margin_all(12)
 	desc_scroll.add_theme_stylebox_override("panel", desc_chip)
@@ -599,7 +602,7 @@ func _show_faction_select() -> void:
 
 	# ── Leader Selection Section (below faction overview) ──
 	var sep_leader := HSeparator.new()
-	sep_leader.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep_leader.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	right_vbox.add_child(sep_leader)
 
 	# Leader sub-panel with subtle background
@@ -607,8 +610,8 @@ func _show_faction_select() -> void:
 	# absorbs the remaining vertical space.
 	var leader_panel := PanelContainer.new()
 	var leader_style := StyleBoxFlat.new()
-	leader_style.bg_color = Color(0.1, 0.08, 0.06, 0.7)
-	leader_style.border_color = Color(0.5, 0.38, 0.2, 0.5)
+	leader_style.bg_color = Color(UIPalette.CHIP_BG, 0.7)
+	leader_style.border_color = Color(UIPalette.CHIP_BORDER, 0.5)
 	leader_style.set_border_width_all(1)
 	leader_style.set_corner_radius_all(4)
 	leader_style.set_content_margin_all(12)
@@ -624,7 +627,7 @@ func _show_faction_select() -> void:
 	_leader_name_label.name = "LeaderLabel"
 	_leader_name_label.text = ""
 	_leader_name_label.add_theme_font_size_override("font_size", 16)
-	_leader_name_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	_leader_name_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	leader_inner_vbox.add_child(_leader_name_label)
 
 	# Leader row: portrait (left) + bonuses (right)
@@ -672,7 +675,7 @@ func _show_faction_select() -> void:
 	var bonus_header := Label.new()
 	bonus_header.text = "Leader Bonuses:"
 	bonus_header.add_theme_font_size_override("font_size", 15)
-	bonus_header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	bonus_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	bonus_vbox.add_child(bonus_header)
 
 	# Placeholder label (replaced dynamically by _update_leader_display)
@@ -715,7 +718,15 @@ func _on_faction_list_clicked(faction_id: StringName) -> void:
 	for fid in _faction_buttons:
 		var btn: Button = _faction_buttons[fid]
 		if fid == faction_id:
-			btn.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+			# heraldry(fid), not ACCENT/INK_TITLE — the buttons sit on the
+			# light parchment left_panel (ACCENT's light warm tone goes
+			# near-invisible there, same light-on-light trap Task 6 caught on
+			# the diplomacy tab), and INK_TITLE is identical to the theme's
+			# own default Button ink so a "selected" row would read no
+			# differently from an unselected one. The faction's own heraldry
+			# tone is dark enough to stay legible on parchment AND doubles as
+			# the visible "selected" cue, echoing the row's own stripe accent.
+			btn.add_theme_color_override("font_color", UIPalette.heraldry(fid))
 		else:
 			btn.remove_theme_color_override("font_color")
 
@@ -819,9 +830,9 @@ func _update_leader_display() -> void:
 		lbl.add_theme_font_size_override("font_size", 15)
 		var val: int = bonus.get(&"value", 0)
 		if val >= 0:
-			lbl.add_theme_color_override("font_color", Color(0.45, 0.85, 0.4))
+			lbl.add_theme_color_override("font_color", UIPalette.SUCCESS)
 		else:
-			lbl.add_theme_color_override("font_color", Color(0.95, 0.35, 0.3))
+			lbl.add_theme_color_override("font_color", UIPalette.DANGER)
 		bonus_vbox.add_child(lbl)
 
 func _clear_bonus_labels() -> void:
@@ -944,8 +955,9 @@ func _show_load_menu() -> void:
 
 	var title := Label.new()
 	title.text = "LOAD GAME"
+	title.theme_type_variation = &"HeaderLarge"
 	title.add_theme_font_size_override("font_size", 18)
-	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
@@ -979,7 +991,7 @@ func _show_load_menu() -> void:
 			var meta_lbl := Label.new()
 			meta_lbl.text = "Saved: %s" % meta.get("timestamp", "Unknown")
 			meta_lbl.add_theme_font_size_override("font_size", 10)
-			meta_lbl.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45))
+			meta_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
 			meta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			slot_box.add_child(meta_lbl)
 

@@ -248,7 +248,10 @@ func _build_ui() -> void:
 	var order_title := Label.new()
 	order_title.text = "FORMATIONS"
 	order_title.add_theme_font_size_override("font_size", 14)
-	order_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	# INK_TITLE, not PARCHMENT — this panel is _create_panel()'s light
+	# parchment/leather chrome, not a dark chip; the old gold literal was
+	# reading as invisible here (confirmed via windowed screenshot).
+	order_title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	order_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	order_vbox.add_child(order_title)
 
@@ -271,8 +274,8 @@ func _build_ui() -> void:
 	retreat_btn.visible = false
 	# Danger action: keep the themed button skin, signal danger via font color
 	# only (ui_style_guide pattern) instead of replacing the whole stylebox
-	retreat_btn.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45))
-	retreat_btn.add_theme_color_override("font_hover_color", Color(1.0, 0.68, 0.58))
+	retreat_btn.add_theme_color_override("font_color", UIPalette.DANGER)
+	retreat_btn.add_theme_color_override("font_hover_color", UIPalette.DANGER.lightened(0.25))
 	retreat_btn.pressed.connect(_on_retreat_all)
 	order_vbox.add_child(retreat_btn)
 
@@ -299,24 +302,24 @@ func _build_ui() -> void:
 	strength_label = Label.new()
 	strength_label.text = "BATTLE STRENGTH"
 	strength_label.add_theme_font_size_override("font_size", 11)
-	strength_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	strength_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	strength_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	meter_vbox.add_child(strength_label)
 
 	var bar_bg := ColorRect.new()
 	bar_bg.custom_minimum_size = Vector2(280, 16)
-	bar_bg.color = Color(0.15, 0.12, 0.1, 0.9)
+	bar_bg.color = Color(UIPalette.BAR_TROUGH, 0.9)
 	bar_bg.name = "BarBG"
 	meter_vbox.add_child(bar_bg)
 
 	strength_bar_player = ColorRect.new()
-	strength_bar_player.color = Color(0.25, 0.65, 0.35, 0.9)
+	strength_bar_player.color = Color(UIPalette.SUCCESS, 0.9)
 	strength_bar_player.position = Vector2.ZERO
 	strength_bar_player.size = Vector2(140, 16)
 	bar_bg.add_child(strength_bar_player)
 
 	strength_bar_enemy = ColorRect.new()
-	strength_bar_enemy.color = Color(0.75, 0.25, 0.2, 0.9)
+	strength_bar_enemy.color = Color(UIPalette.DANGER, 0.9)
 	strength_bar_enemy.position = Vector2(140, 0)
 	strength_bar_enemy.size = Vector2(140, 16)
 	bar_bg.add_child(strength_bar_enemy)
@@ -331,8 +334,8 @@ func _build_ui() -> void:
 	cmd_vbox.add_theme_constant_override("separation", 1)
 	meter_vbox.add_child(cmd_vbox)
 
-	_add_commander_bonus_line(cmd_vbox, player_army.commander, player_bonuses, Color(0.6, 0.8, 0.65))
-	_add_commander_bonus_line(cmd_vbox, enemy_army_ref.commander, enemy_bonuses, Color(0.8, 0.6, 0.55))
+	_add_commander_bonus_line(cmd_vbox, player_army.commander, player_bonuses, UIPalette.SUCCESS)
+	_add_commander_bonus_line(cmd_vbox, enemy_army_ref.commander, enemy_bonuses, UIPalette.DANGER)
 
 	ui_layer.add_child(strength_meter_panel)
 
@@ -357,7 +360,7 @@ func _build_ui() -> void:
 	var queue_title := Label.new()
 	queue_title.text = "COMMAND QUEUE"
 	queue_title.add_theme_font_size_override("font_size", 12)
-	queue_title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	queue_title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	queue_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	queue_vbox.add_child(queue_title)
 
@@ -371,7 +374,7 @@ func _build_ui() -> void:
 		var num_lbl := Label.new()
 		num_lbl.text = "%d." % (i + 1)
 		num_lbl.add_theme_font_size_override("font_size", 11)
-		num_lbl.add_theme_color_override("font_color", Color(0.6, 0.55, 0.45))
+		num_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
 		num_lbl.custom_minimum_size = Vector2(18, 0)
 		slot_hbox.add_child(num_lbl)
 
@@ -381,8 +384,8 @@ func _build_ui() -> void:
 		cmd_lbl.flat = true
 		cmd_lbl.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		cmd_lbl.add_theme_font_size_override("font_size", 11)
-		cmd_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
-		cmd_lbl.add_theme_color_override("font_hover_color", Color(0.95, 0.9, 0.78))
+		cmd_lbl.add_theme_color_override("font_color", Color(UIPalette.INK_BODY, 0.5))
+		cmd_lbl.add_theme_color_override("font_hover_color", UIPalette.INK_TITLE)
 		cmd_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var captured_slot_idx := i
 		cmd_lbl.gui_input.connect(_on_queue_slot_input.bind(captured_slot_idx))
@@ -401,13 +404,13 @@ func _build_ui() -> void:
 
 	# Command palette
 	var palette_sep := HSeparator.new()
-	palette_sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	palette_sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	queue_vbox.add_child(palette_sep)
 
 	var palette_label := Label.new()
 	palette_label.text = "COMMANDS"
 	palette_label.add_theme_font_size_override("font_size", 11)
-	palette_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.6))
+	palette_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	palette_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	queue_vbox.add_child(palette_label)
 
@@ -476,7 +479,7 @@ func _build_ui() -> void:
 	var player_title := Label.new()
 	player_title.text = "YOUR FORCES"
 	player_title.add_theme_font_size_override("font_size", 14)
-	player_title.add_theme_color_override("font_color", Color(0.25, 0.75, 0.4))
+	player_title.add_theme_color_override("font_color", UIPalette.SUCCESS)
 	player_title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	player_title.add_theme_constant_override("outline_size", 2)
 	player_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -487,13 +490,13 @@ func _build_ui() -> void:
 	roster_vbox.add_child(player_roster_container)
 
 	var roster_sep := HSeparator.new()
-	roster_sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	roster_sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	roster_vbox.add_child(roster_sep)
 
 	var enemy_title := Label.new()
 	enemy_title.text = "ENEMY FORCES"
 	enemy_title.add_theme_font_size_override("font_size", 14)
-	enemy_title.add_theme_color_override("font_color", Color(0.85, 0.3, 0.25))
+	enemy_title.add_theme_color_override("font_color", UIPalette.DANGER)
 	enemy_title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	enemy_title.add_theme_constant_override("outline_size", 2)
 	enemy_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -542,7 +545,7 @@ func _build_ui() -> void:
 	tick_label = Label.new()
 	tick_label.text = "Tick: 0"
 	tick_label.add_theme_font_size_override("font_size", 13)
-	tick_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	tick_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	sim_hbox.add_child(tick_label)
 
 	var begin_btn := Button.new()
@@ -563,7 +566,7 @@ func _build_ui() -> void:
 	speed_label = Label.new()
 	speed_label.text = "1x"
 	speed_label.add_theme_font_size_override("font_size", 13)
-	speed_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55))
+	speed_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	sim_hbox.add_child(speed_label)
 
 	var speed_up_btn := Button.new()
@@ -608,7 +611,13 @@ func _populate_unit_list() -> void:
 		btn.add_theme_font_size_override("font_size", 11)
 		btn.custom_minimum_size = Vector2(190, 24)
 		if f == selected_formation:
-			btn.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+			# SECONDARY, not INK_TITLE — this isn't toggle_mode (no stylebox
+			# swap to lean on), and INK_TITLE is numerically identical to the
+			# theme's own default Button ink, so a "selected" row would read
+			# no differently from every other row. SECONDARY is dark enough
+			# to stay legible on the light parchment button face while being
+			# visibly distinct from plain ink.
+			btn.add_theme_color_override("font_color", UIPalette.SECONDARY)
 		var captured_f := f
 		btn.pressed.connect(_on_formation_selected.bind(captured_f))
 		unit_list_container.add_child(btn)
@@ -691,7 +700,7 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 		# Dark backing chip so roster text reads against the leather panel texture
 		var group_panel := PanelContainer.new()
 		var chip_style := StyleBoxFlat.new()
-		chip_style.bg_color = Color(0.05, 0.04, 0.03, 0.78)
+		chip_style.bg_color = Color(UIPalette.CHIP_BG, 0.78)
 		chip_style.set_corner_radius_all(4)
 		chip_style.content_margin_left = 6.0
 		chip_style.content_margin_right = 6.0
@@ -978,12 +987,12 @@ func _create_panel() -> PanelContainer:
 		return panel
 	# Fallback when UI textures are missing: previous flat style
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.06, 0.05, 0.08, 0.92)
+	style.bg_color = Color(UIPalette.CHIP_BG, 0.92)
 	style.border_width_left = 1
 	style.border_width_top = 1
 	style.border_width_right = 1
 	style.border_width_bottom = 1
-	style.border_color = Color(0.55, 0.42, 0.2, 0.6)
+	style.border_color = Color(UIPalette.CHIP_BORDER, 0.6)
 	style.corner_radius_top_left = 4
 	style.corner_radius_top_right = 4
 	style.corner_radius_bottom_right = 4
@@ -1528,14 +1537,17 @@ func _update_queue_display() -> void:
 			var dur_text := "%ds" % (dur / 10) if dur > 0 else "END"
 			var cmd_name: String = QUEUE_COMMAND_NAMES.get(cmd, "?")
 			_queue_slot_labels[i].text = "%s (%s)" % [cmd_name, dur_text]
-			# Highlight active slot during simulation
+			# Highlight active slot during simulation. SECONDARY, not
+			# INK_TITLE — INK_TITLE == INK_BODY (the "filled" state below),
+			# which would make the active slot indistinguishable from every
+			# other filled slot.
 			if current_phase == Phase.SIMULATION and ref_f.queue_locked and i == ref_f.queue_index and ref_f.queue_index < ref_f.command_queue.size():
-				_queue_slot_labels[i].add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+				_queue_slot_labels[i].add_theme_color_override("font_color", UIPalette.SECONDARY)
 			else:
-				_queue_slot_labels[i].add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+				_queue_slot_labels[i].add_theme_color_override("font_color", UIPalette.INK_BODY)
 		else:
 			_queue_slot_labels[i].text = "---"
-			_queue_slot_labels[i].add_theme_color_override("font_color", Color(0.45, 0.4, 0.35))
+			_queue_slot_labels[i].add_theme_color_override("font_color", Color(UIPalette.INK_BODY, 0.5))
 		# Disable X buttons during simulation
 		_queue_slot_x_buttons[i].disabled = current_phase == Phase.SIMULATION
 
@@ -1564,7 +1576,7 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	var name_label := Label.new()
 	name_label.text = f.display_name
 	name_label.add_theme_font_size_override("font_size", 13)
-	name_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	name_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header_hbox.add_child(name_label)
 	vbox.add_child(header_hbox)
@@ -1604,13 +1616,13 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	var stats_label := Label.new()
 	stats_label.text = "%s %s SPD:%d RNG:%d" % [dps_text, def_text, f.speed, f.attack_range]
 	stats_label.add_theme_font_size_override("font_size", 11)
-	stats_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	stats_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	vbox.add_child(stats_label)
 
 	var hp_label := Label.new()
 	hp_label.text = "HP: %d/%d  Entities: %d/%d" % [f.current_hp, f.max_hp, f.entities_alive, f.total_entities]
 	hp_label.add_theme_font_size_override("font_size", 11)
-	hp_label.add_theme_color_override("font_color", Color(0.7, 0.85, 0.65))
+	hp_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
 	vbox.add_child(hp_label)
 
 	var morale_label := Label.new()
@@ -1627,7 +1639,7 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 	var order_label := Label.new()
 	order_label.text = "Order: %s" % ORDER_NAMES.get(f.current_order, "?")
 	order_label.add_theme_font_size_override("font_size", 11)
-	order_label.add_theme_color_override("font_color", Color(0.65, 0.7, 0.8))
+	order_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	vbox.add_child(order_label)
 
 	# Resource bars info
@@ -1642,7 +1654,7 @@ func _update_unit_info(f: BattleSimulatorV3.BattleFormationV3) -> void:
 		var res_label := Label.new()
 		res_label.text = " ".join(res_parts)
 		res_label.add_theme_font_size_override("font_size", 11)
-		res_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.55))
+		res_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
 		vbox.add_child(res_label)
 
 	unit_info_panel.add_child(vbox)
@@ -1700,10 +1712,12 @@ func _on_skip() -> void:
 func _set_speed(multiplier: int) -> void:
 	sim_speed = 0.1 / float(multiplier)
 	speed_label.text = "%dx" % multiplier
-	# Flash the speed label to indicate the change
-	speed_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+	# Flash the speed label to indicate the change. SECONDARY, not
+	# INK_TITLE — INK_TITLE == INK_BODY (the tween's end value), which would
+	# make the "flash" a no-op (start and end color identical).
+	speed_label.add_theme_color_override("font_color", UIPalette.SECONDARY)
 	var tw := create_tween()
-	tw.tween_property(speed_label, "theme_override_colors/font_color", Color(0.7, 0.65, 0.55), 0.4)
+	tw.tween_property(speed_label, "theme_override_colors/font_color", UIPalette.INK_BODY, 0.4)
 
 func _cycle_player_formation(direction: int) -> void:
 	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
@@ -2235,7 +2249,7 @@ func _show_result() -> void:
 	# Dark chip backdrop — result text must not sit on raw leather
 	var backdrop := Panel.new()
 	var bstyle := StyleBoxFlat.new()
-	bstyle.bg_color = Color(0.05, 0.04, 0.03, 0.72)
+	bstyle.bg_color = UIPalette.CHIP_BG
 	bstyle.set_corner_radius_all(5)
 	backdrop.add_theme_stylebox_override("panel", bstyle)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2245,25 +2259,26 @@ func _show_result() -> void:
 	vbox.add_theme_constant_override("separation", 8)
 
 	var title := Label.new()
+	title.theme_type_variation = &"HeaderLarge"
 	var player_won := simulator.winner_side == player_side
 	var is_stalemate := simulator.winner_side == -1
 	if is_stalemate:
 		title.text = "STALEMATE!"
 		title.add_theme_font_size_override("font_size", 22)
-		title.add_theme_color_override("font_color", Color(0.7, 0.65, 0.45))
+		title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	elif player_won:
 		title.text = "VICTORY!"
 		title.add_theme_font_size_override("font_size", 22)
-		title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.3))
+		title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	else:
 		title.text = "DEFEAT!"
 		title.add_theme_font_size_override("font_size", 22)
-		title.add_theme_color_override("font_color", Color(0.85, 0.3, 0.2))
+		title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
 	var sep := HSeparator.new()
-	sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep)
 
 	# Siege notice: a winning attacker at an enemy city lays siege on Continue
@@ -2276,7 +2291,7 @@ func _show_result() -> void:
 			var siege_note := Label.new()
 			siege_note.text = "⚔ You have stormed the walls — your army now lays siege to %s.\nKeep it here; the city falls after a few turns under siege." % besieged_city.get_display_name()
 			siege_note.add_theme_font_size_override("font_size", 13)
-			siege_note.add_theme_color_override("font_color", Color(0.95, 0.8, 0.35))
+			siege_note.add_theme_color_override("font_color", UIPalette.WARN)
 			siege_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			siege_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			vbox.add_child(siege_note)

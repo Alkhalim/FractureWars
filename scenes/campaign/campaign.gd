@@ -1617,12 +1617,12 @@ func _create_region_labels() -> void:
 		# Panel background behind the label
 		var panel := PanelContainer.new()
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.05, 0.04, 0.08, 0.75)
+		style.bg_color = Color(UIPalette.CHIP_BG, 0.75)
 		style.border_width_left = 1
 		style.border_width_top = 1
 		style.border_width_right = 1
 		style.border_width_bottom = 1
-		style.border_color = Color(0.45, 0.35, 0.2, 0.7)
+		style.border_color = Color(UIPalette.CHIP_BORDER, 0.7)
 		style.corner_radius_top_left = 3
 		style.corner_radius_top_right = 3
 		style.corner_radius_bottom_right = 3
@@ -1636,7 +1636,7 @@ func _create_region_labels() -> void:
 		var label := Label.new()
 		label.text = region.display_name
 		label.add_theme_font_size_override("font_size", 13)
-		label.add_theme_color_override("font_color", Color(0.95, 0.9, 0.7, 0.95))
+		label.add_theme_color_override("font_color", Color(UIPalette.PARCHMENT, 0.95))
 		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 		label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 		label.add_theme_constant_override("shadow_offset_x", 1)
@@ -2855,9 +2855,13 @@ func _create_city_marker(city: CityState) -> void:
 		var city_text: String = city.city_name if city.city_name != "" else str(city.city_id)
 		var plaque := PanelContainer.new()
 		plaque.name = "CityPlaque"
+		# Cross-faction tint — the owning faction's OWN heraldry, not the active
+		# theme's, so a plaque reads that faction's colour regardless of which
+		# faction the player is currently playing/viewing as.
+		var plaque_col: Color = UIPalette.heraldry(city.faction_id)
 		var plaque_style := StyleBoxFlat.new()
-		plaque_style.bg_color = Color(faction_color.r * 0.3, faction_color.g * 0.3, faction_color.b * 0.3, 0.85)
-		plaque_style.border_color = Color(faction_color.r, faction_color.g, faction_color.b, 0.6)
+		plaque_style.bg_color = Color(plaque_col.r * 0.3, plaque_col.g * 0.3, plaque_col.b * 0.3, 0.85)
+		plaque_style.border_color = Color(plaque_col.r, plaque_col.g, plaque_col.b, 0.6)
 		plaque_style.set_border_width_all(1)
 		plaque_style.set_corner_radius_all(2)
 		plaque_style.set_content_margin_all(0)
@@ -4187,12 +4191,12 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 
 	_battle_dialog = PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.bg_color = Color(UIPalette.CHIP_BG, 0.95)
 	style.border_width_left = 2
 	style.border_width_top = 2
 	style.border_width_right = 2
 	style.border_width_bottom = 2
-	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.border_color = Color(UIPalette.CHIP_BORDER, 0.8)
 	style.corner_radius_top_left = 6
 	style.corner_radius_top_right = 6
 	style.corner_radius_bottom_right = 6
@@ -4224,13 +4228,14 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	# Title
 	var title := Label.new()
 	title.text = "BATTLE!"
+	title.theme_type_variation = &"HeaderLarge"
 	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55, 1))
+	title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
 	var sep := HSeparator.new()
-	sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep)
 
 	# Attacker info
@@ -4282,7 +4287,7 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 
 	# Bonuses summary
 	var sep2 := HSeparator.new()
-	sep2.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep2.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep2)
 
 	var bonus_label := Label.new()
@@ -4330,7 +4335,7 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	vbox.add_child(bonus_label)
 
 	var sep3 := HSeparator.new()
-	sep3.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep3.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep3)
 
 	# Buttons
@@ -4487,12 +4492,12 @@ func _show_retreat_report(army: ArmyState, losses: int, from_hex: Vector2i, to_h
 
 	_battle_report_panel = PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.bg_color = Color(UIPalette.CHIP_BG, 0.95)
 	style.border_width_left = 2
 	style.border_width_top = 2
 	style.border_width_right = 2
 	style.border_width_bottom = 2
-	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.border_color = Color(UIPalette.CHIP_BORDER, 0.8)
 	style.corner_radius_top_left = 6
 	style.corner_radius_top_right = 6
 	style.corner_radius_bottom_right = 6
@@ -4519,8 +4524,9 @@ func _show_retreat_report(army: ArmyState, losses: int, from_hex: Vector2i, to_h
 
 	var title := Label.new()
 	title.text = "RETREAT"
+	title.theme_type_variation = &"HeaderLarge"
 	title.add_theme_font_size_override("font_size", 18)
-	title.add_theme_color_override("font_color", Color(0.85, 0.75, 0.3))
+	title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
@@ -4864,12 +4870,12 @@ func _show_battle_report(report: Dictionary) -> void:
 
 	_battle_report_panel = PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
+	style.bg_color = Color(UIPalette.CHIP_BG, 0.95)
 	style.border_width_left = 2
 	style.border_width_top = 2
 	style.border_width_right = 2
 	style.border_width_bottom = 2
-	style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+	style.border_color = Color(UIPalette.CHIP_BORDER, 0.8)
 	style.corner_radius_top_left = 6
 	style.corner_radius_top_right = 6
 	style.corner_radius_bottom_right = 6
@@ -4905,13 +4911,14 @@ func _show_battle_report(report: Dictionary) -> void:
 	# Title
 	var title := Label.new()
 	title.text = "BATTLE REPORT"
+	title.theme_type_variation = &"HeaderLarge"
 	title.add_theme_font_size_override("font_size", 20)
-	title.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
 	var sep := HSeparator.new()
-	sep.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep)
 
 	# Attacker section
@@ -4933,11 +4940,11 @@ func _show_battle_report(report: Dictionary) -> void:
 			unit_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
 		else:
 			unit_label.text = "  %s: %d -> KILLED" % [snap.name, snap.hp_before]
-			unit_label.add_theme_color_override("font_color", Color(0.85, 0.25, 0.2))
+			unit_label.add_theme_color_override("font_color", UIPalette.DANGER)
 		vbox.add_child(unit_label)
 
 	var sep2 := HSeparator.new()
-	sep2.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.3))
+	sep2.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.3))
 	vbox.add_child(sep2)
 
 	# Defender section
@@ -4959,11 +4966,11 @@ func _show_battle_report(report: Dictionary) -> void:
 			unit_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
 		else:
 			unit_label.text = "  %s: %d -> KILLED" % [snap.name, snap.hp_before]
-			unit_label.add_theme_color_override("font_color", Color(0.85, 0.25, 0.2))
+			unit_label.add_theme_color_override("font_color", UIPalette.DANGER)
 		vbox.add_child(unit_label)
 
 	var sep3 := HSeparator.new()
-	sep3.add_theme_color_override("separator_color", Color(0.55, 0.42, 0.2, 0.5))
+	sep3.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep3)
 
 	# Winner
@@ -4991,7 +4998,7 @@ func _show_battle_report(report: Dictionary) -> void:
 	if loot_gold > 0 or loot_iron > 0 or captives_gained > 0:
 		var spoils_label := Label.new()
 		spoils_label.add_theme_font_size_override("font_size", 12)
-		spoils_label.add_theme_color_override("font_color", Color(0.85, 0.75, 0.35))
+		spoils_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 		spoils_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var spoils_parts: Array[String] = []
 		if loot_gold > 0:
@@ -5189,8 +5196,8 @@ func _update_bounty_hover(hex_coord: Vector2i) -> void:
 	if _bounty_tooltip == null:
 		_bounty_tooltip = PanelContainer.new()
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.08, 0.07, 0.1, 0.95)
-		style.border_color = Color(0.55, 0.42, 0.2, 0.8)
+		style.bg_color = Color(UIPalette.CHIP_BG, 0.95)
+		style.border_color = Color(UIPalette.CHIP_BORDER, 0.8)
 		style.set_border_width_all(1)
 		style.set_corner_radius_all(4)
 		style.set_content_margin_all(8)
@@ -5306,8 +5313,8 @@ func _update_trade_route_hover(world_pos: Vector2) -> void:
 		if _trade_route_tooltip == null:
 			var panel := PanelContainer.new()
 			var style := StyleBoxFlat.new()
-			style.bg_color = Color(0.12, 0.11, 0.14, 0.88)
-			style.border_color = Color(0.45, 0.42, 0.35, 0.7)
+			style.bg_color = Color(UIPalette.CHIP_BG, 0.88)
+			style.border_color = Color(UIPalette.CHIP_BORDER, 0.7)
 			style.set_border_width_all(1)
 			style.set_corner_radius_all(3)
 			style.content_margin_left = 6
@@ -5317,7 +5324,7 @@ func _update_trade_route_hover(world_pos: Vector2) -> void:
 			panel.add_theme_stylebox_override("panel", style)
 			var lbl := Label.new()
 			lbl.add_theme_font_size_override("font_size", 11)
-			lbl.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+			lbl.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 			panel.add_child(lbl)
 			panel.name = "TradeTooltipPanel"
 			$UILayer.add_child(panel)
@@ -5690,12 +5697,13 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 
 	_settlement_preview_panel = PanelContainer.new()
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.1, 0.9)
+	style.bg_color = Color(UIPalette.CHIP_BG, 0.9)
 	style.border_width_left = 1
 	style.border_width_top = 1
 	style.border_width_right = 1
 	style.border_width_bottom = 1
-	style.border_color = Color(0.4, 0.8, 0.3, 0.6)
+	# "Good site" indicator — SUCCESS, not a raw green literal
+	style.border_color = Color(UIPalette.SUCCESS, 0.6)
 	style.corner_radius_top_left = 4
 	style.corner_radius_top_right = 4
 	style.corner_radius_bottom_right = 4
@@ -5716,7 +5724,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 	var header := Label.new()
 	header.text = "Settlement at " + terrain_name
 	header.add_theme_font_size_override("font_size", 12)
-	header.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(header)
 
 	var total_value := 0
@@ -5726,7 +5734,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 			var rlabel := Label.new()
 			rlabel.text = "  +" + str(income[res_type]) + " " + rname
 			rlabel.add_theme_font_size_override("font_size", 11)
-			rlabel.add_theme_color_override("font_color", Color(0.5, 0.75, 0.45))
+			rlabel.add_theme_color_override("font_color", UIPalette.SUCCESS)
 			vbox.add_child(rlabel)
 			total_value += income[res_type]
 
@@ -5735,7 +5743,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 		var b_header := Label.new()
 		b_header.text = "Claims resources:"
 		b_header.add_theme_font_size_override("font_size", 11)
-		b_header.add_theme_color_override("font_color", Color(0.72, 0.85, 0.55))
+		b_header.add_theme_color_override("font_color", UIPalette.SUCCESS)
 		vbox.add_child(b_header)
 		for entry in claimable:
 			var b_lbl := Label.new()
@@ -5755,7 +5763,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 	var total_label := Label.new()
 	total_label.text = "Total: %d resources/turn" % total_value
 	total_label.add_theme_font_size_override("font_size", 11)
-	total_label.add_theme_color_override("font_color", Color(0.9, 0.82, 0.55))
+	total_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(total_label)
 
 	_settlement_preview_panel.add_child(vbox)
@@ -5854,18 +5862,17 @@ func _create_minimap() -> void:
 		btn.custom_minimum_size = Vector2(0, 24)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.add_theme_font_size_override("font_size", 11)
-		if i == _minimap_view_mode:
-			btn.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+		# No manual "selected" font_color override needed — toggle_mode +
+		# button_pressed already routes this button through the compact
+		# theme's own "pressed" stylebox/font_pressed_color (PARCHMENT)
+		# continuously (not just while the mouse is held down), so the
+		# themed control already covers the highlighted-selection look.
 		var idx := i
 		btn.pressed.connect(func():
 			_minimap_view_mode = idx
 			_minimap_political_mode = (idx == 1)
 			for j in _view_buttons.size():
 				_view_buttons[j].button_pressed = (j == idx)
-				if j == idx:
-					_view_buttons[j].add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
-				else:
-					_view_buttons[j].remove_theme_color_override("font_color")
 			_minimap_terrain_dirty = true
 			_update_minimap()
 			_update_political_overlay()
@@ -5896,12 +5903,12 @@ func _create_minimap() -> void:
 	_minimap_panel = PanelContainer.new()
 	_minimap_panel.custom_minimum_size = MINIMAP_SIZE + Vector2(8, 8)
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.06, 0.05, 0.08, 0.85)
+	style.bg_color = Color(UIPalette.CHIP_BG, 0.85)
 	style.border_width_left = 1
 	style.border_width_top = 1
 	style.border_width_right = 1
 	style.border_width_bottom = 1
-	style.border_color = Color(0.4, 0.35, 0.25, 0.7)
+	style.border_color = Color(UIPalette.CHIP_BORDER, 0.7)
 	style.corner_radius_top_left = 3
 	style.corner_radius_top_right = 3
 	style.corner_radius_bottom_left = 3
