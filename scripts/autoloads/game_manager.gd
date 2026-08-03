@@ -71,28 +71,50 @@ func _fade_in(duration: float) -> void:
 		_is_transitioning = false
 	)
 
-# ── UI Theme ─────────────────────────────────────────────────
-# All three source images are 1536x1024. We use region_rect to crop
-# to the visible element, then NinePatch margins on the cropped region.
-# Adjust region_rect / margins here if borders look misaligned.
+# ── UI Theme — Parchment & Ink generated chrome (UI Overhaul #40) ──────
+# Chrome is baked by tests/tools_generate_ui_chrome.gd to
+# assets/sprites/ui/generated/<set_id>_{frame,btn_normal,btn_hover,
+# btn_pressed,btn_disabled,notification}.png, one set per major faction plus
+# `neutral`. game_manager.gd stays the single chrome chokepoint: every
+# StyleBox factory below reads whichever set `chrome_set_id` currently names.
+#
+# Geometry CONTRACT — copied verbatim from tools_generate_ui_chrome.gd (keep
+# in sync with that file). Whole-texture regions now (no sub-region
+# slicing) — replaces the old hand-measured `_BTN_REGION`/`_FRAME_TEX_MARGIN`
+# magic numbers that were scanned off the retired button1.png/frame1.png/
+# notification1.png marble artwork.
+const _FRAME_SIZE := Vector2i(192, 192)
+const _FRAME_MARGIN := 24
+const _BTN_SIZE := Vector2i(96, 48)
+const _BTN_MARGIN := 12
+const _NOTIF_SIZE := Vector2i(224, 224)
+const _NOTIF_MARGIN := 32
 
-# Measured from the artwork (tests/tmp_measure_ui_regions.gd scan):
-# button1.png graphic spans x143..1423, y328..635; frame1.png gold border
-# outer edge (116,139)-(1396,790), interior starts (162,183); the nine-patch
-# border zones (texture_margin) must fully contain the gold border or it
-# lands in the stretching center patch and drifts with panel size.
-const _BTN_REGION := Rect2(140, 325, 1287, 314)   # Visible button area, 3px bleed
-const _BTN_MARGIN := 24                            # Border thickness in cropped region
-const _FRAME_REGION := Rect2(76, 99, 1360, 731)   # Gold frame + 40px glow on all sides
-const _FRAME_TEX_MARGIN := Vector4(86, 84, 59, 53) # L T R B — glow + gold border + bevel
-const _FRAME_EXPAND := Vector4(80, 76, 56, 33)    # L T R B — alpha-scanned so the SOLID gold border lands exactly on the panel rect edge (flush panels truly touch the screen border)
-const _FRAME_CONTENT := Vector4(66, 62, 48, 42)   # L T R B — text padding inside border
-const _NOTIF_REGION := Rect2(160, 29, 1214, 827)  # Columns/eagle + 30px glow
-const _NOTIF_TEX_MARGIN := Vector4(89, 188, 89, 83) # L T R B — columns + eagle + medallion
-const _NOTIF_EXPAND := Vector4(30, 30, 30, 30)
-const _NOTIF_CONTENT := Vector4(75, 175, 75, 70)
+# Content-margin knobs — the layout-reflow tuning surface for the windowed
+# panel-builder sweep (Task 3 step 6). Adjust HERE (or the geometry above),
+# never with per-panel hacks in campaign_hud.gd/campaign.gd/etc.
+#
+# GOTCHA found during the sweep: almost every panel wraps its content in an
+# opaque dark chip that fills the PanelContainer's content area (ScrollContainer
+# panel override, or a full-rect backdrop Panel child — see _create_centered_dialog
+# and _refresh_economy_panel). If content_margin < texture_margin, that opaque
+# chip sits UNDER the border band and swallows it almost entirely — the frame
+# reads as a plain dark box with no visible parchment. content_margin must stay
+# >= texture_margin (a few px more, for a sliver of bare parchment) so the
+# ink border + corner seals always show clear of whatever chip fills the interior.
+const _FRAME_CONTENT := Vector4(32, 32, 32, 32)  # L T R B — 8px clear of _FRAME_MARGIN (24)
+const _BTN_CONTENT := Vector4(18, 13, 18, 13)    # L T R B — buttons have no opaque backdrop child, just clear of _BTN_MARGIN (12)
+const _NOTIF_CONTENT := Vector4(40, 58, 40, 40)  # L T R B — clear of _NOTIF_MARGIN (32); extra top clears the top-center seal
 
-var _btn_texture: Texture2D
+# Currently applied chrome/palette set (`neutral` at boot; a faction id once
+# apply_faction_theme — Task 4 — runs). Every StyleBox factory below reflects
+# whichever set was last loaded into _frame_texture/_btn_texture/_notif_texture.
+var chrome_set_id: StringName = &"neutral"
+
+var _btn_texture: Texture2D           # normal-state button texture
+var _btn_hover_texture: Texture2D
+var _btn_pressed_texture: Texture2D
+var _btn_disabled_texture: Texture2D
 var _frame_texture: Texture2D
 var _notif_texture: Texture2D
 
@@ -100,78 +122,226 @@ var _transition_layer: CanvasLayer
 var _transition_rect: ColorRect
 
 func _setup_global_theme() -> void:
-	_btn_texture = load("res://assets/sprites/ui/button1.png") as Texture2D
-	_frame_texture = load("res://assets/sprites/ui/frame1.png") as Texture2D
-	_notif_texture = load("res://assets/sprites/ui/notification1.png") as Texture2D
+	UIPalette.rebuild(&"neutral")
+	chrome_set_id = &"neutral"
+	get_tree().root.theme = _build_theme_for_set(&"neutral")
+
+## Loads one baked chrome piece for `set_id`, falling back to the neutral
+## set's copy of the same piece if `set_id` has no bake (unknown/nonexistent
+## faction id, or a set only partially baked). Returns null if even the
+## neutral piece is missing (checkout with no generated PNGs at all) — every
+## StyleBox factory below has its own flat StyleBoxFlat fallback for that case.
+func _load_chrome_piece(set_id: StringName, piece: String) -> Texture2D:
+	var path := "res://assets/sprites/ui/generated/%s_%s.png" % [String(set_id), piece]
+	if ResourceLoader.exists(path):
+		return load(path) as Texture2D
+	if set_id != &"neutral":
+		var neutral_path := "res://assets/sprites/ui/generated/neutral_%s.png" % piece
+		if ResourceLoader.exists(neutral_path):
+			return load(neutral_path) as Texture2D
+	return null
+
+## Builds a complete Theme from the baked chrome set `set_id` (fallback chain:
+## `set_id` PNGs -> neutral PNGs -> flat StyleBoxFlat, per piece). Also
+## refreshes _frame_texture/_btn_texture*/_notif_texture as a side effect, so
+## the ad hoc factories below (make_panel_style, make_notification_style) and
+## get_compact_theme() stay in lockstep with whichever set was last built
+## here, without needing their own copy of the fallback logic. Caller is
+## responsible for UIPalette.rebuild(set_id) — kept separate so callers that
+## just want the palette (no theme rebuild) can do that alone.
+func _build_theme_for_set(set_id: StringName) -> Theme:
+	_frame_texture = _load_chrome_piece(set_id, "frame")
+	_notif_texture = _load_chrome_piece(set_id, "notification")
+	_btn_texture = _load_chrome_piece(set_id, "btn_normal")
+	_btn_hover_texture = _load_chrome_piece(set_id, "btn_hover")
+	_btn_pressed_texture = _load_chrome_piece(set_id, "btn_pressed")
+	_btn_disabled_texture = _load_chrome_piece(set_id, "btn_disabled")
 
 	var theme := Theme.new()
 
-	# ── Button styles ──
+	# ── Button styles — each state has its own baked texture now (parchment/
+	# hover-brighter/heraldry-pressed/desaturated-disabled), so no modulate
+	# tinting is needed the way the old single-texture button1.png required. ──
 	if _btn_texture:
-		var normal := _make_btn_style(Color.WHITE)
-		theme.set_stylebox("normal", "Button", normal)
-		theme.set_stylebox("hover", "Button", _make_btn_style(Color(1.25, 1.2, 1.1)))
-		theme.set_stylebox("pressed", "Button", _make_btn_style_pressed(Color(0.6, 0.55, 0.5)))
-		theme.set_stylebox("disabled", "Button", _make_btn_style(Color(0.5, 0.48, 0.45, 0.7)))
-		theme.set_stylebox("focus", "Button", _make_btn_style(Color(1.15, 1.12, 1.05)))
+		theme.set_stylebox("normal", "Button", _make_chrome_btn_style(_btn_texture))
+		theme.set_stylebox("hover", "Button", _make_chrome_btn_style(_btn_hover_texture if _btn_hover_texture else _btn_texture))
+		theme.set_stylebox("pressed", "Button", _make_chrome_btn_style(_btn_pressed_texture if _btn_pressed_texture else _btn_texture, true))
+		theme.set_stylebox("disabled", "Button", _make_chrome_btn_style(_btn_disabled_texture if _btn_disabled_texture else _btn_texture))
+		theme.set_stylebox("focus", "Button", _make_chrome_btn_style(_btn_hover_texture if _btn_hover_texture else _btn_texture))
 
-	# Button font — brighter colors + outline for readability on marble
-	theme.set_color("font_color", "Button", Color(0.95, 0.9, 0.75))
-	theme.set_color("font_hover_color", "Button", Color(1.0, 0.97, 0.82))
-	theme.set_color("font_pressed_color", "Button", Color(0.75, 0.7, 0.55))
-	theme.set_color("font_disabled_color", "Button", Color(0.5, 0.45, 0.4))
-	theme.set_color("font_outline_color", "Button", Color(0.0, 0.0, 0.0, 0.9))
-	theme.set_color("font_shadow_color", "Button", Color(0.0, 0.0, 0.0, 0.6))
-	theme.set_constant("outline_size", "Button", 3)
-	theme.set_constant("shadow_offset_x", "Button", 1)
-	theme.set_constant("shadow_offset_y", "Button", 2)
+	# Button font — dark ink on the (now light) parchment/heraldry fills;
+	# pressed state's heraldry fill gets light parchment text per the
+	# generator's "light text expected" note on btn_pressed.png.
+	theme.set_color("font_color", "Button", UIPalette.INK_BODY)
+	theme.set_color("font_hover_color", "Button", UIPalette.INK_TITLE)
+	theme.set_color("font_pressed_color", "Button", UIPalette.PARCHMENT)
+	theme.set_color("font_disabled_color", "Button", Color(UIPalette.INK_BODY.r, UIPalette.INK_BODY.g, UIPalette.INK_BODY.b, 0.55))
 	theme.set_font_size("font_size", "Button", 15)
 
-	# ── Label readability — subtle outline on all labels ──
-	theme.set_color("font_outline_color", "Label", Color(0.0, 0.0, 0.0, 0.7))
-	theme.set_constant("outline_size", "Label", 2)
-	theme.set_color("font_shadow_color", "Label", Color(0.0, 0.0, 0.0, 0.45))
-	theme.set_constant("shadow_offset_x", "Label", 1)
-	theme.set_constant("shadow_offset_y", "Label", 1)
+	# ── Label default — dark ink reads on the parchment fields panels now
+	# sit on; text intended for dark chips (_make_text_chip et al) keeps
+	# setting its own light font_color override, unaffected by this default. ──
+	theme.set_color("font_color", "Label", UIPalette.INK_BODY)
 
-	# ── PanelContainer style (frame1) ──
-	if _frame_texture:
-		theme.set_stylebox("panel", "PanelContainer", make_panel_style())
+	# ── PanelContainer / notification (self-guarded flat fallback inside) ──
+	theme.set_stylebox("panel", "PanelContainer", make_panel_style())
+	theme.set_stylebox("panel", "TooltipPanel", _make_tooltip_style())
+	theme.set_color("font_color", "TooltipLabel", UIPalette.PARCHMENT)
 
-	get_tree().root.theme = theme
+	# ── ProgressBar — parchment-dark trough + heraldry fill, ink border ──
+	var pb_bg := StyleBoxFlat.new()
+	pb_bg.bg_color = UIPalette.BAR_TROUGH
+	pb_bg.border_color = UIPalette.INK_BODY
+	pb_bg.set_border_width_all(1)
+	pb_bg.set_corner_radius_all(3)
+	pb_bg.set_content_margin_all(2)
+	theme.set_stylebox("background", "ProgressBar", pb_bg)
+	var pb_fill := StyleBoxFlat.new()
+	pb_fill.bg_color = UIPalette.BAR_FILL
+	pb_fill.set_corner_radius_all(2)
+	theme.set_stylebox("fill", "ProgressBar", pb_fill)
 
-func _make_btn_style(modulate: Color) -> StyleBoxTexture:
+	# ── Separators — thin inked line ──
+	var hsep := StyleBoxFlat.new()
+	hsep.bg_color = UIPalette.INK_BODY
+	hsep.content_margin_top = 1.0
+	hsep.content_margin_bottom = 1.0
+	theme.set_stylebox("separator", "HSeparator", hsep)
+	var vsep := StyleBoxFlat.new()
+	vsep.bg_color = UIPalette.INK_BODY
+	vsep.content_margin_left = 1.0
+	vsep.content_margin_right = 1.0
+	theme.set_stylebox("separator", "VSeparator", vsep)
+
+	# ── Sliders — parchment-dark trough, heraldry grabber-area fill, small
+	# heraldry grabber disc (procedural — no bake tool needed for a circle) ──
+	var slider_trough := StyleBoxFlat.new()
+	slider_trough.bg_color = UIPalette.BAR_TROUGH
+	slider_trough.set_corner_radius_all(3)
+	slider_trough.content_margin_top = 3.0
+	slider_trough.content_margin_bottom = 3.0
+	var slider_fill := StyleBoxFlat.new()
+	slider_fill.bg_color = UIPalette.BAR_FILL
+	slider_fill.set_corner_radius_all(3)
+	slider_fill.content_margin_top = 3.0
+	slider_fill.content_margin_bottom = 3.0
+	var grabber_icon := _make_circle_icon(UIPalette.PARCHMENT_ACCENT, 14)
+	for slider_type in ["HSlider", "VSlider"]:
+		theme.set_stylebox("slider", slider_type, slider_trough)
+		theme.set_stylebox("grabber_area", slider_type, slider_fill)
+		theme.set_stylebox("grabber_area_highlight", slider_type, slider_fill)
+		theme.set_icon("grabber", slider_type, grabber_icon)
+		theme.set_icon("grabber_highlight", slider_type, grabber_icon)
+		theme.set_icon("grabber_disabled", slider_type, grabber_icon)
+
+	# ── CheckBox — parchment box + ink check, procedural (same reasoning
+	# as the slider grabber: too small to warrant a SubViewport bake).
+	# GOTCHA: CheckBox extends Button in Godot's class hierarchy, so with no
+	# CheckBox-specific stylebox it falls back to "Button"'s style for its own
+	# background — the FULL parchment button texture stretched behind the
+	# whole checkbox row, not just a small glyph. Every checkbox row in the
+	# game (unit disband/split lists, settings toggles) hardcodes its own
+	# light label color for the OLD dark button fallback, so a full parchment
+	# CheckBox background is doubly wrong now (unwanted big fill + light text
+	# on light fill). Empty styleboxes suppress that fallback; only the
+	# checked/unchecked icon glyph draws. ──
+	var cb_empty := StyleBoxEmpty.new()
+	for cb_state in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+		theme.set_stylebox(cb_state, "CheckBox", cb_empty)
+	var check_icon := _make_check_icon(UIPalette.INK_BODY, true)
+	var uncheck_icon := _make_check_icon(UIPalette.INK_BODY, false)
+	theme.set_icon("checked", "CheckBox", check_icon)
+	theme.set_icon("unchecked", "CheckBox", uncheck_icon)
+	theme.set_icon("checked_disabled", "CheckBox", check_icon)
+	theme.set_icon("unchecked_disabled", "CheckBox", uncheck_icon)
+
+	# ── LineEdit — parchment-dark field, ink border, parchment text ──
+	var le_normal := StyleBoxFlat.new()
+	le_normal.bg_color = UIPalette.PARCHMENT_DARK
+	le_normal.border_color = UIPalette.INK_BODY
+	le_normal.set_border_width_all(1)
+	le_normal.set_corner_radius_all(3)
+	le_normal.set_content_margin_all(6)
+	theme.set_stylebox("normal", "LineEdit", le_normal)
+	theme.set_stylebox("focus", "LineEdit", le_normal)
+	theme.set_color("font_color", "LineEdit", UIPalette.PARCHMENT)
+	theme.set_color("caret_color", "LineEdit", UIPalette.PARCHMENT)
+
+	# ── Scrollbars — slim ink grabber on a parchment-dark track ──
+	var scroll_track := StyleBoxFlat.new()
+	scroll_track.bg_color = UIPalette.PARCHMENT_DARK
+	scroll_track.set_corner_radius_all(3)
+	var scroll_grabber := StyleBoxFlat.new()
+	scroll_grabber.bg_color = UIPalette.INK_BODY
+	scroll_grabber.set_corner_radius_all(3)
+	for scroll_type in ["VScrollBar", "HScrollBar"]:
+		theme.set_stylebox("scroll", scroll_type, scroll_track)
+		theme.set_stylebox("grabber", scroll_type, scroll_grabber)
+		theme.set_stylebox("grabber_highlight", scroll_type, scroll_grabber)
+		theme.set_stylebox("grabber_pressed", scroll_type, scroll_grabber)
+
+	return theme
+
+func _make_chrome_btn_style(tex: Texture2D, pressed := false) -> StyleBoxTexture:
 	var s := StyleBoxTexture.new()
-	s.texture = _btn_texture
-	s.region_rect = _BTN_REGION
+	s.texture = tex
 	s.texture_margin_left = _BTN_MARGIN
 	s.texture_margin_top = _BTN_MARGIN
 	s.texture_margin_right = _BTN_MARGIN
 	s.texture_margin_bottom = _BTN_MARGIN
-	s.content_margin_left = 24
-	s.content_margin_right = 24
-	s.content_margin_top = 16
-	s.content_margin_bottom = 16
-	s.modulate_color = modulate
+	s.content_margin_left = _BTN_CONTENT.x
+	s.content_margin_right = _BTN_CONTENT.z
+	s.content_margin_top = _BTN_CONTENT.y + (2.0 if pressed else 0.0)
+	s.content_margin_bottom = _BTN_CONTENT.w - (2.0 if pressed else 0.0)
 	return s
 
-func _make_btn_style_pressed(modulate: Color) -> StyleBoxTexture:
-	var s := StyleBoxTexture.new()
-	s.texture = _btn_texture
-	s.region_rect = _BTN_REGION
-	s.texture_margin_left = _BTN_MARGIN
-	s.texture_margin_top = _BTN_MARGIN
-	s.texture_margin_right = _BTN_MARGIN
-	s.texture_margin_bottom = _BTN_MARGIN
-	s.content_margin_left = 24
-	s.content_margin_right = 24
-	s.content_margin_top = 18  # +2px push-down effect
-	s.content_margin_bottom = 14  # -2px push-down effect
-	s.modulate_color = modulate
+## Small procedural circle icon (slider grabber) — flat colors at 14px don't
+## need a SubViewport bake; a hand-antialiased CPU fill runs fine headless
+## (SubViewport capture would not).
+func _make_circle_icon(color: Color, diameter: int) -> ImageTexture:
+	var img := Image.create(diameter, diameter, false, Image.FORMAT_RGBA8)
+	var r := diameter / 2.0
+	var c := Vector2(r, r)
+	for y in diameter:
+		for x in diameter:
+			var d := Vector2(x + 0.5, y + 0.5).distance_to(c)
+			if d <= r - 1.0:
+				img.set_pixel(x, y, color)
+			elif d <= r:
+				img.set_pixel(x, y, Color(color.r, color.g, color.b, color.a * (r - d)))
+	return ImageTexture.create_from_image(img)
+
+## Small procedural checkbox glyph — ink square outline, filled ink check
+## mark on `checked`. Same rationale as _make_circle_icon.
+func _make_check_icon(ink: Color, checked: bool, size: int = 16) -> ImageTexture:
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var m := 2
+	for x in range(m, size - m):
+		img.set_pixel(x, m, ink)
+		img.set_pixel(x, size - m - 1, ink)
+	for y in range(m, size - m):
+		img.set_pixel(m, y, ink)
+		img.set_pixel(size - m - 1, y, ink)
+	if checked:
+		for i in range(m + 2, size - m - 2):
+			img.set_pixel(i, i, ink)
+			if i + 1 < size - m:
+				img.set_pixel(i + 1, i, ink)
+	return ImageTexture.create_from_image(img)
+
+func _make_tooltip_style() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = UIPalette.CHIP_BG
+	s.border_color = UIPalette.CHIP_BORDER
+	s.set_border_width_all(1)
+	s.set_corner_radius_all(4)
+	s.set_content_margin_all(8)
 	return s
 
-## Creates a panel style using frame1.png. Gold border aligns with panel edge;
-## glow extends beyond via expand_margin. Falls back to simple flat style if missing.
+## Creates a panel style from the current chrome set's baked frame. Falls
+## back to a flat style if no frame texture (neither `chrome_set_id` nor
+## neutral) could be loaded — a checkout with no generated PNGs still runs.
 func make_panel_style() -> StyleBox:
 	if _frame_texture == null:
 		var flat := StyleBoxFlat.new()
@@ -183,37 +353,28 @@ func make_panel_style() -> StyleBox:
 		return flat
 	var s := StyleBoxTexture.new()
 	s.texture = _frame_texture
-	s.region_rect = _FRAME_REGION
-	s.texture_margin_left = _FRAME_TEX_MARGIN.x
-	s.texture_margin_top = _FRAME_TEX_MARGIN.y
-	s.texture_margin_right = _FRAME_TEX_MARGIN.z
-	s.texture_margin_bottom = _FRAME_TEX_MARGIN.w
-	s.expand_margin_left = _FRAME_EXPAND.x
-	s.expand_margin_top = _FRAME_EXPAND.y
-	s.expand_margin_right = _FRAME_EXPAND.z
-	s.expand_margin_bottom = _FRAME_EXPAND.w
+	s.texture_margin_left = _FRAME_MARGIN
+	s.texture_margin_top = _FRAME_MARGIN
+	s.texture_margin_right = _FRAME_MARGIN
+	s.texture_margin_bottom = _FRAME_MARGIN
 	s.content_margin_left = _FRAME_CONTENT.x
 	s.content_margin_top = _FRAME_CONTENT.y
 	s.content_margin_right = _FRAME_CONTENT.z
 	s.content_margin_bottom = _FRAME_CONTENT.w
 	return s
 
-## Creates an ornate notification style using notification1.png (columns + eagle).
-## Falls back to panel style if missing.
+## Creates the ornate notification style from the current chrome set's baked
+## notification frame (doubled border + top-center seal). Falls back to
+## make_panel_style() if missing.
 func make_notification_style() -> StyleBox:
 	if _notif_texture == null:
 		return make_panel_style()
 	var s := StyleBoxTexture.new()
 	s.texture = _notif_texture
-	s.region_rect = _NOTIF_REGION
-	s.texture_margin_left = _NOTIF_TEX_MARGIN.x
-	s.texture_margin_top = _NOTIF_TEX_MARGIN.y
-	s.texture_margin_right = _NOTIF_TEX_MARGIN.z
-	s.texture_margin_bottom = _NOTIF_TEX_MARGIN.w
-	s.expand_margin_left = _NOTIF_EXPAND.x
-	s.expand_margin_top = _NOTIF_EXPAND.y
-	s.expand_margin_right = _NOTIF_EXPAND.z
-	s.expand_margin_bottom = _NOTIF_EXPAND.w
+	s.texture_margin_left = _NOTIF_MARGIN
+	s.texture_margin_top = _NOTIF_MARGIN
+	s.texture_margin_right = _NOTIF_MARGIN
+	s.texture_margin_bottom = _NOTIF_MARGIN
 	s.content_margin_left = _NOTIF_CONTENT.x
 	s.content_margin_top = _NOTIF_CONTENT.y
 	s.content_margin_right = _NOTIF_CONTENT.z
@@ -254,15 +415,22 @@ func get_time_icon() -> Texture2D:
 ## Icon + amount row for costs/incomes — replaces "200 Gold, 30 Iron" text.
 ## With `compare` (current resources) amounts color green/red by
 ## affordability; `signed` renders "+N" in income green; `turns` > 0 appends
-## an hourglass + turn count.
-func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, prefix := "", signed := false, turns := 0) -> HBoxContainer:
+## an hourglass + turn count. `on_light` picks the ink-dark text variant
+## instead of the default light-parchment one — pass true when the row sits
+## directly on a light chrome surface (e.g. inside make_cost_button, which
+## draws straight on the button's parchment/heraldry fill, not a dark chip);
+## default false preserves the light-on-dark-chip look every other call site
+## (dialogs' chip-wrapped vboxes, per docs/ui_style_guide.md) already expects.
+func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, prefix := "", signed := false, turns := 0, on_light := false) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
+	var base_col := UIPalette.INK_BODY if on_light else Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85)
+	var dim_col := Color(base_col.r, base_col.g, base_col.b, 0.75)
 	if prefix != "":
 		var pl := Label.new()
 		pl.text = prefix
 		pl.add_theme_font_size_override("font_size", font_size)
-		pl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
+		pl.add_theme_color_override("font_color", dim_col)
 		row.add_child(pl)
 	var icon_px := float(font_size) + 8.0
 	for res_type in cost:
@@ -275,11 +443,11 @@ func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, 
 		var lbl := Label.new()
 		lbl.text = ("+%d" % amount) if signed and amount > 0 else str(amount)
 		lbl.add_theme_font_size_override("font_size", font_size)
-		var col := Color(0.85, 0.8, 0.68)
+		var col := base_col
 		if not compare.is_empty():
-			col = Color(0.6, 0.8, 0.55) if int(compare.get(res_type, 0)) >= amount else Color(0.9, 0.25, 0.2)
+			col = UIPalette.SUCCESS if int(compare.get(res_type, 0)) >= amount else UIPalette.DANGER
 		elif signed:
-			col = Color(0.5, 0.75, 0.45) if amount > 0 else Color(0.85, 0.4, 0.32)
+			col = UIPalette.SUCCESS if amount > 0 else UIPalette.DANGER
 		lbl.add_theme_color_override("font_color", col)
 		pair.add_child(lbl)
 		row.add_child(pair)
@@ -296,7 +464,7 @@ func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, 
 		var tlbl := Label.new()
 		tlbl.text = str(turns)
 		tlbl.add_theme_font_size_override("font_size", font_size)
-		tlbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.62))
+		tlbl.add_theme_color_override("font_color", dim_col)
 		tpair.add_child(tlbl)
 		row.add_child(tpair)
 	return row
@@ -332,74 +500,116 @@ func make_cost_button(title: String, cost: Dictionary, turns := 0, compare: Dict
 	var title_lbl := Label.new()
 	title_lbl.text = title
 	title_lbl.add_theme_font_size_override("font_size", font_size)
-	title_lbl.add_theme_color_override("font_color", Color(0.95, 0.9, 0.75))
-	title_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	title_lbl.add_theme_constant_override("outline_size", 3)
+	title_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	content.add_child(title_lbl)
 	if not cost.is_empty() or turns > 0:
-		var row := make_cost_row(cost, compare, font_size - 1, "", false, turns)
+		var row := make_cost_row(cost, compare, font_size - 1, "", false, turns, true)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		content.add_child(row)
+	var extra_lbl: Label = null
 	if extra_text != "":
-		var extra := Label.new()
-		extra.text = extra_text
-		extra.add_theme_font_size_override("font_size", font_size - 2)
-		extra.add_theme_color_override("font_color", Color(0.75, 0.72, 0.62))
-		content.add_child(extra)
+		extra_lbl = Label.new()
+		extra_lbl.text = extra_text
+		extra_lbl.add_theme_font_size_override("font_size", font_size - 2)
+		extra_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
+		content.add_child(extra_lbl)
 	btn.add_child(content)
+	# This label sits directly on the button's own fill, not a themed Button's
+	# internal text — it doesn't get the Button theme's automatic per-state
+	# font color swap, so wire the pressed state by hand: pressed uses the
+	# heraldry fill (dark for several factions), so the dark-ink title needs
+	# to flip to light parchment text while held (mirrors font_pressed_color
+	# on regular themed buttons).
+	btn.button_down.connect(func():
+		title_lbl.add_theme_color_override("font_color", UIPalette.PARCHMENT)
+		if extra_lbl:
+			extra_lbl.add_theme_color_override("font_color", UIPalette.PARCHMENT)
+	)
+	btn.button_up.connect(func():
+		title_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
+		if extra_lbl:
+			extra_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
+	)
 	return btn
 
 var _compact_theme: Theme
 
-## Compact HUD theme: same leather/gold artwork as the global theme but
-## pre-scaled to 25%, so the gold border is ~11px instead of ~45px and content
-## margins suit dense fixed-size panels (battle HUD, overlays). All region and
-## margin values are the make_panel_style/_make_btn_style constants divided by 4.
+## Compact HUD theme: same generated parchment chrome as the global theme but
+## pre-scaled to 25%, so the nine-patch border is ~6px instead of ~24px and
+## content margins suit dense fixed-size panels (battle HUD, overlays). Reads
+## _frame_texture/_btn_texture* set by the last _build_theme_for_set() call
+## (boot -> neutral; Task 4's apply_faction_theme -> the active faction), so
+## switching factions and calling get_compact_theme() again (after nulling
+## _compact_theme) picks up the new set automatically.
+##
+## GOTCHA (found during the Task 3 windowed sweep): Theme lookup in Godot 4
+## only cascades to an ancestor's theme for a property that ancestor's theme
+## doesn't define AT ALL for that type. The whole campaign HUD subtree runs
+## under this compact theme (docs/ui_style_guide.md), and it DOES define
+## Button styleboxes — so as soon as it does, it "claims" the Button type for
+## every descendant button, and any Button color THIS theme doesn't also set
+## (font_color etc.) falls through straight to Godot's built-in default
+## (~0.875 grey) instead of cascading further up to the root theme's colors.
+## Every font color set on "Button" in _build_theme_for_set must be mirrored
+## here too, or compact-themed buttons silently lose their ink text.
 func get_compact_theme() -> Theme:
 	if _compact_theme:
 		return _compact_theme
 	var theme := Theme.new()
+	theme.set_color("font_color", "Button", UIPalette.INK_BODY)
+	theme.set_color("font_hover_color", "Button", UIPalette.INK_TITLE)
+	theme.set_color("font_pressed_color", "Button", UIPalette.PARCHMENT)
+	theme.set_color("font_disabled_color", "Button", Color(UIPalette.INK_BODY.r, UIPalette.INK_BODY.g, UIPalette.INK_BODY.b, 0.55))
+	# CheckBox falls back to this theme's Button styles too (see the
+	# _build_theme_for_set gotcha note) — same empty-stylebox suppression,
+	# mirrored here so compact-themed checkbox rows (unit disband/split
+	# lists) don't inherit the full parchment button background either.
+	var cb_empty := StyleBoxEmpty.new()
+	for cb_state in ["normal", "hover", "pressed", "hover_pressed", "disabled", "focus"]:
+		theme.set_stylebox(cb_state, "CheckBox", cb_empty)
+	var check_icon := _make_check_icon(UIPalette.INK_BODY, true)
+	var uncheck_icon := _make_check_icon(UIPalette.INK_BODY, false)
+	theme.set_icon("checked", "CheckBox", check_icon)
+	theme.set_icon("unchecked", "CheckBox", uncheck_icon)
+	theme.set_icon("checked_disabled", "CheckBox", check_icon)
+	theme.set_icon("unchecked_disabled", "CheckBox", uncheck_icon)
 	if _frame_texture:
 		var frame_tex := _scaled_image_texture(_frame_texture, 4)
 		var panel := StyleBoxTexture.new()
 		panel.texture = frame_tex
-		panel.region_rect = Rect2(19, 25, 340, 183)
-		panel.texture_margin_left = 22
-		panel.texture_margin_top = 21
-		panel.texture_margin_right = 15
-		panel.texture_margin_bottom = 13
-		panel.expand_margin_left = 10
-		panel.expand_margin_top = 10
-		panel.expand_margin_right = 10
-		panel.expand_margin_bottom = 10
-		panel.content_margin_left = 16
-		panel.content_margin_top = 15
-		panel.content_margin_right = 10
-		panel.content_margin_bottom = 9
+		panel.texture_margin_left = _FRAME_MARGIN / 4.0
+		panel.texture_margin_top = _FRAME_MARGIN / 4.0
+		panel.texture_margin_right = _FRAME_MARGIN / 4.0
+		panel.texture_margin_bottom = _FRAME_MARGIN / 4.0
+		panel.content_margin_left = _FRAME_CONTENT.x / 4.0
+		panel.content_margin_top = _FRAME_CONTENT.y / 4.0
+		panel.content_margin_right = _FRAME_CONTENT.z / 4.0
+		panel.content_margin_bottom = _FRAME_CONTENT.w / 4.0
 		theme.set_stylebox("panel", "PanelContainer", panel)
 	if _btn_texture:
 		var btn_tex := _scaled_image_texture(_btn_texture, 4)
-		theme.set_stylebox("normal", "Button", _make_compact_btn_style(btn_tex, Color.WHITE))
-		theme.set_stylebox("hover", "Button", _make_compact_btn_style(btn_tex, Color(1.25, 1.2, 1.1)))
-		theme.set_stylebox("pressed", "Button", _make_compact_btn_style(btn_tex, Color(0.6, 0.55, 0.5), true))
-		theme.set_stylebox("disabled", "Button", _make_compact_btn_style(btn_tex, Color(0.5, 0.48, 0.45, 0.7)))
-		theme.set_stylebox("focus", "Button", _make_compact_btn_style(btn_tex, Color(1.15, 1.12, 1.05)))
+		var hover_tex := _scaled_image_texture(_btn_hover_texture if _btn_hover_texture else _btn_texture, 4)
+		var pressed_tex := _scaled_image_texture(_btn_pressed_texture if _btn_pressed_texture else _btn_texture, 4)
+		var disabled_tex := _scaled_image_texture(_btn_disabled_texture if _btn_disabled_texture else _btn_texture, 4)
+		theme.set_stylebox("normal", "Button", _make_compact_btn_style(btn_tex))
+		theme.set_stylebox("hover", "Button", _make_compact_btn_style(hover_tex))
+		theme.set_stylebox("pressed", "Button", _make_compact_btn_style(pressed_tex, true))
+		theme.set_stylebox("disabled", "Button", _make_compact_btn_style(disabled_tex))
+		theme.set_stylebox("focus", "Button", _make_compact_btn_style(hover_tex))
 	_compact_theme = theme
 	return _compact_theme
 
-func _make_compact_btn_style(tex: Texture2D, modulate: Color, pressed := false) -> StyleBoxTexture:
+func _make_compact_btn_style(tex: Texture2D, pressed := false) -> StyleBoxTexture:
 	var s := StyleBoxTexture.new()
 	s.texture = tex
-	s.region_rect = Rect2(35, 81, 322, 79)
-	s.texture_margin_left = 6
-	s.texture_margin_top = 6
-	s.texture_margin_right = 6
-	s.texture_margin_bottom = 6
-	s.content_margin_left = 10
-	s.content_margin_right = 10
-	s.content_margin_top = 5.0 + (1.0 if pressed else 0.0)
-	s.content_margin_bottom = 5.0 - (1.0 if pressed else 0.0)
-	s.modulate_color = modulate
+	s.texture_margin_left = _BTN_MARGIN / 4.0
+	s.texture_margin_top = _BTN_MARGIN / 4.0
+	s.texture_margin_right = _BTN_MARGIN / 4.0
+	s.texture_margin_bottom = _BTN_MARGIN / 4.0
+	s.content_margin_left = _BTN_CONTENT.x / 4.0
+	s.content_margin_right = _BTN_CONTENT.z / 4.0
+	s.content_margin_top = _BTN_CONTENT.y / 4.0 + (1.0 if pressed else 0.0)
+	s.content_margin_bottom = _BTN_CONTENT.w / 4.0 - (1.0 if pressed else 0.0)
 	return s
 
 func _scaled_image_texture(tex: Texture2D, div: int) -> ImageTexture:
