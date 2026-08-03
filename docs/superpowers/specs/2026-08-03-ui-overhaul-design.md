@@ -4,7 +4,7 @@ Status: APPROVED DESIGN 2026-08-03 (style direction D picked from `assets/ui_sty
 
 ## Goal
 
-Replace the two stock PNG chrome textures (`button1.png`, `frame1.png`, `notification1.png`) with a **generated Parchment & Ink style system** that is themed per faction — playing Skulloath must look and feel different from playing Empire — while consolidating the inline styling drift that makes panels inconsistent. Scope: **everything** (campaign HUD + all dialogs, main menu, faction select, battle HUD) plus a **real bundled font**. Reference look: `assets/ui_style_candidates/style_parchment.png` (Empire/Skulloath contrast pair is the quality bar).
+Replace the stock PNG chrome textures (`button1.png`, `frame1.png`, `notification1.png`) with a **generated Parchment & Ink style system** that is themed per faction — playing Skulloath must look and feel different from playing Empire. **Every UI element carries the same coherent style language with faction styling** (user directive 2026-08-03): not just frames and buttons, but chips, progress bars, tooltips, separators, sliders, tabs, scrollbars, plaques — all of it reads as one parchment-and-ink system with the player faction's ink/heraldry accents. Scope: **everything** (campaign HUD + all dialogs, main menu, faction select, battle HUD) plus a **real bundled font**. Reference look: `assets/ui_style_candidates/style_parchment.png` (Empire/Skulloath contrast pair is the quality bar).
 
 ## Non-goals
 
@@ -73,18 +73,23 @@ Bundle an OFL-licensed pair under `assets/fonts/`, applied via the theme only (n
 
 A small font-candidate sheet rendered on the parchment chrome at the style guide's size ladder (10–16px) gates the final pick — 11px readability is the real test. Fallback: font file fails to load → Godot default font (today's state). License files ship next to the fonts.
 
-## 5. Inline-style consolidation
+## 5. Full element migration (all UI elements, one style language)
 
-A small `UIPalette` helper at the theme layer with semantic constants (`INK_TITLE`, `CHIP_BG`, `PARCHMENT_ACCENT`, `DANGER`, …) plus `heraldry(faction_id)`. The shared factories (`_make_text_chip`, `make_panel_style`, `_create_centered_dialog`, progress-bar and separator styling) are rewired through it.
+Per the 2026-08-03 user directive, this is a **complete migration of every UI element** to the parchment & ink system, not a clash-only touch-up:
 
-Scattered one-off literals migrate **only where they visibly clash** with the new chrome — the known categories: title golds, chip backdrops, separator/border tones. Found by grep, judged by screenshot. Everything else stays.
+- A `UIPalette` helper at the theme layer holds the semantic palette (`INK_TITLE`, `INK_BODY`, `CHIP_BG`, `PARCHMENT_ACCENT`, `SEAL`, `DANGER`, …) and is **rebuilt by `apply_faction_theme`** so every constant already carries the active faction's ink/heraldry tuning. `heraldry(faction_id)` serves cross-faction contexts (diplomacy rows, map-adjacent UI naming other factions).
+- The root/compact **Theme gains styled entries for every control type in use** — `ProgressBar`, `HSlider` (settings volume), `HSeparator`, `CheckBox`, `LineEdit`, scrollbars, `TabContainer`/tab-style category buttons, tooltip panel (replacing `ui_theme.tres`'s override) — all drawn in the inked style (e.g. progress bars: parchment trough + heraldry fill + ink border; separators: inked wobble line).
+- **All ~59 inline `StyleBoxFlat` call sites** (35 campaign_hud, 9 campaign, 3 battle_v3, 3 audio_manager, 2 main_menu, plus game_manager factories) are migrated: each either deleted (the themed control now looks right by default) or rewired through `UIPalette`/shared factories. The shared factories (`_make_text_chip`, `make_panel_style`, `make_notification_style`, `_create_centered_dialog`) are the first movers.
+- Hardcoded UI color literals (title golds, chip backdrops, borders, bar fills, plaque tints) migrate to `UIPalette` constants file-by-file across `campaign_hud.gd`, `campaign.gd`, `battle_v3.gd`, `main_menu.gd`, `audio_manager.gd`. Literals that encode **game semantics** (relation colors, resource-delta green/red, rarity tiers, loyalty bands) become semantic `UIPalette` entries too, so they harmonize with the parchment palette instead of floating free.
+- Out of scope stays: map-marker geometry/terrain/battle-sprite colors (`campaign.gd` marker drawing, renderer files) — only their UI-panel surroundings migrate.
 
 ## 6. Verification & rollout
 
 - Chrome regenerable with one command; tool + PNGs committed (resource-art provenance convention).
 - Art gates: contact sheet of all 12 sets (coordinator judges, then user), plus a windowed `tmp_screenshot_windows.gd` sweep of every major window in ≥2 contrasting factions — the layout-reflow check for the new nine-patch margins (top risk).
 - Headless suites stay green: `test_save_roundtrip`, `test_battle_determinism` FINGERPRINT MATCH (UI-only change; battle-path files untouched).
-- Rollout order (each step leaves the game playable): generator + neutral theme → faction sets + apply-hook → font → consolidation pass → menu/battle sweep.
+- The windowed sweep also gates **element-level coherence**: every window shot is judged for stray old-style elements (flat grey bars, unthemed sliders, orphan color literals) — the migration is done when no element reads as pre-overhaul.
+- Rollout order (each step leaves the game playable): generator + neutral theme → faction sets + apply-hook → font → full element migration (factories first, then file-by-file) → menu/battle sweep.
 
 ## Grounding facts (from 2026-08-03 survey)
 
