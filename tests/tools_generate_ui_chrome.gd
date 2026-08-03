@@ -889,9 +889,15 @@ class _ChromePainter extends Node2D:
 			_paint_seal(pal, cd.c, r, cd.mir)
 		# Task 5b round 2 (optional per the ART GATE brief, "if it reads
 		# well"): a thin accent underline evoking a title-bar rule, sitting
-		# just below the margin band (clear of the corner seals) so it never
+		# inside the margin band (clear of the corner seals) so it never
 		# overlaps them, spanning the frame's inner width.
-		var underline_y := m + 3.0
+		# Fix-round finding (code review): this MUST stay < FRAME_MARGIN —
+		# the margin band is the nine-patch texture margin, everything at
+		# y >= FRAME_MARGIN is the stretchable center region, so a line
+		# placed there (was m + 3 = 35, past the 32px margin) gets thicker
+		# on tall dialogs as the center stretches. m - 4 keeps it fixed at
+		# 28, safely inside the unstretched band.
+		var underline_y := m - 4.0
 		var acc: Color = pal.accent
 		draw_line(Vector2(m, underline_y), Vector2(FRAME_SIZE.x - m, underline_y), Color(acc.r, acc.g, acc.b, 0.55), 1.5)
 

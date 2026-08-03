@@ -28,7 +28,7 @@ const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-G
 const OUT_NAME := "_contact_font_candidates.png"
 
 const FRAME_TEX_PATH := "res://assets/sprites/ui/generated/neutral_frame.png"
-const FRAME_MARGIN := 24  # matches tools_generate_ui_chrome.gd's FRAME_MARGIN contract
+const FRAME_MARGIN := 32  # matches tools_generate_ui_chrome.gd's FRAME_MARGIN contract (Task 5b round 2: was 24, moved to 32 with the rebaked neutral_frame.png)
 
 const BODY_SIZES := [13, 12, 11, 10]
 const DISPLAY_SIZES := [20, 16, 14]
