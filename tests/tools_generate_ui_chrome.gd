@@ -19,7 +19,12 @@ extends SceneTree
 ## btn_pressed,btn_disabled,notification}.png plus a per-set contact sheet
 ## assets/sprites/ui/generated/_contact_<set_id>.png (also copied to the
 ## session scratchpad) proving all 6 pieces plus a 400x260 nine-patch-
-## stretched sample of the frame piece via a real StyleBoxTexture draw.
+## stretched sample of the frame piece via a real StyleBoxTexture draw. On a
+## full default run (all 12 sets: neutral + the 11 major factions) also
+## produces assets/sprites/ui/generated/_contact_factions.png (also copied
+## to the scratchpad) — one row per set with a frame thumb, all 4 button
+## states, and a magnified seal close-up cropped from the real baked frame
+## corner, for the Task 2 ART GATE.
 
 const OUT_DIR := "res://assets/sprites/ui/generated"
 const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-Gamedesign-Beyond-FractureWars-FractureWars/60f5a753-2e0c-4d4a-bf21-4fb3197d9a6c/scratchpad"
@@ -42,6 +47,15 @@ const PIECES := ["frame", "btn_normal", "btn_hover", "btn_pressed", "btn_disable
 const CONTACT_VP_SIZE := Vector2i(940, 380)
 const STRETCH_SAMPLE_SIZE := Vector2(400.0, 260.0)
 
+## Task 2's multi-set contact sheet — one row per SETS entry (12 with neutral
+## + the 11 factions), each row showing a frame thumb, all 4 button states,
+## and a magnified seal close-up cropped from the corner cell of the same
+## baked frame texture (so it proves motif legibility straight off the real
+## bake, not a re-rendered approximation).
+const FACTIONS_CONTACT_ROW_H := 100.0
+const FACTIONS_CONTACT_HEADER_H := 50.0
+const FACTIONS_CONTACT_VP_SIZE := Vector2i(760, 1270)
+
 ## Per-set palette table — data, not code branches (Task 2 appends the 11
 ## faction rows here; painters below stay unchanged and read only these
 ## fields). Keep in sync with scripts/ui/ui_palette.gd (Task 3): that file
@@ -55,6 +69,100 @@ const SETS := {
 		heraldry = Color(0.62, 0.52, 0.30),
 		seal = Color(0.40, 0.32, 0.16),
 		motif = &"quill",
+	},
+	# ── 11 major faction sets — heraldry seeded from each FactionData.color
+	# (data/factions/<id>.tres), hand-tuned toward ink-compatible saturation
+	# (s ~0.35-0.60, v ~0.36-0.62, matching neutral's heraldry weight).
+	# `parchment` is the BINDING readability band: v 0.70-0.88, s <= 0.25 for
+	# all 11 (verified via the palette_design2.py scratch script). `parchment_
+	# dark` (stain tone) and `seal`/`ink` are NOT band-bound, same as neutral.
+	&"empire": {  # clean warm — stays close to neutral's warm cream
+		parchment = Color(0.86, 0.82, 0.73),
+		parchment_dark = Color(0.26, 0.24, 0.19),
+		ink = Color(0.15, 0.13, 0.10),
+		heraldry = Color(0.29, 0.36, 0.50),
+		seal = Color(0.17, 0.22, 0.33),
+		motif = &"laurel_shield",
+	},
+	&"skulloath": {  # aged/darker — low end of the readability band, dusty
+		parchment = Color(0.72, 0.64, 0.62),
+		parchment_dark = Color(0.22, 0.17, 0.16),
+		ink = Color(0.13, 0.08, 0.08),
+		heraldry = Color(0.42, 0.19, 0.20),
+		seal = Color(0.27, 0.11, 0.12),
+		motif = &"horned_skull",
+	},
+	&"gladehost": {  # greenish
+		parchment = Color(0.76, 0.83, 0.70),
+		parchment_dark = Color(0.22, 0.25, 0.18),
+		ink = Color(0.12, 0.14, 0.10),
+		heraldry = Color(0.33, 0.44, 0.26),
+		seal = Color(0.20, 0.29, 0.15),
+		motif = &"leaf",
+	},
+	&"moonspear": {  # cool blue-grey
+		parchment = Color(0.74, 0.76, 0.82),
+		parchment_dark = Color(0.20, 0.21, 0.25),
+		ink = Color(0.11, 0.12, 0.15),
+		heraldry = Color(0.36, 0.39, 0.55),
+		seal = Color(0.21, 0.23, 0.36),
+		motif = &"crescent",
+	},
+	&"sunblessed": {  # golden
+		parchment = Color(0.87, 0.81, 0.66),
+		parchment_dark = Color(0.26, 0.24, 0.17),
+		ink = Color(0.16, 0.13, 0.10),
+		heraldry = Color(0.62, 0.52, 0.25),
+		seal = Color(0.40, 0.33, 0.14),
+		motif = &"sun",
+	},
+	&"shardhorde": {  # crystal-cold
+		parchment = Color(0.83, 0.77, 0.85),
+		parchment_dark = Color(0.25, 0.21, 0.26),
+		ink = Color(0.15, 0.10, 0.15),
+		heraldry = Color(0.55, 0.28, 0.49),
+		seal = Color(0.36, 0.16, 0.31),
+		motif = &"crystal_shard",
+	},
+	&"thunderswarm": {  # storm-grey
+		parchment = Color(0.73, 0.75, 0.78),
+		parchment_dark = Color(0.19, 0.21, 0.23),
+		ink = Color(0.11, 0.12, 0.14),
+		heraldry = Color(0.50, 0.44, 0.22),
+		seal = Color(0.33, 0.28, 0.13),
+		motif = &"bolt",
+	},
+	&"cinderguard": {  # ember-warm
+		parchment = Color(0.85, 0.74, 0.68),
+		parchment_dark = Color(0.26, 0.21, 0.18),
+		ink = Color(0.15, 0.11, 0.09),
+		heraldry = Color(0.52, 0.32, 0.21),
+		seal = Color(0.34, 0.20, 0.11),
+		motif = &"anvil_flame",
+	},
+	&"forsaken": {  # grey-cold
+		parchment = Color(0.76, 0.74, 0.79),
+		parchment_dark = Color(0.22, 0.20, 0.24),
+		ink = Color(0.12, 0.10, 0.13),
+		heraldry = Color(0.36, 0.26, 0.40),
+		seal = Color(0.23, 0.15, 0.26),
+		motif = &"broken_mask",
+	},
+	&"ivoryscar": {  # sun-bleached — lightest, most desaturated parchment
+		parchment = Color(0.88, 0.86, 0.81),
+		parchment_dark = Color(0.26, 0.25, 0.22),
+		ink = Color(0.16, 0.14, 0.12),
+		heraldry = Color(0.52, 0.47, 0.34),
+		seal = Color(0.34, 0.30, 0.20),
+		motif = &"pyramid",
+	},
+	&"tainted_jade": {  # faint green parchment, corrupt-purple heraldry
+		parchment = Color(0.72, 0.80, 0.71),
+		parchment_dark = Color(0.19, 0.24, 0.19),
+		ink = Color(0.10, 0.12, 0.09),
+		heraldry = Color(0.29, 0.22, 0.36),
+		seal = Color(0.18, 0.13, 0.23),
+		motif = &"fanged_blossom",
 	},
 }
 
@@ -76,6 +184,9 @@ class _ChromePainter extends Node2D:
 	var contact_mode := false
 	var contact_set_id: StringName = &""
 	var contact_textures: Dictionary = {}  # piece -> Texture2D, pre-built by the driver (see note on _paint_contact_sheet)
+	var factions_mode := false
+	var factions_set_ids: Array = []
+	var factions_textures: Dictionary = {}  # set_id -> {piece -> Texture2D}, pre-built by the driver
 
 	# ── Shared paint helpers, copied from tools_ui_style_candidates.gd ──────
 
@@ -133,6 +244,21 @@ class _ChromePainter extends Node2D:
 			out.append(p.rotated(angle))
 		return out
 
+	## Shared leaf/petal/flame/spearhead shape — a 4-point teardrop from
+	## `base` to `tip`, `width` px across its midpoint. Reused by several
+	## faction motifs (laurel leaves, the gladehost leaf, the moonspear
+	## spear tip, cinderguard flame teeth, tainted_jade petals) instead of
+	## each motif re-deriving the same perpendicular-offset math.
+	func _leaf_poly(base: Vector2, tip: Vector2, width: float) -> PackedVector2Array:
+		var dirv := tip - base
+		var perp: Vector2
+		if dirv.length() > 0.0001:
+			perp = Vector2(-dirv.y, dirv.x).normalized()
+		else:
+			perp = Vector2(0.0, 1.0)
+		var mid := base.lerp(tip, 0.5)
+		return PackedVector2Array([base, mid + perp * width * 0.5, tip, mid - perp * width * 0.5])
+
 	## Seeded stain blotches for the parchment field — scatters translucent
 	## blobs of `tint` inside `rect`, kept clear of the very edge.
 	func _paint_stains(rng: RandomNumberGenerator, rect: Rect2, count: int, tint: Color) -> void:
@@ -182,10 +308,347 @@ class _ChromePainter extends Node2D:
 			draw_circle(placed[0], r * 0.10, ink)
 		draw_circle(center, r * 0.14, ink)
 
+	## Empire — laurel shield: a pointed pentagon shield with two small
+	## flanking rows of laurel leaves (via _leaf_poly) arced up its sides.
+	func _motif_empire(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var shield_col: Color = Color(pal.heraldry).lightened(0.10)
+		var w := r * 0.42
+		var top := -r * 0.55
+		var shield_local := PackedVector2Array([
+			Vector2(-w, top), Vector2(w, top),
+			Vector2(w * 0.9, top + r * 0.55), Vector2(0.0, r * 0.85),
+			Vector2(-w * 0.9, top + r * 0.55),
+		])
+		var placed := PackedVector2Array()
+		for p in shield_local:
+			placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_colored_polygon(placed, shield_col)
+		var closed := placed.duplicate()
+		closed.append(placed[0])
+		draw_polyline(closed, ink, max(1.0, r * 0.09), true)
+		var leaf_col: Color = Color(pal.heraldry).darkened(0.05)
+		for side in [-1.0, 1.0]:
+			for i in range(3):
+				var t := float(i) / 2.0
+				var base_local := Vector2(side * w * 1.05, r * 0.75 - t * r * 0.5)
+				var tip_local := Vector2(side * (w * 1.55 + t * r * 0.15), r * 0.55 - t * r * 0.75)
+				var base_p := center + Vector2(base_local.x * mirror.x, base_local.y * mirror.y)
+				var tip_p := center + Vector2(tip_local.x * mirror.x, tip_local.y * mirror.y)
+				var leaf := _leaf_poly(base_p, tip_p, r * 0.22)
+				draw_colored_polygon(leaf, leaf_col)
+				var lc := leaf.duplicate()
+				lc.append(leaf[0])
+				draw_polyline(lc, ink, max(1.0, r * 0.06), true)
+
+	## Skulloath — horned skull: bone-colored skull disc + jaw block, two
+	## dark eye notches, and a pair of curved horn triangles above.
+	## GATE FIX (self-critique round 2): at true seal scale (motif r~6.5px)
+	## every outline stroke clamps to the same 1.0px minimum regardless of
+	## its `r * 0.0X` multiplier, so a needle-thin sub-shape's own outline
+	## covers most or all of its fill — the jaw's separate outline and the
+	## original narrow-base horns were rendering as solid ink blobs with the
+	## bone/horn fill barely surviving (verified via direct pixel sampling
+	## of the baked PNG, not just the visual crop). Fix: drop the jaw's own
+	## outline (it now reads as part of the skull disc's silhouette instead
+	## of losing its fill to a second thin ring) and widen the horns' base
+	## so their fill area meaningfully exceeds their outline's footprint.
+	func _motif_skulloath(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var bone_col: Color = Color(pal.heraldry).lightened(0.35)
+		draw_circle(center, r * 0.55, bone_col)
+		draw_arc(center, r * 0.55, 0.0, TAU, 20, ink, max(1.0, r * 0.08))
+		var jaw_local := PackedVector2Array([
+			Vector2(-r * 0.30, r * 0.35), Vector2(r * 0.30, r * 0.35),
+			Vector2(r * 0.20, r * 0.65), Vector2(-r * 0.20, r * 0.65),
+		])
+		var jaw_placed := PackedVector2Array()
+		for p in jaw_local:
+			jaw_placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_colored_polygon(jaw_placed, bone_col)
+		for side in [-1.0, 1.0]:
+			var eye_local := Vector2(side * r * 0.22, -r * 0.05)
+			var eye_p := center + Vector2(eye_local.x * mirror.x, eye_local.y * mirror.y)
+			draw_circle(eye_p, r * 0.16, ink)
+		var horn_col: Color = Color(pal.heraldry).lightened(0.20)
+		for side in [-1.0, 1.0]:
+			var horn_local := PackedVector2Array([
+				Vector2(side * r * 0.18, -r * 0.30),
+				Vector2(side * r * 0.68, -r * 0.80),
+				Vector2(side * r * 0.58, -r * 0.18),
+			])
+			var horn_placed := PackedVector2Array()
+			for p in horn_local:
+				horn_placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+			draw_colored_polygon(horn_placed, horn_col)
+			var hc := horn_placed.duplicate()
+			hc.append(horn_placed[0])
+			draw_polyline(hc, ink, max(1.0, r * 0.05), true)
+
+	## Gladehost — leaf: single teardrop leaf (via _leaf_poly) with a center
+	## vein spine and two pairs of angled side veins.
+	func _motif_gladehost(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var leaf_col: Color = Color(pal.heraldry).lightened(0.12)
+		var base_local := Vector2(0.0, r * 0.85)
+		var tip_local := Vector2(0.0, -r * 0.85)
+		var base_p := center + Vector2(base_local.x * mirror.x, base_local.y * mirror.y)
+		var tip_p := center + Vector2(tip_local.x * mirror.x, tip_local.y * mirror.y)
+		var leaf := _leaf_poly(base_p, tip_p, r * 0.85)
+		draw_colored_polygon(leaf, leaf_col)
+		var lc := leaf.duplicate()
+		lc.append(leaf[0])
+		draw_polyline(lc, ink, max(1.0, r * 0.09), true)
+		draw_polyline(PackedVector2Array([base_p, center, tip_p]), ink, max(1.0, r * 0.06), true)
+		for t in [0.3, 0.6]:
+			var mid: Vector2 = base_p.lerp(tip_p, t)
+			for side in [-1.0, 1.0]:
+				var vein_end := mid + Vector2(side * r * 0.28 * mirror.x, -r * 0.12 * mirror.y)
+				draw_line(mid, vein_end, ink, max(1.0, r * 0.05))
+
+	## Moonspear — crescent: a lit-arc moon carved from two offset circles
+	## (the second drawn in `pal.seal` so it blends into the seal backing),
+	## plus a small spearhead hanging off the lower horn.
+	func _motif_moonspear(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var moon_col: Color = Color(pal.heraldry).lightened(0.28)
+		draw_circle(center, r * 0.6, moon_col)
+		var cut_local := Vector2(r * 0.32, 0.0)
+		var cut_p := center + Vector2(cut_local.x * mirror.x, cut_local.y * mirror.y)
+		draw_circle(cut_p, r * 0.55, pal.seal)
+		draw_arc(center, r * 0.6, 0.0, TAU, 20, ink, max(1.0, r * 0.06))
+		var tip_local := Vector2(-r * 0.05, r * 0.95)
+		var spear_base_local := Vector2(-r * 0.15, r * 0.35)
+		var tip_p := center + Vector2(tip_local.x * mirror.x, tip_local.y * mirror.y)
+		var spear_base_p := center + Vector2(spear_base_local.x * mirror.x, spear_base_local.y * mirror.y)
+		var spear := _leaf_poly(spear_base_p, tip_p, r * 0.16)
+		draw_colored_polygon(spear, Color(pal.heraldry).darkened(0.10))
+		var sc := spear.duplicate()
+		sc.append(spear[0])
+		draw_polyline(sc, ink, max(1.0, r * 0.05), true)
+
+	## Sunblessed — sun: circle core + 8 triangular rays. Radially symmetric
+	## so `mirror` needs no special handling (any reflection of a full ray
+	## ring is itself).
+	func _motif_sunblessed(pal: Dictionary, center: Vector2, r: float, _mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var sun_col: Color = Color(pal.heraldry).lightened(0.22)
+		var core_r := r * 0.4
+		for i in range(8):
+			var ang := TAU * float(i) / 8.0
+			var dirv := Vector2(cos(ang), sin(ang))
+			var perp := Vector2(-dirv.y, dirv.x)
+			var base_a := center + dirv * core_r * 0.9 + perp * r * 0.09
+			var base_b := center + dirv * core_r * 0.9 - perp * r * 0.09
+			var tip := center + dirv * r * 0.95
+			draw_colored_polygon(PackedVector2Array([base_a, tip, base_b]), sun_col)
+		draw_circle(center, core_r, sun_col)
+		draw_arc(center, core_r, 0.0, TAU, 20, ink, max(1.0, r * 0.07))
+
+	## Cinderguard — anvil over flame: a blocky anvil silhouette above three
+	## teardrop flame tongues (via _leaf_poly) rising toward its underside.
+	## GATE FIX (self-critique round 2): the original 8-point anvil traced a
+	## notched "I-beam" waist whose thinnest segments (~0.1r) were narrower
+	## than the outline's 1.0px-minimum stroke width, so the outline alone
+	## covered the fill almost entirely (confirmed via direct pixel sampling
+	## — anvil_col essentially never appeared in the baked PNG). Replaced
+	## with a bold 6-point hexagon (flat top face, tapered body, still-wide
+	## foot) where every cross-section stays well above that 1px floor.
+	func _motif_cinderguard(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var anvil_col: Color = Color(pal.heraldry).lightened(0.15)  # lightened, not darkened: too close to pal.seal's dark ember tone to survive render-time AA blending at seal scale
+		var anvil_local := PackedVector2Array([
+			Vector2(-r * 0.55, -r * 0.25), Vector2(r * 0.55, -r * 0.25),
+			Vector2(r * 0.38, r * 0.10), Vector2(r * 0.30, r * 0.55),
+			Vector2(-r * 0.30, r * 0.55), Vector2(-r * 0.38, r * 0.10),
+		])
+		var placed := PackedVector2Array()
+		for p in anvil_local:
+			placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_colored_polygon(placed, anvil_col)
+		var ac := placed.duplicate()
+		ac.append(placed[0])
+		draw_polyline(ac, ink, max(1.0, r * 0.07), true)
+		var flame_col: Color = Color(pal.heraldry).lightened(0.22)
+		for i in range(3):
+			var fx := (float(i) - 1.0) * r * 0.28
+			var base_local := Vector2(fx, r * 0.95)
+			var tip_local := Vector2(fx * 0.4, r * 0.65)  # below the taller anvil foot (now reaches r*0.55), was r*0.40
+			var base_p := center + Vector2(base_local.x * mirror.x, base_local.y * mirror.y)
+			var tip_p := center + Vector2(tip_local.x * mirror.x, tip_local.y * mirror.y)
+			var flame := _leaf_poly(base_p, tip_p, r * 0.18)
+			draw_colored_polygon(flame, flame_col)
+
+	## Thunderswarm — bolt: classic 5-vertex lightning zigzag polygon.
+	func _motif_thunderswarm(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var bolt_col: Color = Color(pal.heraldry).lightened(0.22)
+		var bolt_local := PackedVector2Array([
+			Vector2(r * 0.15, -r * 0.95),
+			Vector2(-r * 0.35, r * 0.05),
+			Vector2(r * 0.05, r * 0.05),
+			Vector2(-r * 0.15, r * 0.95),
+			Vector2(r * 0.35, -r * 0.05),
+		])
+		var placed := PackedVector2Array()
+		for p in bolt_local:
+			placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_colored_polygon(placed, bolt_col)
+		var bc := placed.duplicate()
+		bc.append(placed[0])
+		draw_polyline(bc, ink, max(1.0, r * 0.08), true)
+
+	## Forsaken — broken mask: face oval, one filled eye + one empty (ring-
+	## only) eye socket, split by a jagged hand-authored crack polyline.
+	## GATE FIX (self-critique round 2): the oval's own outline plus the
+	## crack plus both eye marks are 4 separate ink strokes inside a ~13px
+	## motif — at that density even a lightened(0.28) fill was nearly
+	## invisible in the baked PNG (direct pixel sampling found almost no
+	## fill-colored pixels). Pushed the fill most of the way to the
+	## parchment end of the scale so it still reads as a distinct pale
+	## silhouette once the render's AA blends the surrounding ink strokes
+	## into it.
+	func _motif_forsaken(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var mask_col: Color = Color(pal.heraldry).lightened(0.65)
+		var oval_local := PackedVector2Array([
+			Vector2(0.0, -r * 0.85), Vector2(r * 0.5, -r * 0.5), Vector2(r * 0.55, r * 0.1),
+			Vector2(r * 0.3, r * 0.75), Vector2(0.0, r * 0.9), Vector2(-r * 0.3, r * 0.75),
+			Vector2(-r * 0.55, r * 0.1), Vector2(-r * 0.5, -r * 0.5),
+		])
+		var placed := PackedVector2Array()
+		for p in oval_local:
+			placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_colored_polygon(placed, mask_col)
+		var oc := placed.duplicate()
+		oc.append(placed[0])
+		draw_polyline(oc, ink, max(1.0, r * 0.08), true)
+		var eye_local := Vector2(r * 0.22, -r * 0.15)
+		var eye_p := center + Vector2(eye_local.x * mirror.x, eye_local.y * mirror.y)
+		draw_circle(eye_p, r * 0.12, ink)
+		var empty_local := Vector2(-r * 0.22, -r * 0.15)
+		var empty_p := center + Vector2(empty_local.x * mirror.x, empty_local.y * mirror.y)
+		draw_arc(empty_p, r * 0.12, 0.0, TAU, 12, ink, max(1.0, r * 0.05))
+		# Shortened to 2 segments confined to the lower half (below the eye
+		# line) — the original 4-segment crack ran top-to-bottom and, being
+		# a 4th ink stroke inside the same ~13px motif, left almost no clean
+		# fill area anywhere in the oval (confirmed via direct pixel
+		# sampling of the baked PNG).
+		var crack_local := [
+			Vector2(-r * 0.05, -r * 0.10), Vector2(r * 0.12, r * 0.25), Vector2(-r * 0.05, r * 0.65),
+		]
+		var crack := PackedVector2Array()
+		for p in crack_local:
+			crack.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_polyline(crack, ink, max(1.0, r * 0.07), true)
+
+	## Ivoryscar — pyramid: triangle silhouette with 3 horizontal terrace
+	## step lines and a small diamond eye slit near the apex.
+	func _motif_ivoryscar(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var stone_col: Color = Color(pal.heraldry).lightened(0.15)
+		var tri_local := PackedVector2Array([
+			Vector2(0.0, -r * 0.9), Vector2(r * 0.85, r * 0.75), Vector2(-r * 0.85, r * 0.75),
+		])
+		var placed := PackedVector2Array()
+		for p in tri_local:
+			placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_colored_polygon(placed, stone_col)
+		var tc := placed.duplicate()
+		tc.append(placed[0])
+		draw_polyline(tc, ink, max(1.0, r * 0.08), true)
+		for t in [0.25, 0.5, 0.75]:
+			var y: float = lerp(-r * 0.9, r * 0.75, t)
+			var half_w: float = lerp(0.0, r * 0.85, t)
+			var a := center + Vector2(-half_w * mirror.x, y * mirror.y)
+			var b := center + Vector2(half_w * mirror.x, y * mirror.y)
+			draw_line(a, b, ink, max(1.0, r * 0.04))
+		var eye_local := Vector2(0.0, -r * 0.25)
+		var eye_p := center + Vector2(eye_local.x * mirror.x, eye_local.y * mirror.y)
+		draw_colored_polygon(PackedVector2Array([
+			eye_p + Vector2(-r * 0.18, 0.0), eye_p + Vector2(0.0, -r * 0.09),
+			eye_p + Vector2(r * 0.18, 0.0), eye_p + Vector2(0.0, r * 0.09),
+		]), ink)
+
+	## Tainted Jade — fanged blossom: 4 petals (via _leaf_poly, radiating
+	## from the seal center) plus 2 pale fang triangles hanging below.
+	func _motif_tainted_jade(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var petal_col: Color = Color(pal.heraldry).lightened(0.22)
+		for i in range(4):
+			var ang := TAU * float(i) / 4.0 + PI * 0.25
+			var tip_local := Vector2(cos(ang), sin(ang)) * r * 0.85
+			var tip_p := center + Vector2(tip_local.x * mirror.x, tip_local.y * mirror.y)
+			var petal := _leaf_poly(center, tip_p, r * 0.45)
+			draw_colored_polygon(petal, petal_col)
+			var pc := petal.duplicate()
+			pc.append(petal[0])
+			draw_polyline(pc, ink, max(1.0, r * 0.05), true)
+		var fang_col: Color = Color(pal.heraldry).lightened(0.40)
+		for side in [-1.0, 1.0]:
+			var fang_local := PackedVector2Array([
+				Vector2(side * r * 0.12, r * 0.15),
+				Vector2(side * r * 0.22, r * 0.15),
+				Vector2(side * r * 0.06, r * 0.6),
+			])
+			var fp := PackedVector2Array()
+			for p in fang_local:
+				fp.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+			draw_colored_polygon(fp, fang_col)
+			var fc := fp.duplicate()
+			fc.append(fp[0])
+			draw_polyline(fc, ink, max(1.0, r * 0.04), true)
+		draw_circle(center, r * 0.12, ink)
+
+	## Shardhorde — crystal shard: elongated hexagon with 3 inner facet
+	## lines from alternating tips toward an off-center core.
+	func _motif_shardhorde(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		var ink: Color = pal.ink
+		var crystal_col: Color = Color(pal.heraldry).lightened(0.22)
+		var hex_local := PackedVector2Array([
+			Vector2(0.0, -r * 0.95), Vector2(r * 0.4, -r * 0.35), Vector2(r * 0.32, r * 0.55),
+			Vector2(0.0, r * 0.9), Vector2(-r * 0.32, r * 0.55), Vector2(-r * 0.4, -r * 0.35),
+		])
+		var placed := PackedVector2Array()
+		for p in hex_local:
+			placed.append(center + Vector2(p.x * mirror.x, p.y * mirror.y))
+		draw_colored_polygon(placed, crystal_col)
+		var hc := placed.duplicate()
+		hc.append(placed[0])
+		draw_polyline(hc, ink, max(1.0, r * 0.07), true)
+		var facet_col: Color = Color(pal.ink).lerp(crystal_col, 0.4)
+		var core_local := Vector2(0.0, r * 0.15)
+		var core_p := center + Vector2(core_local.x * mirror.x, core_local.y * mirror.y)
+		draw_line(placed[0], core_p, facet_col, max(1.0, r * 0.04))
+		draw_line(placed[1], core_p, facet_col, max(1.0, r * 0.04))
+		draw_line(placed[5], core_p, facet_col, max(1.0, r * 0.04))
+
 	func _paint_motif(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
 		match String(pal.motif):
 			"quill":
 				_motif_quill(pal, center, r, mirror)
+			"laurel_shield":
+				_motif_empire(pal, center, r, mirror)
+			"horned_skull":
+				_motif_skulloath(pal, center, r, mirror)
+			"leaf":
+				_motif_gladehost(pal, center, r, mirror)
+			"crescent":
+				_motif_moonspear(pal, center, r, mirror)
+			"sun":
+				_motif_sunblessed(pal, center, r, mirror)
+			"crystal_shard":
+				_motif_shardhorde(pal, center, r, mirror)
+			"bolt":
+				_motif_thunderswarm(pal, center, r, mirror)
+			"anvil_flame":
+				_motif_cinderguard(pal, center, r, mirror)
+			"broken_mask":
+				_motif_forsaken(pal, center, r, mirror)
+			"pyramid":
+				_motif_ivoryscar(pal, center, r, mirror)
+			"fanged_blossom":
+				_motif_tainted_jade(pal, center, r, mirror)
 			_:
 				_motif_quill(pal, center, r, mirror)
 
@@ -309,9 +772,69 @@ class _ChromePainter extends Node2D:
 		draw_string(ThemeDB.fallback_font, stretch_pos + Vector2(0, -6), "frame stretched to 400x260 (StyleBoxTexture nine-patch)", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
 		draw_style_box(sb, Rect2(stretch_pos, STRETCH_SAMPLE_SIZE))
 
+	## Task 2 — one composite sheet across all 12 sets (`_contact_factions.png`):
+	## a row per set with a frame thumbnail, all 4 button states, and a
+	## magnified crop of the frame's top-left FRAME_MARGIN×FRAME_MARGIN corner
+	## cell (the actual baked seal, not a re-render) so the ART GATE can judge
+	## every motif's legibility at a glance, set against set for palette
+	## differentiation. `textures` is keyed by set_id -> {piece -> Texture2D},
+	## pre-built in _process() for the same GPU-upload-race reason documented
+	## on _paint_contact_sheet above.
+	func _paint_factions_contact_sheet(set_ids: Array, textures: Dictionary) -> void:
+		var vp_size := Vector2(FACTIONS_CONTACT_VP_SIZE)
+		draw_rect(Rect2(Vector2.ZERO, vp_size), Color(0.10, 0.09, 0.08))
+		draw_string(ThemeDB.fallback_font, Vector2(16, 26), "UI CHROME — 12 SETS (neutral + 11 factions)", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.92, 0.88, 0.78))
+
+		var label_x := 16.0
+		var frame_x := 140.0
+		var frame_thumb := 80.0
+		var btn_x0 := 240.0
+		var btn_w := 70.0
+		var btn_h := 34.0
+		var btn_gap := 8.0
+		var seal_x := btn_x0 + 4.0 * (btn_w + btn_gap) + 12.0
+		var seal_thumb := 80.0
+		var row_h := FACTIONS_CONTACT_ROW_H
+		var top := FACTIONS_CONTACT_HEADER_H
+		var btn_keys := ["btn_normal", "btn_hover", "btn_pressed", "btn_disabled"]
+
+		for i in set_ids.size():
+			var sid: StringName = set_ids[i]
+			var row_y := top + float(i) * row_h
+			var tset: Dictionary = textures[sid]
+
+			draw_string(ThemeDB.fallback_font, Vector2(label_x, row_y + row_h * 0.5 + 5.0), String(sid), HORIZONTAL_ALIGNMENT_LEFT, 118, 14, Color(0.88, 0.84, 0.74))
+
+			var frame_tex: Texture2D = tset["frame"]
+			var frame_rect := Rect2(Vector2(frame_x, row_y + (row_h - frame_thumb) * 0.5), Vector2(frame_thumb, frame_thumb))
+			draw_texture_rect(frame_tex, frame_rect, false)
+
+			var bx := btn_x0
+			for key in btn_keys:
+				var btex: Texture2D = tset[key]
+				var brect := Rect2(Vector2(bx, row_y + (row_h - btn_h) * 0.5), Vector2(btn_w, btn_h))
+				draw_texture_rect(btex, brect, false)
+				bx += btn_w + btn_gap
+
+			# Seal close-up: crop the top-left corner cell straight off the
+			# native-resolution frame texture and magnify it (80px from a
+			# 24px source cell, ~3.3x) — proves motif legibility off the real
+			# bake instead of a synthetic re-render at higher radius.
+			var src := Rect2(Vector2.ZERO, Vector2(FRAME_MARGIN, FRAME_MARGIN))
+			var seal_rect := Rect2(Vector2(seal_x, row_y + (row_h - seal_thumb) * 0.5), Vector2(seal_thumb, seal_thumb))
+			draw_texture_rect_region(frame_tex, seal_rect, src)
+
+			if i < set_ids.size() - 1:
+				draw_line(Vector2(8, row_y + row_h), Vector2(vp_size.x - 8.0, row_y + row_h), Color(0.3, 0.28, 0.24), 1.0)
+
 	# ── Dispatch ─────────────────────────────────────────────────────────
 
 	func _draw() -> void:
+		if factions_mode:
+			if factions_textures.is_empty():
+				return
+			_paint_factions_contact_sheet(factions_set_ids, factions_textures)
+			return
 		if contact_mode:
 			if contact_textures.is_empty():
 				return
@@ -368,6 +891,12 @@ func _start() -> void:
 			_jobs.append(["bake", sid, piece])
 		_jobs.append(["contact", sid, ""])
 
+	# The 12-row cross-faction sheet needs every set's textures in _images,
+	# so it's only meaningful (and only enqueued) on a full default run —
+	# a single-set re-bake (`-- <set_id>`) skips it.
+	if set_arg == "":
+		_jobs.append(["factions_contact", &"", ""])
+
 	if _jobs.is_empty():
 		print("No jobs to run — no valid set id(s) in %s" % [set_ids])
 		quit()
@@ -378,56 +907,80 @@ func _process(_delta: float) -> bool:
 	if _capture_pending:
 		var img := _vp.get_texture().get_image()
 		var job: Array = _jobs[_job_idx]
-		if job[0] == "bake":
-			var sid: StringName = job[1]
-			var piece: String = job[2]
-			var fname := "%s_%s.png" % [String(sid), piece]
-			img.save_png("%s/%s" % [OUT_DIR, fname])
-			_images["%s_%s" % [String(sid), piece]] = img
-			print("Saved %s" % fname)
-		else:
-			var sid2: StringName = job[1]
-			var fname2 := "_contact_%s.png" % String(sid2)
-			img.save_png("%s/%s" % [OUT_DIR, fname2])
-			img.save_png("%s/%s" % [SCRATCH_DIR, fname2])
-			print("Saved contact sheet: %s" % fname2)
+		match job[0]:
+			"bake":
+				var sid: StringName = job[1]
+				var piece: String = job[2]
+				var fname := "%s_%s.png" % [String(sid), piece]
+				img.save_png("%s/%s" % [OUT_DIR, fname])
+				_images["%s_%s" % [String(sid), piece]] = img
+				print("Saved %s" % fname)
+			"contact":
+				var sid2: StringName = job[1]
+				var fname2 := "_contact_%s.png" % String(sid2)
+				img.save_png("%s/%s" % [OUT_DIR, fname2])
+				img.save_png("%s/%s" % [SCRATCH_DIR, fname2])
+				print("Saved contact sheet: %s" % fname2)
+			_:  # "factions_contact"
+				var fname3 := "_contact_factions.png"
+				img.save_png("%s/%s" % [OUT_DIR, fname3])
+				img.save_png("%s/%s" % [SCRATCH_DIR, fname3])
+				print("Saved factions contact sheet: %s" % fname3)
 		_capture_pending = false
 	if _job_idx + 1 < _jobs.size():
 		_job_idx += 1
 		var job: Array = _jobs[_job_idx]
-		if job[0] == "bake":
-			var sid: StringName = job[1]
-			var piece: String = job[2]
-			var sz: Vector2i
-			match piece:
-				"frame":
-					sz = FRAME_SIZE
-				"notification":
-					sz = NOTIF_SIZE
-				_:
-					sz = BTN_SIZE
-			_vp.size = sz
-			_painter.contact_mode = false
-			_painter.set_id = sid
-			_painter.piece = piece
-		else:
-			var sid2: StringName = job[1]
-			_vp.size = CONTACT_VP_SIZE
-			_painter.contact_mode = true
-			_painter.contact_set_id = sid2
-			# Built HERE in _process (not inside _draw/_paint_contact_sheet) so the
-			# GPU upload has a full tick to land before the draw batch that
-			# references these textures is submitted — see the note on
-			# _paint_contact_sheet for why creating them inside _draw() instead
-			# rasterizes as blank white.
-			_painter.contact_textures = {
-				"frame": ImageTexture.create_from_image(_images["%s_frame" % String(sid2)]),
-				"btn_normal": ImageTexture.create_from_image(_images["%s_btn_normal" % String(sid2)]),
-				"btn_hover": ImageTexture.create_from_image(_images["%s_btn_hover" % String(sid2)]),
-				"btn_pressed": ImageTexture.create_from_image(_images["%s_btn_pressed" % String(sid2)]),
-				"btn_disabled": ImageTexture.create_from_image(_images["%s_btn_disabled" % String(sid2)]),
-				"notification": ImageTexture.create_from_image(_images["%s_notification" % String(sid2)]),
-			}
+		match job[0]:
+			"bake":
+				var sid: StringName = job[1]
+				var piece: String = job[2]
+				var sz: Vector2i
+				match piece:
+					"frame":
+						sz = FRAME_SIZE
+					"notification":
+						sz = NOTIF_SIZE
+					_:
+						sz = BTN_SIZE
+				_vp.size = sz
+				_painter.contact_mode = false
+				_painter.factions_mode = false
+				_painter.set_id = sid
+				_painter.piece = piece
+			"contact":
+				var sid2: StringName = job[1]
+				_vp.size = CONTACT_VP_SIZE
+				_painter.contact_mode = true
+				_painter.factions_mode = false
+				_painter.contact_set_id = sid2
+				# Built HERE in _process (not inside _draw/_paint_contact_sheet) so the
+				# GPU upload has a full tick to land before the draw batch that
+				# references these textures is submitted — see the note on
+				# _paint_contact_sheet for why creating them inside _draw() instead
+				# rasterizes as blank white.
+				_painter.contact_textures = {
+					"frame": ImageTexture.create_from_image(_images["%s_frame" % String(sid2)]),
+					"btn_normal": ImageTexture.create_from_image(_images["%s_btn_normal" % String(sid2)]),
+					"btn_hover": ImageTexture.create_from_image(_images["%s_btn_hover" % String(sid2)]),
+					"btn_pressed": ImageTexture.create_from_image(_images["%s_btn_pressed" % String(sid2)]),
+					"btn_disabled": ImageTexture.create_from_image(_images["%s_btn_disabled" % String(sid2)]),
+					"notification": ImageTexture.create_from_image(_images["%s_notification" % String(sid2)]),
+				}
+			_:  # "factions_contact" — 12-row cross-set sheet, all sets already baked
+				_vp.size = FACTIONS_CONTACT_VP_SIZE
+				_painter.contact_mode = false
+				_painter.factions_mode = true
+				_painter.factions_set_ids = SETS.keys()
+				var ftextures := {}
+				for sid3 in SETS.keys():
+					ftextures[sid3] = {
+						"frame": ImageTexture.create_from_image(_images["%s_frame" % String(sid3)]),
+						"btn_normal": ImageTexture.create_from_image(_images["%s_btn_normal" % String(sid3)]),
+						"btn_hover": ImageTexture.create_from_image(_images["%s_btn_hover" % String(sid3)]),
+						"btn_pressed": ImageTexture.create_from_image(_images["%s_btn_pressed" % String(sid3)]),
+						"btn_disabled": ImageTexture.create_from_image(_images["%s_btn_disabled" % String(sid3)]),
+					}
+				_painter.factions_textures = ftextures
 		_painter.queue_redraw()
 		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 		_capture_pending = true
