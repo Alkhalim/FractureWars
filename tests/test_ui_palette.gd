@@ -29,5 +29,17 @@ func _run() -> void:
 	_check(t.get_stylebox("separator", "HSeparator") != null, "HSeparator themed")
 	_check(t.get_stylebox("slider", "HSlider") != null, "HSlider themed")
 	_check(t.get_stylebox("panel", "TooltipPanel") != null, "tooltip themed")
+	# 4. apply_faction_theme — live faction chrome switching (Task 4)
+	_run_faction_theme_test(gm)
 	print("UI PALETTE TEST %s" % ("PASSED" if _fails == 0 else "FAILED (%d)" % _fails))
 	quit(0 if _fails == 0 else 1)
+
+func _run_faction_theme_test(gm) -> void:
+	gm.new_game(&"skulloath", false, 0)
+	_check(gm.chrome_set_id == &"skulloath", "new_game applies faction chrome (got %s)" % gm.chrome_set_id)
+	var btn_style = root.theme.get_stylebox("normal", "Button") if root.theme else null
+	_check(btn_style is StyleBoxTexture and (btn_style.texture.resource_path.contains("skulloath")), "root theme uses skulloath textures")
+	gm.apply_faction_theme(&"nonexistent")
+	_check(gm.chrome_set_id == &"nonexistent", "set id tracked even on fallback")
+	_check(root.theme.get_stylebox("normal", "Button") != null, "fallback theme still valid")
+	gm.apply_faction_theme(&"neutral")

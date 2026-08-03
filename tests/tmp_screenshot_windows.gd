@@ -15,7 +15,7 @@ func _init() -> void:
 func _start() -> void:
 	var gm: Node = root.get_node("/root/GameManager")
 	gm._is_transitioning = true
-	gm.new_game(&"empire", false, 0)
+	gm.new_game(&"skulloath", false, 0)
 	gm._is_transitioning = false
 	var scene: PackedScene = load("res://scenes/campaign/campaign.tscn")
 	_campaign = scene.instantiate()
@@ -72,7 +72,6 @@ func _process(_delta: float) -> bool:
 			[func(): _hud.call("_toggle_victory_panel"), func(): _hud.call("_toggle_victory_panel"), "win_victory.png"],
 			[func(): _hud.call("_toggle_diplomacy_panel"), func(): _hud.call("_toggle_diplomacy_panel"), "win_diplomacy.png"],
 			[func(): _hud.call("_toggle_research_panel"), func(): _hud.call("_toggle_research_panel"), "win_research.png"],
-			[func(): _hud.call("_toggle_policies_panel"), func(): _hud.call("_toggle_policies_panel"), "win_policies.png"],
 			[func(): _hud.call("_toggle_faction_overview"), func(): _hud.call("_toggle_faction_overview"), "win_faction_overview.png"],
 			[func(): _hud.call("_show_city_panel", city_id), func(): _hud.call("_hide_city_panel"), "win_city.png"],
 			[func(): _hud.call("_show_event_dialog", {
@@ -82,6 +81,12 @@ func _process(_delta: float) -> bool:
 				func(): _pop_last_dialog(), "win_event_dialog.png"],
 			[func(): _hud.call("_show_turn_summary"), func(): _pop_last_dialog(), "win_turn_summary.png"],
 		]
+		# Policies/Senate panel is Empire-only (_create_economy_panel only
+		# builds _policies_panel when player_faction_id == "empire") — only
+		# probe it when running the sweep as Empire, or _toggle_policies_panel
+		# hits a null _policies_panel and throws (Task 4 windowed-sweep fix).
+		if pid == &"empire":
+			_steps.append([func(): _hud.call("_toggle_policies_panel"), func(): _hud.call("_toggle_policies_panel"), "win_policies.png"])
 		if army_id != StringName():
 			_steps.append([func(): _hud.call("_show_army_split_dialog", army_id), func(): _pop_last_dialog(), "win_army_split.png"])
 			_steps.append([func(): _hud.call("_show_disband_dialog", army_id), func(): _pop_last_dialog(), "win_disband.png"])
@@ -92,18 +97,22 @@ func _process(_delta: float) -> bool:
 			# (region_panel) at once — _select_army emits both army_selected
 			# and hex_tile_selected for the army's hex.
 			_steps.append([func(): _campaign.call("_select_army", army_id), func(): _campaign.call("_deselect_all"), "win_panels_layout.png"])
-	# Each step: open at t, shot at t+6, close at t+8; next step at t+10
+	# Each step: open at t, shot at t+20, close at t+24; next step at t+30.
+	# Shot offset bumped from +6 to +20 (Task 4 windowed-sweep fix) — +6
+	# landed mid-fade on panels that modulate-tween in over 0.2s, so shots
+	# caught them translucent; +20 frames clears that at any reasonable
+	# frame rate.
 	var t := _frames - _base_frame
 	if t >= 0 and _steps.size() > 0:
-		var idx := t / 10
-		var phase := t % 10
+		var idx := t / 30
+		var phase := t % 30
 		if idx < _steps.size():
 			var step: Array = _steps[idx]
 			if phase == 0:
 				step[0].call()
-			elif phase == 6:
+			elif phase == 20:
 				_shot(step[2])
-			elif phase == 8:
+			elif phase == 24:
 				step[1].call()
 		elif idx >= _steps.size():
 			print("ALL DONE")

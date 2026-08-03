@@ -126,6 +126,23 @@ func _setup_global_theme() -> void:
 	chrome_set_id = &"neutral"
 	get_tree().root.theme = _build_theme_for_set(&"neutral")
 
+## Live faction chrome switch (Task 4). Resolves minor factions to their
+## parent via MINOR_FACTION_PARENTS (minors have no dedicated bake — they
+## share their parent's generated PNGs, per _load_chrome_piece's fallback
+## chain), then rebuilds the palette, the root theme, and drops the compact-
+## theme memoization so get_compact_theme() lazily rebuilds from the new set
+## next time something asks for it (same builder function as boot/neutral —
+## no hand-constructed theme here, so the font-color/CheckBox-stylebox
+## mirrors documented on get_compact_theme() stay intact).
+## Call sites: new_game (right after state.player_faction_id is assigned)
+## and load_game (right after the deserialized state is available).
+func apply_faction_theme(faction_id: StringName) -> void:
+	var set_id: StringName = MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	UIPalette.rebuild(set_id)
+	chrome_set_id = set_id
+	get_tree().root.theme = _build_theme_for_set(set_id)
+	_compact_theme = null
+
 ## Loads one baked chrome piece for `set_id`, falling back to the neutral
 ## set's copy of the same piece if `set_id` has no bake (unknown/nonexistent
 ## faction id, or a set only partially baked). Returns null if even the
@@ -1105,6 +1122,7 @@ func load_game(slot: int) -> void:
 	state = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GameState
 	if state == null:
 		return
+	apply_faction_theme(state.player_faction_id)
 	# Old-save backfill (Task 1b, camp-fix follow-up): saves from before
 	# ba9c8bc may have a settled Sunblessed camp with is_mobile_camp == false
 	# (that fix's old semantics cleared the flag on settle instead of keeping
@@ -1140,6 +1158,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false, map_seed: 
 	explored_tiles.clear()
 	state = GameState.new()
 	state.player_faction_id = faction_id
+	apply_faction_theme(faction_id)
 
 	# Per-campaign map seed (Task 1B): -1 means "unset", so roll one now.
 	# This is the ONLY place map-gen randomness is allowed to originate —
