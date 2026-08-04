@@ -585,31 +585,68 @@ func time_bbcode(turns: int, icon_px := 16) -> String:
 	return "[img=%d]%s[/img][color=#bfb89e]%d[/color]" % [icon_px, TIME_ICON_PATH, turns]
 
 ## Button with an icon cost row inside — for actions whose label used to
-## spell costs as text ("Found Settlement (80 Gold, 40 Wood)").
-func make_cost_button(title: String, cost: Dictionary, turns := 0, compare: Dictionary = {}, font_size := 13, extra_text := "") -> Button:
+## spell costs as text ("Found Settlement (80 Gold, 40 Wood)"). `two_line`
+## (UI Polish Wave Task P3 — designer feedback: cramming name + cost icons +
+## turns + pop onto one line reads dense) stacks the title (line 1, at
+## `font_size` — pass 15 for the style guide's "body" size) above the
+## cost/turns/extra row (line 2, at `font_size - 2` — 13, "dense") instead of
+## running everything side by side on one line. Used by the city panel's
+## recruit list, "Upgrade to Level N", and "Found Settlement" buttons; other
+## call sites (dilemma-choice buttons, the Sunblessed camp compact recruit
+## button) keep the original single-line layout by leaving this false.
+func make_cost_button(title: String, cost: Dictionary, turns := 0, compare: Dictionary = {}, font_size := 13, extra_text := "", two_line := false) -> Button:
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(0, float(font_size) + 22.0)
-	var content := HBoxContainer.new()
-	content.set_anchors_preset(Control.PRESET_FULL_RECT)
-	content.alignment = BoxContainer.ALIGNMENT_CENTER
-	content.add_theme_constant_override("separation", 10)
-	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var title_lbl := Label.new()
 	title_lbl.text = title
 	title_lbl.add_theme_font_size_override("font_size", font_size)
 	title_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
-	content.add_child(title_lbl)
-	if not cost.is_empty() or turns > 0:
-		var row := make_cost_row(cost, compare, font_size - 1, "", false, turns, true)
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		content.add_child(row)
 	var extra_lbl: Label = null
-	if extra_text != "":
-		extra_lbl = Label.new()
-		extra_lbl.text = extra_text
-		extra_lbl.add_theme_font_size_override("font_size", font_size - 2)
-		extra_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
-		content.add_child(extra_lbl)
+	var content: BoxContainer
+	if two_line:
+		# Height budget mirrors the single-line "+22" padding allowance below,
+		# just sized for two stacked lines instead of one (lands ~52-56px per
+		# the P3 brief for the 15/13 title/cost sizes the three call sites use).
+		btn.custom_minimum_size = Vector2(0, float(font_size) + float(font_size - 2) + 24.0)
+		var vcontent := VBoxContainer.new()
+		vcontent.alignment = BoxContainer.ALIGNMENT_CENTER
+		vcontent.add_theme_constant_override("separation", 2)
+		title_lbl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		vcontent.add_child(title_lbl)
+		var line2 := HBoxContainer.new()
+		line2.add_theme_constant_override("separation", 10)
+		line2.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		line2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if not cost.is_empty() or turns > 0:
+			var row := make_cost_row(cost, compare, font_size - 2, "", false, turns, true)
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			line2.add_child(row)
+		if extra_text != "":
+			extra_lbl = Label.new()
+			extra_lbl.text = extra_text
+			extra_lbl.add_theme_font_size_override("font_size", font_size - 2)
+			extra_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
+			line2.add_child(extra_lbl)
+		vcontent.add_child(line2)
+		content = vcontent
+	else:
+		btn.custom_minimum_size = Vector2(0, float(font_size) + 22.0)
+		var hcontent := HBoxContainer.new()
+		hcontent.alignment = BoxContainer.ALIGNMENT_CENTER
+		hcontent.add_theme_constant_override("separation", 10)
+		hcontent.add_child(title_lbl)
+		if not cost.is_empty() or turns > 0:
+			var row := make_cost_row(cost, compare, font_size - 1, "", false, turns, true)
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			hcontent.add_child(row)
+		if extra_text != "":
+			extra_lbl = Label.new()
+			extra_lbl.text = extra_text
+			extra_lbl.add_theme_font_size_override("font_size", font_size - 2)
+			extra_lbl.add_theme_color_override("font_color", UIPalette.INK_BODY)
+			hcontent.add_child(extra_lbl)
+		content = hcontent
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(content)
 	# This label sits directly on the button's own fill, not a themed Button's
 	# internal text — it doesn't get the Button theme's automatic per-state

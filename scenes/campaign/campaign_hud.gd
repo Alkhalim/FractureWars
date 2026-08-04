@@ -8377,7 +8377,7 @@ func _show_city_panel(city_id: StringName) -> void:
 
 		var upgrade_btn := GameManager.make_cost_button(
 			"Upgrade to Level %d" % (city.level + 1), upgrade_cost, upgrade_time,
-			fs_upgrade.resources if fs_upgrade else {&"_": 0}, 12)
+			fs_upgrade.resources if fs_upgrade else {&"_": 0}, 15, "", true)
 		upgrade_btn.disabled = not can_afford
 		upgrade_btn.pressed.connect(func() -> void:
 			if GameManager.city_system.start_upgrade(city_id):
@@ -8403,7 +8403,13 @@ func _show_city_panel(city_id: StringName) -> void:
 			if income[res_type] > 0:
 				positive[res_type] = income[res_type]
 		if positive.size() > 0:
-			vbox.add_child(GameManager.make_cost_row(positive, {}, 13, "Income:", true))
+			# Fit-content width (task P3: was stretching to the full column
+			# width regardless of entry count) — shrink to the row's own
+			# natural size instead of filling the panel like a default
+			# BoxContainer child would.
+			var income_row := GameManager.make_cost_row(positive, {}, 13, "Income:", true)
+			income_row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			vbox.add_child(income_row)
 
 	# Garrison info
 	var garrison_def: Array = GameManager.city_system._get_garrison_composition(city)
@@ -8425,8 +8431,8 @@ func _show_city_panel(city_id: StringName) -> void:
 		var found_fs: FactionState = GameManager.state.faction_states.get(GameManager.state.player_faction_id)
 		var found_btn := GameManager.make_cost_button(
 			"Found Settlement", CitySystem.SETTLEMENT_FOUNDING_COST, 0,
-			found_fs.resources if found_fs else {&"_": 0}, 12)
-		found_btn.custom_minimum_size = Vector2(280, 32)
+			found_fs.resources if found_fs else {&"_": 0}, 15, "", true)
+		found_btn.custom_minimum_size.x = 280
 		found_btn.disabled = not can_afford_found
 		found_btn.pressed.connect(_on_found_settlement_pressed.bind(city_id))
 		vbox.add_child(found_btn)
@@ -8540,7 +8546,7 @@ func _show_city_panel(city_id: StringName) -> void:
 				var unit_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
 				var recruit_btn := GameManager.make_cost_button(
 					unit_data.display_name, unit_data.recruit_cost, unit_data.recruit_time,
-					fs.resources if fs else {&"_": 0}, 12, "Pop %d" % unit_pop_cost)
+					fs.resources if fs else {&"_": 0}, 15, "Pop %d" % unit_pop_cost, true)
 				recruit_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				recruit_btn.pressed.connect(_on_recruit_pressed.bind(city_id, unit_data_id))
 				recruit_btn.mouse_entered.connect(_show_unit_card.bind(unit_data_id))
@@ -9117,12 +9123,15 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	var can_afford := fs != null and _can_afford_display(fs, building.build_cost)
 	var is_buildable := can_afford and not slot_blocked
 
+	# Task P3 (designer feedback: a full category-color background makes the
+	# card's own text hard to read) — background is now the same neutral
+	# CHIP_BG chip `_create_unit_card` uses; category is signaled ONLY by the
+	# border rim (below) and the small ECO/DEF/CUL tag (cat_tag, below), not
+	# by tinting the whole card.
 	var style := StyleBoxFlat.new()
-	var _dimmed := cat_color.darkened(0.4)
-	var _gray := _dimmed.get_luminance()
-	style.bg_color = cat_color if is_buildable else Color(_dimmed.lerp(Color(_gray, _gray, _gray), 0.5), 0.35)
-	style.border_color = Color(cat_color, 0.8) if is_buildable else Color(0.4, 0.38, 0.35, 0.6)
-	style.set_border_width_all(1)
+	style.bg_color = Color(UIPalette.CHIP_BG, 0.95) if is_buildable else Color(UIPalette.CHIP_BG, 0.55)
+	style.border_color = Color(cat_color, 0.85) if is_buildable else Color(0.4, 0.38, 0.35, 0.6)
+	style.set_border_width_all(2)
 	style.set_corner_radius_all(4)
 	style.content_margin_left = 6.0
 	style.content_margin_top = 4.0
@@ -9147,7 +9156,7 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	else:
 		name_label.text = building.display_name
 	name_label.add_theme_font_size_override("font_size", 13)
-	name_label.add_theme_color_override("font_color", Color(0.92, 0.85, 0.55) if is_buildable else Color(0.7, 0.65, 0.58))
+	name_label.add_theme_color_override("font_color", UIPalette.PARCHMENT if is_buildable else Color(UIPalette.PARCHMENT, 0.55))
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.clip_text = true
 	name_row.add_child(name_label)
@@ -9220,14 +9229,19 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 				_show_building_detail(captured_bid, captured_cid)
 	)
 
-	# Hover effect
+	# Hover effect — border emphasis (brighten the rim) instead of a bg shift,
+	# since the bg is now the flat neutral chip rather than a category tint.
+	var captured_style := style
+	var base_border_color := style.border_color
 	card.mouse_entered.connect(func():
 		_on_building_hover(captured_bid)
+		captured_style.border_color = base_border_color.lightened(0.3)
 		var tw := create_tween()
 		tw.tween_property(card, "scale", Vector2(1.03, 1.03), 0.1)
 	)
 	card.mouse_exited.connect(func():
 		_on_building_hover_exit()
+		captured_style.border_color = base_border_color
 		var tw := create_tween()
 		tw.tween_property(card, "scale", Vector2.ONE, 0.1)
 	)
