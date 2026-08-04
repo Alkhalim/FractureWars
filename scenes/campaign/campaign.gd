@@ -4173,6 +4173,35 @@ func _on_battle_auto_resolved(report: Dictionary) -> void:
 	if not report.is_empty():
 		_show_battle_report(report)
 
+## Display-only army-power estimate for the pre-battle dialog's strength
+## meter (UI Polish Wave Task P6 — designer: "battle selection screen should
+## display a strength meter to give some info on who is what relative
+## strength"). Mirrors battle_v3.gd's _calc_formation_power() weights
+## (attack + defense*0.5 + speed*0.3 [+ range*0.4 ranged bonus], scaled by
+## HP ratio, times headcount) applied per UnitInstance/UnitData instead of
+## per BattleFormationV3 -- no formation object exists yet at this stage
+## (formations are only built once battle_v3.tscn's simulator sets up), so
+## this duplicates rather than shares the formula; kept in sync via this
+## comment cross-reference. squad_size stands in for entities_alive (no
+## casualties from THIS fight have happened yet; current_hp/max_hp ratio
+## still reflects damage carried over from a prior fight/retreat, same as
+## the HUD meter's hp_ratio). Commander/research combat bonuses are
+## intentionally NOT folded in here (unlike the in-battle HUD meter, which
+## reads them off already-built formations) -- this is a rough pre-commit
+## gut-check, not a battle predictor.
+func _calc_army_power_estimate(army: ArmyState) -> float:
+	var power := 0.0
+	for u in army.units:
+		var ud := DataManager.get_unit(u.unit_data_id)
+		if ud == null or ud.max_hp <= 0:
+			continue
+		var hp_ratio := clampf(float(u.current_hp) / float(ud.max_hp), 0.0, 1.0)
+		var stat_value := float(ud.attack) + float(ud.melee_defense) * 0.5 + float(ud.speed) * 0.3
+		if ud.attack_range > 1:
+			stat_value += float(ud.attack_range) * 0.4
+		power += hp_ratio * stat_value * float(maxi(1, ud.squad_size))
+	return power
+
 func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> void:
 	if _battle_dialog:
 		_battle_dialog.queue_free()
@@ -4214,12 +4243,14 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	_battle_dialog.anchor_right = 0.5
 	_battle_dialog.anchor_bottom = 0.5
 	_battle_dialog.offset_left = -200
-	_battle_dialog.offset_top = -150
+	_battle_dialog.offset_top = -195
 	_battle_dialog.offset_right = 200
-	_battle_dialog.offset_bottom = 150
+	_battle_dialog.offset_bottom = 195
 	_battle_dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_battle_dialog.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_battle_dialog.z_index = 50  # Ensure battle dialog is always on top of other panels
+	# Height grew (300->390, P6) to fit the new strength-meter chip below
+	# without squeezing the existing unit-roster/bonus content.
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 10)
@@ -4289,6 +4320,62 @@ func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> 
 	var sep2 := HSeparator.new()
 	sep2.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep2)
+
+	# Relative strength meter (P6 designer feedback) -- a quick "who is
+	# stronger" read at the actual decision point (Manual/Retreat/Auto),
+	# framed from the PLAYER's side regardless of whether they're the
+	# attacker or defender this fight. See _calc_army_power_estimate() above
+	# for the formula (mirrors the in-battle HUD meter).
+	var meter_player_fid := GameManager.state.player_faction_id
+	var meter_player_army := attacker_army if attacker_army.faction_id == meter_player_fid else defender_army
+	var meter_enemy_army := defender_army if attacker_army.faction_id == meter_player_fid else attacker_army
+	var meter_player_power := _calc_army_power_estimate(meter_player_army)
+	var meter_enemy_power := _calc_army_power_estimate(meter_enemy_army)
+	var meter_total := meter_player_power + meter_enemy_power
+	var meter_player_ratio := 0.5 if meter_total <= 0.0 else clampf(meter_player_power / meter_total, 0.0, 1.0)
+
+	var meter_chip := PanelContainer.new()
+	var meter_style := StyleBoxFlat.new()
+	meter_style.bg_color = Color(UIPalette.BAR_TROUGH, 0.9)
+	meter_style.border_color = Color(UIPalette.CHIP_BORDER, 0.6)
+	meter_style.set_border_width_all(1)
+	meter_style.set_corner_radius_all(5)
+	meter_style.content_margin_left = 10.0
+	meter_style.content_margin_right = 10.0
+	meter_style.content_margin_top = 6.0
+	meter_style.content_margin_bottom = 6.0
+	meter_chip.add_theme_stylebox_override("panel", meter_style)
+	vbox.add_child(meter_chip)
+
+	var meter_vbox := VBoxContainer.new()
+	meter_vbox.add_theme_constant_override("separation", 3)
+	meter_chip.add_child(meter_vbox)
+
+	var meter_label := Label.new()
+	meter_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	meter_label.add_theme_font_size_override("font_size", 11)
+	meter_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
+	meter_label.text = "RELATIVE STRENGTH — YOU %d%%  |  ENEMY %d%%" % [int(round(meter_player_ratio * 100.0)), int(round((1.0 - meter_player_ratio) * 100.0))]
+	meter_vbox.add_child(meter_label)
+
+	var meter_bar_row := HBoxContainer.new()
+	meter_bar_row.add_theme_constant_override("separation", 0)
+	meter_bar_row.custom_minimum_size = Vector2(0, 14)
+	meter_vbox.add_child(meter_bar_row)
+
+	var meter_fill_player := ColorRect.new()
+	meter_fill_player.color = Color(UIPalette.SUCCESS, 0.95)
+	meter_fill_player.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	meter_fill_player.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	meter_fill_player.size_flags_stretch_ratio = maxf(0.02, meter_player_ratio)
+	meter_bar_row.add_child(meter_fill_player)
+
+	var meter_fill_enemy := ColorRect.new()
+	meter_fill_enemy.color = Color(UIPalette.DANGER, 0.95)
+	meter_fill_enemy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	meter_fill_enemy.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	meter_fill_enemy.size_flags_stretch_ratio = maxf(0.02, 1.0 - meter_player_ratio)
+	meter_bar_row.add_child(meter_fill_enemy)
 
 	var bonus_label := Label.new()
 	bonus_label.add_theme_font_size_override("font_size", 11)
@@ -4891,10 +4978,14 @@ func _show_battle_report(report: Dictionary) -> void:
 	_battle_report_panel.anchor_top = 0.5
 	_battle_report_panel.anchor_right = 0.5
 	_battle_report_panel.anchor_bottom = 0.5
-	_battle_report_panel.offset_left = -220
-	_battle_report_panel.offset_top = -200
-	_battle_report_panel.offset_right = 220
-	_battle_report_panel.offset_bottom = 200
+	# P6 (designer: "battle reports should be larger window in general so no
+	# scrolling is needed"): 440x400 -> 640x480, paired with the 2-column
+	# attacker/defender roster below, so a typical auto-resolved battle
+	# (both sides up to the base 8-unit army cap) fits without scrolling.
+	_battle_report_panel.offset_left = -320
+	_battle_report_panel.offset_top = -240
+	_battle_report_panel.offset_right = 320
+	_battle_report_panel.offset_bottom = 240
 	_battle_report_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_battle_report_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 
@@ -4921,13 +5012,25 @@ func _show_battle_report(report: Dictionary) -> void:
 	sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	vbox.add_child(sep)
 
-	# Attacker section
+	# Attacker/Defender rosters: side-by-side columns (P6) instead of
+	# stacked-with-separator -- roughly halves the vertical space typical
+	# content needs, matching the same 2-column treatment applied to
+	# battle_v3.gd's manual-battle result screen (_build_roster_column).
+	var roster_columns := HBoxContainer.new()
+	roster_columns.add_theme_constant_override("separation", 18)
+	roster_columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(roster_columns)
+
 	var atk_faction := DataManager.get_faction(report.atk_faction)
+	var atk_col := VBoxContainer.new()
+	atk_col.add_theme_constant_override("separation", 2)
+	atk_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var atk_header := Label.new()
 	atk_header.text = "ATTACKER: " + (atk_faction.display_name if atk_faction else str(report.atk_faction))
 	atk_header.add_theme_font_size_override("font_size", 14)
 	atk_header.add_theme_color_override("font_color", Color(0.85, 0.4, 0.35))
-	vbox.add_child(atk_header)
+	atk_header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	atk_col.add_child(atk_header)
 
 	var atk_snapshot: Array = report.atk_snapshot
 	var atk_hp_after: Dictionary = report.atk_hp_after
@@ -4935,25 +5038,33 @@ func _show_battle_report(report: Dictionary) -> void:
 		var snap: Dictionary = atk_snapshot[i]
 		var unit_label := Label.new()
 		unit_label.add_theme_font_size_override("font_size", 12)
+		unit_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if atk_hp_after.has(i):
 			unit_label.text = "  %s: %d -> %d HP" % [snap.name, snap.hp_before, atk_hp_after[i]]
-			unit_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+			# Dim-parchment idiom for "alive" text on a dark chip, matching
+			# GameManager.make_cost_row's own default-text color derivation.
+			unit_label.add_theme_color_override("font_color", Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85))
 		else:
 			unit_label.text = "  %s: %d -> KILLED" % [snap.name, snap.hp_before]
 			unit_label.add_theme_color_override("font_color", UIPalette.DANGER)
-		vbox.add_child(unit_label)
+		atk_col.add_child(unit_label)
+	roster_columns.add_child(atk_col)
 
-	var sep2 := HSeparator.new()
-	sep2.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.3))
-	vbox.add_child(sep2)
+	var roster_sep := VSeparator.new()
+	roster_sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.4))
+	roster_columns.add_child(roster_sep)
 
-	# Defender section
+	# Defender column
 	var def_faction := DataManager.get_faction(report.def_faction)
+	var def_col := VBoxContainer.new()
+	def_col.add_theme_constant_override("separation", 2)
+	def_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var def_header := Label.new()
 	def_header.text = "DEFENDER: " + (def_faction.display_name if def_faction else str(report.def_faction))
 	def_header.add_theme_font_size_override("font_size", 14)
 	def_header.add_theme_color_override("font_color", Color(0.35, 0.4, 0.85))
-	vbox.add_child(def_header)
+	def_header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	def_col.add_child(def_header)
 
 	var def_snapshot: Array = report.def_snapshot
 	var def_hp_after: Dictionary = report.def_hp_after
@@ -4961,13 +5072,17 @@ func _show_battle_report(report: Dictionary) -> void:
 		var snap: Dictionary = def_snapshot[i]
 		var unit_label := Label.new()
 		unit_label.add_theme_font_size_override("font_size", 12)
+		unit_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if def_hp_after.has(i):
 			unit_label.text = "  %s: %d -> %d HP" % [snap.name, snap.hp_before, def_hp_after[i]]
-			unit_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+			# Dim-parchment idiom for "alive" text on a dark chip, matching
+			# GameManager.make_cost_row's own default-text color derivation.
+			unit_label.add_theme_color_override("font_color", Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85))
 		else:
 			unit_label.text = "  %s: %d -> KILLED" % [snap.name, snap.hp_before]
 			unit_label.add_theme_color_override("font_color", UIPalette.DANGER)
-		vbox.add_child(unit_label)
+		def_col.add_child(unit_label)
+	roster_columns.add_child(def_col)
 
 	var sep3 := HSeparator.new()
 	sep3.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
@@ -4991,24 +5106,25 @@ func _show_battle_report(report: Dictionary) -> void:
 		winner_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.5))
 	vbox.add_child(winner_label)
 
-	# Spoils of war (loot + captives)
+	# Spoils of war (loot + captives) -- icon row (P6: "use icons instead of
+	# text for resources") via the same GameManager.make_cost_row helper
+	# battle_v3.gd's own result screen already uses for this exact purpose.
 	var loot_gold: int = report.get("loot_gold", 0)
 	var loot_iron: int = report.get("loot_iron", 0)
 	var captives_gained: int = report.get("captives", 0)
 	if loot_gold > 0 or loot_iron > 0 or captives_gained > 0:
-		var spoils_label := Label.new()
-		spoils_label.add_theme_font_size_override("font_size", 12)
-		spoils_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
-		spoils_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		var spoils_parts: Array[String] = []
+		var spoils_cost := {}
 		if loot_gold > 0:
-			spoils_parts.append("+%d Gold" % loot_gold)
+			spoils_cost[Enums.ResourceType.GOLD] = loot_gold
 		if loot_iron > 0:
-			spoils_parts.append("+%d Iron" % loot_iron)
+			spoils_cost[Enums.ResourceType.IRON] = loot_iron
 		if captives_gained > 0:
-			spoils_parts.append("+%d Captives" % captives_gained)
-		spoils_label.text = "Spoils: " + "  ".join(spoils_parts)
-		vbox.add_child(spoils_label)
+			spoils_cost[Enums.ResourceType.CAPTIVES] = captives_gained
+		var spoils_row := GameManager.make_cost_row(spoils_cost, {}, 13, "Spoils:", true)
+		var spoils_center := HBoxContainer.new()
+		spoils_center.alignment = BoxContainer.ALIGNMENT_CENTER
+		spoils_center.add_child(spoils_row)
+		vbox.add_child(spoils_center)
 
 	# Continue button
 	var btn := Button.new()

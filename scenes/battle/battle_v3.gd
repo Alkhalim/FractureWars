@@ -592,10 +592,14 @@ func _build_ui() -> void:
 	result_panel.anchor_top = 0.5
 	result_panel.anchor_right = 0.5
 	result_panel.anchor_bottom = 0.5
-	result_panel.offset_left = -200
-	result_panel.offset_top = -180
-	result_panel.offset_right = 200
-	result_panel.offset_bottom = 180
+	# P6 (battle report, designer: "larger window ... so no scrolling is
+	# needed"): sized + 2-column roster (see _show_result) so a typical
+	# battle (both sides up to the base 8-unit army cap) fits without
+	# scrolling the roster ScrollContainer below.
+	result_panel.offset_left = -320
+	result_panel.offset_top = -280
+	result_panel.offset_right = 320
+	result_panel.offset_bottom = 280
 	result_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	result_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	ui_layer.add_child(result_panel)
@@ -2239,6 +2243,38 @@ func _enforce_mark_limit() -> void:
 
 # --- Result ---
 
+## One roster column (side header + one line per formation) for the P6
+## 2-column battle-report layout. `header_color` distinguishes YOUR (green
+## family) vs ENEMY (red family) at a glance, matching the strength-meter
+## color convention used elsewhere in this file (UIPalette.SUCCESS/DANGER).
+func _build_roster_column(header_text: String, formations: Array, header_color: Color) -> VBoxContainer:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 2)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var header := Label.new()
+	header.text = header_text
+	header.add_theme_font_size_override("font_size", 13)
+	header.add_theme_color_override("font_color", header_color)
+	col.add_child(header)
+
+	for f in formations:
+		var status := "ALIVE"
+		if f.is_dead:
+			status = "KILLED"
+		elif f.is_fled:
+			status = "FLED"
+		var line := Label.new()
+		line.text = "%s - %s (%d/%d HP, %d dmg dealt)" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp, f.damage_dealt]
+		line.add_theme_font_size_override("font_size", 12)
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		# Dim-parchment idiom for "alive" text on a dark chip, matching
+		# GameManager.make_cost_row's own default-text color derivation.
+		line.add_theme_color_override("font_color", UIPalette.DANGER if f.is_dead else Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85))
+		col.add_child(line)
+
+	return col
+
 func _show_result() -> void:
 	current_phase = Phase.RESULT
 	pause_btn.visible = false
@@ -2296,38 +2332,30 @@ func _show_result() -> void:
 			siege_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			vbox.add_child(siege_note)
 
-	# Roster report scrolls so long armies never overflow the fixed panel
+	# Roster report: 2-column (YOUR | ENEMY side by side, P6) instead of one
+	# stacked text blob -- roughly halves the vertical space typical content
+	# needs. Still wrapped in a ScrollContainer as a safety net for armies
+	# past the usual size cap, but generously sized (below) so that never
+	# triggers for a typical battle.
 	var report_scroll := ScrollContainer.new()
 	report_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	report_scroll.custom_minimum_size = Vector2(0, 180)
+	report_scroll.custom_minimum_size = Vector2(0, 320)
 	vbox.add_child(report_scroll)
 
-	var casualty_label := Label.new()
-	casualty_label.add_theme_font_size_override("font_size", 12)
-	casualty_label.add_theme_color_override("font_color", Color(0.8, 0.75, 0.65))
+	var roster_columns := HBoxContainer.new()
+	roster_columns.add_theme_constant_override("separation", 18)
+	roster_columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	report_scroll.add_child(roster_columns)
 
-	var text := "YOUR FORCES:\n"
 	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations
-	for f in player_formations:
-		var status := "ALIVE"
-		if f.is_dead:
-			status = "KILLED"
-		elif f.is_fled:
-			status = "FLED"
-		text += "  %s - %s (%d/%d HP, %d dmg dealt)\n" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp, f.damage_dealt]
-
-	text += "\nENEMY FORCES:\n"
 	var enemy_formations := simulator.defender_formations if player_side == 0 else simulator.attacker_formations
-	for f in enemy_formations:
-		var status := "ALIVE"
-		if f.is_dead:
-			status = "KILLED"
-		elif f.is_fled:
-			status = "FLED"
-		text += "  %s - %s (%d/%d HP, %d dmg dealt)\n" % [f.display_name, status, maxi(0, f.current_hp), f.max_hp, f.damage_dealt]
+	roster_columns.add_child(_build_roster_column("YOUR FORCES", player_formations, UIPalette.SUCCESS_BRIGHT))
 
-	casualty_label.text = text
-	report_scroll.add_child(casualty_label)
+	var roster_sep := VSeparator.new()
+	roster_sep.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.4))
+	roster_columns.add_child(roster_sep)
+
+	roster_columns.add_child(_build_roster_column("ENEMY FORCES", enemy_formations, UIPalette.DANGER_BRIGHT))
 
 	# Spoils as icon rows (captives / loot / plunder)
 	var player_captives: int = simulator.captives.get(player_side, 0)
