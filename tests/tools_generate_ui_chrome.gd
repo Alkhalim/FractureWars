@@ -18,8 +18,10 @@ extends SceneTree
 ## Output: assets/sprites/ui/generated/<set_id>_{frame,btn_normal,btn_hover,
 ## btn_pressed,btn_disabled,notification,seal}.png plus a per-set contact
 ## sheet assets/sprites/ui/generated/_contact_<set_id>.png (also copied to
-## the session scratchpad) proving all 7 pieces plus a 400x260 nine-patch-
-## stretched sample of the frame piece via a real StyleBoxTexture draw. On a
+## the session scratchpad) proving all 7 pieces plus a 400x260 AND (UI
+## Polish Wave Task P8, judging large-panel stain-field density) a 900x700
+## nine-patch-stretched sample of the frame piece via a real StyleBoxTexture
+## draw. On a
 ## full default run (all 12 sets: neutral + the 11 major factions) also
 ## produces assets/sprites/ui/generated/_contact_factions.png (also copied
 ## to the scratchpad) — one row per set with a frame thumb, all 4 button
@@ -53,8 +55,10 @@ const SEAL_SIZE := Vector2i(64, 64)          # standalone wax-seal piece, transp
 
 const PIECES := ["frame", "btn_normal", "btn_hover", "btn_pressed", "btn_disabled", "notification", "seal"]
 
-const CONTACT_VP_SIZE := Vector2i(940, 410)  # +30 (Task 5b round 2) for the new standalone-seal row
+const CONTACT_VP_SIZE := Vector2i(940, 1160)  # +30 (Task 5b round 2) for the standalone-seal row; height grown (Task P8) to fit the new 900x700 stretched sample below the original 410px band, judging the denser/asymmetric frame stain field at the scale the designer's "stretched too much area" complaint was actually about
 const STRETCH_SAMPLE_SIZE := Vector2(400.0, 260.0)
+const BIG_STRETCH_SAMPLE_SIZE := Vector2(900.0, 700.0)  # Task P8 — designer-requested large-panel judging sample
+const BIG_STRETCH_SAMPLE_Y := 440.0  # top of the big-sample section, clear of the 410px original band
 
 ## Task 2's multi-set contact sheet — one row per SETS entry (12 with neutral
 ## + the 11 factions), each row showing a frame thumb, all 4 button states,
@@ -377,53 +381,85 @@ class _ChromePainter extends Node2D:
 
 	# ── Shared paint helpers, copied from tools_ui_style_candidates.gd ──────
 
-	func _blob(rng: RandomNumberGenerator, center: Vector2, base_r: float, verts := 10, jitter := 0.35) -> PackedVector2Array:
+	## UI Polish Wave Task P8 (designer: "might just want a few different
+	## variations on the pattern itself") — 2-3 named wobble "hands", each
+	## tuning the hand-inked squiggle's envelope frequency (how many sine
+	## bellies ride along one straight edge — was always locked to exactly 1
+	## everywhere), polygon resolution (`segs` — also reads as busyness, since
+	## every extra vertex is an independent random draw, see `_wavy_line`) and
+	## pixel amplitude. `amp_px` stays within ~15% of the original hardcoded
+	## 1.0 (designer: "keep amplitude in the current character range") — only
+	## frequency/segs move enough to read as a genuinely different squiggle,
+	## so every variant still belongs to the same family instead of reading as
+	## an unrelated redesign. Picked deterministically per set+piece (see
+	## `_wobble_variant`) so e.g. skulloath's frame reads differently from its
+	## own buttons, and from empire's frame — via a pure hash, no RNG draw
+	## consumed, so re-bakes stay byte-identical run to run.
+	const WOBBLE_VARIANTS := [
+		{segs = 5, amp_px = 0.9, envelope_freq = 1.0},   # calm single bow, slightly coarser facets
+		{segs = 6, amp_px = 1.1, envelope_freq = 1.0},   # original character, a touch bolder
+		{segs = 9, amp_px = 1.0, envelope_freq = 1.8},   # busier near-double-belly squiggle
+	]
+
+	func _wobble_variant(sid: StringName, piece_name: String) -> Dictionary:
+		var h := hash(String(sid) + "_" + piece_name + "_wobble_variant")
+		return WOBBLE_VARIANTS[posmod(h, WOBBLE_VARIANTS.size())]
+
+	## `angle_jitter` (added Task P8, self-critique round) perturbs each
+	## vertex's angle by up to `angle_jitter` * half the even angular step
+	## (kept < 1.0 so neighboring vertices can never cross/reorder — the
+	## polygon stays simple). Default 0.0 preserves the original "regular
+	## polygon with only radius jittered" behavior for any future caller that
+	## wants it; `_paint_stain_tier` below always passes a nonzero value.
+	## Why this exists: with few vertices (6-10) evenly spaced and ONLY the
+	## radius varying, a blob's silhouette is a slightly-bumpy but still
+	## fundamentally REGULAR polygon (hexagon/octagon) — barely noticeable at
+	## thumbnail scale, but once a big nine-patch stretch (the whole point of
+	## the P8 large-panel fix) magnifies that same blob 5-7x, the regular
+	## angular spacing reads as an obviously geometric hexagon/near-rectangle
+	## instead of an organic stain (caught via the 900x700 contact-sheet
+	## sample this task added — see the report for the before/after).
+	func _blob(rng: RandomNumberGenerator, center: Vector2, base_r: float, verts := 10, jitter := 0.35, angle_jitter := 0.0) -> PackedVector2Array:
 		var pts := PackedVector2Array()
+		var step := TAU / float(verts)
 		for i in verts:
-			var a := TAU * float(i) / float(verts)
+			var a := step * float(i) + (rng.randf() - 0.5) * step * angle_jitter
 			var rr := base_r * (1.0 - jitter * 0.5 + rng.randf() * jitter)
 			pts.append(center + Vector2(cos(a), sin(a)) * rr)
 		return pts
 
-	func _wavy_line(rng: RandomNumberGenerator, from: Vector2, to: Vector2, amp: float, segs: int) -> PackedVector2Array:
+	func _wavy_line(rng: RandomNumberGenerator, from: Vector2, to: Vector2, amp: float, segs: int, envelope_freq := 1.0) -> PackedVector2Array:
 		var dirv := (to - from).normalized()
 		var perp := Vector2(-dirv.y, dirv.x)
 		var pts := PackedVector2Array()
 		for k in segs + 1:
 			var t := float(k) / float(segs)
-			pts.append(from.lerp(to, t) + perp * sin(t * PI * 2.0 + rng.randf() * 2.0) * amp)
+			pts.append(from.lerp(to, t) + perp * sin(t * PI * 2.0 * envelope_freq + rng.randf() * 2.0) * amp)
 		return pts
 
 	## Traces a rect's 4 edges through _wavy_line so straight borders read as
 	## hand-inked instead of ruler-straight. Open polygon (no duplicated
 	## closing point) — callers close it themselves if needed.
-	func _jittered_rect_poly(rng: RandomNumberGenerator, rect: Rect2, segs: int, jitter: float) -> PackedVector2Array:
+	func _jittered_rect_poly(rng: RandomNumberGenerator, rect: Rect2, segs: int, jitter: float, envelope_freq := 1.0) -> PackedVector2Array:
 		var corners := [rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]
 		var pts := PackedVector2Array()
 		for i in 4:
 			var a: Vector2 = corners[i]
 			var b: Vector2 = corners[(i + 1) % 4]
-			var seg := _wavy_line(rng, a, b, jitter, segs)
+			var seg := _wavy_line(rng, a, b, jitter, segs, envelope_freq)
 			for j in range(seg.size() - 1):
 				pts.append(seg[j])
 		return pts
 
-	## Chamfered/rounded rect via corner arcs — used for button fills.
-	func _rounded_rect_poly(rect: Rect2, radius: float, segs_per_corner := 6) -> PackedVector2Array:
-		var r: float = min(radius, min(rect.size.x * 0.5, rect.size.y * 0.5))
-		var corners := [
-			{c = rect.position + Vector2(r, r), a0 = PI, a1 = PI * 1.5},
-			{c = Vector2(rect.end.x - r, rect.position.y + r), a0 = PI * 1.5, a1 = TAU},
-			{c = rect.end - Vector2(r, r), a0 = 0.0, a1 = PI * 0.5},
-			{c = Vector2(rect.position.x + r, rect.end.y - r), a0 = PI * 0.5, a1 = PI},
-		]
-		var pts := PackedVector2Array()
-		for cd in corners:
-			for i in segs_per_corner + 1:
-				var t := float(i) / float(segs_per_corner)
-				var ang: float = lerp(float(cd.a0), float(cd.a1), t)
-				pts.append(cd.c + Vector2(cos(ang), sin(ang)) * r)
-		return pts
+	## UI Polish Wave Task P8 (designer BUG report: "the square base shape of
+	## the button still is visible past the barrier the line should normally
+	## form") — `_rounded_rect_poly` used to fill buttons with a rounded RECT
+	## while the border was drawn as a separate, smaller wobble polygon, so a
+	## sliver of the rect's straight/rounded edge always poked past the
+	## squiggle. Removed: `_paint_button` below now fills the exact same
+	## wobble polygon it strokes for the border (fill+outline share one path,
+	## per the designer's requested fix), so this helper has no remaining
+	## caller.
 
 	func _rotate_poly(pts: PackedVector2Array, angle: float) -> PackedVector2Array:
 		var out := PackedVector2Array()
@@ -446,25 +482,65 @@ class _ChromePainter extends Node2D:
 		var mid := base.lerp(tip, 0.5)
 		return PackedVector2Array([base, mid + perp * width * 0.5, tip, mid - perp * width * 0.5])
 
-	## Seeded stain blotches for the parchment field — scatters translucent
-	## blobs of `tint` inside `rect`, kept clear of the very edge.
-	func _paint_stains(rng: RandomNumberGenerator, rect: Rect2, count: int, tint: Color) -> void:
-		var max_r: float = min(rect.size.x, rect.size.y) * 0.16
+	## Single stain-size tier — `count` blobs, radius randomized in
+	## [min_r, max_r], alpha randomized in [tint.a*alpha_lo, tint.a*alpha_hi]
+	## per blob (so no two stains are the same weight), vertex count and
+	## `_blob`'s own jitter also randomized a little per blob so the outline
+	## shape varies too, not just position/size. Called 3x at different
+	## scales by `_paint_stains` below.
+	func _paint_stain_tier(rng: RandomNumberGenerator, rect: Rect2, count: int, min_r: float, max_r: float, tint: Color, alpha_lo: float, alpha_hi: float) -> void:
 		for i in count:
-			var cx := rng.randf_range(rect.position.x + max_r, rect.end.x - max_r)
-			var cy := rng.randf_range(rect.position.y + max_r, rect.end.y - max_r)
-			var r := rng.randf_range(max_r * 0.4, max_r)
-			draw_colored_polygon(_blob(rng, Vector2(cx, cy), r, 8, 0.35), tint)
+			var r := rng.randf_range(min_r, max_r)
+			var cx := rng.randf_range(rect.position.x + r, rect.end.x - r)
+			var cy := rng.randf_range(rect.position.y + r, rect.end.y - r)
+			var a := tint.a * rng.randf_range(alpha_lo, alpha_hi)
+			# Self-critique fix (checked the 900x700 sample this task added):
+			# vertex count scales with each blob's own radius so a big tier-1
+			# blotch — the one that gets magnified the most under a large
+			# nine-patch stretch — gets enough facets to still read as
+			# organic instead of an obviously regular hexagon; angle_jitter
+			# breaks the even angular spacing that made low-vertex blobs read
+			# as geometric shapes even before any stretch.
+			var verts: int = clampi(int(r * 0.5) + 6, 6, 18)
+			draw_colored_polygon(_blob(rng, Vector2(cx, cy), r, verts, 0.45, 0.4), Color(tint.r, tint.g, tint.b, a))
+
+	## UI Polish Wave Task P8 (designer root-cause: "the pattern looked nice
+	## and dense enough for the small preview graphics and then stretch it
+	## over way too much area" + "simply repeating the small pattern many
+	## times might also look bad, there would need to be variation and not
+	## too much symmetry"). Was a single tier of 8-14 same-scale blobs — at
+	## the frame/notification canvas's ~128-160px stretchable center, blown up
+	## to fill an 800+px dialog, that read as a handful of flat blurry ovals.
+	## Fix keeps the SAME canvas (nine-patch contract untouched — see the file
+	## header GOTCHA note and `FRAME_MARGIN`/`game_manager.gd`) and instead
+	## layers 3 independently-randomized size tiers — a few large soft
+	## blotches for broad tonal drift, a mid tier of flecks, and a fine
+	## speckle grain — each blob individually sized/positioned/alpha'd by the
+	## RNG (no grid, no repetition, no radial symmetry), so a big nine-patch
+	## stretch still reads as organic texture instead of "a few big ovals" or
+	## a visibly tiled small pattern. `rect` sizes this call scales with
+	## (`short_side`), so the same function serves both the 192px frame and
+	## the 224px notification without per-caller tuning.
+	func _paint_stains(rng: RandomNumberGenerator, rect: Rect2, tint: Color) -> void:
+		var short_side: float = min(rect.size.x, rect.size.y)
+		_paint_stain_tier(rng, rect, 7, short_side * 0.11, short_side * 0.22, tint, 0.35, 0.85)   # tier 1: broad blotches
+		_paint_stain_tier(rng, rect, 26, short_side * 0.03, short_side * 0.09, tint, 0.7, 1.4)     # tier 2: mid flecks
+		_paint_stain_tier(rng, rect, 40, short_side * 0.01, short_side * 0.03, tint, 1.0, 2.0)     # tier 3: fine speckle
 
 	## One or more nested hand-inked wobble lines, each `insets[i]` px inside
 	## `rect` at stroke width `widths[i]`, all in one `color` — the frame's
 	## signature double-line border (called twice, once per color, since
 	## Task 5b round 2 split it into an `ink` outer line + `secondary` inner
 	## line) and, doubled up again, the notification's ornate variant.
-	func _paint_wobble_border(rng: RandomNumberGenerator, rect: Rect2, insets: Array, widths: Array, color: Color) -> void:
+	## `variant` (added Task P8) is one entry of `WOBBLE_VARIANTS`, computed
+	## ONCE per piece by the caller and passed to every nested-line call for
+	## that piece — so a frame's outer+inner lines share one wobble "hand"
+	## instead of each line rolling its own, which would read as mismatched
+	## squiggles on the same border.
+	func _paint_wobble_border(rng: RandomNumberGenerator, rect: Rect2, insets: Array, widths: Array, color: Color, variant: Dictionary) -> void:
 		for i in insets.size():
 			var r2: Rect2 = rect.grow(-float(insets[i]))
-			var poly := _jittered_rect_poly(rng, r2, 6, 1.0)
+			var poly := _jittered_rect_poly(rng, r2, variant.segs, variant.amp_px, variant.envelope_freq)
 			var closed := poly.duplicate()
 			closed.append(poly[0])
 			draw_polyline(closed, color, float(widths[i]), true)
@@ -871,12 +947,15 @@ class _ChromePainter extends Node2D:
 	func _paint_frame(rng: RandomNumberGenerator, pal: Dictionary) -> void:
 		var rect := Rect2(Vector2.ZERO, Vector2(FRAME_SIZE))
 		draw_rect(rect, pal.parchment)
-		_paint_stains(rng, rect, 8, Color(Color(pal.parchment_dark).r, Color(pal.parchment_dark).g, Color(pal.parchment_dark).b, 0.07))
+		_paint_stains(rng, rect, Color(Color(pal.parchment_dark).r, Color(pal.parchment_dark).g, Color(pal.parchment_dark).b, 0.07))
 		# Task 5b round 2: outer line stays `ink` (border definition), inner
 		# line becomes `secondary` (previously both were `ink` — this is the
 		# "frame's inner border line" the ART GATE asked for).
-		_paint_wobble_border(rng, rect, [2.0], [2.0], pal.ink)
-		_paint_wobble_border(rng, rect, [5.5], [1.6], pal.secondary)
+		# Task P8: one wobble variant for the whole piece (both nested lines
+		# share it) so the frame reads as one coherent hand-inked pass.
+		var wv := _wobble_variant(set_id, piece)
+		_paint_wobble_border(rng, rect, [2.0], [2.0], pal.ink, wv)
+		_paint_wobble_border(rng, rect, [5.5], [1.6], pal.secondary, wv)
 		var m := float(FRAME_MARGIN)
 		var r := 12.0  # scaled with FRAME_MARGIN 24->32 (was 9.0 at margin 24, same ratio)
 		var corners := [
@@ -931,11 +1010,22 @@ class _ChromePainter extends Node2D:
 				var g := (p.r + p.g + p.b) / 3.0
 				fill = p.lerp(Color(g, g, g), 0.55)
 				border = Color(pal.ink).lerp(fill, 0.5)
-		draw_colored_polygon(_rounded_rect_poly(rect, 4.0), fill)
+		# UI Polish Wave Task P8 BUG FIX (designer: "the square base shape of
+		# the button still is visible past the barrier the line should
+		# normally form the outline of the button") — fill the SAME jittered
+		# wobble polygon the border strokes, instead of a separate rounded
+		# rect. `draw_colored_polygon` auto-closes back to its first point, so
+		# the open `wobble` array (not `closed`) is exactly the fill shape;
+		# everything outside it stays transparent (SubViewport is
+		# transparent_bg — see the driver below) with nothing square poking
+		# past the line, at every one of the 4 states (this function runs
+		# once per state, so the fix applies uniformly).
 		var border_rect := rect.grow(-2.0)  # inside BTN_MARGIN (12px)
-		var wobble := _jittered_rect_poly(rng, border_rect, 4, 1.0)
+		var wv := _wobble_variant(set_id, piece)
+		var wobble := _jittered_rect_poly(rng, border_rect, wv.segs, wv.amp_px, wv.envelope_freq)
 		var closed := wobble.duplicate()
 		closed.append(wobble[0])
+		draw_colored_polygon(wobble, fill)
 		# UI Polish Wave Task P1 ("button color and background color often too
 		# close to each other"): border weight 1.6 -> 2.6 (+1px). The button's
 		# `fill` (parchment/lightened-parchment) sits close in tone to the
@@ -959,14 +1049,17 @@ class _ChromePainter extends Node2D:
 	func _paint_notification(rng: RandomNumberGenerator, pal: Dictionary) -> void:
 		var rect := Rect2(Vector2.ZERO, Vector2(NOTIF_SIZE))
 		draw_rect(rect, pal.parchment)
-		_paint_stains(rng, rect, 14, Color(Color(pal.parchment_dark).r, Color(pal.parchment_dark).g, Color(pal.parchment_dark).b, 0.07))
+		_paint_stains(rng, rect, Color(Color(pal.parchment_dark).r, Color(pal.parchment_dark).g, Color(pal.parchment_dark).b, 0.07))
 		# Task 5b round 2: only the innermost of the 4 nested lines becomes
 		# `secondary` (matching _paint_frame's outermost=ink/innermost=
 		# secondary rule applied to the whole nested stack) — keeps the
 		# structural double-border look intact while still showing the
 		# secondary hue.
-		_paint_wobble_border(rng, rect, [3.0, 6.5, 12.0], [2.2, 1.8, 1.8], pal.ink)
-		_paint_wobble_border(rng, rect, [15.5], [1.4], pal.secondary)
+		# Task P8: one wobble variant for the whole piece, shared by all 4
+		# nested lines (same reasoning as _paint_frame).
+		var wv := _wobble_variant(set_id, piece)
+		_paint_wobble_border(rng, rect, [3.0, 6.5, 12.0], [2.2, 1.8, 1.8], pal.ink, wv)
+		_paint_wobble_border(rng, rect, [15.5], [1.4], pal.secondary, wv)
 		var r := 15.0  # grown from 13.0 (ART GATE seal-readability request), stays inside NOTIF_MARGIN (32)
 		var cy := float(NOTIF_MARGIN) * 0.5
 		_paint_seal(pal, Vector2(NOTIF_SIZE.x * 0.5, cy), r, Vector2.ONE)
@@ -1033,6 +1126,15 @@ class _ChromePainter extends Node2D:
 		var seal_pos := Vector2(500, 315)
 		draw_string(ThemeDB.fallback_font, seal_pos + Vector2(0, -6), "seal (64px, real size)", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
 		draw_texture(seal_tex, seal_pos)
+
+		# Task P8 (designer: pattern density was tuned for the small preview
+		# then stretched over way too much area — judge the fix at a size
+		# close to what large dialogs actually stretch to) — a second,
+		# much bigger nine-patch stretch of the SAME frame texture/margins as
+		# `sb` above, at 900x700 instead of 400x260.
+		var big_pos := Vector2(20, BIG_STRETCH_SAMPLE_Y)
+		draw_string(ThemeDB.fallback_font, big_pos + Vector2(0, -8), "frame stretched to 900x700 (large-panel density check)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.8, 0.76, 0.68))
+		draw_style_box(sb, Rect2(big_pos, BIG_STRETCH_SAMPLE_SIZE))
 
 	## Task 2 — one composite sheet across all 12 sets (`_contact_factions.png`):
 	## a row per set with a frame thumbnail, all 4 button states, and a
