@@ -6793,8 +6793,9 @@ class _RadialTechTree extends Control:
 			var label_pos := TREE_CENTER + Vector2(cos(angle) * label_radius, sin(angle) * label_radius)
 			var label_screen := _to_screen(label_pos)
 			var label_text: String = str(branch_name).replace("_", " ").to_upper()
-			# Branch names stay readable at every zoom — they're the map key
-			var bl_size := clampi(int(round(15.0 * _zoom)), 12, 22)
+			# Branch names stay readable at every zoom — they're the map key.
+			# Floor is dense-13 (style guide type scale, never below 12).
+			var bl_size := clampi(int(round(15.0 * _zoom)), 13, 22)
 			_draw_outlined_string(font, label_screen - Vector2(70, 0), label_text, HORIZONTAL_ALIGNMENT_CENTER, 140, bl_size, Color(0.88, 0.78, 0.5, 0.95))
 
 
@@ -6972,7 +6973,13 @@ class _RadialTechTree extends Control:
 			var show_label: bool = _zoom >= 0.55 or is_completed or is_in_progress or research_id == _hovered_id
 			if show_label:
 				var name_text := data.display_name
-				var fsize := clampi(int(round(11.0 * _zoom)), 8, 15)
+				# Dense-13 floor (style guide type scale, never below 12) — the
+				# old 8px floor is what made labels unreadable at the default
+				# fit-to-view zoom, since most non-hovered labels render at the
+				# floor (only completed/in-progress/hovered nodes label below
+				# the 0.55 zoom threshold). Outline treatment via
+				# _draw_outlined_string below.
+				var fsize := clampi(int(round(13.0 * _zoom)), 12, 18)
 				var line_h := fsize + 2.0
 				var name_y := pos.y + node_r + line_h
 				var label_color := Color(0.88, 0.84, 0.74)
@@ -7028,28 +7035,36 @@ class _RadialTechTree extends Control:
 			match _bounty_gate_state.get(_hovered_id, 0):
 				1:
 					bounty_line = "Requires: %s (claim or lease one)" % " / ".join(names)
-					bounty_line_color = UIPalette.DANGER
+					# DANGER/SUCCESS are dark ink tones meant for text on light
+					# parchment (see UIPalette table); this tooltip sits on a
+					# near-black box, so the dark-chip _BRIGHT variants are the
+					# correct read here.
+					bounty_line_color = UIPalette.DANGER_BRIGHT
 				2:
 					bounty_line = "%s not on this map - cost doubled" % " / ".join(names)
 					bounty_line_color = Color(0.6, 0.58, 0.52)
 				_:
 					bounty_line = "Requires: %s (met)" % " / ".join(names)
-					bounty_line_color = UIPalette.SUCCESS
+					bounty_line_color = UIPalette.SUCCESS_BRIGHT
 		var total_lines := eff_count + unlock_lines.size() + (1 if bounty_line != "" else 0)
-		var box_w := 280.0
-		var box_h := 58.0 + total_lines * 14.0
+		# Dense-13/floor-12 type scale (style guide) + widened box to fit it;
+		# header offset (33) and per-line step (16) below must stay in sync
+		# with this box_h formula or content overflows the box.
+		var box_w := 320.0
+		var box_h := 54.0 + total_lines * 16.0
 		var box_pos := node_screen + Vector2(NODE_RADIUS + 12, -box_h * 0.5)
 		if box_pos.x + box_w > size.x - 8:
 			box_pos.x = node_screen.x - NODE_RADIUS - 12 - box_w
 		box_pos.y = clampf(box_pos.y, 8, size.y - box_h - 8)
 
-		# Background
-		draw_rect(Rect2(box_pos, Vector2(box_w, box_h)), Color(0.05, 0.04, 0.07, 0.95))
+		# Background — fully opaque (no transparency) so tooltip text never
+		# blends with tree lines/nodes behind it.
+		draw_rect(Rect2(box_pos, Vector2(box_w, box_h)), Color(0.05, 0.04, 0.07, 1.0))
 		draw_rect(Rect2(box_pos, Vector2(box_w, box_h)), cat_color * Color(1, 1, 1, 0.5), false, 1.5)
 
-		var y := box_pos.y + 14
-		draw_string(font, Vector2(box_pos.x + 8, y), data.display_name, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 12, cat_color)
-		y += 16
+		var y := box_pos.y + 15
+		draw_string(font, Vector2(box_pos.x + 8, y), data.display_name, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 13, cat_color)
+		y += 18
 		var is_completed: bool = fs.completed_research.has(data.id)
 		var is_in_progress: bool = fs.current_research_id == data.id
 		var status_text: String
@@ -7069,20 +7084,20 @@ class _RadialTechTree extends Control:
 			var displayed_cost: int = data.tech_cost * 2 if _bounty_gate_state.get(_hovered_id, 0) == 2 else data.tech_cost
 			status_text = "%d turns | %d Tech" % [data.research_time, displayed_cost]
 			status_color = Color(0.6, 0.58, 0.5)
-		draw_string(font, Vector2(box_pos.x + 8, y), status_text, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, status_color)
-		y += 14
+		draw_string(font, Vector2(box_pos.x + 8, y), status_text, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 12, status_color)
+		y += 16
 		if bounty_line != "":
-			draw_string(font, Vector2(box_pos.x + 8, y), bounty_line, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, bounty_line_color)
-			y += 14
+			draw_string(font, Vector2(box_pos.x + 8, y), bounty_line, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 12, bounty_line_color)
+			y += 16
 		# Show ALL effects (no cap)
 		for key in data.effects:
 			var desc := _format_effect(key, data.effects[key])
-			draw_string(font, Vector2(box_pos.x + 8, y), desc, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, Color(0.4, 0.75, 0.35))
-			y += 14
+			draw_string(font, Vector2(box_pos.x + 8, y), desc, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 12, Color(0.4, 0.75, 0.35))
+			y += 16
 		# Show unlock lines in a distinct color
 		for line in unlock_lines:
-			draw_string(font, Vector2(box_pos.x + 8, y), line, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 10, Color(0.9, 0.7, 0.2))
-			y += 14
+			draw_string(font, Vector2(box_pos.x + 8, y), line, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 12, Color(0.9, 0.7, 0.2))
+			y += 16
 
 	func _draw_dashed_line(from: Vector2, to: Vector2, color: Color, width: float) -> void:
 		var dir := (to - from).normalized()
@@ -7286,7 +7301,7 @@ func _show_research_detail(data: ResearchData) -> void:
 	# Category + Tier
 	var cat_label := Label.new()
 	cat_label.text = "%s  |  Tier %d" % [str(data.research_category).capitalize(), data.tier]
-	cat_label.add_theme_font_size_override("font_size", 11)
+	cat_label.add_theme_font_size_override("font_size", 12)
 	cat_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
 	vbox.add_child(cat_label)
 
@@ -7320,8 +7335,11 @@ func _show_research_detail(data: ResearchData) -> void:
 		for key in data.effects:
 			var eff := Label.new()
 			eff.text = "  " + _RadialTechTree._format_effect(key, data.effects[key])
-			eff.add_theme_font_size_override("font_size", 11)
-			eff.add_theme_color_override("font_color", UIPalette.SUCCESS)
+			eff.add_theme_font_size_override("font_size", 12)
+			# SUCCESS is a dark-ink tone for light-parchment text; this dialog's
+			# content sits on the dark CHIP_BG backdrop (_create_centered_dialog),
+			# so the dark-chip _BRIGHT variant is the correct read.
+			eff.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 			vbox.add_child(eff)
 
 	# Shard bonuses
@@ -7338,7 +7356,7 @@ func _show_research_detail(data: ResearchData) -> void:
 			for key in bonus:
 				var sb := Label.new()
 				sb.text = "  %s Shard: %s" % [realm_name, _RadialTechTree._format_effect(key, bonus[key])]
-				sb.add_theme_font_size_override("font_size", 11)
+				sb.add_theme_font_size_override("font_size", 12)
 				sb.add_theme_color_override("font_color", Color(0.6, 0.4, 0.75))
 				vbox.add_child(sb)
 
@@ -7354,7 +7372,7 @@ func _show_research_detail(data: ResearchData) -> void:
 			var pdata: ResearchData = DataManager.get_research(prereq)
 			var pl := Label.new()
 			pl.text = "  " + (pdata.display_name if pdata else str(prereq))
-			pl.add_theme_font_size_override("font_size", 11)
+			pl.add_theme_font_size_override("font_size", 12)
 			pl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
 			vbox.add_child(pl)
 
@@ -7371,16 +7389,19 @@ func _show_research_detail(data: ResearchData) -> void:
 		for type_id in data.requires_bounty_types:
 			var type_name: String = BountySystem.BOUNTY_TYPES[type_id].name
 			var req_label := Label.new()
+			# SUCCESS/DANGER are dark-ink tones for light-parchment text; this
+			# dialog's content sits on the dark CHIP_BG backdrop, so the
+			# dark-chip _BRIGHT variants are the correct read here.
 			if BountySystem.faction_has_bounty_type(req_player_id, type_id) or GameManager.diplomacy_system.faction_leases_bounty_type(req_player_id, type_id):
 				req_label.text = "  " + type_name
-				req_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+				req_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 			elif not req_on_map.has(type_id):
 				req_label.text = "  %s — not on this map (cost doubled)" % type_name
 				req_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
 			else:
 				req_label.text = "  %s — claim or lease to unlock" % type_name
-				req_label.add_theme_color_override("font_color", UIPalette.DANGER)
-			req_label.add_theme_font_size_override("font_size", 11)
+				req_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
+			req_label.add_theme_font_size_override("font_size", 12)
 			vbox.add_child(req_label)
 
 	dialog.add_child(vbox)
