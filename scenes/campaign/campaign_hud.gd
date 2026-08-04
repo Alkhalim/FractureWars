@@ -8690,6 +8690,17 @@ func _show_city_panel(city_id: StringName) -> void:
 					)
 					rvbox.add_child(qlabel)
 
+	# P7 fix: this rebuild can run while building-placement fade is still
+	# active (e.g. _on_siege_progress_changed refreshes a besieged panel out
+	# from under the player mid-placement) -- freshly built Controls default
+	# back to MOUSE_FILTER_STOP, silently reproducing the click-through bug
+	# on the new nodes. Re-run the ignore walk so the fade's click-through
+	# guarantee survives a rebuild; the walk's own already-tracked guard (see
+	# _placement_fade_ignore_recursive) means existing nodes are left alone
+	# and only the new content gets folded into the saved-filters map.
+	if city_panel.mouse_filter == Control.MOUSE_FILTER_IGNORE:
+		_placement_fade_ignore_recursive(city_panel)
+
 func _hide_city_panel() -> void:
 	if city_panel:
 		city_panel.visible = false
@@ -9071,13 +9082,24 @@ func cancel_building_tile() -> void:
 ## default MOUSE_FILTER_STOP kept swallowing clicks meant for the map
 ## underneath. Fix walks every Control descendant and forces IGNORE too,
 ## stashing each one's real filter so it can be restored exactly on exit.
+## Also re-run directly (not through here) by _show_city_panel whenever it
+## rebuilds the panel's content while a fade is already active, so freshly
+## built Controls (which default back to STOP) don't reopen the bug.
 func _set_city_panel_placement_fade(active: bool) -> void:
 	if city_panel == null:
 		return
 	city_panel.modulate.a = 0.2 if active else 1.0
 	city_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE if active else Control.MOUSE_FILTER_STOP
 	if active:
-		_placement_fade_saved_filters.clear()
+		# P7 fix: idempotent against a double-activation (true called again
+		# with no intervening false) -- without this guard the old
+		# unconditional .clear() would discard the already-saved TRUE
+		# originals and re-walk while every tracked node's *current* filter
+		# is already IGNORE, "saving" IGNORE as the fake original and
+		# corrupting the eventual restore into "stays IGNORE forever".
+		if not _placement_fade_saved_filters.is_empty():
+			push_warning("_set_city_panel_placement_fade(true) called while already active -- ignoring re-activation to avoid corrupting the restore map")
+			return
 		_placement_fade_ignore_recursive(city_panel)
 	else:
 		for node in _placement_fade_saved_filters:
@@ -9085,12 +9107,17 @@ func _set_city_panel_placement_fade(active: bool) -> void:
 				node.mouse_filter = _placement_fade_saved_filters[node]
 		_placement_fade_saved_filters.clear()
 
-## Recursion helper for _set_city_panel_placement_fade(true): forces every
-## Control descendant of `node` to MOUSE_FILTER_IGNORE, remembering its prior
-## filter in _placement_fade_saved_filters for the exact restore above.
+## Recursion helper for _set_city_panel_placement_fade(true) (and for
+## _show_city_panel re-applying the fade to freshly rebuilt content, see
+## there): forces every Control descendant of `node` to MOUSE_FILTER_IGNORE,
+## remembering its prior filter in _placement_fade_saved_filters for the
+## exact restore above. Skips nodes already tracked in the map so re-running
+## this on a partially-rebuilt tree (some old nodes still faded, some new
+## ones just added) never overwrites an already-saved TRUE original with its
+## current IGNORE value -- only genuinely new nodes get saved+overridden.
 func _placement_fade_ignore_recursive(node: Node) -> void:
 	for child in node.get_children():
-		if child is Control:
+		if child is Control and not _placement_fade_saved_filters.has(child):
 			_placement_fade_saved_filters[child] = child.mouse_filter
 			child.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_placement_fade_ignore_recursive(child)
