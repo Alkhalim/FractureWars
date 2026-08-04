@@ -10,21 +10,61 @@ var options_button: Button
 var _faction_select_panel: Control
 
 func _ready() -> void:
+	# THEME RESET (designer 2026-08-04): returning to the main menu from a
+	# campaign previously kept whatever faction's chrome was last applied —
+	# apply_faction_theme() is only ever called by GameManager.new_game()/
+	# load_game(), never reset, so the global theme + UIPalette stayed on
+	# e.g. Skulloath's blood-red skin after quitting back to the menu. Reset
+	# to neutral HERE, on every main-menu scene entry (fresh boot AND the
+	# campaign's "Main Menu" button transition_to_scene() path both run this
+	# same _ready()), so the menu always starts from the neutral chrome
+	# regardless of what was active before.
+	GameManager.apply_faction_theme(&"neutral")
+
 	# Load background image
 	var bg_tex := load("res://assets/sprites/ui/MainMenuBackground.png") as Texture2D
 	if bg_tex:
 		$Background.texture = bg_tex
 
+	# Radial vignette (designer 2026-08-04: background read as "a blank
+	# mono-colored slab"). Root cause was NOT source pixelation — inspected
+	# MainMenuBackground.png/factionselectionbackground.png directly: both
+	# are clean 1536x1024 painted art, not blocky. The flat ~55%-alpha
+	# near-black ColorRect overlay (.tscn's old BackgroundOverlay color) was
+	# crushing that art's actual color into near-monochrome everywhere. Fix:
+	# the flat overlay is now a light uniform tint (.tscn, 0.22) plus this
+	# radial vignette layered on top, so the art's color reads through in
+	# the open middle while corners/edges still darken enough for text/
+	# button contrast. Also enabled mipmaps on both source .import files and
+	# set explicit LINEAR_WITH_MIPMAPS filtering (.tscn's Background node)
+	# so upscaling to larger-than-1536px windows stays smooth.
+	_install_vignette(self, 2)
+
 	# Title has no color override in the .tscn, so it falls through to the
 	# theme's default Label color (dark INK_BODY) — unreadable over the dark
-	# sky background image. Explicit light override + Cinzel display face +
-	# outline (same font_outline_color/outline_size pattern battle_v3.gd uses
-	# for its player/enemy titles over busy backdrops).
+	# sky background image. Impressive treatment (designer 2026-08-04):
+	# Cinzel display face (HeaderLarge) at 56px (.tscn), parchment-gold
+	# fill, a strong dark outline, and a soft drop shadow for depth — same
+	# font_outline_color/outline_size pattern battle_v3.gd uses for its
+	# player/enemy titles over busy backdrops, pushed further for a
+	# marquee-scale title.
 	var title_label: Label = $VBoxContainer/Title
 	title_label.theme_type_variation = &"HeaderLarge"
-	title_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
-	title_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	title_label.add_theme_constant_override("outline_size", 2)
+	title_label.add_theme_color_override("font_color", UIPalette.ACCENT)
+	title_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	title_label.add_theme_constant_override("outline_size", 7)
+	title_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
+	title_label.add_theme_constant_override("shadow_offset_x", 3)
+	title_label.add_theme_constant_override("shadow_offset_y", 4)
+
+	# Subtitle: same display-face family, smaller and softer so the
+	# hierarchy reads title > subtitle at a glance.
+	var subtitle_label: Label = $VBoxContainer/Subtitle
+	subtitle_label.theme_type_variation = &"HeaderMedium"
+	subtitle_label.add_theme_font_size_override("font_size", 24)
+	subtitle_label.add_theme_color_override("font_color", UIPalette.PARCHMENT_ACCENT)
+	subtitle_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+	subtitle_label.add_theme_constant_override("outline_size", 3)
 
 	new_game_button.pressed.connect(_on_new_game)
 	quit_button.pressed.connect(_on_quit)
@@ -114,6 +154,44 @@ func _on_demo() -> void:
 func _on_quit() -> void:
 	get_tree().quit()
 
+# ── Background vignette (shared by the main menu and faction-select) ──────
+
+## Builds and inserts a full-rect radial-gradient TextureRect ("vignette":
+## transparent center, dark edges/corners) into `parent`. `at_index`, if
+## >= 0, moves it to that child index after adding (so callers can control
+## z-order relative to siblings added earlier in a .tscn, e.g. sitting above
+## Background/BackgroundOverlay but below VBoxContainer's buttons).
+func _install_vignette(parent: Control, at_index: int = -1) -> void:
+	var vign := TextureRect.new()
+	vign.texture = _make_vignette_texture()
+	vign.anchor_left = 0
+	vign.anchor_top = 0
+	vign.anchor_right = 1
+	vign.anchor_bottom = 1
+	vign.stretch_mode = TextureRect.STRETCH_SCALE
+	vign.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(vign)
+	if at_index >= 0:
+		parent.move_child(vign, at_index)
+
+## Procedural radial vignette texture — transparent center fading to a dark
+## (UIPalette-derived, not a raw literal) tone at the corners. Built fresh
+## per screen open rather than cached: cheap (single small GradientTexture2D)
+## and keeps the tone in sync if UIPalette.rebuild() ran since last use.
+func _make_vignette_texture() -> GradientTexture2D:
+	var dark := UIPalette.PARCHMENT_DARK.darkened(0.75)
+	var grad := Gradient.new()
+	grad.set_color(0, Color(dark.r, dark.g, dark.b, 0.0))
+	grad.set_color(1, Color(dark.r, dark.g, dark.b, 0.8))
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.width = 256
+	tex.height = 256
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 1.0)
+	return tex
+
 # ── Faction Selection ───────────────────────────────────────
 
 var _selected_faction_id: StringName = &""
@@ -126,9 +204,16 @@ var _faction_color_rect: ColorRect
 var _faction_start_btn: Button
 var _faction_buttons: Dictionary = {} # faction_id -> Button
 var _faction_emblem: _FactionEmblem
+var _map_sketch: _MapSketch
 var _leader_name_label: Label
 var _leader_bonus_label: Label
 var _selected_leader_indices: Dictionary = {} # faction_id -> int
+
+## Every faction the select screen offers. Single source of truth for the
+## sidebar row list AND (Task P2) the "START AS X" button width computation
+## and the map sketch's region-marker set — all three used to read this same
+## set of ids from three separately-typed local literals.
+const PLAYABLE_FACTIONS: Array[StringName] = [&"empire", &"skulloath", &"gladehost", &"tainted_jade", &"shardhorde", &"moonspear", &"thunderswarm", &"cinderguard", &"forsaken", &"ivoryscar", &"sunblessed"]
 
 const FACTION_LEADERS := {
 	&"empire": [
@@ -425,18 +510,22 @@ func _show_faction_select() -> void:
 	bg_img.anchor_right = 1
 	bg_img.anchor_bottom = 1
 	bg_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg_img.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	bg_img.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_faction_select_panel.add_child(bg_img)
 
-	# Dark overlay for readability
+	# Dark overlay for readability — lighter flat base than before (see the
+	# vignette comment in _ready()); the radial vignette added right after
+	# does the heavy lifting so the marble art's color still reads through.
 	var overlay := ColorRect.new()
 	overlay.anchor_left = 0
 	overlay.anchor_top = 0
 	overlay.anchor_right = 1
 	overlay.anchor_bottom = 1
-	overlay.color = Color(0.05, 0.03, 0.08, 0.6)
+	overlay.color = Color(0.05, 0.03, 0.08, 0.22)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_faction_select_panel.add_child(overlay)
+	_install_vignette(_faction_select_panel)
 
 	var margin := MarginContainer.new()
 	margin.anchor_left = 0
@@ -457,7 +546,7 @@ func _show_faction_select() -> void:
 	var title := Label.new()
 	title.text = "CHOOSE YOUR FACTION"
 	title.theme_type_variation = &"HeaderLarge"
-	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_font_size_override("font_size", 28)
 	title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	outer_vbox.add_child(title)
@@ -471,7 +560,7 @@ func _show_faction_select() -> void:
 	# Left side: faction list in a scroll container
 	var left_panel := PanelContainer.new()
 	left_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
-	left_panel.custom_minimum_size = Vector2(270, 0)
+	left_panel.custom_minimum_size = Vector2(290, 0)
 	left_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	hbox.add_child(left_panel)
 
@@ -482,7 +571,7 @@ func _show_faction_select() -> void:
 
 	var list_title := Label.new()
 	list_title.text = "FACTIONS"
-	list_title.add_theme_font_size_override("font_size", 14)
+	list_title.add_theme_font_size_override("font_size", 15)
 	list_title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	list_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	left_outer_vbox.add_child(list_title)
@@ -494,34 +583,65 @@ func _show_faction_select() -> void:
 	left_outer_vbox.add_child(scroll)
 
 	var left_vbox := VBoxContainer.new()
-	left_vbox.add_theme_constant_override("separation", 2)
+	left_vbox.add_theme_constant_override("separation", 4)
 	left_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(left_vbox)
 
-	var factions: Array[StringName] = [&"empire", &"skulloath", &"gladehost", &"tainted_jade", &"shardhorde", &"moonspear", &"thunderswarm", &"cinderguard", &"forsaken", &"ivoryscar", &"sunblessed"]
+	# Faction rows, fully faction-styled (designer 2026-08-04): each button
+	# wears ITS OWN faction's baked chrome (btn_normal/hover/pressed/
+	# disabled StyleBoxTexture overrides sourced from
+	# GameManager.make_faction_button_stylebox — per-button, NOT a per-row
+	# theme rebuild) plus that faction's seal as a row icon and a
+	# heraldry-tinted name. toggle_mode + a shared ButtonGroup gives a
+	# persistent "selected" visual (the pressed state's baked texture is
+	# heraldry-FILLED) without hand-rolled highlight bookkeeping.
+	var faction_group := ButtonGroup.new()
 	_faction_buttons.clear()
-	for faction_id in factions:
+	for faction_id in PLAYABLE_FACTIONS:
 		var faction_data: FactionData = DataManager.get_faction(faction_id)
 		if faction_data == null:
 			continue
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 0)
-		# Faction color stripe — cross-faction accent, not the (neutral) active
-		# theme's own heraldry, so each row reads its OWN faction's chart tone
-		var stripe := ColorRect.new()
-		stripe.custom_minimum_size = Vector2(5, 0)
-		stripe.color = UIPalette.heraldry(faction_id)
-		stripe.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		row.add_child(stripe)
 		var btn := Button.new()
-		btn.text = "  " + faction_data.display_name
-		btn.custom_minimum_size = Vector2(0, 32)
+		btn.text = faction_data.display_name
+		btn.custom_minimum_size = Vector2(0, 42)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.add_theme_font_size_override("font_size", 13)
+		btn.add_theme_font_size_override("font_size", 15)
+		btn.toggle_mode = true
+		btn.button_group = faction_group
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.icon = _load_faction_seal(faction_id)
+		if btn.icon:
+			btn.add_theme_constant_override("icon_max_width", 24)
+			btn.add_theme_constant_override("h_separation", 8)
+
+		var normal_sb := GameManager.make_faction_button_stylebox(faction_id, "btn_normal")
+		if normal_sb:
+			var hover_sb := GameManager.make_faction_button_stylebox(faction_id, "btn_hover")
+			var pressed_sb := GameManager.make_faction_button_stylebox(faction_id, "btn_pressed", true)
+			var disabled_sb := GameManager.make_faction_button_stylebox(faction_id, "btn_disabled")
+			btn.add_theme_stylebox_override("normal", normal_sb)
+			btn.add_theme_stylebox_override("hover", hover_sb if hover_sb else normal_sb)
+			btn.add_theme_stylebox_override("pressed", pressed_sb if pressed_sb else normal_sb)
+			btn.add_theme_stylebox_override("hover_pressed", pressed_sb if pressed_sb else normal_sb)
+			btn.add_theme_stylebox_override("disabled", disabled_sb if disabled_sb else normal_sb)
+			btn.add_theme_stylebox_override("focus", hover_sb if hover_sb else normal_sb)
+
+		# heraldry(fid) — not ACCENT/INK_TITLE — for the normal/hover text: the
+		# baked btn_normal fill is light parchment, so a dark faction-specific
+		# ink tone stays legible AND doubles as the row's color identity.
+		# btn_pressed flips to a heraldry-FILLED background per the
+		# generator's own "light text expected" note, so the pressed/selected
+		# state needs light text instead or it goes invisible on its own fill.
+		var tint := UIPalette.heraldry(faction_id)
+		btn.add_theme_color_override("font_color", tint)
+		btn.add_theme_color_override("font_hover_color", tint.lightened(0.15))
+		btn.add_theme_color_override("font_pressed_color", UIPalette.PARCHMENT)
+		btn.add_theme_color_override("font_hover_pressed_color", UIPalette.PARCHMENT)
+		btn.add_theme_color_override("font_focus_color", tint)
+
 		var captured_id := faction_id
 		btn.pressed.connect(_on_faction_list_clicked.bind(captured_id))
-		row.add_child(btn)
-		left_vbox.add_child(row)
+		left_vbox.add_child(btn)
 		_faction_buttons[faction_id] = btn
 
 	# Tutorial toggle below scroll
@@ -529,7 +649,7 @@ func _show_faction_select() -> void:
 	tutorial_cb.name = "TutorialCheck"
 	tutorial_cb.text = "Enable Tutorial"
 	tutorial_cb.button_pressed = true
-	tutorial_cb.add_theme_font_size_override("font_size", 13)
+	tutorial_cb.add_theme_font_size_override("font_size", 14)
 	tutorial_cb.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	# Root-caused (Task 8 coherence pass): button_pressed defaults true (tutorial
 	# ON by default), and CheckBox has no CheckBox-specific "font_pressed_color"
@@ -567,14 +687,14 @@ func _show_faction_select() -> void:
 	right_vbox.add_child(header_hbox)
 
 	_faction_color_rect = ColorRect.new()
-	_faction_color_rect.custom_minimum_size = Vector2(6, 36)
+	_faction_color_rect.custom_minimum_size = Vector2(6, 40)
 	_faction_color_rect.color = Color(0.5, 0.5, 0.5, 0.5)
 	header_hbox.add_child(_faction_color_rect)
 
 	_faction_info_label = Label.new()
 	_faction_info_label.text = "Select a faction"
 	_faction_info_label.theme_type_variation = &"HeaderLarge"
-	_faction_info_label.add_theme_font_size_override("font_size", 22)
+	_faction_info_label.add_theme_font_size_override("font_size", 26)
 	_faction_info_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	header_hbox.add_child(_faction_info_label)
 
@@ -582,8 +702,25 @@ func _show_faction_select() -> void:
 	sep_top.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
 	right_vbox.add_child(sep_top)
 
-	# ── Faction Overview (scrollable, shares space with leader section) ──
-	# Dark chip backdrop keeps the description text off the raw leather
+	# ── LAYOUT REWORK (designer 2026-08-04): the info area splits into a
+	# left two-thirds (faction bonus list/details + map sketch) and a right
+	# third (leader portrait + leader bonuses). size_flags_stretch_ratio
+	# 2.0 : 1.0 inside this HBoxContainer gives the exact 2/3 : 1/3 split. ──
+	var content_hbox := HBoxContainer.new()
+	content_hbox.add_theme_constant_override("separation", 10)
+	content_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right_vbox.add_child(content_hbox)
+
+	# ── Left two-thirds: faction overview + map sketch ──
+	var content_left := VBoxContainer.new()
+	content_left.add_theme_constant_override("separation", 8)
+	content_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_left.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_left.size_flags_stretch_ratio = 2.0
+	content_hbox.add_child(content_left)
+
+	# Faction overview (scrollable, absorbs the flexible remaining height).
+	# Dark chip backdrop keeps the description text off the raw leather.
 	var desc_scroll := ScrollContainer.new()
 	desc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	desc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -592,7 +729,7 @@ func _show_faction_select() -> void:
 	desc_chip.set_corner_radius_all(5)
 	desc_chip.set_content_margin_all(12)
 	desc_scroll.add_theme_stylebox_override("panel", desc_chip)
-	right_vbox.add_child(desc_scroll)
+	content_left.add_child(desc_scroll)
 
 	var desc_vbox := VBoxContainer.new()
 	desc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -601,75 +738,97 @@ func _show_faction_select() -> void:
 
 	_faction_desc_label = Label.new()
 	_faction_desc_label.text = "Choose a faction from the list to see details about their playstyle, unique mechanics, and starting position."
-	_faction_desc_label.add_theme_font_size_override("font_size", 14)
+	_faction_desc_label.add_theme_font_size_override("font_size", 16)
 	_faction_desc_label.add_theme_color_override("font_color", Color(0.82, 0.8, 0.72))
 	_faction_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_vbox.add_child(_faction_desc_label)
 
 	_faction_traits_label = Label.new()
 	_faction_traits_label.text = ""
-	_faction_traits_label.add_theme_font_size_override("font_size", 14)
+	_faction_traits_label.add_theme_font_size_override("font_size", 16)
 	_faction_traits_label.add_theme_color_override("font_color", Color(0.7, 0.82, 0.65))
 	_faction_traits_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_vbox.add_child(_faction_traits_label)
 
 	_faction_unique_label = Label.new()
 	_faction_unique_label.text = ""
-	_faction_unique_label.add_theme_font_size_override("font_size", 14)
+	_faction_unique_label.add_theme_font_size_override("font_size", 16)
 	_faction_unique_label.add_theme_color_override("font_color", Color(0.85, 0.75, 0.5))
 	_faction_unique_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_vbox.add_child(_faction_unique_label)
 
 	_faction_region_label = Label.new()
 	_faction_region_label.text = ""
-	_faction_region_label.add_theme_font_size_override("font_size", 14)
+	_faction_region_label.add_theme_font_size_override("font_size", 16)
 	_faction_region_label.add_theme_color_override("font_color", Color(0.65, 0.75, 0.9))
 	_faction_region_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc_vbox.add_child(_faction_region_label)
 
-	# ── Leader Selection Section (below faction overview) ──
-	var sep_leader := HSeparator.new()
-	sep_leader.add_theme_color_override("separator_color", Color(UIPalette.CHIP_BORDER, 0.5))
-	right_vbox.add_child(sep_leader)
+	# ── MAP SKETCH (designer 2026-08-04): rough stylized parchment sketch
+	# of the world showing the selected faction's starting position. Drawn
+	# directly from MapGenerator's region/anchor data (LANDMASS_BLOBS for
+	# the silhouette, REGION_SEEDS for marker positions) rather than a live
+	# per-campaign generation — every real campaign map rerolls a random
+	# seed (MapGenerator._map_salt), so there is no single "the map" to bake
+	# a thumbnail from before a game exists. This reads the SAME seed-space
+	# data the generator anchors every campaign's starting regions to, so
+	# the marker position is accurate to where the faction will actually
+	# start; the coastline/terrain around it is an approximate sketch, not
+	# the exact generated shape (documented in the task report). ──
+	var sketch_caption := Label.new()
+	sketch_caption.text = "Starting Position (rough sketch)"
+	sketch_caption.add_theme_font_size_override("font_size", 13)
+	sketch_caption.add_theme_color_override("font_color", Color(UIPalette.INK_BODY, 0.85))
+	content_left.add_child(sketch_caption)
 
-	# Leader sub-panel with subtle background
-	# Leader section sizes to its content; the description scroll above
-	# absorbs the remaining vertical space.
-	var leader_panel := PanelContainer.new()
+	_map_sketch = _MapSketch.new()
+	_map_sketch.custom_minimum_size = Vector2(0, 170)
+	_map_sketch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_map_sketch.playable_factions = PLAYABLE_FACTIONS
+	for seal_fid in PLAYABLE_FACTIONS:
+		var seal_tex := _load_faction_seal(seal_fid)
+		if seal_tex:
+			_map_sketch.seal_textures[seal_fid] = seal_tex
+	content_left.add_child(_map_sketch)
+
+	# ── Right third: leader portrait + leader bonuses ──
+	var content_right := PanelContainer.new()
 	var leader_style := StyleBoxFlat.new()
 	leader_style.bg_color = Color(UIPalette.CHIP_BG, 0.7)
 	leader_style.border_color = Color(UIPalette.CHIP_BORDER, 0.5)
 	leader_style.set_border_width_all(1)
 	leader_style.set_corner_radius_all(4)
 	leader_style.set_content_margin_all(12)
-	leader_panel.add_theme_stylebox_override("panel", leader_style)
-	right_vbox.add_child(leader_panel)
+	content_right.add_theme_stylebox_override("panel", leader_style)
+	content_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_right.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_right.size_flags_stretch_ratio = 1.0
+	content_hbox.add_child(content_right)
 
 	var leader_inner_vbox := VBoxContainer.new()
 	leader_inner_vbox.add_theme_constant_override("separation", 8)
-	leader_panel.add_child(leader_inner_vbox)
+	content_right.add_child(leader_inner_vbox)
 
 	# Leader name + counter
 	_leader_name_label = Label.new()
 	_leader_name_label.name = "LeaderLabel"
 	_leader_name_label.text = ""
-	_leader_name_label.add_theme_font_size_override("font_size", 16)
+	_leader_name_label.add_theme_font_size_override("font_size", 18)
 	_leader_name_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
+	_leader_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	leader_inner_vbox.add_child(_leader_name_label)
 
-	# Leader row: portrait (left) + bonuses (right)
-	var leader_section := HBoxContainer.new()
-	leader_section.add_theme_constant_override("separation", 14)
-	leader_inner_vbox.add_child(leader_section)
-
-	# Portrait column with arrows below
+	# Portrait, centered, with prev/next arrows below — the column is only
+	# 1/3 of the info panel now, so portrait + bonuses stack vertically
+	# instead of sitting side by side.
 	var portrait_section := VBoxContainer.new()
 	portrait_section.add_theme_constant_override("separation", 4)
 	portrait_section.alignment = BoxContainer.ALIGNMENT_CENTER
-	leader_section.add_child(portrait_section)
+	leader_inner_vbox.add_child(portrait_section)
 
 	_faction_emblem = _FactionEmblem.new()
-	_faction_emblem.custom_minimum_size = Vector2(180, 220)
+	_faction_emblem.custom_minimum_size = Vector2(200, 240)
+	_faction_emblem.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	portrait_section.add_child(_faction_emblem)
 
 	var arrow_hbox := HBoxContainer.new()
@@ -680,46 +839,52 @@ func _show_faction_select() -> void:
 	var left_arrow := Button.new()
 	left_arrow.text = "< Prev"
 	left_arrow.custom_minimum_size = Vector2(80, 30)
-	left_arrow.add_theme_font_size_override("font_size", 13)
+	left_arrow.add_theme_font_size_override("font_size", 14)
 	left_arrow.pressed.connect(_cycle_leader.bind(-1))
 	arrow_hbox.add_child(left_arrow)
 
 	var right_arrow := Button.new()
 	right_arrow.text = "Next >"
 	right_arrow.custom_minimum_size = Vector2(80, 30)
-	right_arrow.add_theme_font_size_override("font_size", 13)
+	right_arrow.add_theme_font_size_override("font_size", 14)
 	right_arrow.pressed.connect(_cycle_leader.bind(1))
 	arrow_hbox.add_child(right_arrow)
 
-	# Bonus list column (right of portrait)
+	# Bonus chip list (below the portrait — readable body-15 chips, not
+	# plain text, per designer feedback "leader bonuses are hard to read")
 	var bonus_vbox := VBoxContainer.new()
 	bonus_vbox.name = "LeaderBonusVBox"
 	bonus_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bonus_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bonus_vbox.add_theme_constant_override("separation", 5)
-	leader_section.add_child(bonus_vbox)
+	leader_inner_vbox.add_child(bonus_vbox)
 
 	var bonus_header := Label.new()
 	bonus_header.text = "Leader Bonuses:"
-	bonus_header.add_theme_font_size_override("font_size", 15)
+	bonus_header.add_theme_font_size_override("font_size", 17)
 	bonus_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	bonus_vbox.add_child(bonus_header)
 
 	# Placeholder label (replaced dynamically by _update_leader_display)
 	_leader_bonus_label = Label.new()
 	_leader_bonus_label.text = ""
-	_leader_bonus_label.add_theme_font_size_override("font_size", 14)
+	_leader_bonus_label.add_theme_font_size_override("font_size", 15)
 	_leader_bonus_label.visible = false
 	bonus_vbox.add_child(_leader_bonus_label)
 
-	# Start button (disabled until faction selected)
+	# ── Start button (designer 2026-08-04): black text outline, fixed width
+	# sized to the longest possible faction name (computed across
+	# PLAYABLE_FACTIONS at build time, not per-selection), centered rather
+	# than stretched full-width. ──
 	_faction_start_btn = Button.new()
 	_faction_start_btn.text = "START GAME"
-	_faction_start_btn.custom_minimum_size = Vector2(0, 50)
 	_faction_start_btn.add_theme_font_size_override("font_size", 20)
+	_faction_start_btn.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	_faction_start_btn.add_theme_constant_override("outline_size", 3)
 	_faction_start_btn.disabled = true
+	_faction_start_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_faction_start_btn.pressed.connect(_on_faction_confirmed)
 	right_vbox.add_child(_faction_start_btn)
+	_faction_start_btn.custom_minimum_size = Vector2(_compute_start_button_width(), 54)
 
 	# Bottom bar: cancel button
 	var bottom_hbox := HBoxContainer.new()
@@ -733,6 +898,31 @@ func _show_faction_select() -> void:
 	cancel_btn.pressed.connect(func(): _faction_select_panel.queue_free())
 	bottom_hbox.add_child(cancel_btn)
 
+## Longest "START AS <NAME>" text width across every selectable faction
+## (queried from DataManager at build time, not hardcoded), measured with
+## the button's own resolved font/size so the fixed width always fits
+## whichever faction turns out longest without per-selection resizing.
+## `_faction_start_btn` must already be in the tree (font resolution needs
+## an active Theme) and have its font_size override applied before this runs.
+func _compute_start_button_width() -> float:
+	var font: Font = _faction_start_btn.get_theme_font("font")
+	var font_size: int = _faction_start_btn.get_theme_font_size("font_size")
+	var max_w := 0.0
+	for faction_id in PLAYABLE_FACTIONS:
+		var fd: FactionData = DataManager.get_faction(faction_id)
+		if fd == null:
+			continue
+		var btn_text := "START AS " + fd.display_name.to_upper()
+		var w: float = font.get_string_size(btn_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		max_w = maxf(max_w, w)
+	return max_w + 64.0 # button content margins + breathing room
+
+func _load_faction_seal(faction_id: StringName) -> Texture2D:
+	var path := "res://assets/sprites/ui/generated/%s_seal.png" % String(faction_id)
+	if ResourceLoader.exists(path):
+		return load(path) as Texture2D
+	return null
+
 func _on_faction_list_clicked(faction_id: StringName) -> void:
 	_selected_faction_id = faction_id
 	var faction_data: FactionData = DataManager.get_faction(faction_id)
@@ -741,29 +931,26 @@ func _on_faction_list_clicked(faction_id: StringName) -> void:
 
 	AudioManager.play_sfx(&"ui_click")
 
-	# Highlight selected button
-	for fid in _faction_buttons:
-		var btn: Button = _faction_buttons[fid]
-		if fid == faction_id:
-			# heraldry(fid), not ACCENT/INK_TITLE — the buttons sit on the
-			# light parchment left_panel (ACCENT's light warm tone goes
-			# near-invisible there, same light-on-light trap Task 6 caught on
-			# the diplomacy tab), and INK_TITLE is identical to the theme's
-			# own default Button ink so a "selected" row would read no
-			# differently from an unselected one. The faction's own heraldry
-			# tone is dark enough to stay legible on parchment AND doubles as
-			# the visible "selected" cue, echoing the row's own stripe accent.
-			btn.add_theme_color_override("font_color", UIPalette.heraldry(fid))
-		else:
-			btn.remove_theme_color_override("font_color")
+	# Keep the row's toggle state in sync even when this is invoked directly
+	# (e.g. a screenshot/test harness calling the method without a real
+	# click) rather than only via the Button's own pressed signal. The
+	# shared ButtonGroup un-toggles every other row automatically.
+	if _faction_buttons.has(faction_id):
+		_faction_buttons[faction_id].button_pressed = true
 
 	# Update info panel
-	_faction_color_rect.color = faction_data.color
+	var tint := UIPalette.heraldry(faction_id)
+	_faction_color_rect.color = tint
 	_faction_info_label.text = faction_data.display_name
 
 	# Update emblem and leader display
 	_faction_emblem.faction_color = faction_data.color
 	_update_leader_display()
+
+	# Update map sketch highlight
+	if _map_sketch:
+		_map_sketch.faction_id = faction_id
+		_map_sketch.queue_redraw()
 
 	var details: Dictionary = FACTION_DETAILS.get(faction_id, {})
 	_faction_desc_label.text = faction_data.description
@@ -794,7 +981,7 @@ func _on_faction_list_clicked(faction_id: StringName) -> void:
 
 	_faction_start_btn.disabled = false
 	_faction_start_btn.text = "START AS " + faction_data.display_name.to_upper()
-	_faction_start_btn.add_theme_color_override("font_color", faction_data.color.lightened(0.3))
+	_faction_start_btn.add_theme_color_override("font_color", tint.lightened(0.2))
 
 func _cycle_leader(delta: int) -> void:
 	if _selected_faction_id == &"":
@@ -843,24 +1030,41 @@ func _update_leader_display() -> void:
 	# Update leader name
 	if _leader_name_label:
 		_leader_name_label.text = "Leader: %s  (%d/%d)" % [leader.get("name", ""), idx + 1, leaders.size()]
-	# Update bonus list with individually colored lines
+	# Update bonus list with individually colored, readable chips
 	_clear_bonus_labels()
 	var bonus_vbox: VBoxContainer = _faction_select_panel.find_child("LeaderBonusVBox", true, false) if _faction_select_panel else null
 	if bonus_vbox == null:
 		return
 	var bonuses: Array = leader.get("bonuses", [])
 	for bonus in bonuses:
-		var lbl := Label.new()
-		lbl.name = "BonusLine"
 		var label_text: String = bonus.get(&"label", "")
-		lbl.text = label_text
-		lbl.add_theme_font_size_override("font_size", 15)
 		var val: int = bonus.get(&"value", 0)
-		if val >= 0:
-			lbl.add_theme_color_override("font_color", UIPalette.SUCCESS)
-		else:
-			lbl.add_theme_color_override("font_color", UIPalette.DANGER)
-		bonus_vbox.add_child(lbl)
+		bonus_vbox.add_child(_make_bonus_chip(label_text, val >= 0))
+
+## Readable chip wrapper for a single leader bonus line (designer 2026-08-04:
+## "leader bonuses are a bit hard to read"). Body-15 text on a small tinted
+## panel, not bare text on the raw leader chip backdrop. Uses SUCCESS_BRIGHT/
+## DANGER_BRIGHT (not the plain dark-ink SUCCESS/DANGER) because this chip
+## sits on `content_right`'s near-black CHIP_BG panel — see ui_palette.gd's
+## own doc comment on why the dark-ink variants go low-contrast there.
+func _make_bonus_chip(text: String, positive: bool) -> PanelContainer:
+	var chip := PanelContainer.new()
+	chip.name = "BonusChip"
+	var tint: Color = UIPalette.SUCCESS_BRIGHT if positive else UIPalette.DANGER_BRIGHT
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(tint.r, tint.g, tint.b, 0.14)
+	style.border_color = Color(tint.r, tint.g, tint.b, 0.55)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	style.set_content_margin_all(6)
+	chip.add_theme_stylebox_override("panel", style)
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 15)
+	lbl.add_theme_color_override("font_color", tint)
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chip.add_child(lbl)
+	return chip
 
 func _clear_bonus_labels() -> void:
 	var bonus_vbox: VBoxContainer = _faction_select_panel.find_child("LeaderBonusVBox", true, false) if _faction_select_panel else null
@@ -1078,3 +1282,90 @@ class _FactionEmblem extends Control:
 		var faction_data: FactionData = DataManager.get_faction(faction_id)
 		if faction_data:
 			draw_string(font, Vector2(4, size.y - 7 * s), faction_data.display_name, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, font_size, Color(0.95, 0.9, 0.8))
+
+# ── Map Sketch Drawing (Task P2, UI Polish Wave) ────────────
+
+## Rough stylized parchment sketch of the world, marking every playable
+## faction's starting region with a small dot and the SELECTED faction with
+## its seal + a highlight ring. Reads MapGenerator.LANDMASS_BLOBS (continent
+## silhouette ellipses) and MapGenerator.REGION_SEEDS (region anchor
+## positions) directly, normalized against HexMapData.MAP_WIDTH/HEIGHT — the
+## same grid space every real campaign map is generated into — rather than
+## a hardcoded copy or a live per-campaign generation (see the call site's
+## comment for why: campaign maps reroll a random seed, so there's no single
+## canonical map to bake a thumbnail from before a game exists).
+## `playable_factions`/`seal_textures` are populated by the OUTER script
+## before this is added to the tree (same "pre-load outside _draw()"
+## discipline as _FactionEmblem's portrait_texture).
+class _MapSketch extends Control:
+	var faction_id: StringName = &"" # currently selected faction; drives the highlight marker
+	var playable_factions: Array[StringName] = []
+	var seal_textures: Dictionary = {} # faction_id -> Texture2D, pre-loaded
+
+	func _draw() -> void:
+		var rect := Rect2(Vector2.ZERO, size)
+		# Parchment sketch backdrop + ink border
+		draw_rect(rect, Color(0.76, 0.68, 0.52))
+		draw_rect(rect, Color(0.15, 0.11, 0.07), false, 2.0)
+
+		var mw := float(HexMapData.MAP_WIDTH)
+		var mh := float(HexMapData.MAP_HEIGHT)
+		var pad := 8.0
+		var draw_w := size.x - pad * 2.0
+		var draw_h := size.y - pad * 2.0
+		if draw_w <= 0.0 or draw_h <= 0.0:
+			return
+
+		# Continent silhouette — overlapping semi-transparent ink ellipses
+		# built from the same blob data _carve_landmass() uses, so the shape
+		# is a genuine (rough) reading of the actual generated world, not an
+		# arbitrary doodle.
+		for blob in MapGenerator.LANDMASS_BLOBS:
+			var c := Vector2(pad + (float(blob.cx) / mw) * draw_w, pad + (float(blob.cy) / mh) * draw_h)
+			var r := Vector2((float(blob.rx) / mw) * draw_w, (float(blob.ry) / mh) * draw_h)
+			var alpha: float = clampf(float(blob.w) * 0.4, 0.16, 0.42)
+			_draw_ellipse(c, r, Color(0.36, 0.29, 0.18, alpha))
+
+		# Region markers
+		var selected_pos := Vector2.ZERO
+		var selected_seal: Texture2D = null
+		var selected_tint := Color(0.15, 0.11, 0.07)
+		var has_selected_marker := false
+		for fid in playable_factions:
+			var fd: FactionData = DataManager.get_faction(fid)
+			if fd == null or fd.starting_regions.is_empty():
+				continue # nomadic factions have no fixed capital to pin
+			var region_id: StringName = fd.starting_regions[0]
+			if not MapGenerator.REGION_SEEDS.has(region_id):
+				continue
+			var seed_pos: Vector2i = MapGenerator.REGION_SEEDS[region_id]
+			var pos := Vector2(pad + (float(seed_pos.x) / mw) * draw_w, pad + (float(seed_pos.y) / mh) * draw_h)
+			if fid == faction_id:
+				selected_pos = pos
+				selected_seal = seal_textures.get(fid)
+				selected_tint = UIPalette.heraldry(fid)
+				has_selected_marker = true
+			else:
+				draw_circle(pos, 3.5, Color(0.15, 0.11, 0.07, 0.65))
+
+		if has_selected_marker:
+			draw_circle(selected_pos, 13.0, Color(selected_tint.r, selected_tint.g, selected_tint.b, 0.35))
+			draw_circle(selected_pos, 13.0, Color(selected_tint.r, selected_tint.g, selected_tint.b, 0.9), false, 1.5)
+			if selected_seal:
+				draw_texture_rect(selected_seal, Rect2(selected_pos - Vector2(11, 11), Vector2(22, 22)), false)
+			else:
+				draw_circle(selected_pos, 6.0, selected_tint)
+		elif faction_id != &"":
+			# Selected faction is nomadic (no starting_regions) — no fixed
+			# capital to pin, caption instead.
+			var font := ThemeDB.fallback_font
+			draw_string(font, Vector2(pad, size.y - pad), "Nomadic — no fixed starting position", HORIZONTAL_ALIGNMENT_LEFT, draw_w, 12, Color(0.15, 0.11, 0.07))
+
+	func _draw_ellipse(center: Vector2, radii: Vector2, color: Color, segments: int = 20) -> void:
+		if radii.x <= 0.0 or radii.y <= 0.0:
+			return
+		var points := PackedVector2Array()
+		for i in range(segments):
+			var t := TAU * float(i) / float(segments)
+			points.append(center + Vector2(cos(t) * radii.x, sin(t) * radii.y))
+		draw_colored_polygon(points, color)

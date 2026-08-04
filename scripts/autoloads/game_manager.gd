@@ -153,6 +153,22 @@ func apply_faction_theme(faction_id: StringName) -> void:
 	get_tree().root.theme = _build_theme_for_set(set_id)
 	_compact_theme = null
 
+## Per-button chrome override (Task P2, UI Polish Wave): builds a single
+## faction's baked button-state StyleBoxTexture WITHOUT touching the active
+## global theme/chrome_set_id. For UI that must show MULTIPLE factions' chrome
+## at once (the faction-select row list) — the brief explicitly rules out
+## rebuilding the whole theme per row, so each row Button instead gets its
+## own `add_theme_stylebox_override("normal"/"hover"/"pressed"/"disabled", ...)`
+## sourced here. Same fallback chain as `_load_chrome_piece` (faction ->
+## neutral -> null); returns null if even the neutral piece is missing so
+## callers can skip the override and keep the inherited global theme style.
+func make_faction_button_stylebox(faction_id: StringName, piece: String, pressed := false) -> StyleBoxTexture:
+	var set_id: StringName = MINOR_FACTION_PARENTS.get(faction_id, faction_id)
+	var tex := _load_chrome_piece(set_id, piece)
+	if tex == null:
+		return null
+	return _make_chrome_btn_style(tex, pressed)
+
 ## Loads one baked chrome piece for `set_id`, falling back to the neutral
 ## set's copy of the same piece if `set_id` has no bake (unknown/nonexistent
 ## faction id, or a set only partially baked). Returns null if even the

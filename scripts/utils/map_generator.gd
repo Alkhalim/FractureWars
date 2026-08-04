@@ -182,33 +182,43 @@ static func _init_tiles(map: HexMapData) -> void:
 			tile.terrain = Enums.TerrainType.WATER
 			map.tiles[Vector2i(col, row)] = tile
 
+## Main continent-body ellipses (cx, cy, rx, ry, w) in the full 117x78 hex
+## grid's col/row space — the primary landmass shape before peninsulas/
+## islands/bays/coastline noise refine it further. Pulled out of
+## `_carve_landmass()` (Task P2, UI Polish Wave) so `main_menu.gd`'s
+## faction-select map sketch can draw the SAME silhouette data directly
+## instead of hand-duplicating literals or running a full map generation
+## just to render a rough parchment thumbnail. `_carve_landmass()` reads
+## this const unchanged — purely a hoist, not a behavior change.
+const LANDMASS_BLOBS := [
+	# Main continent body — off-center, slightly NW-biased
+	{cx = 54.6, cy = 35.1, rx = 39.0, ry = 24.7, w = 1.0},
+	# Western heartland (Empire/Gladehost) — bulges south-west
+	{cx = 24.7, cy = 35.1, rx = 22.1, ry = 22.1, w = 0.8},
+	# Northern ridge (Moonspear/Thunderswarm) — wide but narrow
+	{cx = 57.2, cy = 14.3, rx = 36.4, ry = 11.7, w = 0.7},
+	# Eastern arm (Forsaken/Ivoryscar) — long peninsula reaching east
+	{cx = 93.6, cy = 37.7, rx = 22.1, ry = 24.7, w = 0.75},
+	# Southern jungle — teardrop hanging south (widened for scattered factions)
+	{cx = 42.9, cy = 62.0, rx = 28.0, ry = 16.0, w = 0.7},
+	# SW extension (Jade Conclave area)
+	{cx = 16.0, cy = 64.0, rx = 12.0, ry = 10.0, w = 0.55},
+	# SE extension (Ivoryscar area)
+	{cx = 102.0, cy = 60.0, rx = 14.0, ry = 12.0, w = 0.55},
+	# Central steppe bridge connecting west to east
+	{cx = 68.9, cy = 31.2, rx = 24.7, ry = 14.3, w = 0.6},
+	# NE highlands (Thunderswarm/Cinderguard connection)
+	{cx = 79.3, cy = 20.8, rx = 18.2, ry = 14.3, w = 0.65},
+	# SE barren hook (Weeping Barrows / Whispering Dunes)
+	{cx = 89.7, cy = 52.0, rx = 18.2, ry = 14.3, w = 0.6},
+]
+
 static func _carve_landmass(map: HexMapData) -> void:
 	# Asymmetric continent built from multiple overlapping landmass blobs,
 	# peninsulas, bays, and irregular coastline noise.
 	# Each blob is an ellipse: {cx, cy, rx, ry, weight}
 	# Higher weight = stronger contribution to land formation
-	var blobs := [
-		# Main continent body — off-center, slightly NW-biased
-		{cx = 54.6, cy = 35.1, rx = 39.0, ry = 24.7, w = 1.0},
-		# Western heartland (Empire/Gladehost) — bulges south-west
-		{cx = 24.7, cy = 35.1, rx = 22.1, ry = 22.1, w = 0.8},
-		# Northern ridge (Moonspear/Thunderswarm) — wide but narrow
-		{cx = 57.2, cy = 14.3, rx = 36.4, ry = 11.7, w = 0.7},
-		# Eastern arm (Forsaken/Ivoryscar) — long peninsula reaching east
-		{cx = 93.6, cy = 37.7, rx = 22.1, ry = 24.7, w = 0.75},
-		# Southern jungle — teardrop hanging south (widened for scattered factions)
-		{cx = 42.9, cy = 62.0, rx = 28.0, ry = 16.0, w = 0.7},
-		# SW extension (Jade Conclave area)
-		{cx = 16.0, cy = 64.0, rx = 12.0, ry = 10.0, w = 0.55},
-		# SE extension (Ivoryscar area)
-		{cx = 102.0, cy = 60.0, rx = 14.0, ry = 12.0, w = 0.55},
-		# Central steppe bridge connecting west to east
-		{cx = 68.9, cy = 31.2, rx = 24.7, ry = 14.3, w = 0.6},
-		# NE highlands (Thunderswarm/Cinderguard connection)
-		{cx = 79.3, cy = 20.8, rx = 18.2, ry = 14.3, w = 0.65},
-		# SE barren hook (Weeping Barrows / Whispering Dunes)
-		{cx = 89.7, cy = 52.0, rx = 18.2, ry = 14.3, w = 0.6},
-	]
+	var blobs := LANDMASS_BLOBS
 
 	# Peninsulas — thin rotated ellipses that extend from the coast
 	# Each: {cx, cy, rx, ry, angle (radians), w}
