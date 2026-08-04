@@ -215,6 +215,13 @@ var _selected_leader_indices: Dictionary = {} # faction_id -> int
 ## set of ids from three separately-typed local literals.
 const PLAYABLE_FACTIONS: Array[StringName] = [&"empire", &"skulloath", &"gladehost", &"tainted_jade", &"shardhorde", &"moonspear", &"thunderswarm", &"cinderguard", &"forsaken", &"ivoryscar", &"sunblessed"]
 
+## Fix-round (review defect): floor height for the faction-overview "chip"
+## (desc_scroll) so a very short blurb never collapses to a sliver — and the
+## chip's own content-margin (all sides), reused both for the stylebox and
+## for the height calc that keeps the chip fit to its wrapped text.
+const DESC_CHIP_MIN_HEIGHT := 90.0
+const DESC_CHIP_CONTENT_MARGIN := 12.0
+
 const FACTION_LEADERS := {
 	&"empire": [
 		{"name": "Emperor Aurelian III", "portrait": "res://assets/sprites/factions/empire/leaders/nonbiristudios_An_emperor_of_the_empire_purple_and_black_clot_c9c9bdc9-5915-4c09-a954-842fe2313c6c_0.png", "bonuses": [
@@ -719,15 +726,25 @@ func _show_faction_select() -> void:
 	content_left.size_flags_stretch_ratio = 2.0
 	content_hbox.add_child(content_left)
 
-	# Faction overview (scrollable, absorbs the flexible remaining height).
-	# Dark chip backdrop keeps the description text off the raw leather.
+	# Faction overview (fix round, review defect: this chip previously used
+	# SIZE_EXPAND_FILL, which forced it to fill ALL remaining vertical space
+	# in content_left regardless of how little text it held — rendering as
+	# a small paragraph on top of a large empty dark rectangle. Fix: SIZE_FILL
+	# (shrink to content) with a modest floor for very short blurbs; the
+	# actual height is kept in sync with the wrapped text via the
+	# desc_vbox.resized handler below (ScrollContainer does not propagate a
+	# scrolling child's minimum size to its own — confirmed empirically —
+	# so the chip's height must be set explicitly). The freed space is
+	# reallocated to the map sketch below (see its SIZE_EXPAND_FILL). Dark
+	# chip backdrop keeps the description text off the raw leather.
 	var desc_scroll := ScrollContainer.new()
-	desc_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	desc_scroll.size_flags_vertical = Control.SIZE_FILL
+	desc_scroll.custom_minimum_size = Vector2(0, DESC_CHIP_MIN_HEIGHT)
 	desc_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	var desc_chip := StyleBoxFlat.new()
 	desc_chip.bg_color = UIPalette.CHIP_BG
 	desc_chip.set_corner_radius_all(5)
-	desc_chip.set_content_margin_all(12)
+	desc_chip.set_content_margin_all(DESC_CHIP_CONTENT_MARGIN)
 	desc_scroll.add_theme_stylebox_override("panel", desc_chip)
 	content_left.add_child(desc_scroll)
 
@@ -735,6 +752,15 @@ func _show_faction_select() -> void:
 	desc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	desc_vbox.add_theme_constant_override("separation", 8)
 	desc_scroll.add_child(desc_vbox)
+	# Re-fit the chip to its wrapped content every time desc_vbox's own
+	# computed minimum size changes (label text set/replaced, or width
+	# settles after the first layout pass) — resized fires after Godot has
+	# already re-wrapped the Labels at the container's current width, so
+	# get_combined_minimum_size() below reflects the real line count.
+	desc_vbox.resized.connect(func():
+		var needed: float = desc_vbox.get_combined_minimum_size().y + DESC_CHIP_CONTENT_MARGIN * 2.0
+		desc_scroll.custom_minimum_size.y = maxf(DESC_CHIP_MIN_HEIGHT, needed)
+	)
 
 	_faction_desc_label = Label.new()
 	_faction_desc_label.text = "Choose a faction from the list to see details about their playstyle, unique mechanics, and starting position."
@@ -782,8 +808,16 @@ func _show_faction_select() -> void:
 	content_left.add_child(sketch_caption)
 
 	_map_sketch = _MapSketch.new()
+	# Fix round (review defect): 170px used to be a FIXED height (SIZE_FILL,
+	# the container default) while desc_scroll above ate all the flexible
+	# space via SIZE_EXPAND_FILL. Now that the chip shrinks to its content
+	# (see desc_scroll above), the sketch is the one that should absorb the
+	# freed space — 170px becomes a MINIMUM via SIZE_EXPAND_FILL, so the
+	# sketch actually grows to fill content_left's remaining height instead
+	# of leaving it as a second empty band below a short chip.
 	_map_sketch.custom_minimum_size = Vector2(0, 170)
 	_map_sketch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_map_sketch.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_map_sketch.playable_factions = PLAYABLE_FACTIONS
 	for seal_fid in PLAYABLE_FACTIONS:
 		var seal_tex := _load_faction_seal(seal_fid)
@@ -807,6 +841,13 @@ func _show_faction_select() -> void:
 
 	var leader_inner_vbox := VBoxContainer.new()
 	leader_inner_vbox.add_theme_constant_override("separation", 8)
+	# Fix round (review, MINOR): content_right matches content_left's full
+	# height for column symmetry, but the leader portrait + bonus chips
+	# rarely fill it — explicit top alignment (BoxContainer default, made
+	# explicit here rather than left implicit) plus a trailing SIZE_EXPAND_
+	# FILL spacer (added as the last child below) makes the leftover space
+	# read as a deliberate bottom margin instead of a stray empty panel.
+	leader_inner_vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
 	content_right.add_child(leader_inner_vbox)
 
 	# Leader name + counter
@@ -870,6 +911,13 @@ func _show_faction_select() -> void:
 	_leader_bonus_label.add_theme_font_size_override("font_size", 15)
 	_leader_bonus_label.visible = false
 	bonus_vbox.add_child(_leader_bonus_label)
+
+	# Trailing spacer: absorbs whatever height content_right has beyond the
+	# portrait/bonuses so the empty band below reads as intentional bottom
+	# padding rather than unfilled leftover space.
+	var leader_spacer := Control.new()
+	leader_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	leader_inner_vbox.add_child(leader_spacer)
 
 	# ── Start button (designer 2026-08-04): black text outline, fixed width
 	# sized to the longest possible faction name (computed across
@@ -1303,10 +1351,31 @@ class _MapSketch extends Control:
 	var seal_textures: Dictionary = {} # faction_id -> Texture2D, pre-loaded
 
 	func _draw() -> void:
+		# Fix round (review defect): these were raw Color() literals — routed
+		# through UIPalette now, same "base color + .darkened()/.lightened()
+		# modifier" pattern _make_vignette_texture() already uses elsewhere in
+		# this file. Backdrop/land use PARCHMENT rather than PARCHMENT_DARK:
+		# tried PARCHMENT_DARK first, but darkened()/lightened() only ever
+		# SHRINK a color's channel gaps (never grow them — verified: for any
+		# amount `a`, lightened(c1)-lightened(c2) == (c1-c2)*(1-a), and
+		# darkened() scales identically), and the neutral PARCHMENT_DARK tone
+		# is already fairly desaturated (small channel gaps) — lightening it
+		# toward the target brightness flattened the warm tan/brown hue into
+		# a near-flat gray (screenshotted, looked visibly worse than the
+		# original). PARCHMENT is much closer in hue to begin with, so
+		# .darkened() preserves the warm parchment tone properly. The faction-
+		# select screen stays on the neutral chrome set throughout (per the
+		# row-styling design note above — no per-row theme rebuild), so these
+		# read the neutral tones; the SELECTED faction's own marker already
+		# sources its color from UIPalette.heraldry(fid) below, unaffected.
+		var ink := UIPalette.INK_BODY
+		var backdrop := UIPalette.PARCHMENT.darkened(0.1)
+		var land := UIPalette.PARCHMENT.darkened(0.55)
+
 		var rect := Rect2(Vector2.ZERO, size)
 		# Parchment sketch backdrop + ink border
-		draw_rect(rect, Color(0.76, 0.68, 0.52))
-		draw_rect(rect, Color(0.15, 0.11, 0.07), false, 2.0)
+		draw_rect(rect, backdrop)
+		draw_rect(rect, ink, false, 2.0)
 
 		var mw := float(HexMapData.MAP_WIDTH)
 		var mh := float(HexMapData.MAP_HEIGHT)
@@ -1324,12 +1393,12 @@ class _MapSketch extends Control:
 			var c := Vector2(pad + (float(blob.cx) / mw) * draw_w, pad + (float(blob.cy) / mh) * draw_h)
 			var r := Vector2((float(blob.rx) / mw) * draw_w, (float(blob.ry) / mh) * draw_h)
 			var alpha: float = clampf(float(blob.w) * 0.4, 0.16, 0.42)
-			_draw_ellipse(c, r, Color(0.36, 0.29, 0.18, alpha))
+			_draw_ellipse(c, r, Color(land.r, land.g, land.b, alpha))
 
 		# Region markers
 		var selected_pos := Vector2.ZERO
 		var selected_seal: Texture2D = null
-		var selected_tint := Color(0.15, 0.11, 0.07)
+		var selected_tint := ink
 		var has_selected_marker := false
 		for fid in playable_factions:
 			var fd: FactionData = DataManager.get_faction(fid)
@@ -1346,7 +1415,7 @@ class _MapSketch extends Control:
 				selected_tint = UIPalette.heraldry(fid)
 				has_selected_marker = true
 			else:
-				draw_circle(pos, 3.5, Color(0.15, 0.11, 0.07, 0.65))
+				draw_circle(pos, 3.5, Color(ink.r, ink.g, ink.b, 0.65))
 
 		if has_selected_marker:
 			draw_circle(selected_pos, 13.0, Color(selected_tint.r, selected_tint.g, selected_tint.b, 0.35))
@@ -1359,7 +1428,7 @@ class _MapSketch extends Control:
 			# Selected faction is nomadic (no starting_regions) — no fixed
 			# capital to pin, caption instead.
 			var font := ThemeDB.fallback_font
-			draw_string(font, Vector2(pad, size.y - pad), "Nomadic — no fixed starting position", HORIZONTAL_ALIGNMENT_LEFT, draw_w, 12, Color(0.15, 0.11, 0.07))
+			draw_string(font, Vector2(pad, size.y - pad), "Nomadic — no fixed starting position", HORIZONTAL_ALIGNMENT_LEFT, draw_w, 12, ink)
 
 	func _draw_ellipse(center: Vector2, radii: Vector2, color: Color, segments: int = 20) -> void:
 		if radii.x <= 0.0 or radii.y <= 0.0:
