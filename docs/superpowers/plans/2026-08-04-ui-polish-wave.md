@@ -28,6 +28,16 @@
 - [ ] Windowed sweep both factions + zoomed map shot; battery: `test_ui_palette`, `test_save_roundtrip`, `test_battle_determinism` (MATCH). Panels that clip from larger fonts: fix at the builder (fit rule), list each in the report.
 - [ ] Commit `polish(ui): larger type ladder, MSDF crisp fonts, button contrast`.
 
+### Task P8: Generator refinements — wobble-clipped buttons, pattern variation (RUNS BEFORE P2)
+
+**Files:** `tests/tools_generate_ui_chrome.gd`; full rebake.
+
+- [ ] BUG (designer): the square base of buttons is visible past the wobbly outline — the fill rect extends beyond the wobble border. Fix: draw the button FILL as the same jittered wobble polygon the border uses (fill the wobble path; outside stays transparent), so nothing square pokes past the line.
+- [ ] Wobble pattern variations (designer likes the squiggle, wants variety): 2-3 wobble variants (different jitter frequency/amplitude/phase), seeded deterministically per set+piece so different buttons/frames don't all share one identical squiggle.
+- [ ] Large-panel pattern flatness (designer root-cause: pattern density was designed for small previews then stretched over large areas; naive tiling would also look bad — needs variation and asymmetry): bake the frame at a larger canvas (e.g. 384², margins scaled ×2 → still maps to the 32px runtime margin via texture scale, verify with game_manager constants — OR keep canvas and draw a DENSER, asymmetric stain field with size variation so center-stretch reads as texture, not blobs). Choose the approach that keeps the nine-patch contract intact; document it. Judge on a stretched 900×700 sample in the contact sheet.
+- [ ] Rebake all sets; verify seals/notification unchanged where untouched; contact sheet + stretched sample → coordinator art gate (STOP before commit; user check rides the final acceptance gate).
+- [ ] Windowed sweep spot-check + determinism MATCH. Commit `polish(ui): wobble-clipped buttons, pattern variation, denser frame texture`.
+
 ### Task P2: Main menu & faction select
 
 **Files:** `scenes/main/main_menu.gd`, `scenes/main/main_menu.tscn` (title/subtitle nodes), background import settings.
@@ -37,7 +47,10 @@
 - [ ] Text sizes up throughout menu + faction select (title of faction info, blurb, leader bonuses — leader bonuses get a readable chip with body-15).
 - [ ] "Start as X" button: black text outline (outline_size ~3, black), width = measured longest faction name + padding (compute across DataManager factions at build time), centered horizontally.
 - [ ] Backgrounds ("too pixelated / mono-colored blobs"): inspect `MainMenuBackground.png` + `factionselectionbackground.png` import settings & source resolution. Enable filtering/mipmaps if off; if the source art is genuinely low-res, add a subtle dark vignette overlay to mask blockiness and report the finding (art regeneration is out of scope this wave — note as follow-up if sources are the problem).
-- [ ] Screenshots: menu, faction select unpicked + 2 factions picked. Commit `polish(ui): impressive menu titles, faction-styled selection, readable start flow`.
+- [ ] LAYOUT REWORK (designer 2026-08-04): faction-select info area splits — LEFT two-thirds = the faction's bonus list and details; RIGHT third = leader portrait + leader bonuses. Both at the new type scale.
+- [ ] MAP SKETCH (designer): a rough stylized map sketch on the faction-select screen showing the selected faction's starting position — parchment-styled simplified landmass/regions drawn from map/region data (or a baked thumbnail if live drawing is impractical — implementer's call, report it) with the faction's seal marking the capital anchor.
+- [ ] THEME RESET BUG (designer): returning to the main menu from a campaign keeps the last faction's chrome — call `GameManager.apply_faction_theme(&"neutral")` on main-menu entry (scene _ready or the return path), verify by starting skulloath → returning → menu shows neutral chrome.
+- [ ] Screenshots: menu, faction select unpicked + 2 factions picked (layout + sketch visible), theme-reset before/after. Commit `polish(ui): impressive menu titles, faction-styled selection, readable start flow`.
 
 ### Task P3: City panel — 2-line action buttons, readable building cards, fitted income row
 
@@ -62,6 +75,7 @@
 **Files:** `scenes/campaign/campaign_hud.gd`, `scenes/campaign/campaign.gd`.
 
 - [ ] Diplomacy: faction names high-contrast (parchment-light on dark chip rows, or ink on light — pick per actual row background); relationship/standing list panel fully OPAQUE; general pass over the diplomacy window at the new scale.
+- [ ] SHARDHORDE READABILITY (designer): the elderbeast menu is near-unreadable under shardhorde's brown/olive palette — audit that window under BOTH empire and shardhorde chrome, fix the failing color pairings (likely ACCENT-lavender or ink-on-olive collisions) via UIPalette semantics, screenshot both.
 - [ ] Event dialog buttons: width fits text (+padding), centered — not full textbox width. Apply to the shared dialog factory so all event/dilemma dialogs inherit.
 - [ ] Skill/ability info previews (commander skill tooltips + any hover previews): fully opaque backgrounds.
 - [ ] Dialog text areas: content takes more of the panel (reduce oversized margins where a small text block floats in a large box — combined with the larger type this closes the "small text, large box" complaint). Sweep the _create_centered_dialog callers with visibly bad ratios (victory, event, report dialogs) and tighten.
@@ -82,6 +96,7 @@
 - [ ] Remove the season/year flavor text from the top bar ("Moonwatch, 174 S.F." style strings — locate the top-bar date label; remove label + its updates; keep turn number).
 - [ ] Placement click-through BUG: during building tile placement the city panel fades (quickfix #41) but still blocks clicks — set `mouse_filter = MOUSE_FILTER_IGNORE` on the faded panel AND its children (recursively or via top-level), restore on exit paths (confirm/cancel/close). Verify by scripted placement click through the faded panel region.
 - [ ] INVESTIGATE Frost Kennels (T1) vs Frost Wolf Den: both unlocked by tier-1 techs per the designer. Read the .tres data: are they an upgrade chain (`upgrades_to`/`upgrade_of`)? If interdependent buildings shouldn't unlock in the same tier, propose + apply the minimal data fix (e.g. move the dependent unlock to the T2 tech) and REPORT the before/after clearly for the designer; if they're actually independent by design, report that with evidence and change nothing.
+- [ ] INVESTIGATE Forsaken turn-1 unit overload (designer: crypt court + blood mage sanctum start = 8 trainable units in the starting city at turn 1, "at least 3 too many"): trace which buildings/roster entries produce the 8; draft a staging proposal (which units move behind which building level/tier or tech) that lands turn-1 at ≤5 options while preserving the faction's identity; PRESENT the proposal in the task report for the designer's decision — do NOT change roster data in this task.
 - [ ] Battery: full 8-suite battery + MATCH (this task ends the wave). Commit `polish(ui): top-bar cleanup, placement click-through fix, kennels data check`.
 
 ## Self-Review
