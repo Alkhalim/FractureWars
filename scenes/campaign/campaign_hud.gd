@@ -59,7 +59,6 @@ const RESOURCE_COLORS := {
 }
 
 @onready var turn_label: Label = $TopBar/HBoxContainer/TurnLabel
-@onready var date_label: Label = $TopBar/HBoxContainer/DateLabel
 @onready var faction_label: Label = $TopBar/HBoxContainer/FactionLabel
 @onready var end_turn_button: Button = $TopBar/HBoxContainer/EndTurnButton
 @onready var region_panel: PanelContainer = $RegionPanel
@@ -104,6 +103,10 @@ var _senate_viz: Control
 var _pending_forsaken_offer: Dictionary = {}
 var _pending_building_city_id: StringName = &""
 var _pending_building_id: StringName = &""
+## Task P7: node -> pre-fade mouse_filter, stashed by _set_city_panel_placement_fade
+## so every descendant Control's original filter can be restored exactly
+## (see that function for why a per-node walk is needed at all).
+var _placement_fade_saved_filters: Dictionary = {}
 var _research_panel: PanelContainer
 var _unit_detail_panel: PanelContainer
 var _item_swap_panel: PanelContainer
@@ -408,8 +411,6 @@ func _update_top_bar() -> void:
 	if GameManager.state == null:
 		return
 	turn_label.text = "Turn " + str(GameManager.state.current_turn)
-	var month_name := DataManager.get_month_name(GameManager.state.current_month)
-	date_label.text = month_name + ", " + str(GameManager.state.current_year) + " S.F."
 
 	var faction_data := DataManager.get_faction(GameManager.state.player_faction_id)
 	if faction_data:
@@ -9054,8 +9055,8 @@ func cancel_building_tile() -> void:
 	_set_city_panel_placement_fade(false)
 	building_tile_selection_cancelled.emit()
 
-## Task #41: while the player is choosing a map tile for a building (city
-## panel stays open behind the map), fade the panel down so it doesn't
+## Task #41 / P7 fix: while the player is choosing a map tile for a building
+## (city panel stays open behind the map), fade the panel down so it doesn't
 ## obscure the placement overlay, and let clicks fall through to the map so a
 ## right-click-to-cancel over the panel's screen rect still reaches
 ## campaign.gd's _unhandled_input. Restored to opaque + blocking on every
@@ -9063,11 +9064,36 @@ func cancel_building_tile() -> void:
 ## (cancel_building_tile), and panel-close (_hide_city_panel /
 ## _close_city_panel below double as a safety net so a stale fade can never
 ## survive the panel being closed and reopened).
+##
+## P7: setting city_panel.mouse_filter alone did NOT stop the click-through
+## bug -- Godot does not cascade a parent's mouse_filter to its children, so
+## every button/scroll/label inside the panel that still carries its own
+## default MOUSE_FILTER_STOP kept swallowing clicks meant for the map
+## underneath. Fix walks every Control descendant and forces IGNORE too,
+## stashing each one's real filter so it can be restored exactly on exit.
 func _set_city_panel_placement_fade(active: bool) -> void:
 	if city_panel == null:
 		return
 	city_panel.modulate.a = 0.2 if active else 1.0
 	city_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE if active else Control.MOUSE_FILTER_STOP
+	if active:
+		_placement_fade_saved_filters.clear()
+		_placement_fade_ignore_recursive(city_panel)
+	else:
+		for node in _placement_fade_saved_filters:
+			if is_instance_valid(node):
+				node.mouse_filter = _placement_fade_saved_filters[node]
+		_placement_fade_saved_filters.clear()
+
+## Recursion helper for _set_city_panel_placement_fade(true): forces every
+## Control descendant of `node` to MOUSE_FILTER_IGNORE, remembering its prior
+## filter in _placement_fade_saved_filters for the exact restore above.
+func _placement_fade_ignore_recursive(node: Node) -> void:
+	for child in node.get_children():
+		if child is Control:
+			_placement_fade_saved_filters[child] = child.mouse_filter
+			child.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_placement_fade_ignore_recursive(child)
 
 func _on_building_hover(building_id: StringName) -> void:
 	var building: BuildingData = DataManager.get_building(building_id)
