@@ -8128,6 +8128,15 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 	vbox.add_theme_constant_override("separation", 8)
 	_faction_dilemma_dialog.add_child(vbox)
 
+	# Add to the live HUD tree BEFORE building content: _add_dialog_choice_button
+	# below measures button width via get_combined_minimum_size(), which only
+	# resolves the game's real Button theme (Vollkorn @ size 15, set on
+	# get_tree().root.theme) once this node is inside the tree — off-tree
+	# controls silently fall back to Godot's built-in default theme instead.
+	# move_to_front() still runs at the end, once the dialog's final content
+	# (and any already-open city panel it needs to land above) is settled.
+	add_child(_faction_dilemma_dialog)
+
 	var title := Label.new()
 	title.text = dilemma_data.get("title", "Dilemma")
 	title.add_theme_font_size_override("font_size", 18)
@@ -8183,7 +8192,6 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 			cd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			vbox.add_child(cd)
 
-	add_child(_faction_dilemma_dialog)
 	_faction_dilemma_dialog.move_to_front() # Land above an already-open city panel
 
 # ── City management panel ────────────────────────────────────
@@ -11348,6 +11356,13 @@ func _show_event_dialog(event_data: Dictionary) -> void:
 	vbox.add_theme_constant_override("separation", 10)
 	_event_dialog.add_child(vbox)
 
+	# Add to the live HUD tree BEFORE building content: _add_dialog_choice_button
+	# below measures button width via get_combined_minimum_size(), which only
+	# resolves the game's real Button theme (Vollkorn @ size 15, set on
+	# get_tree().root.theme) once this node is inside the tree — off-tree
+	# controls silently fall back to Godot's built-in default theme instead.
+	add_child(_event_dialog)
+
 	var title := Label.new()
 	title.text = event_data.get("title", "Event")
 	title.add_theme_font_size_override("font_size", 18)
@@ -11380,8 +11395,6 @@ func _show_event_dialog(event_data: Dictionary) -> void:
 	btn_b.text = choice_b_text
 	btn_b.pressed.connect(_on_event_choice.bind("b"))
 	_add_dialog_choice_button(vbox, btn_b)
-
-	add_child(_event_dialog)
 
 func _on_event_choice(choice: String) -> void:
 	var event_type: String = _pending_event_data.get("type", "")
@@ -11915,7 +11928,20 @@ func _create_centered_dialog(width: int, min_height: int = 0) -> PanelContainer:
 ## clipped by nothing. Detected via btn.text == "" (plain event-choice
 ## buttons DO set .text and size correctly from that alone) and measure the
 ## real content width from the anchored child instead.
+##
+## REQUIREMENT (fix round, Task P5 review): the game's real Button theme
+## (Vollkorn @ size 15) lives on `get_tree().root.theme`
+## (GameManager._setup_global_theme/apply_faction_theme) — Godot's theme
+## lookup walks scene-tree ancestors to find it, so `btn` (and `vbox`, and
+## the dialog above it) must already be INSIDE THE LIVE TREE before
+## get_combined_minimum_size() is called below. An off-tree Button has no
+## ancestor chain to root and silently measures against Godot's built-in
+## engine-default font/theme instead — wrong number, no error. That's why
+## `btn` is add_child()ed to `vbox` first thing here, and why every
+## `_show_*_dialog` call site must add its dialog to the HUD tree (`self`)
+## BEFORE building/appending its choice buttons, not after.
 func _add_dialog_choice_button(vbox: VBoxContainer, btn: Button, height: float = 36.0) -> void:
+	vbox.add_child(btn) # must precede the measurement below — see REQUIREMENT
 	var width := btn.get_combined_minimum_size().x
 	if btn.text == "" and btn.get_child_count() > 0:
 		var content_min: Vector2 = btn.get_child(0).get_combined_minimum_size()
@@ -11924,7 +11950,6 @@ func _add_dialog_choice_button(vbox: VBoxContainer, btn: Button, height: float =
 		width = maxf(width, content_min.x + pad_x)
 	btn.custom_minimum_size = Vector2(width, height)
 	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	vbox.add_child(btn)
 
 # ── Faction Onboarding Panel (Polish Pass 1, Task 1) ──────────
 
