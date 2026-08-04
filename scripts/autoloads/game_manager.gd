@@ -518,9 +518,32 @@ func get_time_icon() -> Texture2D:
 ## draws straight on the button's parchment/heraldry fill, not a dark chip);
 ## default false preserves the light-on-dark-chip look every other call site
 ## (dialogs' chip-wrapped vboxes, per docs/ui_style_guide.md) already expects.
-func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, prefix := "", signed := false, turns := 0, on_light := false) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
+## `wrap` (UI Polish Wave Task P3 fix — a fixed-width column with horizontal
+## scroll disabled was silently clipping wide rows, e.g. a 6-resource-type
+## city income line) swaps the HBoxContainer for an HFlowContainer, which
+## wraps overflow pairs onto a second line instead of running off the edge.
+## Godot's FlowContainer only wraps when it's actually GIVEN a bounded width
+## to wrap within — under a SHRINK size flag it never receives one (reports
+## its unwrapped single-line size as its own minimum, so a shrink-sized
+## parent slot just grants it that), so the wrap branch sets
+## SIZE_EXPAND_FILL explicitly rather than inheriting a SHRINK flag from the
+## caller. This has no visible effect on short rows — this row draws no
+## background/border, so a short, left-packed run of icon+number pairs looks
+## identical whether the (invisible) container bounds extend further right
+## or not; only a row that actually needs to wrap is affected. Other call
+## sites are unaffected (default false keeps the original HBoxContainer).
+func make_cost_row(cost: Dictionary, compare: Dictionary = {}, font_size := 12, prefix := "", signed := false, turns := 0, on_light := false, wrap := false) -> Container:
+	var row: Container
+	if wrap:
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 8)
+		flow.add_theme_constant_override("v_separation", 4)
+		flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row = flow
+	else:
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 8)
+		row = hbox
 	var base_col := UIPalette.INK_BODY if on_light else Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85)
 	var dim_col := Color(base_col.r, base_col.g, base_col.b, 0.75)
 	if prefix != "":

@@ -8404,12 +8404,16 @@ func _show_city_panel(city_id: StringName) -> void:
 				positive[res_type] = income[res_type]
 		if positive.size() > 0:
 			# Fit-content width (task P3: was stretching to the full column
-			# width regardless of entry count) — shrink to the row's own
-			# natural size instead of filling the panel like a default
-			# BoxContainer child would.
-			var income_row := GameManager.make_cost_row(positive, {}, 13, "Income:", true)
-			income_row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-			vbox.add_child(income_row)
+			# width regardless of entry count) via make_cost_row's `wrap`
+			# variant (P3 review fix): a developed capital can post 6+ income
+			# types (region base + wood/shard buildings), which measured
+			# wider than the fixed 346px column — SIZE_SHRINK_BEGIN alone let
+			# that overflow get silently clipped by CityScroll's disabled
+			# horizontal scroll. `wrap = true` uses an HFlowContainer instead,
+			# so a short row still reads tight/left-packed (no visible bg to
+			# betray the wider logical bounds) and a long row wraps onto a
+			# second line within the column instead of running off the edge.
+			vbox.add_child(GameManager.make_cost_row(positive, {}, 13, "Income:", true, 0, false, true))
 
 	# Garrison info
 	var garrison_def: Array = GameManager.city_system._get_garrison_composition(city)
