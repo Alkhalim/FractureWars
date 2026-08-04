@@ -8,14 +8,21 @@ var _hud: Control = null
 var _steps: Array = []  # [frame_offset, callable, shot_name]
 var _base_frame := 45
 var _intro_done := false
+# UI Polish Wave Task P1: faction selectable via trailing cmdline arg so the
+# same sweep can be run for both empire and skulloath without duplicating the
+# script — `-- empire` / `-- skulloath` (default skulloath, matches prior use).
+var _faction_id := &"skulloath"
 
 func _init() -> void:
 	call_deferred("_start")
 
 func _start() -> void:
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 0 and args[0] != "":
+		_faction_id = StringName(args[0])
 	var gm: Node = root.get_node("/root/GameManager")
 	gm._is_transitioning = true
-	gm.new_game(&"skulloath", false, 0)
+	gm.new_game(_faction_id, false, 0)
 	gm._is_transitioning = false
 	var scene: PackedScene = load("res://scenes/campaign/campaign.tscn")
 	_campaign = scene.instantiate()
@@ -23,8 +30,9 @@ func _start() -> void:
 
 func _shot(name: String) -> void:
 	var img := root.get_viewport().get_texture().get_image()
-	img.save_png("user://" + name)
-	print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://" + name))
+	var fname := "%s_%s" % [String(_faction_id), name]
+	img.save_png("user://" + fname)
+	print("SCREENSHOT SAVED: ", ProjectSettings.globalize_path("user://" + fname))
 
 func _pop_last_dialog() -> void:
 	# Ad-hoc dialogs are add_child'ed to the HUD last — free the newest child

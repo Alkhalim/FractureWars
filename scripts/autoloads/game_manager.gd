@@ -216,7 +216,7 @@ func _build_theme_for_set(set_id: StringName) -> Theme:
 	var body_font := _load_ui_font(_BODY_FONT_PATH)
 	if body_font:
 		theme.default_font = body_font
-	theme.default_font_size = 13
+	theme.default_font_size = 15
 
 	# ── Button styles — each state has its own baked texture now (parchment/
 	# hover-brighter/heraldry-pressed/desaturated-disabled), so no modulate
@@ -235,7 +235,7 @@ func _build_theme_for_set(set_id: StringName) -> Theme:
 	theme.set_color("font_hover_color", "Button", UIPalette.INK_TITLE)
 	theme.set_color("font_pressed_color", "Button", UIPalette.PARCHMENT)
 	theme.set_color("font_disabled_color", "Button", Color(UIPalette.INK_BODY.r, UIPalette.INK_BODY.g, UIPalette.INK_BODY.b, 0.55))
-	theme.set_font_size("font_size", "Button", 13)
+	theme.set_font_size("font_size", "Button", 15)
 
 	# ── Label default — dark ink reads on the parchment fields panels now
 	# sit on; text intended for dark chips (_make_text_chip et al) keeps
@@ -247,18 +247,20 @@ func _build_theme_for_set(set_id: StringName) -> Theme:
 	# Both extend "Label" (set_type_variation) so anything they don't
 	# override — font_color, notably — falls through to the "Label" entry
 	# above rather than needing its own copy. Sizes match the style guide's
-	# ladder (titles 16, section headers 14); font_color is set explicitly to
-	# INK_TITLE (distinct semantic constant from body's INK_BODY, even though
-	# the two currently hold equal values) since titles are exactly what that
-	# constant exists for. ──
+	# ladder (titles 20, section headers 17, UI Polish Wave Task P1 — raised
+	# from 16/14 so headers don't read as barely-bigger-than-body next to the
+	# now-15px default); font_color is set explicitly to INK_TITLE (distinct
+	# semantic constant from body's INK_BODY, even though the two currently
+	# hold equal values) since titles are exactly what that constant exists
+	# for. ──
 	theme.set_type_variation(&"HeaderLarge", &"Label")
 	theme.set_type_variation(&"HeaderMedium", &"Label")
 	var display_font := _load_ui_font(_DISPLAY_FONT_PATH)
 	if display_font:
 		theme.set_font(&"font", &"HeaderLarge", display_font)
 		theme.set_font(&"font", &"HeaderMedium", display_font)
-	theme.set_font_size(&"font_size", &"HeaderLarge", 16)
-	theme.set_font_size(&"font_size", &"HeaderMedium", 14)
+	theme.set_font_size(&"font_size", &"HeaderLarge", 20)
+	theme.set_font_size(&"font_size", &"HeaderMedium", 17)
 	theme.set_color(&"font_color", &"HeaderLarge", UIPalette.INK_TITLE)
 	theme.set_color(&"font_color", &"HeaderMedium", UIPalette.INK_TITLE)
 
@@ -649,6 +651,16 @@ var _compact_theme: Theme
 ## ever built before body_font/UIPalette are ready, silently falling to
 ## Godot's stock font would be a much quieter failure than an explicit call
 ## site.
+##
+## UI Polish Wave Task P1: mirrors _build_theme_for_set's 15px body/Button
+## size verbatim rather than scaling it down further — this theme is already
+## the "compact" (4x-shrunk chrome) skin, not a second size reduction, and the
+## designer complaint driving this task ("small text and a large box looks
+## bad") applies just as much to dense HUD panels as the root theme. Individual
+## dense/secondary call sites in campaign_hud.gd/campaign.gd (tooltips, badge
+## numerals, cost-row captions) keep their own smaller font_size overrides —
+## style guide floor for those is 12px (was 10px), not enforced here since
+## this function only sets the theme-wide default, not per-call overrides.
 func get_compact_theme() -> Theme:
 	if _compact_theme:
 		return _compact_theme
@@ -656,8 +668,8 @@ func get_compact_theme() -> Theme:
 	var body_font := _load_ui_font(_BODY_FONT_PATH)
 	if body_font:
 		theme.default_font = body_font
-	theme.default_font_size = 13
-	theme.set_font_size("font_size", "Button", 13)
+	theme.default_font_size = 15
+	theme.set_font_size("font_size", "Button", 15)
 	theme.set_color("font_color", "Button", UIPalette.INK_BODY)
 	theme.set_color("font_hover_color", "Button", UIPalette.INK_TITLE)
 	theme.set_color("font_pressed_color", "Button", UIPalette.PARCHMENT)

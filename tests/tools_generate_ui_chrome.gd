@@ -936,7 +936,18 @@ class _ChromePainter extends Node2D:
 		var wobble := _jittered_rect_poly(rng, border_rect, 4, 1.0)
 		var closed := wobble.duplicate()
 		closed.append(wobble[0])
-		draw_polyline(closed, border, 1.6, true)
+		# UI Polish Wave Task P1 ("button color and background color often too
+		# close to each other"): border weight 1.6 -> 2.6 (+1px). The button's
+		# `fill` (parchment/lightened-parchment) sits close in tone to the
+		# panel parchment it's placed on — the ink outline is what actually
+		# separates a button's silhouette from its backdrop, so it's the
+		# cheaper/more effective lever here than darkening `pal.ink` further:
+		# every set's ink is already a near-black tone (luminance well under
+		# 0.2), so there's little headroom left to darken before it just reads
+		# as pure black regardless of faction. A thicker line reads as a
+		# stronger separator at every zoom without touching per-faction color
+		# tuning.
+		draw_polyline(closed, border, 2.6, true)
 		if state == "hover":
 			# Task 5b round 2: hover emphasis border is now `secondary`
 			# (was `heraldry`, which made hover and pressed states share a

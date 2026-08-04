@@ -107,13 +107,14 @@ baking a static override.
 Bundled OFL pair (`assets/fonts/`, licenses alongside): **Vollkorn**
 (`Vollkorn-wght.ttf`) is the body/default face, set as `Theme.default_font`
 in both theme builders; **Cinzel** (`Cinzel-wght.ttf`) is the display face,
-wired only via the `HeaderLarge` (16px)/`HeaderMedium` (14px) Label
+wired only via the `HeaderLarge` (20px)/`HeaderMedium` (17px) Label
 `theme_type_variation`s — never set a font directly on a Label. Apply
 `theme_type_variation = &"HeaderLarge"` to real titles (dialog/panel/screen
 titles — Task 6/7 precedent) and `HeaderMedium` to secondary headers; body
 copy needs no variation, it already gets Vollkorn from the theme default.
-Font size ladder unchanged: titles 16, section headers 14, body 13,
-dense/secondary 11-12, never below 10. Missing font files fail closed to
+Font size ladder (UI Polish Wave Task P1 — raised across the board, "small
+text and a large box looks bad"): titles 20, section headers 17, body 15,
+dense/secondary 12-13, floor 12 (never below). Missing font files fail closed to
 Godot's stock font (`_load_ui_font` null-guards every caller) — the game
 still runs, just unstyled, so this is safe to leave unset in a stripped
 checkout.
@@ -172,8 +173,8 @@ like buttons" reports).
 - Labels over the game world (map/battle) always use outlines
   (`draw_string_outline` or theme outline constants) — they cross both light
   and dark map terrain, so a fixed ink or parchment color alone isn't enough.
-- Font sizes: titles 16, section headers 14, body 13, dense/secondary 11–12,
-  never below 10 — see Fonts above for which face carries which size.
+- Font sizes: titles 20, section headers 17, body 15, dense/secondary 12–13,
+  never below 12 — see Fonts above for which face carries which size.
 
 ## Buttons & interactions
 
