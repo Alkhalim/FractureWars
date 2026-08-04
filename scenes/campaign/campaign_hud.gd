@@ -3096,7 +3096,10 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	var player_id := GameManager.state.player_faction_id
 	var row_panel := PanelContainer.new()
 	var row_style := StyleBoxFlat.new()
-	row_style.bg_color = Color(UIPalette.CHIP_BG, 0.8)
+	# Task P5 (designer: "the relationship list ... should have no transparency
+	# to it") — was alpha 0.8, letting the panel's leather texture bleed through
+	# behind every row; the standing list reads as a solid list now.
+	row_style.bg_color = Color(UIPalette.CHIP_BG, 1.0)
 	row_style.border_width_left = 3
 	row_style.border_color = fd.color
 	row_style.corner_radius_top_left = 3
@@ -3128,6 +3131,14 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	name_label.custom_minimum_size = Vector2(130, 0)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.add_theme_font_size_override("font_size", 13)
+	# Task P5 (designer: "faction names are hard to read"): this row is its
+	# own dark CHIP_BG chip (row_style above), not light parchment — with no
+	# override the Label fell back to the theme's default Label font_color
+	# (UIPalette.INK_BODY, dark ink meant for light parchment), reading as
+	# near-invisible dark-on-near-black. Matches the faction_title/leader_nm
+	# pattern already used elsewhere in this same diplomacy window (detail
+	# page, counter-offer dialog) for "this faction's name on a dark chip".
+	name_label.add_theme_color_override("font_color", fd.color.lightened(0.3))
 	info_row.add_child(name_label)
 
 	# Treaty icons — small colored symbols showing active agreements
@@ -4458,6 +4469,13 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 		var check := CheckBox.new()
 		check.text = offer.label
 		check.add_theme_font_size_override("font_size", 13)
+		# Task P5 readability pass: this row sits on option_style's dark CHIP_BG
+		# chip above — CheckBox has no theme entry of its own for font_color, so
+		# it falls back (within-theme, class hierarchy) to Button's INK_BODY,
+		# dark ink meant for LIGHT parchment, reading as near-invisible here.
+		# Same fix already applied at the army-split/disband checklists (Task 8
+		# coherence pass comment there); this trade-offer list was missed then.
+		check.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 		var offer_id: String = offer.id
 		check.button_pressed = _diplo_selected_offers.get(offer_id, false)
 		check.toggled.connect(func(pressed: bool):
@@ -8137,7 +8155,6 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 		# a tooltip), colored red where unaffordable
 		var btn := GameManager.make_cost_button(choice.get("label", "Choose"), cost, 0,
 			fs.resources if fs else {}, 13)
-		btn.custom_minimum_size = Vector2(400, 36)
 		var can_afford := true
 		if not cost.is_empty() and fs != null:
 			for res_type in cost:
@@ -8155,7 +8172,7 @@ func _show_faction_dilemma_dialog(faction_id: StringName, dilemma_type: StringNa
 			_faction_dilemma_dialog.queue_free()
 			_faction_dilemma_dialog = null
 			_update_resource_display())
-		vbox.add_child(btn)
+		_add_dialog_choice_button(vbox, btn)
 		# Consequence text visible under the button, not tooltip-hidden
 		var choice_desc: String = choice.get("description", "")
 		if choice_desc != "":
@@ -10218,7 +10235,12 @@ func _create_commander_panel() -> void:
 	_skill_tooltip = PanelContainer.new()
 	_skill_tooltip.visible = false
 	var tt_style := StyleBoxFlat.new()
-	tt_style.bg_color = Color(UIPalette.CHIP_BG, 0.95)
+	# Task P5 (designer: "skill info previews should also have no transparency
+	# for readability") — was alpha 0.95, a faint sliver of the panel behind it
+	# could bleed through at the edges; this is the commander skill/item/trait
+	# hover-preview panel (_on_skill_hover_entered / _on_item_hover_entered /
+	# _on_trait_hover_entered all reuse this one node).
+	tt_style.bg_color = Color(UIPalette.CHIP_BG, 1.0)
 	tt_style.border_width_left = 1
 	tt_style.border_width_top = 1
 	tt_style.border_width_right = 1
@@ -11349,17 +11371,15 @@ func _show_event_dialog(event_data: Dictionary) -> void:
 	var choice_a_text: String = event_data.get("choice_a", "Accept")
 	var btn_a := Button.new()
 	btn_a.text = choice_a_text
-	btn_a.custom_minimum_size = Vector2(340, 36)
 	btn_a.pressed.connect(_on_event_choice.bind("a"))
-	vbox.add_child(btn_a)
+	_add_dialog_choice_button(vbox, btn_a)
 
 	# Choice B button
 	var choice_b_text: String = event_data.get("choice_b", "Decline")
 	var btn_b := Button.new()
 	btn_b.text = choice_b_text
-	btn_b.custom_minimum_size = Vector2(340, 36)
 	btn_b.pressed.connect(_on_event_choice.bind("b"))
-	vbox.add_child(btn_b)
+	_add_dialog_choice_button(vbox, btn_b)
 
 	add_child(_event_dialog)
 
@@ -11872,6 +11892,40 @@ func _create_centered_dialog(width: int, min_height: int = 0) -> PanelContainer:
 	dialog.add_child(backdrop)
 	return dialog
 
+## Shared choice-button helper for event/dilemma-style dialogs (Task P5,
+## designer: "buttons on events seem to go the full wideness of the textbox
+## instead of how wide they would need to be for the text"). The previous
+## pattern at each call site was a per-dialog magic-number width matching the
+## dialog's own content width minus its margins (event: 340 in a 400 dialog,
+## dilemma: 400 in a 440 dialog) — exactly the "fix one dialog at a time"
+## anti-pattern that leaves the next dialog with the same bug. Leaving the
+## button's width at its natural minimum (text + the themed button stylebox's
+## own padding) and switching off SIZE_FILL via SIZE_SHRINK_CENTER makes it
+## hug its label and center in the VBox instead of stretching — any future
+## event/dilemma choice button should route through this rather than hand-
+## setting custom_minimum_size.x again.
+##
+## GOTCHA (found via the windowed screenshot sweep): GameManager.
+## make_cost_button() (the dilemma dialog's button factory) never sets the
+## Button's own `.text` — its label/cost-row are a child Control anchored via
+## PRESET_FULL_RECT instead. Anchored children don't feed a parent Control's
+## get_combined_minimum_size() (Button isn't a Container), so leaving
+## custom_minimum_size.x at 0 collapsed the button to the themed stylebox's
+## own tiny content-margin floor and the label rendered past its right edge,
+## clipped by nothing. Detected via btn.text == "" (plain event-choice
+## buttons DO set .text and size correctly from that alone) and measure the
+## real content width from the anchored child instead.
+func _add_dialog_choice_button(vbox: VBoxContainer, btn: Button, height: float = 36.0) -> void:
+	var width := btn.get_combined_minimum_size().x
+	if btn.text == "" and btn.get_child_count() > 0:
+		var content_min: Vector2 = btn.get_child(0).get_combined_minimum_size()
+		var style := btn.get_theme_stylebox("normal")
+		var pad_x := (style.content_margin_left + style.content_margin_right) if style else 36.0
+		width = maxf(width, content_min.x + pad_x)
+	btn.custom_minimum_size = Vector2(width, height)
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	vbox.add_child(btn)
+
 # ── Faction Onboarding Panel (Polish Pass 1, Task 1) ──────────
 
 ## Show-once intro blurb for the player's faction: its mechanic, its recurring
@@ -12147,14 +12201,23 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 	var title := Label.new()
 	title.text = beast.name + " (Lv." + str(beast.level) + ")"
 	title.add_theme_font_size_override("font_size", 16)
-	title.add_theme_color_override("font_color", Color(0.8, 0.55, 0.9))
+	# Task P5 (SHARDHORDE READABILITY): this panel is a bare make_panel_style()
+	# child with no dark chip wrapper, i.e. light parchment — the old literal
+	# was a pale lavender (near-identical to shardhorde's own ACCENT tone,
+	# which is tuned for text on a DARK chip) sitting directly on light
+	# parchment, reading as near-invisible under every faction's chrome and
+	# worst under shardhorde's warmer/darker parchment. Ink is correct here.
+	title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
 	vbox.add_child(title)
 
 	# HP
 	var hp_label := Label.new()
 	hp_label.text = "HP: %d / %d" % [beast.hp, beast.max_hp]
 	hp_label.add_theme_font_size_override("font_size", 12)
-	hp_label.add_theme_color_override("font_color", Color(0.8, 0.4, 0.4))
+	# Was a light literal red (Color(0.8,0.4,0.4)) — too close in value to the
+	# light parchment background; UIPalette.DANGER is the ink-red tone tuned
+	# for this exact background (Task P5 readability pass).
+	hp_label.add_theme_color_override("font_color", UIPalette.DANGER)
 	vbox.add_child(hp_label)
 
 	# Population
@@ -12220,7 +12283,9 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var bld: BuildingData = DataManager.get_building(item.get("building_id", &""))
 		queue_label.text = "Building: %s (%d turns)" % [bld.display_name if bld else "?", item.get("turns_remaining", 0)]
 		queue_label.add_theme_font_size_override("font_size", 11)
-		queue_label.add_theme_color_override("font_color", Color(0.5, 0.7, 0.9))
+		# Was a pale literal blue (Task P5 readability pass) — too light against
+		# the light parchment background; ink is the correct family here.
+		queue_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
 		vbox.add_child(queue_label)
 
 	# Available buildings (inline like city panel)
@@ -12402,7 +12467,11 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var rq_label := Label.new()
 		rq_label.text = "  [Training] %s (%d turns)" % [rq_ud.display_name if rq_ud else "?", rq_item.get("turns_remaining", 0)]
 		rq_label.add_theme_font_size_override("font_size", 11)
-		rq_label.add_theme_color_override("font_color", Color(0.85, 0.75, 0.4))
+		# Was a golden-tan literal nearly matching the parchment background's own
+		# hue (Task P5 readability pass — worst offender, almost invisible under
+		# shardhorde's warmer parchment); WARN's dark ochre ink reads as an
+		# "in progress" status against light parchment.
+		rq_label.add_theme_color_override("font_color", UIPalette.WARN)
 		vbox.add_child(rq_label)
 
 	# Income breakdown
@@ -12418,7 +12487,10 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var base_lbl := Label.new()
 		base_lbl.text = "Base Income (Lv.%d): %s" % [beast.level, ", ".join(base_parts)]
 		base_lbl.add_theme_font_size_override("font_size", 11)
-		base_lbl.add_theme_color_override("font_color", Color(0.6, 0.75, 0.5))
+		# Was a pale sage-green literal, weak against light parchment (worst on
+		# shardhorde's warmer tone) — SUCCESS is the ink-green tuned for this
+		# background and matches the semantic (income = positive).
+		base_lbl.add_theme_color_override("font_color", UIPalette.SUCCESS)
 		vbox.add_child(base_lbl)
 
 	var terrain_title := Label.new()
@@ -12487,7 +12559,8 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 	var income_label := Label.new()
 	income_label.text = income_text
 	income_label.add_theme_font_size_override("font_size", 11)
-	income_label.add_theme_color_override("font_color", Color(0.6, 0.75, 0.5))
+	# Same pale sage-green fix as the base-income line above (Task P5).
+	income_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
 	vbox.add_child(income_label)
 
 	# Close button
@@ -12501,7 +12574,13 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 func _show_turn_summary() -> void:
 	if _turn_summary_panel:
 		_turn_summary_panel.queue_free()
-	_turn_summary_panel = _create_centered_dialog(400)
+	# Task P5 oversized-margin sweep (designer: "the textbox within menus in
+	# general could take up more space"): turn-log entries are almost always
+	# one short clause ("X captured Y"), so at the old 400px width (320px
+	# content area after the frame's 40px margins) most rows left a wide
+	# blank strip to the right of the text — the "small text, large box"
+	# complaint's textbook case. Narrower width, same frame/margin system.
+	_turn_summary_panel = _create_centered_dialog(340)
 	add_child(_turn_summary_panel)
 
 	var vbox := VBoxContainer.new()
