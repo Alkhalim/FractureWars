@@ -621,16 +621,25 @@ var _compact_theme: Theme
 ## switching factions and calling get_compact_theme() again (after nulling
 ## _compact_theme) picks up the new set automatically.
 ##
-## GOTCHA (found during the Task 3 windowed sweep): Theme lookup in Godot 4
-## only cascades to an ancestor's theme for a property that ancestor's theme
-## doesn't define AT ALL for that type. The whole campaign HUD subtree runs
-## under this compact theme (docs/ui_style_guide.md), and it DOES define
-## Button styleboxes — so as soon as it does, it "claims" the Button type for
-## every descendant button, and any Button color THIS theme doesn't also set
-## (font_color etc.) falls through straight to Godot's built-in default
-## (~0.875 grey) instead of cascading further up to the root theme's colors.
-## Every font color set on "Button" in _build_theme_for_set must be mirrored
-## here too, or compact-themed buttons silently lose their ink text.
+## GOTCHA (found during the Task 3 windowed sweep, corrected/generalized in
+## Task 8's coherence pass): once a Control's own `.theme` is set, Godot
+## resolves EVERY theme property for that Control's whole subtree from THAT
+## theme alone (with normal within-theme fallback: type variation -> class
+## hierarchy, e.g. CheckBox -> Button) — it does NOT continue climbing to an
+## ancestor Control's separate Theme resource for a type or property the
+## nearer theme leaves unset, even one it doesn't mention AT ALL. Anything
+## missing here falls straight to Godot's built-in engine default instead
+## (~0.875 grey text; a flat neutral-grey ProgressBar/slider/separator/
+## scrollbar). The whole campaign HUD subtree runs under this compact theme
+## (docs/ui_style_guide.md) via `theme = get_compact_theme()` on the HUD
+## Control itself, so EVERY type/property set on ANYTHING in
+## _build_theme_for_set (Button colors, Label, ProgressBar, HSeparator/
+## VSeparator, HSlider/VSlider, LineEdit, VScrollBar/HScrollBar, ...) must be
+## mirrored here too, or compact-themed controls of that type silently lose
+## their styling — confirmed empirically (a live theme-resolution probe on a
+## Victory-panel ProgressBar) after screenshots showed one rendering as
+## Godot's stock flat grey instead of BAR_TROUGH/BAR_FILL despite a code
+## comment asserting it "cascades to root".
 ##
 ## Font mirroring (Task 5): default_font/default_font_size ARE Theme-level
 ## fallbacks (unlike colors, which have no such in-Theme fallback), so they
@@ -666,6 +675,89 @@ func get_compact_theme() -> Theme:
 	theme.set_icon("unchecked", "CheckBox", uncheck_icon)
 	theme.set_icon("checked_disabled", "CheckBox", check_icon)
 	theme.set_icon("unchecked_disabled", "CheckBox", uncheck_icon)
+	theme.set_color("font_color", "Label", UIPalette.INK_BODY)
+	# Task 8 coherence pass — root-caused a real bug found via the Victory
+	# panel's progress bars rendering as Godot's built-in flat neutral-grey
+	# default (bg (0.1,0.1,0.1,0.3) / fill (1.0,1.0,1.0,0.4), confirmed via a
+	# live theme-resolution probe) instead of the themed BAR_TROUGH/BAR_FILL.
+	# The "cascades to root for the unclaimed type" comments on the root-theme
+	# ProgressBar/HSlider/audio_manager.gd's slider factory were WRONG: once
+	# a Control's own `.theme` is set (HUD's is, to this function's result),
+	# Godot resolves EVERY theme property from THAT theme alone — for a type
+	# this theme never mentions at all, same as one it only partially defines
+	# (the Button/CheckBox "claiming" gotcha already documented above) — and
+	# falls straight to the engine default rather than continuing up to the
+	# root theme. Mirroring every remaining root-theme type here (same
+	# UIPalette-sourced recipe as _build_theme_for_set, unscaled — like
+	# CheckBox's icon above, these are small procedural/flat styleboxes, not
+	# baked textures, so no 4x compact-scale math applies) fixes ALL of them
+	# at once: ProgressBar (Victory conditions, confirmed broken), separators
+	# (76 `_add_separator()` call sites), sliders (the in-game Options panel
+	# reached via the HUD's own Options button runs under THIS theme), and
+	# scrollbars (22 ScrollContainers). LineEdit has zero call sites in
+	# campaign_hud.gd today but is mirrored anyway for the same reason the
+	# landmine comment above warns about: whichever type list drifts out of
+	# sync between the two builders next silently regresses.
+	var pb_bg := StyleBoxFlat.new()
+	pb_bg.bg_color = UIPalette.BAR_TROUGH
+	pb_bg.border_color = UIPalette.INK_BODY
+	pb_bg.set_border_width_all(1)
+	pb_bg.set_corner_radius_all(3)
+	pb_bg.set_content_margin_all(2)
+	theme.set_stylebox("background", "ProgressBar", pb_bg)
+	var pb_fill := StyleBoxFlat.new()
+	pb_fill.bg_color = UIPalette.BAR_FILL
+	pb_fill.set_corner_radius_all(2)
+	theme.set_stylebox("fill", "ProgressBar", pb_fill)
+	var hsep := StyleBoxFlat.new()
+	hsep.bg_color = UIPalette.INK_BODY
+	hsep.content_margin_top = 1.0
+	hsep.content_margin_bottom = 1.0
+	theme.set_stylebox("separator", "HSeparator", hsep)
+	var vsep := StyleBoxFlat.new()
+	vsep.bg_color = UIPalette.INK_BODY
+	vsep.content_margin_left = 1.0
+	vsep.content_margin_right = 1.0
+	theme.set_stylebox("separator", "VSeparator", vsep)
+	var slider_trough := StyleBoxFlat.new()
+	slider_trough.bg_color = UIPalette.BAR_TROUGH
+	slider_trough.set_corner_radius_all(3)
+	slider_trough.content_margin_top = 3.0
+	slider_trough.content_margin_bottom = 3.0
+	var slider_fill := StyleBoxFlat.new()
+	slider_fill.bg_color = UIPalette.BAR_FILL
+	slider_fill.set_corner_radius_all(3)
+	slider_fill.content_margin_top = 3.0
+	slider_fill.content_margin_bottom = 3.0
+	var grabber_icon := _make_circle_icon(UIPalette.PARCHMENT_ACCENT, 14)
+	for slider_type in ["HSlider", "VSlider"]:
+		theme.set_stylebox("slider", slider_type, slider_trough)
+		theme.set_stylebox("grabber_area", slider_type, slider_fill)
+		theme.set_stylebox("grabber_area_highlight", slider_type, slider_fill)
+		theme.set_icon("grabber", slider_type, grabber_icon)
+		theme.set_icon("grabber_highlight", slider_type, grabber_icon)
+		theme.set_icon("grabber_disabled", slider_type, grabber_icon)
+	var le_normal := StyleBoxFlat.new()
+	le_normal.bg_color = UIPalette.PARCHMENT_DARK
+	le_normal.border_color = UIPalette.INK_BODY
+	le_normal.set_border_width_all(1)
+	le_normal.set_corner_radius_all(3)
+	le_normal.set_content_margin_all(6)
+	theme.set_stylebox("normal", "LineEdit", le_normal)
+	theme.set_stylebox("focus", "LineEdit", le_normal)
+	theme.set_color("font_color", "LineEdit", UIPalette.PARCHMENT)
+	theme.set_color("caret_color", "LineEdit", UIPalette.PARCHMENT)
+	var scroll_track := StyleBoxFlat.new()
+	scroll_track.bg_color = UIPalette.PARCHMENT_DARK
+	scroll_track.set_corner_radius_all(3)
+	var scroll_grabber := StyleBoxFlat.new()
+	scroll_grabber.bg_color = UIPalette.INK_BODY
+	scroll_grabber.set_corner_radius_all(3)
+	for scroll_type in ["VScrollBar", "HScrollBar"]:
+		theme.set_stylebox("scroll", scroll_type, scroll_track)
+		theme.set_stylebox("grabber", scroll_type, scroll_grabber)
+		theme.set_stylebox("grabber_highlight", scroll_type, scroll_grabber)
+		theme.set_stylebox("grabber_pressed", scroll_type, scroll_grabber)
 	if _frame_texture:
 		var frame_tex := _scaled_image_texture(_frame_texture, 4)
 		var panel := StyleBoxTexture.new()

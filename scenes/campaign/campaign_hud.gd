@@ -442,6 +442,21 @@ func _on_hex_tile_selected(coord: Vector2i) -> void:
 	var tile_info_label: Label = region_panel.get_node("VBox/TileInfoLabel")
 	var armies_label: Label = region_panel.get_node("VBox/ArmiesLabel")
 
+	# Colors sourced from UIPalette (Task 8 coherence pass) — this panel is
+	# defined in campaign.tscn, not built ad-hoc in this script like most of
+	# the HUD, so it was never touched by the Tasks 6-7 Color(...) literal
+	# sweeps (those grepped campaign_hud.gd/campaign.gd source, not .tscn
+	# resource properties) and still carried the OLD pre-overhaul gold/tan
+	# literals (tuned for a dark backdrop) unreadable on this PanelContainer's
+	# now-light parchment fill. Set here (not baked back into the .tscn) so
+	# it reacts the same way every other panel does to apply_faction_theme().
+	name_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	terrain_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
+	realm_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
+	owner_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
+	armies_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
+	tile_info_label.add_theme_color_override("font_color", Color(UIPalette.INK_BODY, 0.75))
+
 	var region := DataManager.get_region(tile.region_id)
 	name_label.text = region.display_name if region else str(tile.region_id)
 
@@ -502,6 +517,16 @@ func _on_army_selected(army_id: StringName) -> void:
 	var units_label: Label = army_panel.get_node("VBox/HeaderRow/UnitsLabel")
 	var unit_list: GridContainer = army_panel.get_node("VBox/UnitScroll/UnitGrid")
 	var unit_scroll: ScrollContainer = army_panel.get_node("VBox/UnitScroll")
+
+	# This panel is campaign.tscn-defined (SelectedArmyPanel) with no panel
+	# stylebox override of its own, so it renders on the ambient theme's
+	# light-parchment PanelContainer default — colors sourced here (Task 8
+	# coherence pass) instead of the pre-overhaul gold/green/tan .tscn
+	# literals baked for a dark backdrop, same class of bug as RegionPanel
+	# above.
+	title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	movement.add_theme_color_override("font_color", UIPalette.INK_BODY)
+	units_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
 
 	var faction := DataManager.get_faction(army.faction_id)
 	var army_title_str := (faction.display_name if faction else "Army") + " Army"
@@ -2617,11 +2642,16 @@ func _add_victory_row(vbox: VBoxContainer, title_text: String, desc_text: String
 	bar.min_value = 0.0
 	bar.max_value = float(safe_max)
 	bar.value = clampf(float(you_val), 0.0, float(safe_max))
-	# Themed ProgressBar (root theme, cascades through the compact theme which
-	# never claims this type) already gives BAR_FILL/BAR_TROUGH + an ink border
-	# on the trough — the border was previously hand-rolled here specifically
-	# so a 0-progress bar stayed visible against the dialog's dark chip
-	# backdrop; the theme default covers that same case now.
+	# Themed ProgressBar gives BAR_FILL/BAR_TROUGH + an ink border on the
+	# trough — the border was previously hand-rolled here specifically so a
+	# 0-progress bar stayed visible against the dialog's dark chip backdrop;
+	# the theme default covers that same case now. Task 8 coherence pass
+	# correction: this HUD runs under GameManager.get_compact_theme(), which
+	# does NOT cascade to the root theme for a type it doesn't mention (a
+	# Control's own `.theme`, once set, is the sole theme source for its
+	# subtree — see get_compact_theme()'s doc comment) — this bar was
+	# rendering as Godot's built-in flat grey default until get_compact_theme()
+	# was given its own matching ProgressBar entry.
 	row.add_child(bar)
 
 	var caption := Label.new()
@@ -3118,10 +3148,13 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	var s_prefix: String = "+" if standing > 0 else ""
 	standing_label.text = "[%s%d]" % [s_prefix, standing]
 	standing_label.add_theme_font_size_override("font_size", 13)
+	# This row is its own dark CHIP_BG chip (row_style above), not light
+	# parchment — SUCCESS/DANGER's dark ink tones read dull here, so this
+	# site uses the _BRIGHT variants (Task 8 coherence pass, ledgered item 2).
 	if standing > 0:
-		standing_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+		standing_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 	elif standing < 0:
-		standing_label.add_theme_color_override("font_color", UIPalette.DANGER)
+		standing_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	else:
 		standing_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
 	standing_label.custom_minimum_size = Vector2(45, 0)
@@ -4075,7 +4108,10 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	var player_name_lbl := Label.new()
 	player_name_lbl.text = GameManager.FACTION_LEADER_NAMES.get(player_id, "You")
 	player_name_lbl.add_theme_font_size_override("font_size", 13)
-	player_name_lbl.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55))
+	# Sits directly on the diplomacy panel's light parchment (top_row is NOT
+	# wrapped in info_chip — only the center column is), so this needs the
+	# ink family, not a light/dim literal (Task 8 coherence pass).
+	player_name_lbl.add_theme_color_override("font_color", Color(UIPalette.INK_BODY, 0.75))
 	player_name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	player_name_lbl.custom_minimum_size = Vector2(150, 0)
 	player_portrait_col.add_child(player_name_lbl)
@@ -4110,10 +4146,12 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	var s_prefix: String = "+" if standing > 0 else ""
 	standing_lbl.text = "[%s%d] %s" % [s_prefix, standing, STANDING_STAGE_NAMES[stage]]
 	standing_lbl.add_theme_font_size_override("font_size", 11)
+	# rel_row sits inside info_chip (_make_text_chip_style() dark chip, see
+	# comment above) — same dark-background case as the diplomacy list row.
 	if standing > 0:
-		standing_lbl.add_theme_color_override("font_color", UIPalette.SUCCESS)
+		standing_lbl.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 	elif standing < 0:
-		standing_lbl.add_theme_color_override("font_color", UIPalette.DANGER)
+		standing_lbl.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	else:
 		standing_lbl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
 	rel_row.add_child(standing_lbl)
@@ -4251,7 +4289,8 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	var other_name_lbl := Label.new()
 	other_name_lbl.text = leader_name
 	other_name_lbl.add_theme_font_size_override("font_size", 13)
-	other_name_lbl.add_theme_color_override("font_color", Color(0.7, 0.65, 0.55))
+	# Same light-parchment context as player_name_lbl above.
+	other_name_lbl.add_theme_color_override("font_color", Color(UIPalette.INK_BODY, 0.75))
 	other_name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	other_name_lbl.custom_minimum_size = Vector2(150, 0)
 	other_portrait_col.add_child(other_name_lbl)
@@ -12534,6 +12573,13 @@ func _show_army_split_dialog(army_id: StringName) -> void:
 		var cb := CheckBox.new()
 		cb.text = (ud.display_name if ud else str(unit.unit_data_id)) + " (HP: %d/%d)" % [unit.current_hp, ud.max_hp if ud else unit.current_hp]
 		cb.add_theme_font_size_override("font_size", 12)
+		# This dialog is _create_centered_dialog's dark CHIP_BG backdrop —
+		# CheckBox has no theme entry of its own for font_color, so it falls
+		# back (within-theme, class hierarchy) to Button's INK_BODY, which is
+		# dark ink meant for LIGHT parchment and read as near-invisible here
+		# (Task 8 coherence pass, caught via the windowed sweep screenshot).
+		# Matches the disband dialog's twin checklist below.
+		cb.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 		check_list.add_child(cb)
 		checkboxes.append(cb)
 
@@ -12647,7 +12693,9 @@ func _show_disband_dialog(army_id: StringName) -> void:
 		var vet_str := " [%s]" % vet_label if vet_label != "Recruit" else ""
 		cb.text = "%s%s (HP: %d/%d)" % [ud.display_name, vet_str, unit.current_hp, ud.max_hp]
 		cb.add_theme_font_size_override("font_size", 11)
-		cb.add_theme_color_override("font_color", Color(0.8, 0.75, 0.65))
+		# Dark dialog backdrop — see the matching comment on the split-army
+		# checklist above; migrated to UIPalette (Task 8 coherence pass).
+		cb.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 		unit_list.add_child(cb)
 		checkboxes.append(cb)
 
@@ -13013,14 +13061,18 @@ func _create_faction_overview_panel() -> void:
 	desc.name = "FactionDesc"
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.add_theme_font_size_override("font_size", 13)
-	desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	desc.add_theme_color_override("font_color", UIPalette.INK_BODY)
 	vbox.add_child(desc)
 
-	# Stats row
+	# Stats row — secondary/subtitle line under the description, so it stays
+	# ink-family (readable on the panel's light parchment, was a washed-out
+	# dim grey close to the parchment's own tone) but slightly de-emphasized
+	# via alpha rather than full INK_BODY opacity, echoing the dimmed-INK_BODY
+	# idiom battle_v3.gd already uses for its own de-emphasized labels.
 	var stats := Label.new()
 	stats.name = "FactionStats"
 	stats.add_theme_font_size_override("font_size", 13)
-	stats.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
+	stats.add_theme_color_override("font_color", Color(UIPalette.INK_BODY, 0.75))
 	vbox.add_child(stats)
 
 	var sep := HSeparator.new()

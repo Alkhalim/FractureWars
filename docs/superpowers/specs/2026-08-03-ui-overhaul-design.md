@@ -1,6 +1,61 @@
 # UI Overhaul #40 — Generated Parchment & Ink Chrome with Faction Theming
 
-Status: APPROVED DESIGN 2026-08-03 (style direction D picked from `assets/ui_style_candidates/`; all sections user-approved in brainstorming).
+Status: IMPLEMENTED 2026-08-04 (Tasks 1-8 of `docs/superpowers/plans/2026-08-03-ui-overhaul-parchment.md` complete; style direction D picked from `assets/ui_style_candidates/`; all sections user-approved in brainstorming; final coherence sweep + full battery green — see task-8-report.md).
+
+## As-built deviations from this spec
+
+Decisions made or corrected during implementation that this document didn't
+originally call, in rollout order:
+
+- **Candidate-tool port, not a from-scratch generator**: §1's tool
+  (`tests/tools_generate_ui_chrome.gd`) ports its painters directly from the
+  already-committed style-direction mockup `tests/tools_ui_style_candidates.gd`
+  (Task 1), rather than being written independently against the spec text.
+  Kept as the visual source of truth per the plan's own instruction.
+- **Faction palette table replaced mid-plan by a user-supplied colour chart**
+  (interposed as Task 5b, between Tasks 5 and 6): the original §2 palette
+  table (heraldry seeded from `FactionData.color`, hand-tuned tone shifts)
+  was superseded by a designer-approved "SoB Faction Colour Chart" — see
+  `docs/faction_color_alignment.md`. This changed the palette record from
+  2 chart-independent fields (`heraldry`, `seal`) to a **3-color round**
+  matching the chart's Primary/Secondary/Tertiary per faction
+  (`heraldry`/`secondary`/`accent`), retiring the original `seal` field
+  (the wax-seal-disc role moved to `secondary`). §2/§5's `UIPalette` field
+  list should be read as `heraldry, secondary, accent` in place of the
+  original `heraldry_color, seal_color`.
+- **`FRAME_MARGIN` grew from the spec's implied ~24px to 32px** (Task 5b
+  round 2 ART GATE feedback: seals read too small at 24px) — moved together
+  in both `tests/tools_generate_ui_chrome.gd` and `game_manager.gd`, per
+  §1's own "declared once... shared by tool and runtime" contract.
+- **Standalone `<id>_seal.png` (64px) pieces added**, beyond §1's original
+  6-piece-per-set list — a dialog-header-scale emblem separate from the
+  frame's baked-in corner seals, added at the Task 5b gate for later reuse
+  (faction intro dialog, faction overview panel — Task 6).
+- **§5's "roughly 150-250 of the 583" literal-migration estimate for
+  `campaign_hud.gd`** landed at 206 (Task 6) — within-band but the low end;
+  the remainder is the documented "body/dim text, map-marker, faction-data,
+  categorical-color" carve-out, not a shortfall.
+- **Folded fixes found via the "screenshot first, judge, fix" loop each
+  task's own brief mandated**, beyond what §5/§6 named explicitly: a Button/
+  CheckBox font-color cascade gap between the root and compact themes
+  (Task 3); `INK_TITLE == INK_BODY` silently erasing 3 "selected/active"
+  highlight states (Task 7, fixed via `SECONDARY`/`heraldry()`); a main-menu
+  title readability regression from the font commit (Task 7 fix round); a
+  `CheckBox.font_pressed_color` cascade gap specific to a checked-by-default
+  box on light parchment (Task 8); and the same root/compact-theme cascade
+  gap recurring for `ProgressBar`/`HSeparator`/`VSeparator`/`HSlider`/
+  `VSlider`/`LineEdit`/scrollbars — undetected until Task 8's coherence pass
+  because the affected controls (Victory panel bars, in-game Options
+  sliders) hadn't been screenshotted under the compact theme specifically
+  until then. See `docs/ui_style_guide.md`'s "Generated chrome pipeline"
+  section for the general mechanism (now documented so it isn't
+  rediscovered a third time).
+- **Two `.tscn`-defined panels invisible to the `.gd`-file literal sweeps**:
+  `campaign.tscn`'s `RegionPanel` and `SelectedArmyPanel` labels carried
+  static `theme_override_colors` baked for the pre-overhaul dark HUD skin —
+  never touched by any task's `Color(0....)` grep because those greps target
+  `.gd` source, not `.tscn` resource properties. Found and fixed in Task 8's
+  coherence pass; see `docs/ui_style_guide.md` for the pattern going forward.
 
 ## Goal
 

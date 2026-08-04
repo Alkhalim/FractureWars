@@ -114,41 +114,34 @@ theme_override_constants/separation = 6
 
 [node name="RegionName" type="Label" parent="UILayer/HUD/RegionPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.9, 0.82, 0.55, 1)
 theme_override_font_sizes/font_size = 16
 text = "Region Name"
 
 [node name="Separator" type="HSeparator" parent="UILayer/HUD/RegionPanel/VBox"]
 layout_mode = 2
-theme_override_colors/separator_color = Color(0.55, 0.42, 0.2, 0.5)
 
 [node name="TerrainLabel" type="Label" parent="UILayer/HUD/RegionPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.75, 0.68, 1)
 theme_override_font_sizes/font_size = 13
 text = "Terrain: Plains"
 
 [node name="RealmLabel" type="Label" parent="UILayer/HUD/RegionPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.75, 0.68, 1)
 theme_override_font_sizes/font_size = 13
 text = "Realm: Mortal"
 
 [node name="OwnerLabel" type="Label" parent="UILayer/HUD/RegionPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.75, 0.68, 1)
 theme_override_font_sizes/font_size = 13
 text = "Owner: Neutral"
 
 [node name="TileInfoLabel" type="Label" parent="UILayer/HUD/RegionPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.58, 0.52, 1)
 theme_override_font_sizes/font_size = 12
 text = "Tile: (0, 0)"
 
 [node name="ArmiesLabel" type="Label" parent="UILayer/HUD/RegionPanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.78, 0.75, 0.68, 1)
 theme_override_font_sizes/font_size = 13
 text = "Armies: None"
 
@@ -176,19 +169,16 @@ layout_mode = 2
 [node name="ArmyTitle" type="Label" parent="UILayer/HUD/SelectedArmyPanel/VBox/HeaderRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.9, 0.82, 0.55, 1)
 theme_override_font_sizes/font_size = 16
 text = "Army"
 
 [node name="MovementLabel" type="Label" parent="UILayer/HUD/SelectedArmyPanel/VBox/HeaderRow"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.65, 0.85, 0.55, 1)
 theme_override_font_sizes/font_size = 13
 text = "Movement: 2/2"
 
 [node name="UnitsLabel" type="Label" parent="UILayer/HUD/SelectedArmyPanel/VBox/HeaderRow"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.75, 0.72, 0.65, 1)
 theme_override_font_sizes/font_size = 13
 text = "Units:"
 

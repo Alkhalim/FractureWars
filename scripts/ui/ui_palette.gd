@@ -20,6 +20,21 @@ const _CHIP_BG := Color(0.05, 0.04, 0.03, 0.72)
 const _DANGER := Color(0.60, 0.17, 0.13)
 const _SUCCESS := Color(0.28, 0.44, 0.20)
 const _WARN := Color(0.58, 0.40, 0.11)
+## Task 8 coherence pass: DANGER/SUCCESS/WARN are dark ink tones — correct
+## (dark-on-light) for the majority of sites, which sit directly on light
+## parchment panels, but read dull/low-contrast at the sites that sit on a
+## near-black CHIP_BG chip (e.g. diplomacy standing tags), where the old
+## pre-overhaul code used bright literals. These _BRIGHT variants are for
+## that dark-background case specifically — apply at a call site only when
+## the label's container is a CHIP_BG-backed chip/dialog backdrop, never as
+## a blanket replacement (most SUCCESS/DANGER/WARN call sites are correct as
+## written). Hand-picked to echo campaign_hud.gd's existing RELATION_COLORS
+## bright red/green literals (same rows, proven readable on the same dark
+## chips) rather than derived via .lightened() (which desaturates toward
+## white and reads washed-out/pink instead of a clean bright hue).
+const _DANGER_BRIGHT := Color(0.85, 0.25, 0.20)
+const _SUCCESS_BRIGHT := Color(0.35, 0.78, 0.42)
+const _WARN_BRIGHT := Color(0.88, 0.62, 0.18)
 
 ## Per-set palette table — duplicated from tests/tools_generate_ui_chrome.gd's
 ## SETS (keep in sync with that file). Same fields the tool table carries
@@ -103,6 +118,9 @@ static var CHIP_BG: Color = _CHIP_BG
 static var DANGER: Color = _DANGER
 static var SUCCESS: Color = _SUCCESS
 static var WARN: Color = _WARN
+static var DANGER_BRIGHT: Color = _DANGER_BRIGHT
+static var SUCCESS_BRIGHT: Color = _SUCCESS_BRIGHT
+static var WARN_BRIGHT: Color = _WARN_BRIGHT
 
 # ── Faction-dependent constants — initialized to the neutral palette,
 # overwritten by rebuild(). ──
@@ -143,6 +161,9 @@ static func rebuild(set_id: StringName) -> void:
 	DANGER = _DANGER
 	SUCCESS = _SUCCESS
 	WARN = _WARN
+	DANGER_BRIGHT = _DANGER_BRIGHT
+	SUCCESS_BRIGHT = _SUCCESS_BRIGHT
+	WARN_BRIGHT = _WARN_BRIGHT
 
 ## Cross-faction heraldry lookup — does NOT depend on / mutate the current
 ## rebuild() state, so callers can ask "what's Skulloath's color" while the

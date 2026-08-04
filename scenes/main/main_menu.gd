@@ -531,6 +531,22 @@ func _show_faction_select() -> void:
 	tutorial_cb.button_pressed = true
 	tutorial_cb.add_theme_font_size_override("font_size", 13)
 	tutorial_cb.add_theme_color_override("font_color", UIPalette.INK_BODY)
+	# Root-caused (Task 8 coherence pass): button_pressed defaults true (tutorial
+	# ON by default), and CheckBox has no CheckBox-specific "font_pressed_color"
+	# in either theme builder, so it class-hierarchy-cascades to Button's
+	# font_pressed_color = UIPalette.PARCHMENT (light — correct for a
+	# heraldry-filled PRESSED BUTTON, but CheckBox never gets a fill; its
+	# "pressed"/checked state is StyleBoxEmpty, so it's still sitting on this
+	# panel's light parchment). Light-on-light made the whole label vanish
+	# despite the font_color override above (which only covers the unchecked
+	# state). This is the only CheckBox in the game that both defaults checked
+	# AND sits directly on light parchment (campaign_hud.gd's checkboxes are
+	# either unchecked by default or sit on dark chips/dialog backdrops, where
+	# the light pressed color is correct) — fixed locally rather than in the
+	# shared theme to avoid regressing those correct cases.
+	tutorial_cb.add_theme_color_override("font_pressed_color", UIPalette.INK_BODY)
+	tutorial_cb.add_theme_color_override("font_hover_pressed_color", UIPalette.INK_TITLE)
+	tutorial_cb.add_theme_color_override("font_focus_color", UIPalette.INK_BODY)
 	left_outer_vbox.add_child(tutorial_cb)
 
 	# Right side: faction info panel

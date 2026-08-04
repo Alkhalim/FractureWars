@@ -751,9 +751,11 @@ func _add_volume_row(parent: VBoxContainer, label_text: String, initial_value: f
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.custom_minimum_size = Vector2(140, 0)
 	# Slider track/grabber-area styling comes from the ambient theme's HSlider
-	# entry (root theme sets it directly; the compact theme doesn't claim
-	# HSlider, so it cascades to root the same way ProgressBar/HeaderLarge do
-	# — see game_manager.gd::_build_theme_for_set) — no hand-rolled
+	# entry — both game_manager.gd::_build_theme_for_set (root theme) and
+	# get_compact_theme() set it directly (Task 8 coherence pass: a Control's
+	# own `.theme`, once set, does NOT cascade to an ancestor's theme for a
+	# type it doesn't mention, so this needs its own entry in BOTH builders,
+	# not just root — see get_compact_theme()'s doc comment) — no hand-rolled
 	# StyleBoxFlat override needed here.
 	row.add_child(slider)
 
