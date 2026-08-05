@@ -8559,6 +8559,22 @@ func _show_city_panel(city_id: StringName) -> void:
 		# on both GameManager themes (see game_manager.gd's OrnateButton
 		# wiring in _build_theme_for_set/get_compact_theme).
 		upgrade_btn.theme_type_variation = &"OrnateButton"
+		# UI Polish Wave 2 Task W3 fold-in (designer, 2026-08-05: "the squiggly
+		# lines intersect with the text a bit, scale the buttons up a little
+		# to prevent that from happening") — make_cost_button's two_line
+		# default height (52px here: 15+13 font sizes + 24 padding) is sized
+		# for the PLAIN button chrome's ~12px margin band. OrnateButton's
+		# texture margin is 18px top/bottom (_ORNATE_MARGIN in game_manager.gd)
+		# AND the two_line composite content is anchored PRESET_FULL_RECT
+		# (fills the whole button, ignoring the stylebox's own content_margin
+		# entirely — content_margin only matters for Button's built-in .text
+		# layout, not a custom child Control), so the ~30-34px two-line text
+		# block, vertically centered in a 52px-tall button, overlaps the
+		# fixed 18px top/bottom margin bands where the squiggle border draws.
+		# Growing the button's own height (not content_margin, which has no
+		# effect here) is what actually pushes centered content clear of
+		# those margin bands.
+		upgrade_btn.custom_minimum_size.y = 84.0
 		upgrade_btn.disabled = not can_afford
 		upgrade_btn.pressed.connect(func() -> void:
 			if GameManager.city_system.start_upgrade(city_id):
@@ -8619,6 +8635,7 @@ func _show_city_panel(city_id: StringName) -> void:
 			found_fs.resources if found_fs else {&"_": 0}, 15, "", true)
 		found_btn.theme_type_variation = &"OrnateButton"  # Task W1 — see upgrade_btn's comment above
 		found_btn.custom_minimum_size.x = 280
+		found_btn.custom_minimum_size.y = 84.0  # Task W3 fold-in — see upgrade_btn's comment above
 		found_btn.disabled = not can_afford_found
 		found_btn.pressed.connect(_on_found_settlement_pressed.bind(city_id))
 		vbox.add_child(found_btn)
@@ -8880,6 +8897,15 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.custom_minimum_size = Vector2(320, 0)
+	# UI Polish Wave 2 Task W3 (designer: "loyalty menu still is missing the
+	# darker area behind the text to make it readable") — same one-line
+	# pattern _refresh_economy_panel already uses: a dark CHIP_BG chip behind
+	# the scrollable content instead of raw make_panel_style() parchment.
+	# Every SUCCESS/DANGER/WARN/INK_TITLE color below is swapped to its
+	# _BRIGHT (or PARCHMENT) counterpart in the same pass — those are dark ink
+	# tones tuned for light parchment and would go near-invisible against
+	# this new dark backdrop otherwise (see UIPalette's _BRIGHT doc comment).
+	scroll.add_theme_stylebox_override("panel", _make_text_chip_style())
 	_loyalty_panel.add_child(scroll)
 
 	var vbox := VBoxContainer.new()
@@ -8899,7 +8925,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	var class_header := Label.new()
 	class_header.text = "CLASS LOYALTY"
 	class_header.add_theme_font_size_override("font_size", 13)
-	class_header.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	class_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(class_header)
 
 	var pcts := LoyaltySystem.calculate_class_percentages(city, faction_id)
@@ -8947,9 +8973,9 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 			pct_num.text = "%s%d%%" % ["+" if pct_delta_int >= 0 else "", pct_delta_int]
 			pct_num.add_theme_font_size_override("font_size", 11)
 			if pct_delta_int > 0:
-				pct_num.add_theme_color_override("font_color", Color(UIPalette.SUCCESS, 0.7))
+				pct_num.add_theme_color_override("font_color", Color(UIPalette.SUCCESS_BRIGHT, 0.7))
 			else:
-				pct_num.add_theme_color_override("font_color", Color(UIPalette.DANGER, 0.7))
+				pct_num.add_theme_color_override("font_color", Color(UIPalette.DANGER_BRIGHT, 0.7))
 			pct_hbox.add_child(pct_num)
 			var close_bracket := Label.new()
 			close_bracket.text = ")"
@@ -8977,11 +9003,11 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 		else:
 			loyalty_value.text = str(cls_loyalty)
 			if cls_loyalty >= 30:
-				loyalty_value.add_theme_color_override("font_color", UIPalette.SUCCESS)
+				loyalty_value.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 			elif cls_loyalty <= -10:
-				loyalty_value.add_theme_color_override("font_color", UIPalette.DANGER)
+				loyalty_value.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 			elif cls_loyalty < 10:
-				loyalty_value.add_theme_color_override("font_color", UIPalette.WARN)
+				loyalty_value.add_theme_color_override("font_color", UIPalette.WARN_BRIGHT)
 			else:
 				loyalty_value.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
 		loyalty_value.add_theme_font_size_override("font_size", 11)
@@ -8990,7 +9016,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 			var delta_label := Label.new()
 			delta_label.text = "  %+d" % cls_delta
 			delta_label.add_theme_font_size_override("font_size", 11)
-			delta_label.add_theme_color_override("font_color", UIPalette.SUCCESS if cls_delta > 0 else UIPalette.DANGER)
+			delta_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT if cls_delta > 0 else UIPalette.DANGER_BRIGHT)
 			loyalty_hbox.add_child(delta_label)
 		loyalty_hbox.mouse_filter = Control.MOUSE_FILTER_STOP
 		loyalty_hbox.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -9011,7 +9037,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 		var malus_header := Label.new()
 		malus_header.text = "  Income malus (-%d%%):" % int((1.0 - loyalty_mult) * 100)
 		malus_header.add_theme_font_size_override("font_size", 12)
-		malus_header.add_theme_color_override("font_color", UIPalette.DANGER)
+		malus_header.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		vbox.add_child(malus_header)
 		# Calculate actual resource losses
 		var region_data: RegionData = DataManager.get_region(city.region_id)
@@ -9040,7 +9066,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 			var loss_label := Label.new()
 			loss_label.text = "    " + ", ".join(loss_parts)
 			loss_label.add_theme_font_size_override("font_size", 11)
-			loss_label.add_theme_color_override("font_color", UIPalette.DANGER)
+			loss_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 			vbox.add_child(loss_label)
 
 	var growth_mult := CitySystem._get_loyalty_growth_multiplier(city.loyalty)
@@ -9051,7 +9077,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 		else:
 			growth_malus_label.text = "  Population growth: -%d%%" % int((1.0 - growth_mult) * 100)
 		growth_malus_label.add_theme_font_size_override("font_size", 12)
-		growth_malus_label.add_theme_color_override("font_color", UIPalette.DANGER)
+		growth_malus_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		vbox.add_child(growth_malus_label)
 
 	_add_separator(vbox)
@@ -9060,7 +9086,7 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	var mod_header := Label.new()
 	mod_header.text = "MODIFIERS"
 	mod_header.add_theme_font_size_override("font_size", 13)
-	mod_header.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	mod_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(mod_header)
 
 	var breakdown := LoyaltySystem.get_loyalty_breakdown(city, faction_id)
@@ -9071,9 +9097,9 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 		entry_label.text = "%s%-26s %s%d" % [prefix, entry.label, sign_char, entry.value]
 		entry_label.add_theme_font_size_override("font_size", 12)
 		if entry.value >= 0:
-			entry_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+			entry_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 		else:
-			entry_label.add_theme_color_override("font_color", UIPalette.DANGER)
+			entry_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		vbox.add_child(entry_label)
 
 	_add_separator(vbox)
@@ -9084,9 +9110,9 @@ func _show_loyalty_panel(city_id: StringName) -> void:
 	revolt_label.text = "REVOLT RISK: %d%%" % int(revolt_chance * 100.0)
 	revolt_label.add_theme_font_size_override("font_size", 13)
 	if revolt_chance > 0:
-		revolt_label.add_theme_color_override("font_color", UIPalette.DANGER)
+		revolt_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	else:
-		revolt_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+		revolt_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 	vbox.add_child(revolt_label)
 
 	add_child(_loyalty_panel)
@@ -9356,13 +9382,96 @@ func _find_upgrade_for(building_id: StringName) -> BuildingData:
 func _format_cost_bbcode(cost: Dictionary, fs: FactionState) -> String:
 	return GameManager.cost_bbcode(cost, fs.resources if fs else {&"_": 0})
 
-func _create_building_card(building: BuildingData, city_id: StringName, fs: FactionState, slot_blocked: bool = false) -> PanelContainer:
+## UI Polish Wave 2 Task W3 (designer: "buildings usually have only 4 lines
+## of text but space for 5 — scale the text up and only scale it down if more
+## space is needed for more complex individual buildings") — font-size tiers
+## for `_create_building_card`. Index 0 is the new default "roomy" tier,
+## noticeably bigger than the pre-W3 flat sizes, sized so the common
+## ~4-populated-row card (name + cost + at most one of upkeep/terrain + a
+## short effects line) fills the card's existing 110px height instead of
+## leaving the 5th line's worth of space empty. Index 1 is the pre-W3 sizing
+## (kept as the true "5 populated lines" ceiling this card was always sized
+## for). Index 2 is a further step-down for the rare genuinely-complex
+## building (upkeep AND terrain both present, plus a long multi-part effects/
+## doctrine-lock summary) that would otherwise overflow tier 1.
+## `chars_per_line`/`lines_budget` are only used by `_pick_building_card_font_tier`
+## below to CHOOSE a tier, not to actually wrap text — RichTextLabel's own
+## autowrap does the real wrapping once a tier is picked.
+const _CARD_FONT_TIERS := [
+	{name = 16, cost = 14, upkeep = 13, terrain = 13, effects = 13, cat_tag = 11, chars_per_line = 22, lines_budget = 4},
+	{name = 13, cost = 12, upkeep = 11, terrain = 11, effects = 11, cat_tag = 10, chars_per_line = 26, lines_budget = 5},
+	{name = 11, cost = 10, upkeep = 9, terrain = 9, effects = 9, cat_tag = 9, chars_per_line = 32, lines_budget = 999},
+]
+
+## Strips BBCode for a rough "visual character width" estimate — used only by
+## _pick_building_card_font_tier below, never for real text layout.
+## `[img=N]path[/img]` icon tags collapse to a fixed 2-char placeholder (an
+## icon reads about as wide as 2 characters, not its long asset-path string);
+## every other tag (`[color=...]`/`[/color]`) is dropped entirely since it
+## adds zero visual width.
+static func _bbcode_visual_length(s: String) -> int:
+	var re_img := RegEx.new()
+	re_img.compile("\\[img=\\d+\\].*?\\[/img\\]")
+	var stripped := re_img.sub(s, "XX", true)
+	var re_tag := RegEx.new()
+	re_tag.compile("\\[.*?\\]")
+	stripped = re_tag.sub(stripped, "", true)
+	return stripped.length()
+
+## Picks the biggest _CARD_FONT_TIERS entry whose estimated line count still
+## fits the card. Estimate-based rather than a live Font/TextServer
+## measurement deliberately: this runs before `card` (and its row children)
+## are parented into the live scene, and this file's own established GOTCHA
+## (see _add_dialog_choice_button's doc comment) is that off-tree Controls
+## resolve theme/font lookups against Godot's built-in default font instead
+## of the live Vollkorn theme — a get_line_count()-style measurement here
+## would silently measure the wrong font. A char-count-vs-budget estimate has
+## no font/tree dependency, at the cost of being approximate.
+func _pick_building_card_font_tier(building: BuildingData, upkeep: Dictionary, effects: String, cost_bbcode_str: String) -> Dictionary:
+	var upkeep_str := ""
+	if not upkeep.is_empty():
+		upkeep_str = "Upkeep: " + GameManager.cost_bbcode(upkeep) + " /turn"
+	var cost_len := _bbcode_visual_length(cost_bbcode_str) + 4  # +4 for the "  " gap and the turn-count icon
+	var upkeep_len := _bbcode_visual_length(upkeep_str)
+	var effects_len := _bbcode_visual_length(effects)
+	var terrain_present := building.required_terrain >= 0
+	for tier_i in _CARD_FONT_TIERS.size():
+		var tier: Dictionary = _CARD_FONT_TIERS[tier_i]
+		var cpl: int = tier.chars_per_line
+		var lines := 1  # name row — always exactly 1, clip_text never wraps
+		lines += maxi(1, ceili(float(cost_len) / cpl))
+		if not upkeep.is_empty():
+			lines += maxi(1, ceili(float(upkeep_len) / cpl))
+		if terrain_present:
+			lines += 1
+		if effects != "":
+			lines += maxi(1, ceili(float(effects_len) / cpl))
+		if lines <= tier.lines_budget or tier_i == _CARD_FONT_TIERS.size() - 1:
+			return tier
+	return _CARD_FONT_TIERS[_CARD_FONT_TIERS.size() - 1]  # unreachable, satisfies static analysis
+
+## `on_build` (UI Polish Wave 2 Task W3): optional override for the left-click
+## build action. Left empty (the default), left-click routes through
+## `_on_build_pressed(city_id, building.id)` as before — the only behavior
+## every existing (city) call site needs. The elderbeast panel's "Available
+## Buildings" section passes a real Callable here instead: ElderbeastState
+## has its own build_queue/resources model, entirely separate from
+## GameManager.state.cities, so `_on_build_pressed` (which looks up
+## `GameManager.state.cities.get(city_id)` and no-ops if that's null) can't
+## drive it — city_id is empty for that caller, same as the existing
+## right-click `_show_building_detail(bid, &"")` precedent elsewhere in this
+## file for the same panel.
+func _create_building_card(building: BuildingData, city_id: StringName, fs: FactionState, slot_blocked: bool = false, on_build: Callable = Callable()) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(170, 110)
 
 	var cat_color := _get_building_category_color(building)
 	var can_afford := fs != null and _can_afford_display(fs, building.build_cost)
 	var is_buildable := can_afford and not slot_blocked
+	var upkeep := GameManager.city_system.get_building_upkeep(building)
+	var effects := _get_building_effects_summary(building, true)
+	var cost_bbcode := _format_cost_bbcode(building.build_cost, fs)
+	var tier: Dictionary = _pick_building_card_font_tier(building, upkeep, effects, cost_bbcode)
 
 	# Task P3 (designer feedback: a full category-color background makes the
 	# card's own text hard to read) — background is now the same neutral
@@ -9396,14 +9505,14 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 		name_label.text = "\u25B2 " + building.display_name
 	else:
 		name_label.text = building.display_name
-	name_label.add_theme_font_size_override("font_size", 13)
+	name_label.add_theme_font_size_override("font_size", tier.name)
 	name_label.add_theme_color_override("font_color", UIPalette.PARCHMENT if is_buildable else Color(UIPalette.PARCHMENT, 0.55))
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.clip_text = true
 	name_row.add_child(name_label)
 	var cat_tag := Label.new()
 	cat_tag.text = str(building.category).left(3).to_upper()
-	cat_tag.add_theme_font_size_override("font_size", 10)
+	cat_tag.add_theme_font_size_override("font_size", tier.cat_tag)
 	cat_tag.add_theme_color_override("font_color", Color(cat_color, 1.0).lightened(0.5))
 	name_row.add_child(cat_tag)
 	card_vbox.add_child(name_row)
@@ -9414,19 +9523,17 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	cost_rtl.fit_content = true
 	cost_rtl.scroll_active = false
 	cost_rtl.custom_minimum_size = Vector2(148, 0)
-	cost_rtl.add_theme_font_size_override("normal_font_size", 12)
-	var cost_bbcode := _format_cost_bbcode(building.build_cost, fs)
+	cost_rtl.add_theme_font_size_override("normal_font_size", tier.cost)
 	cost_rtl.text = cost_bbcode + "  " + GameManager.time_bbcode(building.build_time)
 	card_vbox.add_child(cost_rtl)
 
 	# Row 2b: Upkeep cost (orange, icon row)
-	var upkeep := GameManager.city_system.get_building_upkeep(building)
 	if not upkeep.is_empty():
 		var upkeep_rtl := RichTextLabel.new()
 		upkeep_rtl.bbcode_enabled = true
 		upkeep_rtl.fit_content = true
 		upkeep_rtl.scroll_active = false
-		upkeep_rtl.add_theme_font_size_override("normal_font_size", 11)
+		upkeep_rtl.add_theme_font_size_override("normal_font_size", tier.upkeep)
 		upkeep_rtl.text = "[color=#e69933]Upkeep:[/color] " + GameManager.cost_bbcode(upkeep) + " [color=#e69933]/turn[/color]"
 		card_vbox.add_child(upkeep_rtl)
 
@@ -9435,19 +9542,18 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 		var terrain_name: String = Enums.TerrainType.keys()[building.required_terrain].capitalize()
 		var req_label := Label.new()
 		req_label.text = "Requires: " + terrain_name
-		req_label.add_theme_font_size_override("font_size", 11)
+		req_label.add_theme_font_size_override("font_size", tier.terrain)
 		req_label.add_theme_color_override("font_color", Color(0.7, 0.6, 0.45))
 		card_vbox.add_child(req_label)
 
 	# Row 4: Key effects summary (income parts use resource icons)
-	var effects := _get_building_effects_summary(building, true)
 	if effects != "":
 		var eff_rtl := RichTextLabel.new()
 		eff_rtl.bbcode_enabled = true
 		eff_rtl.fit_content = true
 		eff_rtl.scroll_active = false
 		eff_rtl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		eff_rtl.add_theme_font_size_override("normal_font_size", 11)
+		eff_rtl.add_theme_font_size_override("normal_font_size", tier.effects)
 		eff_rtl.add_theme_color_override("default_color", Color(0.5, 0.75, 0.45))
 		eff_rtl.text = effects
 		card_vbox.add_child(eff_rtl)
@@ -9456,6 +9562,7 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 	var captured_bid := building.id
 	var captured_cid := city_id
 	var captured_slot_blocked := slot_blocked
+	var captured_on_build := on_build
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.gui_input.connect(func(event: InputEvent):
 		if event is InputEventMouseButton and event.pressed:
@@ -9464,6 +9571,8 @@ func _create_building_card(building: BuildingData, city_id: StringName, fs: Fact
 					AudioManager.play_sfx(&"error_buzz")
 				elif not can_afford:
 					AudioManager.play_sfx(&"error_buzz")
+				elif captured_on_build.is_valid():
+					captured_on_build.call()
 				else:
 					_on_build_pressed(captured_cid, captured_bid)
 			elif event.button_index == MOUSE_BUTTON_RIGHT:
@@ -11574,9 +11683,25 @@ func _show_event_dialog(event_data: Dictionary) -> void:
 	plain_style.set_content_margin_all(14)
 	_event_dialog.add_theme_stylebox_override("panel", plain_style)
 
+	# UI Polish Wave 2 Task W3 (designer: the dark text-backing chip should
+	# extend a little further so text doesn't sit right where it meets the
+	# background) — _create_centered_dialog's `backdrop` child (the actual
+	# dark CHIP_BG chip) and `vbox` below are both direct children of
+	# `_event_dialog`, so the PanelContainer lays them out to the exact same
+	# inset rect — vbox's text previously started flush against backdrop's
+	# border with zero gap between them. A MarginContainer between them (same
+	# pattern _show_faction_intro already uses for its own centered dialog)
+	# insets vbox's content that little bit further from backdrop's edge.
+	var margin_wrap := MarginContainer.new()
+	margin_wrap.add_theme_constant_override("margin_left", 14)
+	margin_wrap.add_theme_constant_override("margin_right", 14)
+	margin_wrap.add_theme_constant_override("margin_top", 12)
+	margin_wrap.add_theme_constant_override("margin_bottom", 12)
+	_event_dialog.add_child(margin_wrap)
+
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 10)
-	_event_dialog.add_child(vbox)
+	margin_wrap.add_child(vbox)
 
 	# Add to the live HUD tree BEFORE building content: _add_dialog_choice_button
 	# below measures button width via get_combined_minimum_size(), which only
@@ -11677,9 +11802,18 @@ func _apply_event_choice(choice: String) -> void:
 
 func _show_event_result(event_title: String, result_text: String) -> void:
 	var dialog := _create_centered_dialog(380)
+	# UI Polish Wave 2 Task W3 — same dark-chip padding fix as _show_event_dialog
+	# above (this is the same "event" flow's follow-up dialog, with the
+	# identical backdrop/vbox coincident-rect defect).
+	var margin_wrap := MarginContainer.new()
+	margin_wrap.add_theme_constant_override("margin_left", 14)
+	margin_wrap.add_theme_constant_override("margin_right", 14)
+	margin_wrap.add_theme_constant_override("margin_top", 12)
+	margin_wrap.add_theme_constant_override("margin_bottom", 12)
+	dialog.add_child(margin_wrap)
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
-	dialog.add_child(vbox)
+	margin_wrap.add_child(vbox)
 
 	var title := Label.new()
 	title.text = event_title + " - Result"
@@ -12437,6 +12571,22 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# UI Polish Wave 2 Task W3 (designer: "elderbeast background... would
+	# require the dark background over it to make the text more readable (at
+	# the moment it is a lot of white on light grey)") — same one-line dark
+	# CHIP_BG chip pattern _refresh_economy_panel/_show_loyalty_panel use.
+	# The "white on light grey" was GameManager.make_cost_row()'s `on_light`
+	# param defaulting false at both cost-row call sites below (build/recruit
+	# cost rows) — that produces light/parchment-toned text, correct for a
+	# dark backdrop, but was rendering directly on this panel's bare light
+	# parchment (make_panel_style() above, no dark chip) since this panel
+	# never had one. Adding the chip here makes those calls correct instead
+	# of needing their own fix. Every OTHER label in this function was
+	# previously hand-tuned ink/DANGER/SUCCESS/WARN for that same light
+	# background (see the now-stale "Task P5" comments below) — swapped to
+	# PARCHMENT/_BRIGHT counterparts in the same pass so they don't go
+	# near-invisible against the new dark backdrop instead.
+	scroll.add_theme_stylebox_override("panel", _make_text_chip_style())
 	_elderbeast_panel.add_child(scroll)
 
 	var vbox := VBoxContainer.new()
@@ -12448,35 +12598,31 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 	var title := Label.new()
 	title.text = beast.name + " (Lv." + str(beast.level) + ")"
 	title.add_theme_font_size_override("font_size", 16)
-	# Task P5 (SHARDHORDE READABILITY): this panel is a bare make_panel_style()
-	# child with no dark chip wrapper, i.e. light parchment — the old literal
-	# was a pale lavender (near-identical to shardhorde's own ACCENT tone,
-	# which is tuned for text on a DARK chip) sitting directly on light
-	# parchment, reading as near-invisible under every faction's chrome and
-	# worst under shardhorde's warmer/darker parchment. Ink is correct here.
-	title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(title)
 
 	# HP
 	var hp_label := Label.new()
 	hp_label.text = "HP: %d / %d" % [beast.hp, beast.max_hp]
 	hp_label.add_theme_font_size_override("font_size", 12)
-	# Was a light literal red (Color(0.8,0.4,0.4)) — too close in value to the
-	# light parchment background; UIPalette.DANGER is the ink-red tone tuned
-	# for this exact background (Task P5 readability pass).
-	hp_label.add_theme_color_override("font_color", UIPalette.DANGER)
+	hp_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	vbox.add_child(hp_label)
 
 	# Population
 	var pop_label := Label.new()
 	pop_label.text = "Population: %d" % beast.population
 	pop_label.add_theme_font_size_override("font_size", 12)
+	# Was relying on the compact theme's default Label color (INK_BODY, dark
+	# ink) — correct on the old bare light-parchment background, invisible
+	# now that this panel sits on a dark CHIP_BG chip.
+	pop_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(pop_label)
 
 	# Movement
 	var move_label := Label.new()
 	move_label.text = "Movement: %.1f / %.1f" % [beast.movement_remaining, beast.get_max_movement()]
 	move_label.add_theme_font_size_override("font_size", 12)
+	move_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(move_label)
 
 	# Injured status
@@ -12484,14 +12630,14 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var injured_label := Label.new()
 		injured_label.text = "INJURED - Stationary (%d turns remaining)" % beast.injured_turns
 		injured_label.add_theme_font_size_override("font_size", 12)
-		injured_label.add_theme_color_override("font_color", UIPalette.DANGER)
+		injured_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		vbox.add_child(injured_label)
 
 	# Buildings
 	var bld_title := Label.new()
 	bld_title.text = "Buildings (%d/%d):" % [beast.buildings.size(), beast.get_max_building_slots()]
 	bld_title.add_theme_font_size_override("font_size", 13)
-	bld_title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	bld_title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(bld_title)
 
 	const BUILDING_COMBAT_BONUS := {
@@ -12512,7 +12658,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var bld_label := Label.new()
 		bld_label.text = "  %s%s" % [b_name, " [%s]" % bonus if bonus != "" else ""]
 		bld_label.add_theme_font_size_override("font_size", 11)
-		bld_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+		bld_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 		bld_label.mouse_filter = Control.MOUSE_FILTER_STOP
 		bld_label.mouse_entered.connect(_on_building_hover.bind(building_id))
 		bld_label.mouse_exited.connect(_on_building_hover_exit)
@@ -12530,16 +12676,20 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var bld: BuildingData = DataManager.get_building(item.get("building_id", &""))
 		queue_label.text = "Building: %s (%d turns)" % [bld.display_name if bld else "?", item.get("turns_remaining", 0)]
 		queue_label.add_theme_font_size_override("font_size", 11)
-		# Was a pale literal blue (Task P5 readability pass) — too light against
-		# the light parchment background; ink is the correct family here.
-		queue_label.add_theme_color_override("font_color", UIPalette.INK_BODY)
+		queue_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 		vbox.add_child(queue_label)
 
 	# Available buildings (inline like city panel)
 	if beast.get_available_building_slots() > 0 and beast.build_queue.is_empty():
 		var nearby_terrains := _get_beast_nearby_terrains(beast)
 		var beast_fs: FactionState = GameManager.state.faction_states.get(beast.faction_id)
-		var any_available := false
+		# UI Polish Wave 2 Task W3 (designer: "the buildings there should
+		# follow the guidelines of normal building buttons for other
+		# factions") — filtering pass only here; matched buildings render
+		# through the same _create_building_card factory the city panel's own
+		# "Available Buildings" grid uses (below), instead of a hand-rolled
+		# Button + category StyleBoxFlat + make_cost_row copy of that logic.
+		var matched_buildings: Array[BuildingData] = []
 		for bid in DataManager.buildings:
 			var avail_building: BuildingData = DataManager.buildings[bid]
 			if avail_building.faction_id != &"shardhorde":
@@ -12559,92 +12709,52 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 						break
 				if not terrain_ok:
 					continue
+			matched_buildings.append(avail_building)
 
-			if not any_available:
-				any_available = true
-				var avail_header := Label.new()
-				avail_header.text = "Available Buildings"
-				avail_header.add_theme_font_size_override("font_size", 13)
-				avail_header.add_theme_color_override("font_color", UIPalette.INK_TITLE)
-				vbox.add_child(avail_header)
+		if matched_buildings.size() > 0:
+			var avail_header := Label.new()
+			avail_header.text = "Available Buildings"
+			avail_header.add_theme_font_size_override("font_size", 13)
+			avail_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
+			vbox.add_child(avail_header)
 
-			var btn_row := HBoxContainer.new()
-			btn_row.add_theme_constant_override("separation", 6)
-			var build_btn := Button.new()
-			if avail_building.upgrades_from != &"":
-				build_btn.text = "\u25B2 " + avail_building.display_name
-			else:
-				build_btn.text = avail_building.display_name
-			build_btn.custom_minimum_size = Vector2(140, 28)
-			# Category color
-			var cat_color: Color
-			match avail_building.category:
-				&"economic":
-					var is_industrial := false
-					for res in avail_building.income_bonus:
-						if res == Enums.ResourceType.IRON or res == Enums.ResourceType.WOOD:
-							is_industrial = true
-							break
-					cat_color = Color(0.85, 0.72, 0.3, 0.25) if is_industrial else Color(0.35, 0.7, 0.3, 0.25)
-				&"military":
-					cat_color = Color(0.75, 0.25, 0.2, 0.25)
-				&"defensive":
-					cat_color = Color(0.35, 0.55, 0.75, 0.25)
-				&"cultural":
-					cat_color = Color(0.55, 0.35, 0.75, 0.25)
-				_:
-					cat_color = Color(0.4, 0.4, 0.4, 0.2)
-			var cat_style := StyleBoxFlat.new()
-			cat_style.bg_color = cat_color
-			cat_style.border_color = Color(cat_color, 0.6)
-			cat_style.set_border_width_all(1)
-			cat_style.set_corner_radius_all(3)
-			cat_style.set_content_margin_all(4)
-			build_btn.add_theme_stylebox_override("normal", cat_style)
-			var cat_hover := cat_style.duplicate()
-			cat_hover.bg_color = Color(cat_color, 0.4)
-			build_btn.add_theme_stylebox_override("hover", cat_hover)
-			var cat_pressed := cat_style.duplicate()
-			cat_pressed.bg_color = Color(cat_color, 0.5)
-			build_btn.add_theme_stylebox_override("pressed", cat_pressed)
-			var cat_disabled := cat_style.duplicate()
-			cat_disabled.bg_color = Color(cat_color, 0.1)
-			build_btn.add_theme_stylebox_override("disabled", cat_disabled)
-			# Affordability
-			if beast_fs and not _can_afford_display(beast_fs, avail_building.build_cost):
-				build_btn.disabled = true
-			# Left-click: start building
-			var captured_id: StringName = bid
-			var captured_time: int = avail_building.build_time
-			var captured_cost: Dictionary = avail_building.build_cost.duplicate()
-			var captured_beast: ElderbeastState = beast
-			build_btn.pressed.connect(func():
-				if beast_fs:
-					for res_type in captured_cost:
-						beast_fs.resources[res_type] = beast_fs.resources.get(res_type, 0) - captured_cost[res_type]
-				captured_beast.build_queue.append({building_id = captured_id, turns_remaining = captured_time})
-				_show_elderbeast_panel(captured_beast)
-				_update_resource_display()
-			)
-			# Hover tooltip
-			build_btn.mouse_entered.connect(_on_building_hover.bind(bid))
-			build_btn.mouse_exited.connect(_on_building_hover_exit)
-			# Right-click detail
-			var rc_bid: StringName = bid
-			build_btn.gui_input.connect(func(event: InputEvent):
-				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-					_show_building_detail(rc_bid, &"")
-			)
-			btn_row.add_child(build_btn)
-			btn_row.add_child(GameManager.make_cost_row(avail_building.build_cost, {}, 11, "", false, avail_building.build_time))
-			vbox.add_child(btn_row)
+			var beast_build_grid := GridContainer.new()
+			beast_build_grid.columns = 2
+			beast_build_grid.add_theme_constant_override("h_separation", 6)
+			beast_build_grid.add_theme_constant_override("v_separation", 6)
+			vbox.add_child(beast_build_grid)
+
+			for avail_building in matched_buildings:
+				# _create_building_card's default left-click routes through
+				# _on_build_pressed(city_id, ...), which only understands
+				# GameManager.state.cities — ElderbeastState has its own
+				# build_queue/resources model, so `on_build` below carries
+				# the same start-building logic this loop used to wire onto
+				# build_btn.pressed by hand. Right-click detail/hover/afford/
+				# category-color styling all come from the shared factory
+				# now; city_id=&"" matches the existing right-click
+				# `_show_building_detail(bid, &"")` precedent already used
+				# for the "Buildings (built)" list above.
+				var captured_id: StringName = avail_building.id
+				var captured_time: int = avail_building.build_time
+				var captured_cost: Dictionary = avail_building.build_cost.duplicate()
+				var captured_beast: ElderbeastState = beast
+				var on_build := func():
+					if beast_fs:
+						for res_type in captured_cost:
+							beast_fs.resources[res_type] = beast_fs.resources.get(res_type, 0) - captured_cost[res_type]
+					captured_beast.build_queue.append({building_id = captured_id, turns_remaining = captured_time})
+					_show_elderbeast_panel(captured_beast)
+					_update_resource_display()
+				var card := _create_building_card(avail_building, &"", beast_fs, false, on_build)
+				beast_build_grid.add_child(card)
 
 	# Recruitment
 	_add_separator(vbox)
 	var recruit_title := Label.new()
 	recruit_title.text = "Recruitment"
 	recruit_title.add_theme_font_size_override("font_size", 13)
-	recruit_title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	recruit_title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(recruit_title)
 
 	# Collect available units from built buildings
@@ -12720,7 +12830,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var no_units := Label.new()
 		no_units.text = "  No units available yet"
 		no_units.add_theme_font_size_override("font_size", 12)
-		no_units.add_theme_color_override("font_color", Color(0.55, 0.5, 0.45))
+		no_units.add_theme_color_override("font_color", Color(0.65, 0.62, 0.55))
 		vbox.add_child(no_units)
 
 	# Recruit queue
@@ -12730,11 +12840,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var rq_label := Label.new()
 		rq_label.text = "  [Training] %s (%d turns)" % [rq_ud.display_name if rq_ud else "?", rq_item.get("turns_remaining", 0)]
 		rq_label.add_theme_font_size_override("font_size", 11)
-		# Was a golden-tan literal nearly matching the parchment background's own
-		# hue (Task P5 readability pass — worst offender, almost invisible under
-		# shardhorde's warmer parchment); WARN's dark ochre ink reads as an
-		# "in progress" status against light parchment.
-		rq_label.add_theme_color_override("font_color", UIPalette.WARN)
+		rq_label.add_theme_color_override("font_color", UIPalette.WARN_BRIGHT)
 		vbox.add_child(rq_label)
 
 	# Income breakdown
@@ -12750,16 +12856,13 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var base_lbl := Label.new()
 		base_lbl.text = "Base Income (Lv.%d): %s" % [beast.level, ", ".join(base_parts)]
 		base_lbl.add_theme_font_size_override("font_size", 11)
-		# Was a pale sage-green literal, weak against light parchment (worst on
-		# shardhorde's warmer tone) — SUCCESS is the ink-green tuned for this
-		# background and matches the semantic (income = positive).
-		base_lbl.add_theme_color_override("font_color", UIPalette.SUCCESS)
+		base_lbl.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 		vbox.add_child(base_lbl)
 
 	var terrain_title := Label.new()
 	terrain_title.text = "Terrain Income:"
 	terrain_title.add_theme_font_size_override("font_size", 13)
-	terrain_title.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	terrain_title.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(terrain_title)
 
 	var tiles := TurnManager._get_beast_tiles(beast)
@@ -12800,7 +12903,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 			var t_lbl := Label.new()
 			t_lbl.text = "  %s%s: %s" % [t_name, count_text, ", ".join(parts)]
 			t_lbl.add_theme_font_size_override("font_size", 10)
-			t_lbl.add_theme_color_override("font_color", UIPalette.SUCCESS if group["worst_dep"] < 3 else UIPalette.WARN)
+			t_lbl.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT if group["worst_dep"] < 3 else UIPalette.WARN_BRIGHT)
 			vbox.add_child(t_lbl)
 
 	# Depletion warning
@@ -12808,7 +12911,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 		var warn := Label.new()
 		warn.text = "Resources depleting -- consider moving!"
 		warn.add_theme_font_size_override("font_size", 11)
-		warn.add_theme_color_override("font_color", UIPalette.DANGER)
+		warn.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		vbox.add_child(warn)
 
 	# Total income
@@ -12822,8 +12925,7 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 	var income_label := Label.new()
 	income_label.text = income_text
 	income_label.add_theme_font_size_override("font_size", 11)
-	# Same pale sage-green fix as the base-income line above (Task P5).
-	income_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+	income_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 	vbox.add_child(income_label)
 
 	# Close button
