@@ -37,6 +37,26 @@ func _run() -> void:
 	_check(t.get_stylebox("panel", "TooltipPanel") != null, "tooltip themed")
 	# 4. apply_faction_theme — live faction chrome switching (Task 4)
 	_run_faction_theme_test(gm)
+	# 5. UI Polish Wave 2 Task W2 — CLASS_COLORS must hold no exact-value
+	# collision with campaign_hud.gd's _get_building_category_color rows
+	# (brief: "those colors should not have 1:1 overlap with the building
+	# button frames"). Building colors duplicated here (not loaded live —
+	# campaign_hud.gd is a scene script, loading it cold in a -s test needs
+	# the gm.new_game() warm-up dance documented in the harness gotchas;
+	# not worth it for 6 literal Color values) — mirrors the RGB literals at
+	# campaign_hud.gd's _get_building_category_color, alpha dropped since
+	# CLASS_COLORS' frame strokes and the building cards' fill washes are
+	# never compared at matching alpha anyway. Keep in sync with that
+	# function if its colors ever change.
+	var building_category_colors := [
+		Color(0.85, 0.72, 0.3), Color(0.35, 0.7, 0.3), Color(0.75, 0.25, 0.2),
+		Color(0.35, 0.55, 0.75), Color(0.55, 0.35, 0.75), Color(0.4, 0.4, 0.4),
+	]
+	for cls in UIPalette.CLASS_COLORS:
+		var cc: Color = UIPalette.CLASS_COLORS[cls]
+		for bc in building_category_colors:
+			var collides: bool = is_equal_approx(cc.r, bc.r) and is_equal_approx(cc.g, bc.g) and is_equal_approx(cc.b, bc.b)
+			_check(not collides, "CLASS_COLORS[%s] (%s) doesn't 1:1-collide with a building category color (%s)" % [cls, cc, bc])
 	print("UI PALETTE TEST %s" % ("PASSED" if _fails == 0 else "FAILED (%d)" % _fails))
 	quit(0 if _fails == 0 else 1)
 

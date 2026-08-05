@@ -15,6 +15,38 @@ extends RefCounted
 ## same parchment/parchment_dark/ink/heraldry/secondary/accent values (motif
 ## omitted — tool-only, irrelevant to runtime color).
 
+## UI Polish Wave 2 Task W2 — recruit-button class-color frames (see
+## scripts/core/unit_class_helper.gd for the tag->class derivation these
+## colors key off). Faction-independent (unlike PARCHMENT/INK/etc. above —
+## a unit's class doesn't change with the player's chrome set) so this is a
+## plain const, not touched by rebuild(). Hand-picked to spread across
+## distinct hues AND to hold no exact value in common with
+## campaign_hud.gd's `_get_building_category_color` rows (economic
+## industrial (0.85,0.72,0.3)/non-industrial (0.35,0.7,0.3), military
+## (0.75,0.25,0.2), defensive (0.35,0.55,0.75), cultural (0.55,0.35,0.75),
+## default grey (0.4,0.4,0.4)) — verified by test_ui_palette.gd. Full alpha:
+## these paint a thin (2-3px) frame stroke, not a translucent card wash like
+## the building colors, so there's no "washes out the parchment" risk that
+## alpha 0.45 was managing for those.
+const CLASS_COLORS := {
+	&"infantry": Color(0.52, 0.36, 0.20),   # bronze/leather brown
+	&"archer": Color(0.55, 0.62, 0.16),     # mustard/fletching olive
+	&"cavalry": Color(0.22, 0.46, 0.52),    # steel teal
+	&"mage": Color(0.36, 0.24, 0.60),       # arcane indigo
+	&"monster": Color(0.58, 0.16, 0.42),    # eldritch wine-magenta
+	&"beast": Color(0.34, 0.52, 0.20),      # moss/feral green
+	&"supporter": Color(0.72, 0.64, 0.80),  # pale blessing lilac
+	&"flying": Color(0.42, 0.66, 0.74),     # sky cyan
+	&"siege": Color(0.26, 0.26, 0.32),      # dark iron-slate
+	&"construct": Color(0.56, 0.56, 0.60),  # mechanism grey-blue
+}
+const _CLASS_COLOR_FALLBACK := Color(0.5, 0.5, 0.5)
+
+## Safe lookup — unknown class ids (shouldn't happen; UnitClassHelper always
+## returns a recognized class) fall back to neutral grey instead of erroring.
+static func class_color(cls: StringName) -> Color:
+	return CLASS_COLORS.get(cls, _CLASS_COLOR_FALLBACK)
+
 # ── Style-guide constants — faction-independent, never touched by rebuild ──
 const _CHIP_BG := Color(0.05, 0.04, 0.03, 0.72)
 const _DANGER := Color(0.60, 0.17, 0.13)

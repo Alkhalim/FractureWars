@@ -972,7 +972,7 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 
 	# Header with close
 	var header := HBoxContainer.new()
-	var title := _make_label(unit_data.display_name, 16, UIPalette.PARCHMENT)
+	var title := _make_label(unit_data.display_name, 18, UIPalette.PARCHMENT)
 	title.theme_type_variation = &"HeaderLarge"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
@@ -989,15 +989,19 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	content_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer_vbox.add_child(content_hbox)
 
-	# Portrait placeholder (80x120)
+	# Portrait placeholder (80x120) - UI Polish Wave 2 Task W2: background
+	# tint + icon(s) now derive from UnitClassHelper (was: the first tag
+	# present in the small ad hoc TAG_COLORS map for color, and a unicode
+	# glyph guessed off tags[0] for the icon - that could land on any
+	# modifier tag that happened to sort first in the array, e.g. "fast" or
+	# "undead", not necessarily the unit's actual class; the derivation
+	# helper's priority order is the single source of truth now, matching
+	# the recruit-button decoration).
 	var portrait := PanelContainer.new()
 	portrait.custom_minimum_size = Vector2(80, 120)
 	var portrait_style := StyleBoxFlat.new()
-	var portrait_color := Color(0.3, 0.25, 0.2)
-	for tag in unit_data.tags:
-		if TAG_COLORS.has(tag):
-			portrait_color = TAG_COLORS[tag]
-			break
+	var detail_classes := UnitClassHelper.classes_for(unit_data)
+	var portrait_color: Color = UIPalette.class_color(detail_classes[0]).darkened(0.35)
 	portrait_style.bg_color = portrait_color
 	portrait_style.border_width_left = 2
 	portrait_style.border_width_top = 2
@@ -1009,21 +1013,21 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	portrait_style.corner_radius_bottom_right = 4
 	portrait_style.corner_radius_bottom_left = 4
 	portrait.add_theme_stylebox_override("panel", portrait_style)
-	var icon_center := CenterContainer.new()
+	var icon_center := VBoxContainer.new()
+	icon_center.alignment = BoxContainer.ALIGNMENT_CENTER
+	icon_center.add_theme_constant_override("separation", 8)
+	for cls in detail_classes:
+		var portrait_tex := load(UnitClassHelper.icon_path(cls)) as Texture2D
+		if portrait_tex == null:
+			continue
+		var icon_rect := TextureRect.new()
+		icon_rect.texture = portrait_tex
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE  # else the 64px source overrides custom_minimum_size below
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.custom_minimum_size = Vector2(40.0, 40.0)
+		icon_rect.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		icon_center.add_child(icon_rect)
 	portrait.add_child(icon_center)
-	var icon_label := Label.new()
-	icon_label.add_theme_font_size_override("font_size", 36)
-	var primary_tag := unit_data.tags[0] if unit_data.tags.size() > 0 else "infantry"
-	match primary_tag:
-		"infantry": icon_label.text = "\u2694"
-		"cavalry": icon_label.text = "\u265E"
-		"mage": icon_label.text = "\u2726"
-		"ranged": icon_label.text = "\u279B"
-		"construct": icon_label.text = "\u2699"
-		"support": icon_label.text = "\u271A"
-		_: icon_label.text = "\u2694"
-	icon_label.add_theme_color_override("font_color", portrait_color.lightened(0.5))
-	icon_center.add_child(icon_label)
 	content_hbox.add_child(portrait)
 
 	# Right side: scrollable stats
@@ -1042,17 +1046,19 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	if unit_data.description != "":
 		var desc := Label.new()
 		desc.text = unit_data.description
-		desc.add_theme_font_size_override("font_size", 11)
+		desc.add_theme_font_size_override("font_size", 13)
 		desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		vbox.add_child(desc)
 
 	_add_separator(vbox)
 
-	# Combat stats
+	# Combat stats — UI Polish Wave 2 Task W2: fonts up (11-13 -> 13-15)
+	# throughout this dialog so its fixed 420x400 frame reads as filled
+	# content rather than small text in a comparatively large window.
 	var stats_header := Label.new()
 	stats_header.text = "Combat Stats"
-	stats_header.add_theme_font_size_override("font_size", 13)
+	stats_header.add_theme_font_size_override("font_size", 15)
 	stats_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(stats_header)
 
@@ -1061,7 +1067,7 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 		hp_text += "  (%d per soldier)" % unit_data.hp_per_soldier
 	var hp_label := Label.new()
 	hp_label.text = hp_text
-	hp_label.add_theme_font_size_override("font_size", 12)
+	hp_label.add_theme_font_size_override("font_size", 14)
 	hp_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 	vbox.add_child(hp_label)
 
@@ -1078,18 +1084,21 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	for line in stat_lines:
 		var l := Label.new()
 		l.text = line
-		l.add_theme_font_size_override("font_size", 12)
+		l.add_theme_font_size_override("font_size", 14)
 		l.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 		vbox.add_child(l)
 
-	# Tags
-	if unit_data.tags.size() > 0:
+	# Tags — hover-info cleanup (designer, verbatim): drop faction-name tags,
+	# drop "melee" always, drop "ranged" for archer/mage-class units. See
+	# UnitClassHelper.hover_tags.
+	var detail_cleaned_tags := UnitClassHelper.hover_tags(unit_data)
+	if detail_cleaned_tags.size() > 0:
 		var tag_strs: Array[String] = []
-		for t in unit_data.tags:
+		for t in detail_cleaned_tags:
 			tag_strs.append(t.capitalize())
 		var tags_label := Label.new()
 		tags_label.text = "  Tags: " + ", ".join(tag_strs)
-		tags_label.add_theme_font_size_override("font_size", 12)
+		tags_label.add_theme_font_size_override("font_size", 14)
 		tags_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
 		vbox.add_child(tags_label)
 
@@ -1098,30 +1107,30 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	# Costs
 	var cost_header := Label.new()
 	cost_header.text = "Costs"
-	cost_header.add_theme_font_size_override("font_size", 13)
+	cost_header.add_theme_font_size_override("font_size", 15)
 	cost_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(cost_header)
 
 	if unit_data.recruit_cost.size() > 0:
 		var detail_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
-		var recruit_row := GameManager.make_cost_row(unit_data.recruit_cost, {}, 12, "Recruit:")
+		var recruit_row := GameManager.make_cost_row(unit_data.recruit_cost, {}, 14, "Recruit:")
 		if detail_pop_cost > 0:
 			var pop_lbl := Label.new()
 			pop_lbl.text = "Pop: %d" % detail_pop_cost
-			pop_lbl.add_theme_font_size_override("font_size", 12)
+			pop_lbl.add_theme_font_size_override("font_size", 14)
 			pop_lbl.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 			recruit_row.add_child(pop_lbl)
 		vbox.add_child(recruit_row)
 
 	if unit_data.upkeep_cost.size() > 0:
-		vbox.add_child(GameManager.make_cost_row(unit_data.upkeep_cost, {}, 12, "Upkeep:"))
+		vbox.add_child(GameManager.make_cost_row(unit_data.upkeep_cost, {}, 14, "Upkeep:"))
 
 	# Veterancy
 	if unit.veterancy_level > 0 or unit.experience > 0:
 		_add_separator(vbox)
 		var vet_label := Label.new()
 		vet_label.text = "  Veterancy: Lv%d  |  XP: %d" % [unit.veterancy_level, unit.experience]
-		vet_label.add_theme_font_size_override("font_size", 12)
+		vet_label.add_theme_font_size_override("font_size", 14)
 		vet_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
 		vbox.add_child(vet_label)
 
@@ -2545,6 +2554,125 @@ func _make_text_chip() -> PanelContainer:
 	var chip := PanelContainer.new()
 	chip.add_theme_stylebox_override("panel", _make_text_chip_style())
 	return chip
+
+## UI Polish Wave 2 Task W2 — left-side unit-class glyph(s) + class-color
+## frame for a recruit button built by GameManager.make_cost_button
+## (two_line=true: a single VBoxContainer child covering the button's full
+## rect). Additive/decoration-only on top of that shared factory rather than
+## a make_cost_button parameter — that factory is also used by dilemma/
+## upgrade/found buttons that have nothing to do with unit classes, so
+## keeping this button-specific avoids touching styling for call sites
+## outside this task's scope (brief: "Display-only — no recruit logic
+## changes"). See scripts/core/unit_class_helper.gd for the class
+## derivation this reads.
+const _CLASS_ICON_COL_W := 26.0
+
+func _apply_unit_class_decoration(btn: Button, ud: UnitData) -> void:
+	var classes := UnitClassHelper.classes_for(ud)
+
+	# Shift the existing text content right to free a left icon column —
+	# safe because make_cost_button(two_line=true) always adds exactly one
+	# full-rect content child before returning, and this runs immediately
+	# after that call at every current call site.
+	var content := btn.get_child(0) as Control
+	if content:
+		content.offset_left = _CLASS_ICON_COL_W
+
+	# Frame: class-color border tint. Single class -> uniform border. True
+	# hybrid (2 classes) -> left half in the primary's color, right half in
+	# the secondary's (designer: "one side with color one framed and the
+	# other side with color 2 for true hybrids") — the two halves' top/
+	# bottom border segments meet exactly at the 50% seam so the whole
+	# frame still reads as one continuous border that happens to change
+	# color at the midpoint, not two disconnected boxes. Inserted at child
+	# index 0 (drawn first) so it sits ON TOP of the button's own themed
+	# chrome background (Button paints that itself before any child draws)
+	# but BEHIND the text content and icons (added after/moved before it).
+	var frame := Control.new()
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	if classes.size() >= 2:
+		frame.add_child(_make_class_frame_panel(UIPalette.class_color(classes[0]), 0.0, 0.5, true, false))
+		frame.add_child(_make_class_frame_panel(UIPalette.class_color(classes[1]), 0.5, 1.0, false, true))
+	else:
+		frame.add_child(_make_class_frame_panel(UIPalette.class_color(classes[0]), 0.0, 1.0, true, true))
+	btn.add_child(frame)
+	btn.move_child(frame, 0)
+
+	# Icon(s): stacked vertically in the freed left column, centered on the
+	# button's VERTICAL CENTER via a center anchor (anchor_top=anchor_
+	# bottom=0.5, offsets in px from that line) rather than an absolute
+	# position computed from btn.custom_minimum_size.y — a center anchor
+	# recomputes from the button's real live rect every layout pass, so it
+	# can't drift out of sync with whatever the button's actual rendered
+	# height turns out to be (custom_minimum_size is only a MINIMUM; the
+	# real size can differ once the button sits in a parent container,
+	# which is exactly what happened on the first attempt: single icons
+	# rendered clipped against the top edge instead of centered). Added
+	# last so icons draw on top of everything (frame border + parchment
+	# chrome) — one icon for a single class, two smaller ones stacked for
+	# a true hybrid.
+	var icon_size := 20.0 if classes.size() == 1 else 16.0
+	var icon_gap := 2.0
+	var icons_total_h := icon_size * float(classes.size()) + icon_gap * float(classes.size() - 1)
+	for i in classes.size():
+		var tex := load(UnitClassHelper.icon_path(classes[i])) as Texture2D
+		if tex == null:
+			continue
+		var rect := TextureRect.new()
+		rect.texture = tex
+		# EXPAND_IGNORE_SIZE: TextureRect defaults to EXPAND_KEEP_SIZE, which
+		# makes its effective MINIMUM size follow the texture's native pixel
+		# size (64x64 for these glyphs) regardless of anchors/offsets —
+		# first attempt at this glyph column silently got 64x64 rects
+		# instead of the intended 20x20/16x16 (confirmed via a runtime debug
+		# print: rect.size came back (64.0, 64.0)), overflowing the ~52px
+		# button into neighboring rows. This flag is what
+		# _create_army_unit_card's portrait_rect already sets for the same
+		# reason (should have copied it from there the first time).
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rect.anchor_left = 0.0
+		rect.anchor_right = 0.0
+		rect.anchor_top = 0.5
+		rect.anchor_bottom = 0.5
+		var center_from_mid := -icons_total_h * 0.5 + icon_size * 0.5 + float(i) * (icon_size + icon_gap)
+		rect.offset_left = 5.0
+		rect.offset_right = 5.0 + icon_size
+		rect.offset_top = center_from_mid - icon_size * 0.5
+		rect.offset_bottom = center_from_mid + icon_size * 0.5
+		btn.add_child(rect)
+
+## One half (or, called with a_left=0/a_right=1, the whole) of a class-color
+## frame border — transparent fill, border only on the outer edges
+## (`left_border`/`right_border` suppress the seam-side border on a hybrid
+## half so the two halves don't double up a border line down the middle).
+func _make_class_frame_panel(color: Color, a_left: float, a_right: float, left_border: bool, right_border: bool) -> Panel:
+	var p := Panel.new()
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.anchor_left = a_left
+	p.anchor_right = a_right
+	p.anchor_top = 0.0
+	p.anchor_bottom = 1.0
+	p.offset_left = 0.0
+	p.offset_right = 0.0
+	p.offset_top = 0.0
+	p.offset_bottom = 0.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	sb.border_color = color
+	var w := 3
+	sb.border_width_top = w
+	sb.border_width_bottom = w
+	sb.border_width_left = w if left_border else 0
+	sb.border_width_right = w if right_border else 0
+	sb.corner_radius_top_left = 5 if left_border else 0
+	sb.corner_radius_bottom_left = 5 if left_border else 0
+	sb.corner_radius_top_right = 5 if right_border else 0
+	sb.corner_radius_bottom_right = 5 if right_border else 0
+	p.add_theme_stylebox_override("panel", sb)
+	return p
 
 func _make_label(text: String, font_size: int = 14, color: Color = Color.WHITE) -> Label:
 	var lbl := Label.new()
@@ -8602,10 +8730,13 @@ func _show_city_panel(city_id: StringName) -> void:
 
 				var fs: FactionState = GameManager.state.faction_states.get(city.faction_id)
 				var unit_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
+				# Designer: "if units require no pop it should not show 'pop 0'".
+				var pop_extra_text := "" if unit_pop_cost <= 0 else "Pop %d" % unit_pop_cost
 				var recruit_btn := GameManager.make_cost_button(
 					unit_data.display_name, unit_data.recruit_cost, unit_data.recruit_time,
-					fs.resources if fs else {&"_": 0}, 15, "Pop %d" % unit_pop_cost, true)
+					fs.resources if fs else {&"_": 0}, 15, pop_extra_text, true)
 				recruit_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				_apply_unit_class_decoration(recruit_btn, unit_data)
 				recruit_btn.pressed.connect(_on_recruit_pressed.bind(city_id, unit_data_id))
 				recruit_btn.mouse_entered.connect(_show_unit_card.bind(unit_data_id))
 				recruit_btn.mouse_exited.connect(_hide_unit_card)
@@ -9742,23 +9873,48 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 	_unit_card_panel.add_theme_stylebox_override("panel", GameManager.make_panel_style())
 	_unit_card_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	# UI Polish Wave 2 Task W2 (designer: "the on hover unit info... [doesn't]
+	# use enough of the window"): wider minimum + bigger fonts throughout
+	# this function (was 10-14px, now 13-18px) so the card's content fills
+	# more of make_panel_style()'s frame instead of a small tight text block
+	# lost inside a comparatively large ornate border.
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 3)
+	vbox.custom_minimum_size.x = 260.0
+	vbox.add_theme_constant_override("separation", 5)
 
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 6)
+	var card_classes := UnitClassHelper.classes_for(unit_data)
+	for cls in card_classes:
+		var tex := load(UnitClassHelper.icon_path(cls)) as Texture2D
+		if tex == null:
+			continue
+		var icon_rect := TextureRect.new()
+		icon_rect.texture = tex
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE  # else the 64px source overrides custom_minimum_size below
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.custom_minimum_size = Vector2(22.0, 22.0)
+		name_row.add_child(icon_rect)
 	var name_label := Label.new()
 	name_label.text = unit_data.display_name
-	name_label.add_theme_font_size_override("font_size", 14)
+	name_label.add_theme_font_size_override("font_size", 18)
 	name_label.theme_type_variation = &"HeaderLarge"
 	name_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
-	vbox.add_child(name_label)
+	name_row.add_child(name_label)
+	vbox.add_child(name_row)
 
-	if unit_data.tags.size() > 0:
+	# Hover-info tag cleanup (designer, verbatim): drop faction-name tags
+	# (e.g. "cinderguard"), drop "melee" always (implied by the absence of
+	# "ranged"), drop "ranged" itself for archer/mage-class units (their
+	# class name already says ranged) — see UnitClassHelper.hover_tags.
+	var cleaned_tags := UnitClassHelper.hover_tags(unit_data)
+	if cleaned_tags.size() > 0:
 		var tags_label := Label.new()
 		var tag_strs: Array[String] = []
-		for t in unit_data.tags:
+		for t in cleaned_tags:
 			tag_strs.append(t.capitalize())
 		tags_label.text = ", ".join(tag_strs)
-		tags_label.add_theme_font_size_override("font_size", 10)
+		tags_label.add_theme_font_size_override("font_size", 13)
 		tags_label.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
 		vbox.add_child(tags_label)
 
@@ -9767,34 +9923,40 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 	var card_atk_s := render_stars(get_attack_stars(unit_data))
 	var card_def_s := render_stars(get_defense_stars(unit_data))
 	stats.text = "%s ATK  %s DEF\nHP: %d  DPS: %d  SPD: %d\nDEF: %d/%d/%d (Melee/Ranged/Magic)" % [card_atk_s, card_def_s, unit_data.max_hp, int(card_dps), unit_data.speed, unit_data.melee_defense, unit_data.projectile_defense, unit_data.magic_defense]
-	stats.add_theme_font_size_override("font_size", 11)
+	stats.add_theme_font_size_override("font_size", 14)
 	stats.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
 	vbox.add_child(stats)
 
 	if unit_data.attack_range > 1:
 		var range_label := Label.new()
 		range_label.text = "Range: %d" % unit_data.attack_range
-		range_label.add_theme_font_size_override("font_size", 11)
+		range_label.add_theme_font_size_override("font_size", 14)
 		range_label.add_theme_color_override("font_color", Color(0.8, 0.7, 0.4))
 		vbox.add_child(range_label)
 
 	var squad_label := Label.new()
 	var card_pop_cost: int = unit_data.population_cost if unit_data.population_cost >= 0 else unit_data.squad_size
-	squad_label.text = "Squad: %d  |  Pop Cost: %d  |  MP: %.1f" % [unit_data.squad_size, card_pop_cost, unit_data.movement_points]
-	squad_label.add_theme_font_size_override("font_size", 11)
+	# Same "no Pop 0" rule as the recruit button itself — a hover card
+	# repeating "Pop Cost: 0" right below a button that no longer shows
+	# "Pop 0" would just reintroduce the superfluous info one line down.
+	if card_pop_cost > 0:
+		squad_label.text = "Squad: %d  |  Pop Cost: %d  |  MP: %.1f" % [unit_data.squad_size, card_pop_cost, unit_data.movement_points]
+	else:
+		squad_label.text = "Squad: %d  |  MP: %.1f" % [unit_data.squad_size, unit_data.movement_points]
+	squad_label.add_theme_font_size_override("font_size", 14)
 	squad_label.add_theme_color_override("font_color", Color(0.55, 0.72, 0.55))
 	vbox.add_child(squad_label)
 
 	if unit_data.recruit_cost.size() > 0:
-		vbox.add_child(GameManager.make_cost_row(unit_data.recruit_cost, {}, 10, "Recruit:"))
+		vbox.add_child(GameManager.make_cost_row(unit_data.recruit_cost, {}, 13, "Recruit:"))
 
 	if unit_data.upkeep_cost.size() > 0:
-		vbox.add_child(GameManager.make_cost_row(unit_data.upkeep_cost, {}, 10, "Upkeep:"))
+		vbox.add_child(GameManager.make_cost_row(unit_data.upkeep_cost, {}, 13, "Upkeep:"))
 
 	var card_chip := _make_text_chip()
 	_unit_card_panel.add_child(card_chip)
 	card_chip.add_child(vbox)
-	_unit_card_panel.position = get_global_mouse_position() + Vector2(-260, 12)
+	_unit_card_panel.position = get_global_mouse_position() + Vector2(-290, 12)
 	add_child(_unit_card_panel)
 
 func _hide_unit_card() -> void:
@@ -12506,6 +12668,17 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 			var recruit_btn := Button.new()
 			recruit_btn.text = ud.display_name
 			recruit_btn.custom_minimum_size = Vector2(140, 28)
+			# UI Polish Wave 2 Task W2 — light-touch class icon (this row is a
+			# plain native Button, not make_cost_button's composite, so the
+			# full split-frame decoration used on the city recruit list
+			# doesn't apply structurally here; a single primary-class icon
+			# via Godot's built-in Button.icon keeps this row consistent
+			# without rebuilding it).
+			var eb_classes := UnitClassHelper.classes_for(ud)
+			var eb_icon_tex := load(UnitClassHelper.icon_path(eb_classes[0])) as Texture2D
+			if eb_icon_tex:
+				recruit_btn.icon = eb_icon_tex
+				recruit_btn.expand_icon = false
 			# Affordability
 			if recruit_fs == null or not _can_afford_display(recruit_fs, ud.recruit_cost):
 				recruit_btn.disabled = true
