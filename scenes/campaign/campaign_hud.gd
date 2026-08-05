@@ -2555,23 +2555,28 @@ func _refresh_economy_panel() -> void:
 
 	# Section 1: City Income
 	var city_header := Label.new()
-	city_header.text = "City Income"
+	city_header.text = "City Income (base, before bonuses/penalties)"
 	city_header.add_theme_font_size_override("font_size", 14)
 	city_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(city_header)
-
-	var total_income: Dictionary = {}
 
 	for city_id in fs.owned_cities:
 		var city: CityState = GameManager.state.cities.get(city_id)
 		if city == null:
 			continue
-		var city_income := GameManager.city_system.calculate_city_income(city)
+		# Sieged cities produce NO income during the real per-turn pass
+		# (city_system.process_turn only calls _generate_income for cities
+		# that are neither sieged nor evacuated) — skip calculate_city_income
+		# for them here too. The old version counted a besieged city's raw
+		# income into this section's total regardless of siege state, which
+		# alone could make this panel read higher than the top bar's (siege-
+		# aware) per-resource deltas.
 		var income_pos: Dictionary = {}
-		for res_type in city_income:
-			if city_income[res_type] > 0:
-				income_pos[res_type] = city_income[res_type]
-				total_income[res_type] = total_income.get(res_type, 0) + city_income[res_type]
+		if not city.is_under_siege:
+			var city_income := GameManager.city_system.calculate_city_income(city)
+			for res_type in city_income:
+				if city_income[res_type] > 0:
+					income_pos[res_type] = city_income[res_type]
 
 		var city_label := Label.new()
 		var suffix := " (Capital)" if city.is_capital else ""
@@ -2607,29 +2612,25 @@ func _refresh_economy_panel() -> void:
 	upkeep_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(upkeep_header)
 
-	var total_upkeep: Dictionary = {}
+	# Single source of truth: the SAME per-army/unit/commander upkeep scan
+	# the top bar's income breakdown reads (_rebuild_income_memo ->
+	# _income_upkeep_memo), so this section can no longer silently omit
+	# commander upkeep the way the old hand-rolled (unit-only) re-derivation
+	# here used to — that omission alone made this total read lower than the
+	# real per-turn deduction whenever the player had a commander assigned.
+	_rebuild_income_memo()
 	var upkeep_by_tag: Dictionary = {} # tag -> {res_type: amount}
-
-	for army_id in GameManager.state.armies:
-		var army: ArmyState = GameManager.state.armies[army_id]
-		if army.faction_id != player_id:
-			continue
-		for unit in army.units:
-			var ud := DataManager.get_unit(unit.unit_data_id)
-			if ud == null:
-				continue
-			var tag := "Other"
-			for t in ["infantry", "ranged", "cavalry", "mage", "construct"]:
-				if ud.tags.has(t):
-					tag = t.capitalize()
-					break
+	for res_type in _income_upkeep_memo:
+		var entry: Dictionary = _income_upkeep_memo[res_type]
+		for tag in entry.by_tag:
 			if not upkeep_by_tag.has(tag):
 				upkeep_by_tag[tag] = {}
-			for res in ud.upkeep_cost:
-				upkeep_by_tag[tag][res] = upkeep_by_tag[tag].get(res, 0) + ud.upkeep_cost[res]
-				total_upkeep[res] = total_upkeep.get(res, 0) + ud.upkeep_cost[res]
+			upkeep_by_tag[tag][res_type] = entry.by_tag[tag]
 
-	for tag in upkeep_by_tag:
+	var tag_order: Array[String] = ["Infantry", "Ranged", "Cavalry", "Mage", "Construct", "Other", "Commanders"]
+	for tag in tag_order:
+		if not upkeep_by_tag.has(tag):
+			continue
 		var upk_neg: Dictionary = {}
 		for res_type in upkeep_by_tag[tag]:
 			upk_neg[res_type] = -upkeep_by_tag[tag][res_type]
@@ -2651,15 +2652,23 @@ func _refresh_economy_panel() -> void:
 	net_header.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	vbox.add_child(net_header)
 
-	var all_resources: Dictionary = {}
-	for res in total_income:
-		all_resources[res] = true
-	for res in total_upkeep:
-		all_resources[res] = true
-
+	# Single source of truth: the SAME per-resource breakdown net the top
+	# bar's per-resource delta (and its hover tooltip) read —
+	# _calculate_income_breakdown. Previously this row was a hand-rolled
+	# (City Income total - unit upkeep total) that skipped every income
+	# modifier (research/heartwood/trade/senate/region/culture/shard/debt/
+	# faction bonuses), commander upkeep, population food consumption,
+	# captive camp decay, trade treaties, elderbeast income, and
+	# trade-route plunder — and, since it never filtered sieged cities out
+	# of City Income, could even count income for a city under siege that
+	# produces none. That divergence is exactly why this row could read
+	# differently from the numbers under the top-bar resource icons.
+	var display_types := [0, 1, 2, 3, 5, 6]
+	if player_id == &"shardhorde":
+		display_types = [0, 1, 2, 3, 4, 5, 6]
 	var net_all: Dictionary = {}
-	for res_type in all_resources:
-		var net: int = total_income.get(res_type, 0) - total_upkeep.get(res_type, 0)
+	for res_type in display_types:
+		var net: int = _calculate_income_breakdown(res_type).net
 		if net != 0:
 			net_all[res_type] = net
 	if net_all.is_empty():
@@ -2670,6 +2679,15 @@ func _refresh_economy_panel() -> void:
 		vbox.add_child(none_lbl)
 	else:
 		vbox.add_child(GameManager.make_cost_row(net_all, {}, 13, "  ", true))
+
+	# This row matches the top-bar resource icons exactly (same source
+	# function) but rolls up modifiers not itemized as their own section
+	# above — same information the per-resource hover tooltip spells out.
+	var note_lbl := Label.new()
+	note_lbl.text = "  Matches the numbers under the resource bar above.\n  Includes bonuses/penalties, trade, elderbeasts, and\n  food/captive upkeep not itemized in the sections above —\n  hover a resource icon for the full line-by-line breakdown."
+	note_lbl.add_theme_font_size_override("font_size", 10)
+	note_lbl.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
+	vbox.add_child(note_lbl)
 
 	# Size the window to its content (capped so huge empires scroll) — the
 	# panel itself hugs this scroll min, keeping the window free of dead space

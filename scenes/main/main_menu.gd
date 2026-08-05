@@ -215,6 +215,13 @@ var _selected_leader_indices: Dictionary = {} # faction_id -> int
 ## set of ids from three separately-typed local literals.
 const PLAYABLE_FACTIONS: Array[StringName] = [&"empire", &"skulloath", &"gladehost", &"tainted_jade", &"shardhorde", &"moonspear", &"thunderswarm", &"cinderguard", &"forsaken", &"ivoryscar", &"sunblessed"]
 
+## Coarse hex-grid spacing (in hexes) the map sketch's terrain patches are
+## sampled at — shared between _sample_terrain_patches() (the generator) and
+## _MapSketch._draw() (the renderer, which needs the same step to size each
+## patch's radius so neighboring patches touch/overlap instead of leaving
+## visible gaps or drawing oversized blobs).
+const MAP_SKETCH_TERRAIN_STEP := 5
+
 ## Fix-round (review defect): floor height for the faction-overview "chip"
 ## (desc_scroll) so a very short blurb never collapses to a sliver — and the
 ## chip's own content-margin (all sides), reused both for the stylebox and
@@ -496,6 +503,50 @@ const FACTION_DETAILS := {
 		"unique": "Solar Faith - prayer generates divine favor which powers powerful faction abilities",
 	},
 }
+
+## Coarse terrain sample for the faction-select map sketch's "approximation
+## of the terrain" biome patches (designer 2026-08-05). Runs the REAL
+## map-generator terrain pass (map_generator.gd's generate_hex_map, the same
+## pipeline every campaign's hex map goes through) at a FIXED reference seed
+## (0) — matching every other seed-0 reference tool in this repo
+## (tmp_econ_sim, the determinism/income-equivalence test harnesses, etc).
+## Fixed rather than random for the same reason _MapSketch's coastline
+## silhouette already documents: there is no single "the" seed before a game
+## exists (every real campaign rerolls one at new_game() time), so this is
+## explicitly a representative flavor sketch, not a preview of the upcoming
+## game's actual map. Downsampled on a MAP_SKETCH_TERRAIN_STEP-hex grid
+## (not all ~9100 tiles) — the sketch stays a rough painterly wash, not a
+## precise minimap. Called ONCE per faction-select screen visit (from
+## _show_faction_select(), not per faction click), same as the seal-texture
+## preloading right below it — full hex-map generation is cheap once but not
+## something to redo on every redraw.
+func _sample_terrain_patches() -> Array:
+	# LANDMASS_BLOBS/REGION_SEEDS document their coordinate space as "the
+	# full 117x78 hex grid" — force that regardless of whatever HexMapData.
+	# MAP_WIDTH/HEIGHT a PRIOR demo game may have left behind, then restore
+	# it so this menu-only sample never leaks into real game state.
+	var saved_w := HexMapData.MAP_WIDTH
+	var saved_h := HexMapData.MAP_HEIGHT
+	HexMapData.MAP_WIDTH = 117
+	HexMapData.MAP_HEIGHT = 78
+	var map := MapGenerator.generate_hex_map(DataManager.regions, 0, GameManager.REGION_CITIES)
+	HexMapData.MAP_WIDTH = saved_w
+	HexMapData.MAP_HEIGHT = saved_h
+
+	var patches: Array = []
+	var col := 0
+	while col < 117:
+		var row := 0
+		while row < 78:
+			var tile: HexMapData.TileState = map.tiles.get(Vector2i(col, row))
+			# Water tiles contribute no patch — the terrain wash naturally
+			# stays confined to land, reinforcing the coastline instead of
+			# needing a separate clip.
+			if tile and tile.terrain != Enums.TerrainType.WATER:
+				patches.append({hx = col, hy = row, terrain = tile.terrain})
+			row += MAP_SKETCH_TERRAIN_STEP
+		col += MAP_SKETCH_TERRAIN_STEP
+	return patches
 
 func _show_faction_select() -> void:
 	if _faction_select_panel:
@@ -819,6 +870,7 @@ func _show_faction_select() -> void:
 	_map_sketch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_map_sketch.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_map_sketch.playable_factions = PLAYABLE_FACTIONS
+	_map_sketch.terrain_patches = _sample_terrain_patches()
 	for seal_fid in PLAYABLE_FACTIONS:
 		var seal_tex := _load_faction_seal(seal_fid)
 		if seal_tex:
@@ -1349,6 +1401,29 @@ class _MapSketch extends Control:
 	var faction_id: StringName = &"" # currently selected faction; drives the highlight marker
 	var playable_factions: Array[StringName] = []
 	var seal_textures: Dictionary = {} # faction_id -> Texture2D, pre-loaded
+	## Array of {hx, hy, terrain} from MainMenu._sample_terrain_patches() —
+	## a coarse read of the REAL map-generator terrain pass at seed 0.
+	## Populated by the OUTER script before this is added to the tree, same
+	## discipline as playable_factions/seal_textures above.
+	var terrain_patches: Array = []
+
+	## Deliberately a SEPARATE, desaturated derivation of campaign.gd's
+	## TERRAIN_COLORS (that const is tuned for vivid rendered hex tiles on
+	## the campaign map; this one is toned down toward parchment/ink for a
+	## sketch wash) — not a shared reference, same "own base color + .darkened()/
+	## .lightened() modifier" pattern the rest of this file already uses
+	## rather than importing campaign.gd's script just for one const.
+	const _TERRAIN_TINTS := {
+		Enums.TerrainType.PLAINS: Color(0.58, 0.55, 0.30),
+		Enums.TerrainType.FOREST: Color(0.28, 0.38, 0.23),
+		Enums.TerrainType.MOUNTAINS: Color(0.45, 0.41, 0.36),
+		Enums.TerrainType.DESERT: Color(0.72, 0.60, 0.38),
+		Enums.TerrainType.SWAMP: Color(0.34, 0.35, 0.23),
+		Enums.TerrainType.WETLANDS: Color(0.33, 0.42, 0.36),
+		Enums.TerrainType.TUNDRA: Color(0.65, 0.67, 0.63),
+		Enums.TerrainType.SHARD_WASTES: Color(0.44, 0.37, 0.46),
+		Enums.TerrainType.JUNGLE: Color(0.19, 0.32, 0.18),
+	}
 
 	func _draw() -> void:
 		# Fix round (review defect): these were raw Color() literals — routed
@@ -1395,6 +1470,42 @@ class _MapSketch extends Control:
 			var alpha: float = clampf(float(blob.w) * 0.4, 0.16, 0.42)
 			_draw_ellipse(c, r, Color(land.r, land.g, land.b, alpha))
 
+		# Terrain patches (designer 2026-08-05: "an approximation of the
+		# terrain") — rough, soft-edged biome-tint blobs sampled from the
+		# REAL map-generator terrain pass at a fixed reference seed (see
+		# MainMenu._sample_terrain_patches()). Drawn on top of the land wash
+		# but under the coastline stroke/markers; low alpha + overlapping
+		# patches so it reads as a mottled ink-wash tint, not a precise
+		# per-hex minimap.
+		var patch_rad: float = (draw_w / mw) * float(MAP_SKETCH_TERRAIN_STEP)
+		for patch in terrain_patches:
+			var tint: Color = _TERRAIN_TINTS.get(patch.terrain, land)
+			var ppos := Vector2(pad + (float(patch.hx) / mw) * draw_w, pad + (float(patch.hy) / mh) * draw_h)
+			# Deterministic hand-drawn size variance (hash of the patch's own
+			# hex coords, not RNG state) so the mottled look is stable across
+			# redraws/relayouts instead of flickering.
+			var h: float = fposmod(sin(float(patch.hx) * 12.9898 + float(patch.hy) * 78.233) * 43758.5453, 1.0)
+			var r_scale := 0.55 + h * 0.35
+			_draw_ellipse(ppos, Vector2(patch_rad * r_scale, patch_rad * r_scale * 0.8), Color(tint.r, tint.g, tint.b, 0.24))
+
+		# Rough ink coastline (designer 2026-08-05: "rough outlines of the
+		# land masses") — a hand-drawn-feeling stroke around each landmass
+		# blob's silhouette. Deterministic wobble (hash of segment index +
+		# blob index, not RNG state) so the "rough" look is stable across
+		# redraws. Overlapping blob strokes crossing each other reads as
+		# textured ink cross-hatching, not a flaw — this is a painterly
+		# parchment sketch, not a precise vector coastline. The faintest
+		# minor blobs (w < 0.5) are skipped so the coastline stays legible
+		# instead of turning into a scribble.
+		var coast_ink := Color(ink.r, ink.g, ink.b, 0.55)
+		for i in range(MapGenerator.LANDMASS_BLOBS.size()):
+			var cblob: Dictionary = MapGenerator.LANDMASS_BLOBS[i]
+			if float(cblob.w) < 0.5:
+				continue
+			var cc := Vector2(pad + (float(cblob.cx) / mw) * draw_w, pad + (float(cblob.cy) / mh) * draw_h)
+			var cr := Vector2((float(cblob.rx) / mw) * draw_w, (float(cblob.ry) / mh) * draw_h)
+			_draw_rough_outline(cc, cr, coast_ink, i)
+
 		# Region markers
 		var selected_pos := Vector2.ZERO
 		var selected_seal: Texture2D = null
@@ -1438,3 +1549,19 @@ class _MapSketch extends Control:
 			var t := TAU * float(i) / float(segments)
 			points.append(center + Vector2(cos(t) * radii.x, sin(t) * radii.y))
 		draw_colored_polygon(points, color)
+
+	## Hand-drawn-feeling ellipse OUTLINE (unfilled stroke) — used for the
+	## coastline ink line around each landmass blob. `seed_val` (the blob
+	## index) makes each blob's wobble distinct from its neighbors while
+	## staying fixed across redraws (a hash of segment index + seed_val, not
+	## RNG state).
+	func _draw_rough_outline(center: Vector2, radii: Vector2, color: Color, seed_val: int, width: float = 1.6, segments: int = 28) -> void:
+		if radii.x <= 0.0 or radii.y <= 0.0:
+			return
+		var points := PackedVector2Array()
+		for i in range(segments + 1): # +1 closes the loop back to the start point
+			var t := TAU * float(i % segments) / float(segments)
+			var h := fposmod(sin(float(i) * 12.9898 + float(seed_val) * 78.233) * 43758.5453, 1.0)
+			var wobble := 1.0 + (h - 0.5) * 0.12
+			points.append(center + Vector2(cos(t) * radii.x * wobble, sin(t) * radii.y * wobble))
+		draw_polyline(points, color, width, true)

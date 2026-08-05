@@ -219,6 +219,25 @@ func _ready() -> void:
 	_create_elderbeast_markers()
 	_build_region_tiles_cache()
 	_create_fog_overlay()
+	# Compute real vision SYNCHRONOUSLY right now, before anything else this
+	# frame reads _visible_tile_cache. Without this, _visible_tile_cache stays
+	# an empty Dictionary (it's only ever populated by _update_fog_of_war(),
+	# previously first triggered deep inside TurnManager.start_game() at the
+	# very end of _ready() via the turn_started -> _on_turn_started signal)
+	# through _create_minimap()'s first paint below and _update_trade_routes()
+	# right after this line — both would treat every tile as fogged and every
+	# army/city as unseen on the very first frame. For a nomadic start
+	# (Shardhorde etc.) that has zero owned-tile fallback vision, that first
+	# bad paint is ALL the vision the player has (no capital territory to
+	# fall back on), so their very first look at the minimap/map showed
+	# vision that didn't match their hordes' actual positions until a later
+	# refresh (periodic minimap timer / next turn's forced rebuild) caught
+	# up — exactly the "2 spots of vision that don't align with my hordes,
+	# cleared up after passing first turn" report. Army/city hex_pos are
+	# already final by this point (new_game() finished building state before
+	# this scene was even instantiated), so this reflects real final
+	# positions, not a stale spawn anchor.
+	_update_fog_of_war()
 	_update_trade_routes()
 	# Ensure labels render above region borders; army markers above labels so
 	# armies are never hidden behind city/region nameplates
@@ -243,11 +262,33 @@ func _ready() -> void:
 
 	# Position camera on player's capital, fallback to map center
 	var _cam_target := Vector2(HexMapData.MAP_WIDTH * HEX_H_SPACING * 0.5, HexMapData.MAP_HEIGHT * HEX_V_SPACING * 0.5)
+	var _capital_found := false
 	for cid in GameManager.state.cities:
 		var c: CityState = GameManager.state.cities[cid]
 		if c.faction_id == GameManager.state.player_faction_id and c.is_capital:
 			_cam_target = _hex_to_pixel(c.hex_pos)
+			_capital_found = true
 			break
+	if not _capital_found:
+		# Nomadic/cityless starts (Shardhorde, Sunblessed, and any other
+		# faction in GameManager.NOMADIC_FACTIONS) have no capital to anchor
+		# on — the loop above falls through and previously left the camera
+		# stranded at the bare map center. Center on the player's LARGEST
+		# current army instead (same power estimate the pre-battle strength
+		# meter uses), so the game opens on the horde the player actually
+		# controls.
+		var best_army: ArmyState = null
+		var best_power := -1.0
+		for aid in GameManager.state.armies:
+			var a: ArmyState = GameManager.state.armies[aid]
+			if a.faction_id != GameManager.state.player_faction_id:
+				continue
+			var p := _calc_army_power_estimate(a)
+			if best_army == null or p > best_power:
+				best_power = p
+				best_army = a
+		if best_army:
+			_cam_target = _hex_to_pixel(best_army.hex_pos)
 	camera.position = _cam_target
 	_update_lod()
 	_cull_hex_tiles()
