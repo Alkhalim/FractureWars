@@ -1,6 +1,8 @@
 # Faction Mechanics Design Doc
 Fantasy antiquity/medieval 4X (Total War style). Living document, accepted designs only.
 
+> **Implementation decisions (designer, 2026-08-05):** implementation starts AFTER UI polish wave 2 completes. **Flagship set (full bespoke suites first): Skulloath, Thunderswarm, Ivoryscar, The Forsaken** — the rest initially receive lighter substrate-driven variants (answers Part 14's tiering question). **Migration: keep-until-replaced** — each faction's current live mechanic stays playable until its new suite ships; the game stays complete at every commit. Build order: substrate first (Land State → Sites & Ruins incl. Part-13 density pass → Calendar → Settlement Resolution verbs; Obligation Webs / Named Entities / Building Favor land with their first consumer), then flagships one at a time (Skulloath → Thunderswarm → Ivoryscar → Forsaken), each as its own spec → plan → reviewed execution.
+
 **Status legend:** ACCEPTED = signed off. Sections are only added after sign-off.
 
 **Scope cuts (current):**
