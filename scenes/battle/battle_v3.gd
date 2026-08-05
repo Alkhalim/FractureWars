@@ -912,21 +912,47 @@ func _add_commander_bonus_line(container: VBoxContainer, commander: CommanderSta
 	container.add_child(lbl)
 
 func _calc_formation_power(f: BattleSimulatorV3.BattleFormationV3) -> float:
-	# Power = HP_ratio * (attack + defense * 0.5 + speed * 0.3) * entities_alive
-	# This weights offensive capability, survivability, and remaining manpower
+	# Power = HP_ratio * (attack + defense * 0.5 + speed * 0.3) * entities_alive^exp * toughness
+	# This weights offensive capability, survivability, remaining manpower,
+	# and (W4 fix) raw HP magnitude. hp_ratio alone only tracks what FRACTION
+	# of the formation's own HP pool survived -- it cancels max_hp's
+	# magnitude out entirely, so two formations at full health scored
+	# identically regardless of one having 10x the other's hp_per_entity
+	# (designer report: "they had more hp on their units" and still read as
+	# the weaker side). `toughness` reintroduces that magnitude LINEARLY (2x
+	# hp_per_entity = 2x staying power). Headcount gets a companion fix: raw
+	# entities_alive scored a melee horde built from many small squads as N
+	# times stronger against a single tanky target, which the real
+	# auto-resolver disagreed with (contact caps mean only so many entities
+	# can actually be in melee with a compact formation at once, so extra
+	# melee headcount beyond that saturates); ranged/kiting formations
+	# (attack_range > 1) aren't contact-limited the same way, so their
+	# headcount stays fully linear. `entities_exp` applies that split (melee
+	# ^0.8, ranged ^1.0) before toughness is multiplied in. Mirrors
+	# campaign.gd's _calc_army_power_estimate() (that file's pre-battle
+	# dialog estimate); both exponents were grid-searched together against
+	# tests/test_strength_meter_probe.gd's real auto-resolve matchups
+	# (>=9/10 direction matches) rather than derived analytically -- see that
+	# test file for the tuning data.
 	if f.is_dead or f.is_fled or f.max_hp <= 0:
 		return 0.0
 	var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
 	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.3
 	if f.attack_range > 1:
 		stat_value += float(f.attack_range) * 0.4  # Ranged units are more valuable
-	return hp_ratio * stat_value * float(f.entities_alive)
+	var toughness := maxf(1.0, float(f.hp_per_entity))
+	var entities_exp := 1.0 if f.attack_range > 1 else 0.8
+	var effective_count := pow(float(f.entities_alive), entities_exp)
+	return hp_ratio * stat_value * effective_count * toughness
 
 func _calc_formation_power_max(f: BattleSimulatorV3.BattleFormationV3) -> float:
 	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.3
 	if f.attack_range > 1:
 		stat_value += float(f.attack_range) * 0.4
-	return stat_value * float(f.total_entities)
+	var toughness := maxf(1.0, float(f.hp_per_entity))
+	var entities_exp := 1.0 if f.attack_range > 1 else 0.8
+	var effective_count := pow(float(f.total_entities), entities_exp)
+	return stat_value * effective_count * toughness
 
 func _update_strength_meter() -> void:
 	var player_formations := simulator.attacker_formations if player_side == 0 else simulator.defender_formations

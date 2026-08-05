@@ -670,10 +670,14 @@ func _on_army_selected(army_id: StringName) -> void:
 	# content-driven minimum widths are known — a name/tag mix can make one
 	# unit's card noticeably wider than another's, so no single width can be
 	# assumed in advance.
+	# End-of-turn HP preview (W4): computed once per army, not per card — the
+	# projection only depends on the army/tile/city, not the individual unit.
+	var hp_projection := _project_next_turn_hp(army)
 	for unit in army.units:
 		var unit_data := DataManager.get_unit(unit.unit_data_id)
 		if unit_data:
-			var card := _create_unit_card(unit, unit_data)
+			var projected_hp: int = hp_projection.get(unit.instance_id, unit.current_hp)
+			var card := _create_unit_card(unit, unit_data, projected_hp)
 			unit_list.add_child(card)
 
 	# Pack cards by filling the panel's width FIRST, replacing the old purely
@@ -747,7 +751,145 @@ func _on_army_selected(army_id: StringName) -> void:
 	var content_h: float = vbox_ref.get_combined_minimum_size().y + 24.0
 	army_panel.offset_top = -clampf(content_h, 150.0, 560.0)
 
-func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContainer:
+## Read-only, next-turn HP projection for the "if this army stays put" pale
+## preview overlay on its unit cards (UI Polish Wave 2 Task W4 -- designer:
+## "armies when selected should have a preview of the hp bar of its units if
+## they stay where they currently are when the turn ends"). Mirrors, IN THE
+## SAME ORDER the real per-faction turn loop applies them
+## (turn_manager.gd's _process_faction_turn: city_system.process_turn (which
+## runs _process_sieges) -> ... -> _heal_armies_in_settlements ->
+## _apply_terrain_attrition):
+##   1. Siege besieger attrition (city_system.gd _process_sieges ->
+##      _apply_besieger_attrition: flat SIEGE_BESIEGER_ATTRITION per unit,
+##      floors at 1 HP -- plus _apply_wall_besieger_attrition /
+##      _apply_army_wall_damage for besieger_attrition-tagged walls, e.g.
+##      Jungle Traps/Serpent's Maze; only the wall variant can zero a unit
+##      out, same as production).
+##   2. Heal (turn_manager.gd _heal_armies_in_settlements): own city (15%,
+##      x1.5 with a Moonwell, x2 in a Worldroot Nexus region) > owned
+##      non-city tile (5%, also x2 in Worldroot) > Shardhorde undepleted
+##      elderbeast range (10%) > commander heal_per_turn alone. Commander
+##      heal always adds on top when present, matching the real function's
+##      structure (its neutral-territory branch isn't gated on siege, so a
+##      besieging army with a commander still gets that trickle).
+##   3. Terrain attrition (turn_manager.gd _apply_terrain_attrition): shard
+##      wastes/desert/jungle/tundra/swamp damage (or heal, for nature-
+##      aligned factions in jungle), skipped entirely inside any city
+##      (sheltered) -- so a besieging army, standing on the city hex it's
+##      sieging, never reaches this step, matching prod.
+## Desertion (city_system.gd's bankruptcy unit-shedding brake) is
+## deliberately NOT modeled here: it removes whole units, not partial HP, so
+## it has nothing to project onto an HP bar.
+## Purely reads GameManager/DataManager/TurnManager/CommanderSystem state --
+## never mutates army/unit/city/faction data. Not a full predictor (research
+## % modifiers beyond attrition_reduction, random events, mid-turn army
+## merges etc. are out of scope) -- a best-effort "if nothing else happens"
+## projection.
+func _project_next_turn_hp(army: ArmyState) -> Dictionary:
+	var projected: Dictionary = {} # instance_id -> projected current_hp
+	if army == null:
+		return projected
+
+	var city_at := GameManager.city_system.get_city_at_hex(army.hex_pos)
+	var tile := GameManager.state.hex_map.get_tile(army.hex_pos)
+	var cmd_heal := 0
+	if army.commander:
+		var bonuses := CommanderSystem.get_commander_army_bonuses(army.commander)
+		cmd_heal = bonuses.get("heal_per_turn", 0)
+
+	var is_besieging: bool = city_at != null and city_at.is_under_siege \
+		and city_at.siege_faction == army.faction_id and not army.is_garrison
+
+	# Wall besieger-attrition sum (Jungle Traps/Serpent's Maze etc. --
+	# special_effects["besieger_attrition"], summed same as
+	# _apply_wall_besieger_attrition) -- only relevant while besieging.
+	var wall_attrition_sum := 0.0
+	if is_besieging:
+		for b_id in city_at.buildings:
+			var bd: BuildingData = DataManager.get_building(b_id)
+			if bd == null:
+				continue
+			var v: float = float(bd.special_effects.get("besieger_attrition", 0.0))
+			if v > 0.0:
+				wall_attrition_sum += v
+
+	var worldroot_region: StringName = LandmarkSystem.worldroot_region_of_faction(army.faction_id)
+	var in_worldroot: bool = worldroot_region != &"" and tile != null and tile.region_id == worldroot_region
+
+	for unit: UnitInstance in army.units:
+		var ud := DataManager.get_unit(unit.unit_data_id)
+		if ud == null:
+			continue
+		var hp := unit.current_hp
+
+		if is_besieging:
+			# 1. Flat siege attrition -- floors at 1, never kills outright.
+			hp = maxi(1, hp - int(ud.max_hp * GameManager.city_system.SIEGE_BESIEGER_ATTRITION))
+			# Wall attrition CAN kill (mirrors _apply_army_wall_damage).
+			if wall_attrition_sum > 0.0:
+				var wall_dmg: int = maxi(1, int(ud.max_hp * wall_attrition_sum * 0.01))
+				hp = maxi(0, hp - mini(wall_dmg, hp))
+			if cmd_heal > 0:
+				hp = mini(hp + cmd_heal, ud.max_hp)
+		elif city_at != null and city_at.faction_id == army.faction_id:
+			var moonwell_mult := 1.5 if city_at.buildings.has(&"moonwell") else 1.0
+			var heal_amount := int(ud.max_hp * 0.15 * moonwell_mult) + cmd_heal
+			if in_worldroot:
+				heal_amount *= 2
+			hp = mini(hp + heal_amount, ud.max_hp)
+			if ud.squad_size > 1 and ud.hp_per_soldier > 0 and hp < ud.max_hp:
+				hp = mini(hp + ud.hp_per_soldier, ud.max_hp)
+		elif tile != null and tile.owner_faction == army.faction_id:
+			var heal_amount := int(ud.max_hp * 0.05) + cmd_heal
+			if in_worldroot:
+				heal_amount *= 2
+			hp = mini(hp + heal_amount, ud.max_hp)
+		elif army.faction_id == &"shardhorde" and TurnManager._is_in_undepleted_beast_range(army.hex_pos):
+			hp = mini(hp + int(ud.max_hp * 0.10) + cmd_heal, ud.max_hp)
+		elif cmd_heal > 0:
+			hp = mini(hp + cmd_heal, ud.max_hp)
+
+		# Terrain attrition -- skipped entirely inside any city (sheltered),
+		# so a besieging army (city_at != null) never reaches here, matching
+		# _apply_terrain_attrition's own "skip in cities" early-continue.
+		if city_at == null and tile != null and not army.is_garrison:
+			hp = _project_terrain_attrition(hp, ud, tile.terrain, army)
+
+		projected[unit.instance_id] = hp
+	return projected
+
+## Mirrors turn_manager.gd's per-terrain damage/heal table inside
+## _apply_terrain_attrition (shard wastes/desert/jungle/tundra/swamp),
+## read-only. `army` is only read for its faction's realm affinity and
+## research-derived attrition_reduction -- never mutated.
+func _project_terrain_attrition(hp: int, ud: UnitData, terrain: Enums.TerrainType, army: ArmyState) -> int:
+	var fd: FactionData = DataManager.get_faction(army.faction_id)
+	var is_nature := fd and fd.realm_affinity == Enums.Realm.NATURE
+	var is_void := fd and fd.realm_affinity == Enums.Realm.VOID
+	var attrition_reduction := army.get_attrition_reduction()
+	match terrain:
+		Enums.TerrainType.SHARD_WASTES:
+			var pct := (0.02 if is_void else 0.05) * (1.0 - attrition_reduction)
+			return maxi(1, hp - maxi(1, int(ud.max_hp * pct)))
+		Enums.TerrainType.DESERT:
+			var pct := 0.01 if is_void else (0.05 if is_nature else 0.03)
+			pct *= (1.0 - attrition_reduction)
+			return maxi(1, hp - maxi(1, int(ud.max_hp * pct)))
+		Enums.TerrainType.JUNGLE:
+			if is_nature:
+				return mini(hp + maxi(1, int(ud.max_hp * 0.03)), ud.max_hp)
+			var pct := 0.02 * (1.0 - attrition_reduction)
+			return maxi(1, hp - maxi(1, int(ud.max_hp * pct)))
+		Enums.TerrainType.TUNDRA:
+			var pct := (0.04 if is_nature else (0.01 if is_void else 0.02)) * (1.0 - attrition_reduction)
+			return maxi(1, hp - maxi(1, int(ud.max_hp * pct)))
+		Enums.TerrainType.SWAMP:
+			if not ud.tags.has("construct"):
+				var pct := 0.03 * (1.0 - attrition_reduction)
+				return maxi(1, hp - maxi(1, int(ud.max_hp * pct)))
+	return hp
+
+func _create_unit_card(unit: UnitInstance, unit_data: UnitData, projected_hp: int = -1) -> PanelContainer:
 	var card := PanelContainer.new()
 	var card_style := StyleBoxFlat.new()
 	card_style.bg_color = Color(UIPalette.CHIP_BG, 0.95)
@@ -843,8 +985,15 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 	var hp_container := HBoxContainer.new()
 	hp_container.add_theme_constant_override("separation", 3)
 
+	const HP_BAR_SIZE := Vector2(80, 8)
+	# Wrapped in a plain Control so the W4 end-of-turn preview overlay below
+	# can sit on top of the bar without disturbing hp_container's HBoxLayout
+	# (a raw sibling would get laid out beside the bar, not over it).
+	var hp_bar_wrap := Control.new()
+	hp_bar_wrap.custom_minimum_size = HP_BAR_SIZE
+
 	var hp_bar := ProgressBar.new()
-	hp_bar.custom_minimum_size = Vector2(80, 8)
+	hp_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
 	hp_bar.max_value = unit_data.max_hp
 	hp_bar.value = unit.current_hp
 	hp_bar.show_percentage = false
@@ -865,10 +1014,31 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData) -> PanelContaine
 	bg_style.corner_radius_bottom_right = 2
 	bg_style.corner_radius_bottom_left = 2
 	hp_bar.add_theme_stylebox_override("background", bg_style)
-	hp_container.add_child(hp_bar)
+	hp_bar_wrap.add_child(hp_bar)
+
+	# W4: pale end-of-turn HP preview -- "if this army stays put" projection
+	# (see _project_next_turn_hp()). Healing shows a pale sliver of fill
+	# BEYOND the current bar; attrition shows a pale dimming wash over the
+	# TOP (soon-to-be-lost) sliver of the current fill. Display-only: reads
+	# projected_hp, never writes anything.
+	var hp_delta := 0
+	if projected_hp >= 0 and projected_hp != unit.current_hp:
+		hp_delta = projected_hp - unit.current_hp
+		var proj_ratio := clampf(float(projected_hp) / float(unit_data.max_hp), 0.0, 1.0)
+		var overlay := ColorRect.new()
+		overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var lo := minf(hp_ratio, proj_ratio)
+		var hi := maxf(hp_ratio, proj_ratio)
+		overlay.position = Vector2(lo * HP_BAR_SIZE.x, 0)
+		overlay.size = Vector2((hi - lo) * HP_BAR_SIZE.x, HP_BAR_SIZE.y)
+		overlay.color = Color(UIPalette.SUCCESS_BRIGHT, 0.4) if hp_delta > 0 else Color(UIPalette.PARCHMENT, 0.45)
+		hp_bar_wrap.add_child(overlay)
+	hp_container.add_child(hp_bar_wrap)
 
 	var hp_text := Label.new()
 	hp_text.text = "%d/%d" % [unit.current_hp, unit_data.max_hp]
+	if hp_delta != 0:
+		hp_text.text += " (%+d)" % hp_delta
 	hp_text.add_theme_font_size_override("font_size", 10)
 	hp_text.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
 	hp_container.add_child(hp_text)

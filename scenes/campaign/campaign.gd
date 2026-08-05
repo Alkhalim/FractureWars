@@ -4178,17 +4178,36 @@ func _on_battle_auto_resolved(report: Dictionary) -> void:
 ## display a strength meter to give some info on who is what relative
 ## strength"). Mirrors battle_v3.gd's _calc_formation_power() weights
 ## (attack + defense*0.5 + speed*0.3 [+ range*0.4 ranged bonus], scaled by
-## HP ratio, times headcount) applied per UnitInstance/UnitData instead of
-## per BattleFormationV3 -- no formation object exists yet at this stage
-## (formations are only built once battle_v3.tscn's simulator sets up), so
-## this duplicates rather than shares the formula; kept in sync via this
-## comment cross-reference. squad_size stands in for entities_alive (no
-## casualties from THIS fight have happened yet; current_hp/max_hp ratio
-## still reflects damage carried over from a prior fight/retreat, same as
-## the HUD meter's hp_ratio). Commander/research combat bonuses are
-## intentionally NOT folded in here (unlike the in-battle HUD meter, which
-## reads them off already-built formations) -- this is a rough pre-commit
-## gut-check, not a battle predictor.
+## HP ratio, times headcount, times toughness) applied per UnitInstance/
+## UnitData instead of per BattleFormationV3 -- no formation object exists
+## yet at this stage (formations are only built once battle_v3.tscn's
+## simulator sets up), so this duplicates rather than shares the formula;
+## kept in sync via this comment cross-reference. squad_size stands in for
+## entities_alive (no casualties from THIS fight have happened yet;
+## current_hp/max_hp ratio still reflects damage carried over from a prior
+## fight/retreat, same as the HUD meter's hp_ratio). Commander/research
+## combat bonuses are intentionally NOT folded in here (unlike the in-battle
+## HUD meter, which reads them off already-built formations) -- this is a
+## rough pre-commit gut-check, not a battle predictor.
+##
+## W4 fix (designer: "I had a fight with better units and more of them but
+## it still showed an advantage for my enemies -- they had more hp on their
+## units, might that be the reason?"): hp_ratio alone only tracks what
+## FRACTION of a squad's own HP pool survived -- current_hp/max_hp cancels
+## max_hp's magnitude out entirely, so at full health a unit with 10x
+## another's hp_per_soldier scored identically. `toughness` reintroduces that
+## missing magnitude LINEARLY (2x hp_per_soldier = 2x staying power).
+## Headcount gets a companion fix: raw squad_size scored a melee horde built
+## from many small squads as N times stronger against a single tanky target,
+## which the real auto-resolver disagreed with (contact caps mean only so
+## many entities can actually be in melee with a compact formation at once,
+## so extra melee headcount beyond that saturates); ranged/kiting squads
+## (attack_range > 1) aren't contact-limited the same way, so their headcount
+## stays fully linear. `entities_exp` applies that split (melee ^0.8, ranged
+## ^1.0) before toughness is multiplied in. Both exponents were grid-searched
+## against tests/test_strength_meter_probe.gd's real auto-resolve matchups
+## (>=9/10 direction matches) rather than derived analytically -- see that
+## test file for the tuning data.
 func _calc_army_power_estimate(army: ArmyState) -> float:
 	var power := 0.0
 	for u in army.units:
@@ -4199,7 +4218,11 @@ func _calc_army_power_estimate(army: ArmyState) -> float:
 		var stat_value := float(ud.attack) + float(ud.melee_defense) * 0.5 + float(ud.speed) * 0.3
 		if ud.attack_range > 1:
 			stat_value += float(ud.attack_range) * 0.4
-		power += hp_ratio * stat_value * float(maxi(1, ud.squad_size))
+		var hp_per_soldier := float(ud.hp_per_soldier) if ud.hp_per_soldier > 0 else float(ud.max_hp)
+		var toughness := maxf(1.0, hp_per_soldier)
+		var entities_exp := 1.0 if ud.attack_range > 1 else 0.8
+		var effective_count := pow(float(maxi(1, ud.squad_size)), entities_exp)
+		power += hp_ratio * stat_value * effective_count * toughness
 	return power
 
 func _show_battle_dialog(attacker_army: ArmyState, defender_army: ArmyState) -> void:
