@@ -12679,6 +12679,11 @@ func _show_elderbeast_panel(beast: ElderbeastState) -> void:
 			if eb_icon_tex:
 				recruit_btn.icon = eb_icon_tex
 				recruit_btn.expand_icon = false
+				# Fix-round (review): native Button.icon draws at the texture's
+				# NATIVE size (64px, baked 2.5x the ~24px display target) unless
+				# capped — was blowing this 28px row up to ~65-70px. Same fix as
+				# the established icon_max_width pattern at main_menu.gd:621.
+				recruit_btn.add_theme_constant_override("icon_max_width", 20)
 			# Affordability
 			if recruit_fs == null or not _can_afford_display(recruit_fs, ud.recruit_cost):
 				recruit_btn.disabled = true

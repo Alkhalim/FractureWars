@@ -37,26 +37,46 @@ func _run() -> void:
 	_check(t.get_stylebox("panel", "TooltipPanel") != null, "tooltip themed")
 	# 4. apply_faction_theme — live faction chrome switching (Task 4)
 	_run_faction_theme_test(gm)
-	# 5. UI Polish Wave 2 Task W2 — CLASS_COLORS must hold no exact-value
-	# collision with campaign_hud.gd's _get_building_category_color rows
-	# (brief: "those colors should not have 1:1 overlap with the building
-	# button frames"). Building colors duplicated here (not loaded live —
-	# campaign_hud.gd is a scene script, loading it cold in a -s test needs
-	# the gm.new_game() warm-up dance documented in the harness gotchas;
-	# not worth it for 6 literal Color values) — mirrors the RGB literals at
-	# campaign_hud.gd's _get_building_category_color, alpha dropped since
-	# CLASS_COLORS' frame strokes and the building cards' fill washes are
-	# never compared at matching alpha anyway. Keep in sync with that
-	# function if its colors ever change.
-	var building_category_colors := [
-		Color(0.85, 0.72, 0.3), Color(0.35, 0.7, 0.3), Color(0.75, 0.25, 0.2),
-		Color(0.35, 0.55, 0.75), Color(0.55, 0.35, 0.75), Color(0.4, 0.4, 0.4),
-	]
+	# 5. UI Polish Wave 2 Task W2 (fix-round) — CLASS_COLORS must hold no
+	# exact-value collision with the LIVE _get_building_category_color() in
+	# campaign_hud.gd (brief: "those colors should not have 1:1 overlap with
+	# the building button frames"). The original check compared against a
+	# hand-copied literal Color list here, which stops protecting anything
+	# the moment campaign_hud.gd's colors drift — this drives the real
+	# function instead. campaign_hud.gd only compiles headless AFTER a
+	# new_game() has warmed its autoload-dependent scripts (done above by
+	# _run_faction_theme_test's gm.new_game() call) — same load-late +
+	# instantiate pattern as test_building_percent_display.gd:26 (which
+	# cites test_income_breakdown_equivalence.gd:111). Synthetic BuildingData
+	# probes (not real DataManager buildings) so every category branch —
+	# including the industrial/non-industrial economic split and the
+	# unmatched-category default fallback, neither of which any real
+	# buildings.tres reliably exercises — is hit deterministically.
+	var hud = (load("res://scenes/campaign/campaign_hud.gd") as GDScript).new()
+	var probe_economic_industrial := BuildingData.new()
+	probe_economic_industrial.category = &"economic"
+	probe_economic_industrial.income_bonus = {Enums.ResourceType.IRON: 1}
+	var probe_economic_plain := BuildingData.new()
+	probe_economic_plain.category = &"economic"
+	probe_economic_plain.income_bonus = {Enums.ResourceType.GOLD: 1}
+	var probe_military := BuildingData.new()
+	probe_military.category = &"military"
+	var probe_defensive := BuildingData.new()
+	probe_defensive.category = &"defensive"
+	var probe_cultural := BuildingData.new()
+	probe_cultural.category = &"cultural"
+	var probe_default := BuildingData.new()
+	probe_default.category = &"unrecognized_category"
+	var building_category_colors: Array[Color] = []
+	for probe in [probe_economic_industrial, probe_economic_plain, probe_military, probe_defensive, probe_cultural, probe_default]:
+		building_category_colors.append(hud._get_building_category_color(probe))
+	hud.free()
+	_check(building_category_colors.size() == 6, "6 live building category colors collected, got %d" % building_category_colors.size())
 	for cls in UIPalette.CLASS_COLORS:
 		var cc: Color = UIPalette.CLASS_COLORS[cls]
 		for bc in building_category_colors:
 			var collides: bool = is_equal_approx(cc.r, bc.r) and is_equal_approx(cc.g, bc.g) and is_equal_approx(cc.b, bc.b)
-			_check(not collides, "CLASS_COLORS[%s] (%s) doesn't 1:1-collide with a building category color (%s)" % [cls, cc, bc])
+			_check(not collides, "CLASS_COLORS[%s] (%s) doesn't 1:1-collide with a live building category color (%s)" % [cls, cc, bc])
 	print("UI PALETTE TEST %s" % ("PASSED" if _fails == 0 else "FAILED (%d)" % _fails))
 	quit(0 if _fails == 0 else 1)
 

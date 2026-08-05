@@ -11,7 +11,7 @@ extends RefCounted
 ## *subdirectories* so it's never loaded, but a naive recursive grep over
 ## data/units/ double-counts through it):
 ##   melee(167) infantry(~90) fast(82) ranged(~78) heavy(~44) beast(40)
-##   support(~30) monster(~30) cavalry(~29) mage(~28) light(24) construct(~23)
+##   support(~30) monster(~30) cavalry(~29) mage(~28) light(24) construct(~29)
 ##   desertstrider(21) swarm(20) flying(~18) undead(17) tundrawalker(15)
 ##   cinderguard(13) stationary(7) junglestrider(6) legendary(1) enchanted(1)
 ##   elite(1) demonic(1) chariot(1) ambush(1) siege(1)
@@ -23,8 +23,12 @@ extends RefCounted
 ## because the tag is real, frequent, and — unlike the illustrative list —
 ## already mechanically meaningful: vs_attack_bonuses/vs_defense_bonuses key
 ## off "construct" directly, e.g. starweaver's {"construct":4,"mage":3,
-## "monster":3}. `archer` and `flying` are NOT literal tags anywhere in the
-## data (grepped) — they're derived, see below.
+## "monster":3}. `flying` IS a literal tag in the data (e.g. hawk_scout:
+## ["ranged","fast","flying","light"]) — only `archer` is genuinely derived,
+## with no literal tag anywhere; `flying` gets the same fallback GATING
+## treatment as archer (see tie-break B below) because a unit having the
+## `flying` tag doesn't by itself mean "class as flying" over a
+## higher-priority class it might also carry.
 ##
 ## MAPPING RULES (priority-ordered; primary class = earliest rule that
 ## matches, secondary = the next rule that matches after it, capped at 2):
