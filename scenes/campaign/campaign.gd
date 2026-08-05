@@ -4218,7 +4218,9 @@ func _calc_army_power_estimate(army: ArmyState) -> float:
 		var stat_value := float(ud.attack) + float(ud.melee_defense) * 0.5 + float(ud.speed) * 0.3
 		if ud.attack_range > 1:
 			stat_value += float(ud.attack_range) * 0.4
-		var hp_per_soldier := float(ud.hp_per_soldier) if ud.hp_per_soldier > 0 else float(ud.max_hp)
+		# Toughness fallback mirrors battle_simulator_v3.gd:819-828 (hp_per_entity derivation):
+		# only use hp_per_soldier when BOTH conditions hold: hp_per_soldier > 0 AND squad_size > 1.
+		var hp_per_soldier := float(ud.hp_per_soldier) if ud.hp_per_soldier > 0 and ud.squad_size > 1 else float(ud.max_hp)
 		var toughness := maxf(1.0, hp_per_soldier)
 		var entities_exp := 1.0 if ud.attack_range > 1 else 0.8
 		var effective_count := pow(float(maxi(1, ud.squad_size)), entities_exp)

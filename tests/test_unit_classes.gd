@@ -121,6 +121,7 @@ func _run() -> void:
 	var total := 0
 	var empty_count := 0
 	var over_cap_count := 0
+	var hp_per_soldier_invalid_count := 0
 	for uid in dm.units.keys():
 		var ud: UnitData = dm.units[uid]
 		total += 1
@@ -131,9 +132,16 @@ func _run() -> void:
 		elif cls.size() > 2:
 			over_cap_count += 1
 			print("FAIL DETAIL: %s (%s) yielded >2 classes: %s, tags=%s" % [uid, ud.faction_id, cls, ud.tags])
+		# Data invariant: if squad_size == 1 and hp_per_soldier > 0, then
+		# hp_per_soldier must == max_hp (enforces parity with meter toughness fallback).
+		if ud.squad_size == 1 and ud.hp_per_soldier > 0:
+			if ud.hp_per_soldier != ud.max_hp:
+				hp_per_soldier_invalid_count += 1
+				print("FAIL DETAIL: %s (%s) has squad_size=1, hp_per_soldier=%d, but max_hp=%d (must be equal)" % [uid, ud.faction_id, ud.hp_per_soldier, ud.max_hp])
 	_check(total >= 250, "sanity: a plausible number of units were scanned (>=250), got %d" % total)
 	_check(empty_count == 0, "every unit in DataManager yields >=1 class, %d failed" % empty_count)
 	_check(over_cap_count == 0, "no unit yields more than 2 classes, %d failed" % over_cap_count)
+	_check(hp_per_soldier_invalid_count == 0, "data invariant: squad_size==1 with hp_per_soldier>0 requires hp_per_soldier==max_hp, %d failed" % hp_per_soldier_invalid_count)
 
 	if _fails == 0:
 		print("UNIT CLASSES TEST PASSED (%d units scanned)" % total)
