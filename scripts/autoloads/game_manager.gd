@@ -2114,6 +2114,21 @@ func _init_cities() -> void:
 				}
 				if faction_cities_placed == 0:
 					city.is_capital = true
+					# Designer directive (2026-08): capitals start pre-grown at
+					# level 2 (all factions, player and AI alike). This only
+					# touches the INITIAL value — get_upgrade_cost()/
+					# get_growth_threshold()/get_upgrade_time() all derive from
+					# city.level dynamically, so the turn-1 UI already shows the
+					# correct level-2->3 cost/threshold/time with no other edit.
+					# Does NOT touch upgrade_turns_remaining, so it cannot
+					# trigger _process_upgrade()'s can_found_settlement grant
+					# (that only fires when an in-progress upgrade's countdown
+					# reaches 0) -- the capital's founding charge below is the
+					# same unconditional turn-1 grant every capital has always
+					# gotten, independent of level. required_capital_level gates
+					# (city.level < required_capital_level) still correctly keep
+					# level-3 buildings locked at level 2.
+					city.level = 2
 					# Faction-specific starting building
 					var building: StringName = faction_starting_buildings.get(owning_faction, &"")
 					if building != &"":

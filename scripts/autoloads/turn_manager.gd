@@ -1913,10 +1913,13 @@ func _get_beast_tiles(beast: ElderbeastState) -> Array[Vector2i]:
 			tiles.append(n)
 	return tiles
 
+## Designer directive (2026-08): shard beasts' base income should also
+## include 2 Iron -- flat per beast, NOT scaled by level like the other
+## resources here (matches the literal "2 iron" directive, not "2/4/6").
 const ELDERBEAST_BASE_INCOME := {
-	1: {Enums.ResourceType.GOLD: 6, Enums.ResourceType.FOOD: 8, Enums.ResourceType.WOOD: 3},
-	2: {Enums.ResourceType.GOLD: 11, Enums.ResourceType.FOOD: 15, Enums.ResourceType.WOOD: 6},
-	3: {Enums.ResourceType.GOLD: 19, Enums.ResourceType.FOOD: 25, Enums.ResourceType.WOOD: 10},
+	1: {Enums.ResourceType.GOLD: 6, Enums.ResourceType.IRON: 2, Enums.ResourceType.FOOD: 8, Enums.ResourceType.WOOD: 3},
+	2: {Enums.ResourceType.GOLD: 11, Enums.ResourceType.IRON: 2, Enums.ResourceType.FOOD: 15, Enums.ResourceType.WOOD: 6},
+	3: {Enums.ResourceType.GOLD: 19, Enums.ResourceType.IRON: 2, Enums.ResourceType.FOOD: 25, Enums.ResourceType.WOOD: 10},
 }
 
 func _get_elderbeast_income(beast: ElderbeastState) -> Dictionary:

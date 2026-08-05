@@ -366,17 +366,17 @@ const FACTION_LEADERS := {
 		{"name": "Ember Priestess Pyra", "portrait": "res://assets/sprites/factions/ashbound/leaders/nonbiristudios_war-succubus_mongolian_pelt_armor_demonic_mong_caf41ae1-7663-4e69-86ea-e04dea06bb3c_2.png", "bonuses": [
 			{&"label": "+10% Army Attack", &"key": "army_attack", &"value": 10},
 			{&"label": "+15% Shard Essence Income", &"key": "income_shard", &"value": 15},
-			{&"label": "Starts with Flame Sanctum", &"key": "starting_building", &"value": 0},
+			{&"label": "Starts with Forge Academy", &"key": "starting_building", &"value": 0},
 			{&"label": "-10% Iron Income", &"key": "income_iron", &"value": -10},
-		], "starting_building": "flame_sanctum", "army_override": [&"cinderguard_warden", &"cinderguard_warden", &"ember_crossbow", &"ember_mage", &"cinder_militia"]},
+		], "starting_building": "forge_academy", "army_override": [&"cinderguard_warden", &"cinderguard_warden", &"ember_crossbow", &"ember_mage", &"cinder_militia"]},
 	],
 	&"forsaken": [
 		{"name": "Lord Noctis", "portrait": "res://assets/sprites/factions/forsaken/leaders/nonbiristudios_persian_ancient_roman_vampire_lord_aristocrati_5b7625b0-df62-45c2-b984-cf8021939b56_2.png", "bonuses": [
 			{&"label": "+12% Army HP", &"key": "army_hp", &"value": 12},
 			{&"label": "Thralls cost -30% Gold", &"key": "unit_discount_shadow_thrall", &"value": 30},
-			{&"label": "Starts with Necromancer Sanctum", &"key": "starting_building", &"value": 0},
+			{&"label": "Starts with Wretched Pit", &"key": "starting_building", &"value": 0},
 			{&"label": "-10 Diplomacy with all factions", &"key": "diplomacy_standing", &"value": -10},
-		], "starting_building": "necromancer_sanctum", "army_override": [&"shadow_thrall", &"shadow_thrall", &"shadow_thrall", &"shadow_thrall", &"death_mage"]},
+		], "starting_building": "wretched_pit", "army_override": [&"shadow_thrall", &"shadow_thrall", &"shadow_thrall", &"shadow_thrall", &"death_mage"]},
 		{"name": "Countess Neshara", "portrait": "res://assets/sprites/factions/bloodthrone/leaders/nonbiristudios_persian_ancient_roman_vampire_queen_aristocrat_9d095022-e3b5-45ab-8212-72ecad11d93e_2.png", "bonuses": [
 			{&"label": "+15% Food Income", &"key": "income_food", &"value": 15},
 			{&"label": "Bat Swarms cost -25% Gold", &"key": "unit_discount_bat_swarm", &"value": 25},
@@ -400,9 +400,9 @@ const FACTION_LEADERS := {
 		{"name": "Tomb King Ankaris", "portrait": "res://assets/sprites/factions/aurentis_guard/leaders/nonbiristudios_dockmaster_venetian_flat_fantasy_illustration__ecf9cd06-bada-4081-b765-cf4617dd9a6f_3.png", "bonuses": [
 			{&"label": "+12% Army Defense", &"key": "army_defense", &"value": 12},
 			{&"label": "Tomb Guards cost -20% Gold", &"key": "unit_discount_tomb_guard", &"value": 20},
-			{&"label": "Starts with Bone Arsenal", &"key": "starting_building", &"value": 0},
+			{&"label": "Starts with Bone Stables", &"key": "starting_building", &"value": 0},
 			{&"label": "-10% Army Speed", &"key": "army_speed", &"value": -10},
-		], "starting_building": "bone_arsenal", "army_override": [&"ivoryscar_seeker", &"tomb_guard", &"tomb_guard", &"scarab_swarm", &"bone_archer"]},
+		], "starting_building": "bone_stables", "army_override": [&"ivoryscar_seeker", &"tomb_guard", &"tomb_guard", &"scarab_swarm", &"bone_archer"]},
 		{"name": "Relic Seeker Dara", "portrait": "res://assets/sprites/factions/aurentis_guard/leaders/nonbiristudios_A_matriarch_of_the_empire_wealthy_mature_woman_7a3cece7-4e24-4d58-8e35-a5c213b3f8a5_3.png", "bonuses": [
 			{&"label": "+20% Shard Essence Income", &"key": "income_shard", &"value": 20},
 			{&"label": "+8% Army Speed", &"key": "army_speed", &"value": 8},
