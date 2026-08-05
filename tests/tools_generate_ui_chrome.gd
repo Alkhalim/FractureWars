@@ -44,21 +44,99 @@ const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-G
 ## _paint_notification below); SEAL_SIZE is the new standalone wax-seal piece
 ## (transparent background, no nine-patch margin of its own — it's placed by
 ## whoever consumes it, not stretched).
+##
+## UI Polish Wave 2 Task W1 (designer: boxes read "gestaucht und gestreckt"
+## [squished and stretched], patterns unnatural, large panels pixelated —
+## city building menu background + elderbeast background named explicitly).
+## ROOT CAUSE: both those panels call GameManager.make_panel_style() directly
+## (full-resolution frame texture, not the compact-theme downscale) and are
+## routinely 600-1000+ px tall/wide, while the OLD FRAME_SIZE center was only
+## 192-64=128 texture px — a 5-8x magnification of every stain blob. FIX:
+## grow FRAME_SIZE/NOTIF_SIZE (more native texture detail for the stretchable
+## center) while leaving FRAME_MARGIN/NOTIF_MARGIN UNCHANGED.
+## WHY margin doesn't move (deliberately diverges from an earlier "e.g. 512²
+## with margin 85" sketch of this task): StyleBoxTexture/NinePatchRect corner
+## regions are Godot-documented to draw at their exact TEXTURE-PIXEL size on
+## screen ("higher texture_margin values make the corners draw BIGGER" — i.e.
+## margin is an absolute on-screen pixel count, not a fraction of the canvas)
+## — this is nine-patch scaling's entire point (fixed-width border, stretchy
+## middle) and is exactly why FRAME_MARGIN already survived the 24->32 bump
+## above unchanged in game_manager.gd's runtime texture_margin. Scaling the
+## canvas up while holding the margin's absolute value fixed is therefore
+## sufficient BY ITSELF to satisfy "on-screen border thickness stays exactly
+## current" (not just approximately) — growing the margin too would make the
+## rendered border literally thicker, the opposite of the brief's ask.
+## Net effect at FRAME_SIZE 192->512 (margin unchanged): center goes
+## 128 -> 448 texture px, a 3.5x cut to the magnification factor on every
+## real panel, for free, with zero corner/seal-position math to redo (every
+## corner/seal/underline call below is already expressed in margin-relative
+## or FRAME_SIZE-relative terms, so it re-centers on the bigger canvas
+## automatically). axis_stretch TILE_FIT for the center was evaluated as the
+## brief's alternative and REJECTED: the stain field (_paint_stains below) is
+## not edge-seamless, so tiling it across a large panel's multi-tile axis
+## would repeat the SAME identifiable blob cluster verbatim — precisely the
+## "repeating the small pattern many times looks bad, needs variation, not
+## too much symmetry" failure the designer has already flagged once (Task P8
+## report). Bake-bigger has no such risk, so it's the only approach used.
+## NOTIF_SIZE keeps the same "+32 over FRAME_SIZE" relationship as before,
+## scaled: 512+64=576 (the old 192->224 delta was +32; doubled here to stay
+## proportionate to the new canvas rather than shrinking to a rounding error).
 ## ─────────────────────────────────────────────────────────────────────────
-const FRAME_SIZE := Vector2i(192, 192)       # frame nine-patch canvas
-const FRAME_MARGIN := 32                     # nine-patch texture margin, all 4 sides (corner seals live inside this band)
-const BTN_SIZE := Vector2i(96, 48)           # button nine-patch canvas
+const FRAME_SIZE := Vector2i(512, 512)       # frame nine-patch canvas (Task W1: was 192 — see contract note above)
+const FRAME_MARGIN := 32                     # nine-patch texture margin, all 4 sides (corner seals live inside this band) — UNCHANGED, see contract note above
+const BTN_SIZE := Vector2i(96, 48)           # button nine-patch canvas (kept as-is: buttons aren't the named large-panel complaint; see ORNATE_SIZE/COMPACT_BTN_SIZE below for the dedicated special/compact button pieces this task adds instead)
 const BTN_MARGIN := 12                       # button nine-patch margin
-const NOTIF_SIZE := Vector2i(224, 224)
+const NOTIF_SIZE := Vector2i(576, 576)       # Task W1: was 224, grown with FRAME_SIZE — see contract note above
 const NOTIF_MARGIN := 32
 const SEAL_SIZE := Vector2i(64, 64)          # standalone wax-seal piece, transparent bg, no nine-patch
 
-const PIECES := ["frame", "btn_normal", "btn_hover", "btn_pressed", "btn_disabled", "notification", "seal"]
+## Task W1 — "Upgrade to Level N" / "Found Settlement" deserve elaborate/
+## beautified buttons (designer: "as they are special"). Sized bigger than
+## BTN_SIZE (both canvas AND margin) so a squiggle double-border + 4 corner
+## flourishes have real room instead of fighting BTN_MARGIN's already-tight
+## 12px band; these two call sites are always big two-line buttons
+## (campaign_hud.gd make_cost_button two_line=true, ~240-280px wide in
+## practice) so there's no tiny-icon-button use case to also serve here,
+## unlike BTN_SIZE.
+const ORNATE_SIZE := Vector2i(144, 64)
+const ORNATE_MARGIN := 18
 
-const CONTACT_VP_SIZE := Vector2i(940, 1160)  # +30 (Task 5b round 2) for the standalone-seal row; height grown (Task P8) to fit the new 900x700 stretched sample below the original 410px band, judging the denser/asymmetric frame stain field at the scale the designer's "stretched too much area" complaint was actually about
+## Task W1 — dedicated compact-scale button bake (designer: squiggle should
+## survive in "this menu and the top bar"). ROOT CAUSE found while
+## implementing: campaign_hud.gd sets `theme = GameManager.get_compact_theme()`
+## on the WHOLE HUD Control (campaign_hud.gd:158), so EVERY Button in the
+## entire campaign HUD subtree — top bar, city panel, elderbeast panel, every
+## dialog opened from the HUD — resolves its Button stylebox from the compact
+## theme, not the full-size root one (root-theme buttons only render crisp on
+## screens the HUD doesn't own, e.g. faction-select — matches the designer's
+## "I liked their use in OTHER PLACES"). The compact theme's old approach
+## (`_scaled_image_texture`: load the full BTN_SIZE 96x48/margin-12 bake,
+## Lanczos-downscale by 4 to 24x12/margin-3 at runtime) crushes the ~1px
+## wobble amplitude to sub-pixel — it cannot survive that resample as a
+## visible line, only as a soft blur. A dedicated bake at a coarser, bolder
+## wobble (tuned for this canvas, not a shrunk copy of BTN_SIZE's) fixes the
+## small end. Sized bigger than the brief's illustrative "48x24/margin 6"
+## because this codebase's actual compact-themed buttons span a much wider
+## range than "tiny top bar icon" — found_btn is 280px wide, upgrade_btn/
+## demolish_btn/training upgrade buttons are ~240px (see campaign_hud.gd
+## around line 8483, 8425, 9678) — a slightly bigger source (64x32/margin 8
+## vs. 48x24/margin 6) meaningfully cuts the magnification these bigger
+## buttons still suffer (a nine-patch center is stretched either way; a
+## bigger source just needs less stretch) without giving up crispness at the
+## small end.
+const COMPACT_BTN_SIZE := Vector2i(64, 32)
+const COMPACT_BTN_MARGIN := 8
+
+const PIECES := ["frame", "btn_normal", "btn_hover", "btn_pressed", "btn_disabled", "notification", "seal",
+	"btn_ornate_normal", "btn_ornate_hover", "btn_ornate_pressed", "btn_ornate_disabled",
+	"btn_compact_normal", "btn_compact_hover", "btn_compact_pressed", "btn_compact_disabled"]
+
+const CONTACT_VP_SIZE := Vector2i(1340, 2000)  # Task W1: widened for the new 1300x300 wide-flat sample, heightened for the single-column layout (thumbnails -> btn/ornate/compact rows -> 400x260+seal -> 900x700 -> 1300x300), see _paint_contact_sheet's layout doc comment
 const STRETCH_SAMPLE_SIZE := Vector2(400.0, 260.0)
 const BIG_STRETCH_SAMPLE_SIZE := Vector2(900.0, 700.0)  # Task P8 — designer-requested large-panel judging sample
-const BIG_STRETCH_SAMPLE_Y := 440.0  # top of the big-sample section, clear of the 410px original band
+const BIG_STRETCH_SAMPLE_Y := 936.0  # below the 400x260/seal row (644 + 260 + 32 label clearance) — Task W1 re-flowed this whole sheet to a single vertical column, see _paint_contact_sheet
+const WIDE_STRETCH_SAMPLE_SIZE := Vector2(1300.0, 300.0)  # Task W1 (brief: judge non-uniform aspect on a wide-flat sample too, not just the tall 900x700 one)
+const WIDE_STRETCH_SAMPLE_Y := 1668.0  # below the 900x700 sample (936 + 700 + 32 label clearance)
 
 ## Task 2's multi-set contact sheet — one row per SETS entry (12 with neutral
 ## + the 11 factions), each row showing a frame thumb, all 4 button states,
@@ -501,7 +579,18 @@ class _ChromePainter extends Node2D:
 			# organic instead of an obviously regular hexagon; angle_jitter
 			# breaks the even angular spacing that made low-vertex blobs read
 			# as geometric shapes even before any stretch.
-			var verts: int = clampi(int(r * 0.5) + 6, 6, 18)
+			# Task W1 cap raised 18 -> 42: FRAME_SIZE/NOTIF_SIZE grew ~2.6-2.7x
+			# (see the geometry-contract note above _paint_frame) so blob radii
+			# (which scale with `short_side`, see _paint_stains) grew the same
+			# amount — the biggest tier-1 blotches now reach ~110px radius
+			# instead of ~42px, and the *point* of baking bigger is that these
+			# panels can render close to 1:1, where the old 18-vertex cap would
+			# show clearly flat facets on a 110px-radius shape (per-facet arc
+			# length ~2*PI*110/18 =~ 38px of near-straight edge). Scaled the
+			# multiplier down slightly (0.5 -> 0.35) so small/mid blobs don't
+			# over-facet and waste draw calls; the higher ceiling only bites on
+			# the tier-1 blotches that actually need it.
+			var verts: int = clampi(int(r * 0.35) + 8, 8, 42)
 			draw_colored_polygon(_blob(rng, Vector2(cx, cy), r, verts, 0.45, 0.4), Color(tint.r, tint.g, tint.b, a))
 
 	## UI Polish Wave Task P8 (designer root-cause: "the pattern looked nice
@@ -521,11 +610,58 @@ class _ChromePainter extends Node2D:
 	## a visibly tiled small pattern. `rect` sizes this call scales with
 	## (`short_side`), so the same function serves both the 192px frame and
 	## the 224px notification without per-caller tuning.
+	## Task W1: `area_scale` keys blob COUNT to canvas AREA (relative to the
+	## original 192x192 frame baseline) so areal stain density stays constant
+	## as FRAME_SIZE/NOTIF_SIZE grow — otherwise the same fixed counts (7/26/40)
+	## spread over a canvas ~7x bigger in area (512² vs 192²) would read as a
+	## visibly SPARSER pattern than before, undoing the "denser/asymmetric"
+	## work from Task P8. Capped at 6x so an even-bigger future canvas doesn't
+	## runaway the per-bake draw-call count.
+	## Tier-1 (broad blotches) proportion trimmed relative to tier-2/3 (was
+	## 7:26:40, now effectively weighted further toward the fine tiers via a
+	## lower area_scale multiplier on tier 1 alone): the biggest blobs are the
+	## ones that read as visibly ELLIPTICAL once a StyleBoxTexture's default
+	## independent per-axis STRETCH squashes/stretches a non-square panel (the
+	## "gestaucht und gestreckt" complaint) — a wide-flat 1300x300 sample
+	## stretches the center ~2.8x horizontally while MINIFYING it vertically,
+	## so a big circular blotch becomes a visibly flattened ellipse. Smaller
+	## stains suffer the same distortion proportionally less (an ellipse a
+	## few px across doesn't read as "a shape" the way a 100+px one does), so
+	## leaning the density budget toward tier 2/3 is a real mitigation for the
+	## non-uniform-aspect case, not just a bigger-canvas one.
 	func _paint_stains(rng: RandomNumberGenerator, rect: Rect2, tint: Color) -> void:
 		var short_side: float = min(rect.size.x, rect.size.y)
-		_paint_stain_tier(rng, rect, 7, short_side * 0.11, short_side * 0.22, tint, 0.35, 0.85)   # tier 1: broad blotches
-		_paint_stain_tier(rng, rect, 26, short_side * 0.03, short_side * 0.09, tint, 0.7, 1.4)     # tier 2: mid flecks
-		_paint_stain_tier(rng, rect, 40, short_side * 0.01, short_side * 0.03, tint, 1.0, 2.0)     # tier 3: fine speckle
+		var area_scale: float = clampf((rect.size.x * rect.size.y) / (192.0 * 192.0), 1.0, 6.0)
+		_paint_stain_tier(rng, rect, int(7 * min(area_scale, 3.0)), short_side * 0.11, short_side * 0.22, tint, 0.35, 0.85)   # tier 1: broad blotches (scale capped lower — see note above)
+		_paint_stain_tier(rng, rect, int(26 * area_scale), short_side * 0.03, short_side * 0.09, tint, 0.7, 1.4)     # tier 2: mid flecks
+		_paint_stain_tier(rng, rect, int(40 * area_scale), short_side * 0.01, short_side * 0.03, tint, 1.0, 2.0)     # tier 3: fine speckle
+
+	## Task W1 (designer: "training and upgrade buttons should also have a
+	## texture on it, but subtle") — a faint parchment-grain stipple: tiny
+	## (~0.5-1.1px) flecks alternately lightened/darkened off the button's own
+	## fill color at LOW alpha (0.08-0.20), scattered with no tiers/size
+	## variety and no per-blob shape (a single draw_circle each) — deliberately
+	## much plainer than `_paint_stain_tier`'s tiered blotches (that's a
+	## "stain," i.e. weathering; this is "grain," i.e. paper texture — the
+	## brief's own distinction). `rect` should already be inset a few px past
+	## whatever wobble polygon the caller filled, so every fleck lands inside
+	## the visible fill even though this doesn't clip to the wobble's exact
+	## (slightly irregular) outline — safe because the wobble amplitude is
+	## only ~1-1.3px, comfortably smaller than the inset callers use.
+	func _paint_button_grain(rng: RandomNumberGenerator, rect: Rect2, base: Color) -> void:
+		var area_scale: float = (rect.size.x * rect.size.y) / (96.0 * 48.0)
+		var count: int = maxi(12, int(34 * area_scale))
+		for i in count:
+			var x := rng.randf_range(rect.position.x, rect.end.x)
+			var y := rng.randf_range(rect.position.y, rect.end.y)
+			var speck: Color
+			if rng.randf() < 0.5:
+				speck = base.lightened(0.25 + rng.randf() * 0.15)
+			else:
+				speck = base.darkened(0.20 + rng.randf() * 0.15)
+			var a := rng.randf_range(0.08, 0.20)
+			var r := rng.randf_range(0.5, 1.1)
+			draw_circle(Vector2(x, y), r, Color(speck.r, speck.g, speck.b, a))
 
 	## One or more nested hand-inked wobble lines, each `insets[i]` px inside
 	## `rect` at stroke width `widths[i]`, all in one `color` — the frame's
@@ -975,10 +1111,27 @@ class _ChromePainter extends Node2D:
 		# y >= FRAME_MARGIN is the stretchable center region, so a line
 		# placed there (was m + 3 = 35, past the 32px margin) gets thicker
 		# on tall dialogs as the center stretches. m - 4 keeps it fixed at
-		# 28, safely inside the unstretched band.
-		var underline_y := m - 4.0
+		# 27 (Task W1 moved the anchor up 1px, see below), safely inside the
+		# unstretched band.
+		# Task W1 (designer: "the mono color accent line ... is a bit hard to
+		# see on certain colors, maybe it could be a bit wider and have a
+		# shadow") — width 1.5 -> 3.0, plus a 1px near-black shadow line
+		# offset 2.5px below (this is a HORIZONTAL line living in the frame's
+		# "top edge" nine-patch strip — its stroke WIDTH, i.e. vertical
+		# extent, is the only unscaled-on-screen dimension; the strip's
+		# height, margin=32, is fixed regardless of panel width, same as the
+		# corner seals). Anchor moved from m-4 (28) to m-5 (27) so the wider
+		# 3px line (spans ~25.5-28.5) plus the shadow (spans ~29-30) both
+		# stay clear of the 32px margin edge with a safety buffer, instead of
+		# the old single 1.5px line's tighter fit. Shadow drawn FIRST so the
+		# brighter accent line sits visually on top of/hugging it, giving the
+		# line a dark edge that keeps it legible against parchment tones
+		# close to the accent's own hue (the designer's actual complaint).
+		var underline_y := m - 5.0
 		var acc: Color = pal.accent
-		draw_line(Vector2(m, underline_y), Vector2(FRAME_SIZE.x - m, underline_y), Color(acc.r, acc.g, acc.b, 0.55), 1.5)
+		var shadow_ink: Color = pal.ink
+		draw_line(Vector2(m, underline_y + 2.5), Vector2(FRAME_SIZE.x - m, underline_y + 2.5), Color(shadow_ink.r, shadow_ink.g, shadow_ink.b, 0.45), 1.0)
+		draw_line(Vector2(m, underline_y), Vector2(FRAME_SIZE.x - m, underline_y), Color(acc.r, acc.g, acc.b, 0.65), 3.0)
 
 	## Per-state fills exactly per the candidate sheet's parchment button:
 	## normal parchment + ink border; hover pale fill + secondary-emphasis
@@ -1026,6 +1179,11 @@ class _ChromePainter extends Node2D:
 		var closed := wobble.duplicate()
 		closed.append(wobble[0])
 		draw_colored_polygon(wobble, fill)
+		# Task W1 — subtle parchment grain on the fill, inset a couple more px
+		# than the wobble border so every fleck lands inside the (near-rect,
+		# ~1px-wobbly) fill shape; drawn BEFORE the border stroke below so the
+		# ink line still reads as a crisp, unbroken edge on top.
+		_paint_button_grain(rng, border_rect.grow(-3.0), fill)
 		# UI Polish Wave Task P1 ("button color and background color often too
 		# close to each other"): border weight 1.6 -> 2.6 (+1px). The button's
 		# `fill` (parchment/lightened-parchment) sits close in tone to the
@@ -1043,6 +1201,129 @@ class _ChromePainter extends Node2D:
 			# (was `heraldry`, which made hover and pressed states share a
 			# color family — secondary gives hover its own distinct hue).
 			draw_polyline(closed, Color(Color(pal.secondary).r, Color(pal.secondary).g, Color(pal.secondary).b, 0.85), 1.0, true)
+
+	## Task W1 — a small generic corner flourish (paired mirrored petals via
+	## `_leaf_poly`, ink-outlined) for the ornate button pieces. Deliberately
+	## ONE shared shape (recolored via `pal`, same pattern as `_paint_seal`'s
+	## motif system) rather than 12 per-faction flourish motifs — flourishes
+	## are a small ornamental accent, not a faction identity marker the way
+	## the frame's corner seal is, and the seal already carries that role.
+	func _paint_ornate_flourish(pal: Dictionary, center: Vector2, r: float, mirror: Vector2) -> void:
+		# GATE FIX (self-critique round, matches the same failure mode already
+		# documented on _motif_skulloath/_motif_cinderguard/_motif_forsaken
+		# above): first pass used r*0.42-wide petals with a 1.0px-minimum
+		# outline — at this flourish's small radius that outline covered
+		# nearly the whole petal, so `petal_col` (meant to be `pal.accent`,
+		# usually a light gold/cream) barely showed at all; the 4x contact-
+		# sheet corner crop this task added caught it (read as almost pure
+		# dark ink, not the intended accent color). Widened petals + a
+		# thinner relative outline so the fill actually wins the pixel count.
+		var ink: Color = pal.ink
+		var petal_col: Color = pal.accent
+		for ang in [deg_to_rad(20.0), deg_to_rad(70.0)]:
+			var dirv := Vector2(cos(ang), sin(ang))
+			var tip_local := dirv * r
+			var tip_p := center + Vector2(tip_local.x * mirror.x, tip_local.y * mirror.y)
+			var petal := _leaf_poly(center, tip_p, r * 0.65)
+			draw_colored_polygon(petal, petal_col)
+			var pc := petal.duplicate()
+			pc.append(petal[0])
+			draw_polyline(pc, ink, max(1.0, r * 0.07), true)
+		draw_circle(center, r * 0.14, ink)
+
+	## Task W1 (designer: "upgrade and found settlement should have more
+	## elaborate/beautified buttons to them as they are special") — richer
+	## sibling of `_paint_button`: same fill/wobble-fill-matches-border
+	## discipline (no P8-style square peeking past the squiggle) plus a soft
+	## accent-tinted highlight wash, an inner `secondary` decorative border
+	## line (echoing the frame's own outer-ink/inner-secondary double border,
+	## so "special" buttons visually rhyme with the frame chrome instead of
+	## looking like an unrelated design), and 4 corner flourishes living
+	## inside ORNATE_MARGIN. Grain included too (still "subtle" per the
+	## brief, just on a fancier base).
+	func _paint_button_ornate(rng: RandomNumberGenerator, pal: Dictionary, state: String) -> void:
+		var rect := Rect2(Vector2.ZERO, Vector2(ORNATE_SIZE))
+		var fill: Color
+		var border: Color = pal.ink
+		match state:
+			"normal":
+				fill = pal.parchment
+			"hover":
+				fill = Color(pal.parchment).lightened(0.10)
+			"pressed":
+				fill = pal.heraldry
+			_:  # "disabled"
+				var p: Color = pal.parchment
+				var g := (p.r + p.g + p.b) / 3.0
+				fill = p.lerp(Color(g, g, g), 0.55)
+				border = Color(pal.ink).lerp(fill, 0.5)
+		var border_rect := rect.grow(-2.0)
+		var wv := _wobble_variant(set_id, piece)
+		var wobble := _jittered_rect_poly(rng, border_rect, wv.segs, wv.amp_px, wv.envelope_freq)
+		var closed := wobble.duplicate()
+		closed.append(wobble[0])
+		draw_colored_polygon(wobble, fill)
+		_paint_button_grain(rng, border_rect.grow(-3.0), fill)
+		# Soft highlight wash — a single big soft blob, not a real gradient
+		# (immediate-mode 2D drawing has no cheap radial-gradient fill), but
+		# reads as an embossed sheen at the low alpha used here.
+		var acc: Color = pal.accent
+		var wash_center := Vector2(rect.size.x * 0.5, rect.size.y * 0.32)
+		draw_colored_polygon(_blob(rng, wash_center, rect.size.x * 0.34, 14, 0.30, 0.5), Color(acc.r, acc.g, acc.b, 0.10))
+		draw_polyline(closed, border, 2.6, true)
+		if state == "hover":
+			draw_polyline(closed, Color(Color(pal.secondary).r, Color(pal.secondary).g, Color(pal.secondary).b, 0.85), 1.0, true)
+		# Inner decorative line — fresh wobble polygon (doesn't need to match
+		# the fill's, unlike the outer line), same `wv` hand so it doesn't
+		# read as a mismatched second squiggle.
+		_paint_wobble_border(rng, border_rect.grow(-1.0), [4.0], [1.4], pal.secondary, wv)
+		# Corner flourishes, inside ORNATE_MARGIN, mirrored into all 4 corners
+		# the same way _paint_frame places its corner seals.
+		var m := float(ORNATE_MARGIN)
+		var fr := m * 0.50  # kept clear of the margin edge at both flourish angles (20/70 deg) even after the GATE-FIX petal widening — see _paint_ornate_flourish
+		var corners := [
+			{c = Vector2(m * 0.5, m * 0.5), mir = Vector2(1, 1)},
+			{c = Vector2(ORNATE_SIZE.x - m * 0.5, m * 0.5), mir = Vector2(-1, 1)},
+			{c = Vector2(m * 0.5, ORNATE_SIZE.y - m * 0.5), mir = Vector2(1, -1)},
+			{c = Vector2(ORNATE_SIZE.x - m * 0.5, ORNATE_SIZE.y - m * 0.5), mir = Vector2(-1, -1)},
+		]
+		for cd in corners:
+			_paint_ornate_flourish(pal, cd.c, fr, cd.mir)
+
+	## Task W1 (designer: buttons in the city menu + top bar should get the
+	## squiggle treatment too) — dedicated small-canvas bake for
+	## GameManager.get_compact_theme() (see COMPACT_BTN_SIZE's doc comment for
+	## why a runtime-rescaled copy of the root BTN_SIZE bake can't show a
+	## readable squiggle at this scale). Same fill/border-matching discipline
+	## as `_paint_button`, but with a bolder, coarser wobble (hand-picked, not
+	## from WOBBLE_VARIANTS — those amplitudes were tuned for the 96px-wide
+	## root canvas and would still under-shoot here) and NO grain (a
+	## sub-2px-tall texture has no room for a legible "fine noise vs. stain"
+	## distinction — it would just read as dither).
+	func _paint_button_compact(rng: RandomNumberGenerator, pal: Dictionary, state: String) -> void:
+		var rect := Rect2(Vector2.ZERO, Vector2(COMPACT_BTN_SIZE))
+		var fill: Color
+		var border: Color = pal.ink
+		match state:
+			"normal":
+				fill = pal.parchment
+			"hover":
+				fill = Color(pal.parchment).lightened(0.10)
+			"pressed":
+				fill = pal.heraldry
+			_:  # "disabled"
+				var p: Color = pal.parchment
+				var g := (p.r + p.g + p.b) / 3.0
+				fill = p.lerp(Color(g, g, g), 0.55)
+				border = Color(pal.ink).lerp(fill, 0.5)
+		var border_rect := rect.grow(-1.5)
+		var wobble := _jittered_rect_poly(rng, border_rect, 4, 1.3, 1.0)
+		var closed := wobble.duplicate()
+		closed.append(wobble[0])
+		draw_colored_polygon(wobble, fill)
+		draw_polyline(closed, border, 1.8, true)
+		if state == "hover":
+			draw_polyline(closed, Color(Color(pal.secondary).r, Color(pal.secondary).g, Color(pal.secondary).b, 0.85), 0.9, true)
 
 	## Frame variant: doubled outer border (two nested wobble-line pairs)
 	## and a single larger seal at top-center instead of the 4 corners.
@@ -1087,6 +1368,15 @@ class _ChromePainter extends Node2D:
 	## as blank white. Pre-building in _process() (see the SceneTree driver
 	## below) is the pattern tools_ui_style_candidates.gd's sheet mode uses
 	## and is the proven-safe order.
+	## Task W1 — laid out as ONE vertical sequence (was a left column of native
+	## thumbnails + a separate right column of stretch samples). Growing
+	## FRAME_SIZE/NOTIF_SIZE to 512/576 (see the geometry-contract note above
+	## _paint_frame) made the old "draw_texture at native size" thumbnails
+	## themselves as big as the whole old sheet, which would have collided
+	## with a hand-placed right column doing its own independent Y math — a
+	## single top-to-bottom flow sidesteps that class of bug entirely (each
+	## section only needs to know the PREVIOUS section's bottom edge, not the
+	## full 2D layout of everything else on the sheet).
 	func _paint_contact_sheet(sid: StringName, textures: Dictionary) -> void:
 		draw_rect(Rect2(Vector2.ZERO, Vector2(CONTACT_VP_SIZE)), Color(0.10, 0.09, 0.08))
 		draw_string(ThemeDB.fallback_font, Vector2(20, 24), "UI CHROME CONTACT SHEET — %s" % String(sid).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.92, 0.88, 0.78))
@@ -1094,22 +1384,63 @@ class _ChromePainter extends Node2D:
 		var frame_tex: Texture2D = textures["frame"]
 		var notif_tex: Texture2D = textures["notification"]
 
+		# Frame/notification are now baked at 512/576px (Task W1) — too big to
+		# draw at native size on a contact sheet, so these are fixed-size
+		# THUMBNAILS (draw_texture_rect, scaled) rather than 1:1 previews; the
+		# 400x260/900x700/1300x300 nine-patch-stretch samples further down are
+		# what actually prove pixel-level quality, not this thumbnail.
+		var thumb_size := Vector2(200, 200)
 		var frame_pos := Vector2(20, 40)
-		draw_string(ThemeDB.fallback_font, frame_pos + Vector2(0, -6), "frame", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
-		draw_texture(frame_tex, frame_pos)
+		draw_string(ThemeDB.fallback_font, frame_pos + Vector2(0, -6), "frame (thumbnail, baked %dx%d)" % [FRAME_SIZE.x, FRAME_SIZE.y], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
+		draw_texture_rect(frame_tex, Rect2(frame_pos, thumb_size), false)
 
 		var notif_pos := Vector2(240, 40)
-		draw_string(ThemeDB.fallback_font, notif_pos + Vector2(0, -6), "notification", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
-		draw_texture(notif_tex, notif_pos)
+		draw_string(ThemeDB.fallback_font, notif_pos + Vector2(0, -6), "notification (thumbnail, baked %dx%d)" % [NOTIF_SIZE.x, NOTIF_SIZE.y], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
+		draw_texture_rect(notif_tex, Rect2(notif_pos, thumb_size), false)
 
 		var btn_keys := ["btn_normal", "btn_hover", "btn_pressed", "btn_disabled"]
 		var bx := 20.0
-		var by := 280.0
+		var by := 270.0
 		for key in btn_keys:
 			var tex: Texture2D = textures[key]
 			draw_string(ThemeDB.fallback_font, Vector2(bx, by - 6), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.8, 0.76, 0.68))
 			draw_texture(tex, Vector2(bx, by))
 			bx += 110.0
+
+		# Task W1 — ornate button row (native size, ORNATE_SIZE is bigger than
+		# BTN_SIZE so these need their own row spacing).
+		var ornate_keys := ["btn_ornate_normal", "btn_ornate_hover", "btn_ornate_pressed", "btn_ornate_disabled"]
+		var obx := 20.0
+		var oby := 348.0
+		draw_string(ThemeDB.fallback_font, Vector2(obx, oby - 20), "ornate (Upgrade/Found Settlement) — native size", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
+		for key in ornate_keys:
+			var otex: Texture2D = textures[key]
+			draw_string(ThemeDB.fallback_font, Vector2(obx, oby - 6), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.8, 0.76, 0.68))
+			draw_texture(otex, Vector2(obx, oby))
+			obx += 160.0
+		# Self-critique aid (Task W1): the corner flourish + double border is
+		# small at native ORNATE_SIZE — a 4x crop of the normal state's
+		# top-left corner so it can actually be judged without squinting.
+		var ornate_normal_tex: Texture2D = textures["btn_ornate_normal"]
+		var ornate_zoom_pos := Vector2(obx + 10.0, oby)
+		draw_string(ThemeDB.fallback_font, ornate_zoom_pos + Vector2(0, -6), "corner 4x", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.8, 0.76, 0.68))
+		draw_texture_rect_region(ornate_normal_tex, Rect2(ornate_zoom_pos, Vector2(40, 40) * 4.0), Rect2(Vector2.ZERO, Vector2(40, 40)))
+
+		# Task W1 — compact button row: native size (tiny — this is exactly
+		# what get_compact_theme() now bakes/loads directly) PLUS a 4x-zoomed
+		# copy so the squiggle survival can actually be judged without
+		# squinting, since "native size" for this piece is only 64x32.
+		var compact_keys := ["btn_compact_normal", "btn_compact_hover", "btn_compact_pressed", "btn_compact_disabled"]
+		var cbx := 20.0
+		var cby := 442.0
+		draw_string(ThemeDB.fallback_font, Vector2(cbx, cby - 20), "compact (top bar / city menu, via get_compact_theme) — native, then 4x zoom", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
+		for key in compact_keys:
+			var ctex: Texture2D = textures[key]
+			draw_string(ThemeDB.fallback_font, Vector2(cbx, cby - 6), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.8, 0.76, 0.68))
+			draw_texture(ctex, Vector2(cbx, cby))
+			var zoom_rect := Rect2(Vector2(cbx, cby + 44.0), Vector2(COMPACT_BTN_SIZE) * 4.0)
+			draw_texture_rect(ctex, zoom_rect, false)
+			cbx += 280.0
 
 		var sb := StyleBoxTexture.new()
 		sb.texture = frame_tex
@@ -1117,15 +1448,24 @@ class _ChromePainter extends Node2D:
 		sb.texture_margin_top = FRAME_MARGIN
 		sb.texture_margin_right = FRAME_MARGIN
 		sb.texture_margin_bottom = FRAME_MARGIN
-		var stretch_pos := Vector2(500, 40)
+		var stretch_pos := Vector2(20, 644)
 		draw_string(ThemeDB.fallback_font, stretch_pos + Vector2(0, -6), "frame stretched to 400x260 (StyleBoxTexture nine-patch)", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
 		draw_style_box(sb, Rect2(stretch_pos, STRETCH_SAMPLE_SIZE))
 
 		# Task 5b round 2 — standalone seal.png at its real 64x64 size.
 		var seal_tex: Texture2D = textures["seal"]
-		var seal_pos := Vector2(500, 315)
+		var seal_pos := Vector2(460, 644)
 		draw_string(ThemeDB.fallback_font, seal_pos + Vector2(0, -6), "seal (64px, real size)", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
 		draw_texture(seal_tex, seal_pos)
+
+		# Self-critique aid (Task W1 accent-underline widen+shadow ask) — a
+		# 2.5x crop straight off the baked frame texture's top-left title-bar
+		# strip (clear of the corner seal), so the widened line + its shadow
+		# can be judged directly instead of squinting at the 400x260 sample.
+		var underline_src := Rect2(Vector2(FRAME_MARGIN, 0), Vector2(240, FRAME_MARGIN))
+		var underline_zoom_pos := Vector2(620, 644)
+		draw_string(ThemeDB.fallback_font, underline_zoom_pos + Vector2(0, -6), "accent underline + shadow, 2.5x crop", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.8, 0.76, 0.68))
+		draw_texture_rect_region(frame_tex, Rect2(underline_zoom_pos, underline_src.size * 2.5), underline_src)
 
 		# Task P8 (designer: pattern density was tuned for the small preview
 		# then stretched over way too much area — judge the fix at a size
@@ -1135,6 +1475,18 @@ class _ChromePainter extends Node2D:
 		var big_pos := Vector2(20, BIG_STRETCH_SAMPLE_Y)
 		draw_string(ThemeDB.fallback_font, big_pos + Vector2(0, -8), "frame stretched to 900x700 (large-panel density check)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.8, 0.76, 0.68))
 		draw_style_box(sb, Rect2(big_pos, BIG_STRETCH_SAMPLE_SIZE))
+
+		# Task W1 (brief: judge non-uniform-aspect stretch on a WIDE-FLAT
+		# sample too, not just the tall 900x700 one) — same frame texture/
+		# margins again, at 1300x300: the center gets stretched ~2.8x
+		# horizontally while being MINIFIED vertically (well under 1:1),
+		# which is the actual worst case for per-axis-independent STRETCH
+		# deforming a circular stain into a visible ellipse (see the
+		# _paint_stains doc comment for why the tier balance was adjusted
+		# with this exact case in mind).
+		var wide_pos := Vector2(20, WIDE_STRETCH_SAMPLE_Y)
+		draw_string(ThemeDB.fallback_font, wide_pos + Vector2(0, -8), "frame stretched to 1300x300 (wide-flat / non-uniform-aspect check)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.8, 0.76, 0.68))
+		draw_style_box(sb, Rect2(wide_pos, WIDE_STRETCH_SAMPLE_SIZE))
 
 	## Task 2 — one composite sheet across all 12 sets (`_contact_factions.png`):
 	## a row per set with a frame thumbnail, all 4 button states, and a
@@ -1242,6 +1594,22 @@ class _ChromePainter extends Node2D:
 				_paint_notification(rng, pal)
 			"seal":
 				_paint_seal_standalone(pal)
+			"btn_ornate_normal":
+				_paint_button_ornate(rng, pal, "normal")
+			"btn_ornate_hover":
+				_paint_button_ornate(rng, pal, "hover")
+			"btn_ornate_pressed":
+				_paint_button_ornate(rng, pal, "pressed")
+			"btn_ornate_disabled":
+				_paint_button_ornate(rng, pal, "disabled")
+			"btn_compact_normal":
+				_paint_button_compact(rng, pal, "normal")
+			"btn_compact_hover":
+				_paint_button_compact(rng, pal, "hover")
+			"btn_compact_pressed":
+				_paint_button_compact(rng, pal, "pressed")
+			"btn_compact_disabled":
+				_paint_button_compact(rng, pal, "disabled")
 			_:
 				push_warning("No painter for piece: %s" % piece)
 
@@ -1326,6 +1694,10 @@ func _process(_delta: float) -> bool:
 						sz = NOTIF_SIZE
 					"seal":
 						sz = SEAL_SIZE
+					"btn_ornate_normal", "btn_ornate_hover", "btn_ornate_pressed", "btn_ornate_disabled":
+						sz = ORNATE_SIZE
+					"btn_compact_normal", "btn_compact_hover", "btn_compact_pressed", "btn_compact_disabled":
+						sz = COMPACT_BTN_SIZE
 					_:
 						sz = BTN_SIZE
 				_vp.size = sz
@@ -1352,6 +1724,14 @@ func _process(_delta: float) -> bool:
 					"btn_disabled": ImageTexture.create_from_image(_images["%s_btn_disabled" % String(sid2)]),
 					"notification": ImageTexture.create_from_image(_images["%s_notification" % String(sid2)]),
 					"seal": ImageTexture.create_from_image(_images["%s_seal" % String(sid2)]),
+					"btn_ornate_normal": ImageTexture.create_from_image(_images["%s_btn_ornate_normal" % String(sid2)]),
+					"btn_ornate_hover": ImageTexture.create_from_image(_images["%s_btn_ornate_hover" % String(sid2)]),
+					"btn_ornate_pressed": ImageTexture.create_from_image(_images["%s_btn_ornate_pressed" % String(sid2)]),
+					"btn_ornate_disabled": ImageTexture.create_from_image(_images["%s_btn_ornate_disabled" % String(sid2)]),
+					"btn_compact_normal": ImageTexture.create_from_image(_images["%s_btn_compact_normal" % String(sid2)]),
+					"btn_compact_hover": ImageTexture.create_from_image(_images["%s_btn_compact_hover" % String(sid2)]),
+					"btn_compact_pressed": ImageTexture.create_from_image(_images["%s_btn_compact_pressed" % String(sid2)]),
+					"btn_compact_disabled": ImageTexture.create_from_image(_images["%s_btn_compact_disabled" % String(sid2)]),
 				}
 			_:  # "factions_contact" — 12-row cross-set sheet, all sets already baked
 				_vp.size = FACTIONS_CONTACT_VP_SIZE

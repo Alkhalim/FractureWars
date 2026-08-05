@@ -8425,6 +8425,12 @@ func _show_city_panel(city_id: StringName) -> void:
 		var upgrade_btn := GameManager.make_cost_button(
 			"Upgrade to Level %d" % (city.level + 1), upgrade_cost, upgrade_time,
 			fs_upgrade.resources if fs_upgrade else {&"_": 0}, 15, "", true)
+		# Task W1 (designer: Upgrade/Found Settlement "should have more
+		# elaborate/beautified buttons... as they are special") — opts into
+		# the ornate squiggle-border/flourish/richer-fill chrome registered
+		# on both GameManager themes (see game_manager.gd's OrnateButton
+		# wiring in _build_theme_for_set/get_compact_theme).
+		upgrade_btn.theme_type_variation = &"OrnateButton"
 		upgrade_btn.disabled = not can_afford
 		upgrade_btn.pressed.connect(func() -> void:
 			if GameManager.city_system.start_upgrade(city_id):
@@ -8483,6 +8489,7 @@ func _show_city_panel(city_id: StringName) -> void:
 		var found_btn := GameManager.make_cost_button(
 			"Found Settlement", CitySystem.SETTLEMENT_FOUNDING_COST, 0,
 			found_fs.resources if found_fs else {&"_": 0}, 15, "", true)
+		found_btn.theme_type_variation = &"OrnateButton"  # Task W1 — see upgrade_btn's comment above
 		found_btn.custom_minimum_size.x = 280
 		found_btn.disabled = not can_afford_found
 		found_btn.pressed.connect(_on_found_settlement_pressed.bind(city_id))

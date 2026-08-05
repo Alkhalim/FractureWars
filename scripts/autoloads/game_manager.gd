@@ -83,12 +83,40 @@ func _fade_in(duration: float) -> void:
 # slicing) — replaces the old hand-measured `_BTN_REGION`/`_FRAME_TEX_MARGIN`
 # magic numbers that were scanned off the retired button1.png/frame1.png/
 # notification1.png marble artwork.
-const _FRAME_SIZE := Vector2i(192, 192)
-const _FRAME_MARGIN := 32  # Task 5b round 2 (ART GATE seal-readability request): was 24, moves together with tools_generate_ui_chrome.gd's FRAME_MARGIN
+## UI Polish Wave 2 Task W1: _FRAME_SIZE/_NOTIF_SIZE grew (192->512, 224->576)
+## to fix large-panel stain magnification (city panel, elderbeast panel —
+## both call make_panel_style() directly, full-resolution chrome). The
+## MARGIN constants deliberately did NOT move with them — see
+## tests/tools_generate_ui_chrome.gd's geometry-contract comment above
+## _paint_frame for the full reasoning (short version: StyleBoxTexture corner/
+## edge regions draw at their exact texture-pixel size on screen regardless of
+## canvas size, so holding margin fixed while growing the canvas is what
+## keeps on-screen border thickness unchanged while giving the stretchable
+## center far more native detail).
+const _FRAME_SIZE := Vector2i(512, 512)
+const _FRAME_MARGIN := 32  # Task 5b round 2 (ART GATE seal-readability request): was 24, moves together with tools_generate_ui_chrome.gd's FRAME_MARGIN. Task W1: canvas grew, this did not — see note above.
 const _BTN_SIZE := Vector2i(96, 48)
 const _BTN_MARGIN := 12
-const _NOTIF_SIZE := Vector2i(224, 224)
+const _NOTIF_SIZE := Vector2i(576, 576)
 const _NOTIF_MARGIN := 32
+
+## Task W1 — "Upgrade to Level N" / "Found Settlement" ornate buttons
+## (squiggle double-border + corner flourishes + richer fill). Mirrors
+## tests/tools_generate_ui_chrome.gd's ORNATE_SIZE/ORNATE_MARGIN.
+const _ORNATE_SIZE := Vector2i(144, 64)
+const _ORNATE_MARGIN := 18
+const _ORNATE_CONTENT := Vector4(22, 15, 22, 15)  # L T R B — clear of _ORNATE_MARGIN (18), same "a few px more than the texture margin" rule as _BTN_CONTENT
+
+## Task W1 — dedicated compact-scale button bake (see the generator's
+## COMPACT_BTN_SIZE doc comment for why: campaign_hud.gd's whole HUD subtree
+## runs under get_compact_theme(), so this is what MOST buttons in the game
+## actually render with, and the old runtime 4x-downscale of the root bake
+## crushed the ~1px wobble to sub-pixel). Mirrors the generator's
+## COMPACT_BTN_SIZE/COMPACT_BTN_MARGIN — margin used directly (no /4 divide;
+## this texture is already baked at compact scale, unlike the frame/panel
+## compact style below which still runtime-downscales the root bake).
+const _COMPACT_BTN_SIZE := Vector2i(64, 32)
+const _COMPACT_BTN_MARGIN := 8
 
 # ── Bundled OFL fonts (Task 5, picked at the font ART GATE from 4 candidates
 # baked by tests/tools_font_candidate_sheet.gd — sheet + tool kept committed
@@ -244,6 +272,25 @@ func _build_theme_for_set(set_id: StringName) -> Theme:
 		theme.set_stylebox("disabled", "Button", _make_chrome_btn_style(_btn_disabled_texture if _btn_disabled_texture else _btn_texture))
 		theme.set_stylebox("focus", "Button", _make_chrome_btn_style(_btn_hover_texture if _btn_hover_texture else _btn_texture))
 
+	# ── "OrnateButton" type variation (Task W1, designer: Upgrade/Found
+	# Settlement "should have more elaborate/beautified buttons... as they are
+	# special") — a type variation falls back to its base type ("Button",
+	# just claimed above) for any property it doesn't set itself, so only the
+	# 5 styleboxes need registering here; font colors/size are inherited.
+	# Call sites (campaign_hud.gd) opt in via
+	# `btn.theme_type_variation = &"OrnateButton"`. ──
+	var ornate_tex := _load_chrome_piece(set_id, "btn_ornate_normal")
+	if ornate_tex:
+		var ornate_hover := _load_chrome_piece(set_id, "btn_ornate_hover")
+		var ornate_pressed := _load_chrome_piece(set_id, "btn_ornate_pressed")
+		var ornate_disabled := _load_chrome_piece(set_id, "btn_ornate_disabled")
+		theme.set_type_variation(&"OrnateButton", &"Button")
+		theme.set_stylebox("normal", &"OrnateButton", _make_ornate_btn_style(ornate_tex))
+		theme.set_stylebox("hover", &"OrnateButton", _make_ornate_btn_style(ornate_hover if ornate_hover else ornate_tex))
+		theme.set_stylebox("pressed", &"OrnateButton", _make_ornate_btn_style(ornate_pressed if ornate_pressed else ornate_tex, true))
+		theme.set_stylebox("disabled", &"OrnateButton", _make_ornate_btn_style(ornate_disabled if ornate_disabled else ornate_tex))
+		theme.set_stylebox("focus", &"OrnateButton", _make_ornate_btn_style(ornate_hover if ornate_hover else ornate_tex))
+
 	# Button font — dark ink on the (now light) parchment/heraldry fills;
 	# pressed state's heraldry fill gets light parchment text per the
 	# generator's "light text expected" note on btn_pressed.png.
@@ -391,6 +438,25 @@ func _make_chrome_btn_style(tex: Texture2D, pressed := false) -> StyleBoxTexture
 	s.content_margin_top = _BTN_CONTENT.y + (2.0 if pressed else 0.0)
 	s.content_margin_bottom = _BTN_CONTENT.w - (2.0 if pressed else 0.0)
 	return s
+
+## Task W1 — "OrnateButton" type variation stylebox factory (see the
+## `_ORNATE_SIZE`/`_ORNATE_MARGIN` doc comment). Same pressed-state 2px
+## content-margin nudge as `_make_chrome_btn_style` (visually "pushes" the
+## label down/right by 2px on press) — kept identical here so Ornate and
+## regular buttons feel consistent when both appear in the same panel.
+func _make_ornate_btn_style(tex: Texture2D, pressed := false) -> StyleBoxTexture:
+	var s := StyleBoxTexture.new()
+	s.texture = tex
+	s.texture_margin_left = _ORNATE_MARGIN
+	s.texture_margin_top = _ORNATE_MARGIN
+	s.texture_margin_right = _ORNATE_MARGIN
+	s.texture_margin_bottom = _ORNATE_MARGIN
+	s.content_margin_left = _ORNATE_CONTENT.x
+	s.content_margin_right = _ORNATE_CONTENT.z
+	s.content_margin_top = _ORNATE_CONTENT.y + (2.0 if pressed else 0.0)
+	s.content_margin_bottom = _ORNATE_CONTENT.w - (2.0 if pressed else 0.0)
+	return s
+
 
 ## Small procedural circle icon (slider grabber) — flat colors at 14px don't
 ## need a SubViewport bake; a hand-antialiased CPU fill runs fine headless
@@ -859,26 +925,77 @@ func get_compact_theme() -> Theme:
 		panel.content_margin_right = _FRAME_CONTENT.z / 4.0
 		panel.content_margin_bottom = _FRAME_CONTENT.w / 4.0
 		theme.set_stylebox("panel", "PanelContainer", panel)
-	if _btn_texture:
+	# Task W1 — was `_scaled_image_texture(_btn_texture, 4)`: a runtime
+	# Lanczos downscale of the root BTN_SIZE bake to 1/4 size. Switched to
+	# loading the DEDICATED `btn_compact_*` bake directly (baked at target
+	# scale with a bolder wobble tuned for it — see COMPACT_BTN_SIZE's doc
+	# comment on the generator side for why the runtime-rescale approach
+	# couldn't show a readable squiggle at this size). Falls back to the old
+	# runtime-rescale only if a checkout has no compact bake at all (partial
+	# asset set) so this never hard-fails to no button style.
+	var compact_btn_tex := _load_chrome_piece(chrome_set_id, "btn_compact_normal")
+	if compact_btn_tex:
+		var compact_hover := _load_chrome_piece(chrome_set_id, "btn_compact_hover")
+		var compact_pressed := _load_chrome_piece(chrome_set_id, "btn_compact_pressed")
+		var compact_disabled := _load_chrome_piece(chrome_set_id, "btn_compact_disabled")
+		theme.set_stylebox("normal", "Button", _make_compact_btn_style(compact_btn_tex))
+		theme.set_stylebox("hover", "Button", _make_compact_btn_style(compact_hover if compact_hover else compact_btn_tex))
+		theme.set_stylebox("pressed", "Button", _make_compact_btn_style(compact_pressed if compact_pressed else compact_btn_tex, true))
+		theme.set_stylebox("disabled", "Button", _make_compact_btn_style(compact_disabled if compact_disabled else compact_btn_tex))
+		theme.set_stylebox("focus", "Button", _make_compact_btn_style(compact_hover if compact_hover else compact_btn_tex))
+	elif _btn_texture:
 		var btn_tex := _scaled_image_texture(_btn_texture, 4)
 		var hover_tex := _scaled_image_texture(_btn_hover_texture if _btn_hover_texture else _btn_texture, 4)
 		var pressed_tex := _scaled_image_texture(_btn_pressed_texture if _btn_pressed_texture else _btn_texture, 4)
 		var disabled_tex := _scaled_image_texture(_btn_disabled_texture if _btn_disabled_texture else _btn_texture, 4)
-		theme.set_stylebox("normal", "Button", _make_compact_btn_style(btn_tex))
-		theme.set_stylebox("hover", "Button", _make_compact_btn_style(hover_tex))
-		theme.set_stylebox("pressed", "Button", _make_compact_btn_style(pressed_tex, true))
-		theme.set_stylebox("disabled", "Button", _make_compact_btn_style(disabled_tex))
-		theme.set_stylebox("focus", "Button", _make_compact_btn_style(hover_tex))
+		theme.set_stylebox("normal", "Button", _make_compact_btn_style(btn_tex, false, true))
+		theme.set_stylebox("hover", "Button", _make_compact_btn_style(hover_tex, false, true))
+		theme.set_stylebox("pressed", "Button", _make_compact_btn_style(pressed_tex, true, true))
+		theme.set_stylebox("disabled", "Button", _make_compact_btn_style(disabled_tex, false, true))
+		theme.set_stylebox("focus", "Button", _make_compact_btn_style(hover_tex, false, true))
+
+	# ── "OrnateButton" mirror (Task W1 — see the identical block in
+	# _build_theme_for_set for why; this MUST be mirrored per the compact-
+	# theme "claims every type it touches" gotcha documented on this
+	# function's own doc comment, or an OrnateButton inside the compact-
+	# themed HUD subtree would silently fall to Godot's stock default
+	# instead of this theme's Button style OR the root theme's OrnateButton).
+	# Deliberately uses the FULL-RESOLUTION ornate texture/margin, NOT a
+	# compact-divided one: Upgrade/Found Settlement always render large
+	# (~240-280px, see campaign_hud.gd) and exist to look "elaborate" — a
+	# downscale-then-restretch would blur the corner flourishes that are the
+	# whole point, the same reasoning that motivated the dedicated compact
+	# button bake above but pointing the opposite direction (go big, not
+	# small, when the content is inherently rendered big).
+	var ornate_tex := _load_chrome_piece(chrome_set_id, "btn_ornate_normal")
+	if ornate_tex:
+		var ornate_hover := _load_chrome_piece(chrome_set_id, "btn_ornate_hover")
+		var ornate_pressed := _load_chrome_piece(chrome_set_id, "btn_ornate_pressed")
+		var ornate_disabled := _load_chrome_piece(chrome_set_id, "btn_ornate_disabled")
+		theme.set_type_variation(&"OrnateButton", &"Button")
+		theme.set_stylebox("normal", &"OrnateButton", _make_ornate_btn_style(ornate_tex))
+		theme.set_stylebox("hover", &"OrnateButton", _make_ornate_btn_style(ornate_hover if ornate_hover else ornate_tex))
+		theme.set_stylebox("pressed", &"OrnateButton", _make_ornate_btn_style(ornate_pressed if ornate_pressed else ornate_tex, true))
+		theme.set_stylebox("disabled", &"OrnateButton", _make_ornate_btn_style(ornate_disabled if ornate_disabled else ornate_tex))
+		theme.set_stylebox("focus", &"OrnateButton", _make_ornate_btn_style(ornate_hover if ornate_hover else ornate_tex))
+
 	_compact_theme = theme
 	return _compact_theme
 
-func _make_compact_btn_style(tex: Texture2D, pressed := false) -> StyleBoxTexture:
+## `legacy_scaled` (Task W1): true only for the no-dedicated-compact-bake
+## fallback path above (a partial/old asset checkout) — in that case `tex` is
+## already a runtime `_scaled_image_texture(..., 4)` result, so the margin
+## still needs the old /4 divide. The normal path (dedicated `btn_compact_*`
+## bake) passes a texture already baked at target scale, so the margin
+## constant is used directly.
+func _make_compact_btn_style(tex: Texture2D, pressed := false, legacy_scaled := false) -> StyleBoxTexture:
 	var s := StyleBoxTexture.new()
+	var m: float = (_BTN_MARGIN / 4.0) if legacy_scaled else float(_COMPACT_BTN_MARGIN)
+	s.texture_margin_left = m
+	s.texture_margin_top = m
+	s.texture_margin_right = m
+	s.texture_margin_bottom = m
 	s.texture = tex
-	s.texture_margin_left = _BTN_MARGIN / 4.0
-	s.texture_margin_top = _BTN_MARGIN / 4.0
-	s.texture_margin_right = _BTN_MARGIN / 4.0
-	s.texture_margin_bottom = _BTN_MARGIN / 4.0
 	s.content_margin_left = _BTN_CONTENT.x / 4.0
 	s.content_margin_right = _BTN_CONTENT.z / 4.0
 	s.content_margin_top = _BTN_CONTENT.y / 4.0 + (1.0 if pressed else 0.0)
