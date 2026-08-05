@@ -90,6 +90,16 @@ var _minimap_update_timer := 0.0
 var _minimap_dirty := true  # Set true when content changes (turn/capture), redraw on next tick
 var _minimap_content_cache: Image = null  # Cached minimap image without viewport rect
 var _fog_dirty := false  # Deferred fog update flag — batches multiple _update_fog_of_war calls per frame
+# Fix-round (review defect, IMPORTANT item): set true right before a fresh
+# campaign's ONE synchronous TurnManager.start_game() call below (never on
+# the load-game branch) and consumed by the very next _on_turn_started —
+# which start_game() reaches synchronously, same frame, no awaits in between
+# (see the _ready() comment above _update_fog_of_war() and the one at the
+# start_game() call site). Skips exactly that one redundant fog rebuild
+# against otherwise-unchanged state (no army/city moves between the two
+# calls); cleared immediately after use so every later real turn still gets
+# its normal fog rebuild.
+var _skip_next_turn_fog_rebuild := false
 var _last_hover_hex := Vector2i(-1, -1)  # Throttle trade route hover to hex changes only
 var _bounty_markers: Dictionary = {} # Vector2i -> Node2D
 var bounty_markers_node: Node2D = null
@@ -297,6 +307,14 @@ func _ready() -> void:
 
 	if not GameManager.has_meta("game_started"):
 		GameManager.set_meta("game_started", true)
+		# start_game() -> _start_faction_turn() for the player (always
+		# faction_order[0], see turn_manager.gd) runs fully synchronously with
+		# no awaits before it emits turn_started, so _on_turn_started's player
+		# branch fires before this line returns, against state unchanged since
+		# the explicit _update_fog_of_war() call above. Arm the skip so that
+		# one guaranteed-redundant rebuild is skipped; _on_turn_started clears
+		# the flag right after consuming it.
+		_skip_next_turn_fog_rebuild = true
 		TurnManager.start_game()
 	elif GameManager.current_phase == Enums.GamePhase.CAMPAIGN:
 		if not TurnManager.is_player_turn:
@@ -4737,7 +4755,16 @@ func _on_turn_started(_turn: int, faction_id: StringName) -> void:
 		# Apply fog SYNCHRONOUSLY here: the markers were just recreated (visible by
 		# default), so a deferred fog pass would let fogged enemy armies flash for a
 		# frame at turn start before being hidden. Run it now, before this frame draws.
-		_update_fog_of_war()
+		# Fix-round (review defect): on a FRESH campaign, _ready() already ran
+		# this exact rebuild moments ago (see _skip_next_turn_fog_rebuild's
+		# declaration) against identical state, before TurnManager.start_game()
+		# synchronously reached this handler in the same call stack — running
+		# it again here would pay the full map-tile-alpha scan + per-city/army
+		# visibility BFS twice for zero behavior change. Skip it exactly once.
+		if _skip_next_turn_fog_rebuild:
+			_skip_next_turn_fog_rebuild = false
+		else:
+			_update_fog_of_war()
 		_update_trade_routes()
 		_minimap_dirty = true
 		if selected_army_id != &"":

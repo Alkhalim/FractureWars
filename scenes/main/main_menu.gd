@@ -504,6 +504,22 @@ const FACTION_DETAILS := {
 	},
 }
 
+## Fix-round (review defect, CRITICAL item): process-wide cache for
+## _sample_terrain_patches() below. `static` so it survives across
+## MainMenu instances (Cancel queue_frees only `_faction_select_panel`, not
+## this script's node, but a static also protects against any future path
+## that re-instantiates MainMenu itself) and is shared by every
+## faction-select visit for the rest of the app's lifetime. The original
+## comment on _sample_terrain_patches() claimed "full hex-map generation is
+## cheap once" — measured FALSE: ~9126-tile generate_hex_map(seed=0) cost
+## 572ms/561ms on two back-to-back _show_faction_select() calls (New Game ->
+## Cancel -> New Game), i.e. it re-ran the entire pipeline, and re-paid that
+## cost, on EVERY visit, not once. Since the sample is always seed 0 (see the
+## function doc below), there is nothing visit-specific to recompute — cache
+## the downsampled result the first time and reuse it.
+static var _cached_terrain_patches: Array = []
+static var _terrain_patches_cache_valid := false
+
 ## Coarse terrain sample for the faction-select map sketch's "approximation
 ## of the terrain" biome patches (designer 2026-08-05). Runs the REAL
 ## map-generator terrain pass (map_generator.gd's generate_hex_map, the same
@@ -516,15 +532,28 @@ const FACTION_DETAILS := {
 ## explicitly a representative flavor sketch, not a preview of the upcoming
 ## game's actual map. Downsampled on a MAP_SKETCH_TERRAIN_STEP-hex grid
 ## (not all ~9100 tiles) — the sketch stays a rough painterly wash, not a
-## precise minimap. Called ONCE per faction-select screen visit (from
-## _show_faction_select(), not per faction click), same as the seal-texture
-## preloading right below it — full hex-map generation is cheap once but not
-## something to redo on every redraw.
+## precise minimap. Because the sample is always seed 0, the expensive
+## generate_hex_map() pass below now runs AT MOST ONCE per app process — see
+## _cached_terrain_patches above — computed lazily on the first
+## _show_faction_select() visit and reused (in well under 5ms) on every visit
+## after.
 func _sample_terrain_patches() -> Array:
+	if _terrain_patches_cache_valid:
+		return _cached_terrain_patches
+
+	var _t0 := Time.get_ticks_msec()
+
 	# LANDMASS_BLOBS/REGION_SEEDS document their coordinate space as "the
 	# full 117x78 hex grid" — force that regardless of whatever HexMapData.
 	# MAP_WIDTH/HEIGHT a PRIOR demo game may have left behind, then restore
-	# it so this menu-only sample never leaks into real game state.
+	# it so this menu-only sample never leaks into real game state. Sharp
+	# edge (fix-round, MINOR item): generate_hex_map() below reads these two
+	# statics AS IT RUNS, so between the overwrite and the restore, any OTHER
+	# code on the main thread that reads HexMapData.MAP_WIDTH/MAP_HEIGHT
+	# would observe this menu's 117x78 override instead of the real map's
+	# dimensions. Safe only because Godot's main-thread script execution is
+	# single-threaded and nothing in this window yields/awaits — do not add
+	# an `await` between the overwrite and the restore without re-auditing.
 	var saved_w := HexMapData.MAP_WIDTH
 	var saved_h := HexMapData.MAP_HEIGHT
 	HexMapData.MAP_WIDTH = 117
@@ -546,6 +575,10 @@ func _sample_terrain_patches() -> Array:
 				patches.append({hx = col, hy = row, terrain = tile.terrain})
 			row += MAP_SKETCH_TERRAIN_STEP
 		col += MAP_SKETCH_TERRAIN_STEP
+
+	print("MainMenu: _sample_terrain_patches() one-time cost: ", Time.get_ticks_msec() - _t0, "ms (cached for rest of process)")
+	_cached_terrain_patches = patches
+	_terrain_patches_cache_valid = true
 	return patches
 
 func _show_faction_select() -> void:
