@@ -1,0 +1,128 @@
+{
+	"matchup_count": 10,
+	"results": [
+		{
+			"atk_casualty_frac": 0.492066666666667,
+			"atk_post_hp": 7619,
+			"atk_pre_hp": 15000,
+			"category": "subfaction_identity",
+			"def_casualty_frac": 1.0,
+			"def_post_hp": 0,
+			"def_pre_hp": 15000,
+			"name": "crimson_legion_infantry_vs_valkarn_garrison_defenders",
+			"ticks": 457,
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 1.0,
+			"atk_post_hp": 0,
+			"atk_pre_hp": 9000,
+			"category": "subfaction_identity",
+			"def_casualty_frac": 0.741,
+			"def_post_hp": 1813,
+			"def_pre_hp": 7000,
+			"name": "gorgonic_cult_beastmaster_vs_twilight_veil_assassins",
+			"ticks": 498,
+			"winner": "defender"
+		},
+		{
+			"atk_casualty_frac": 0.0,
+			"atk_post_hp": 11700,
+			"atk_pre_hp": 11700,
+			"category": "ranged_heavy",
+			"def_casualty_frac": 1.0,
+			"def_post_hp": 0,
+			"def_pre_hp": 9000,
+			"name": "stormbound_storm_archer_volley_vs_stormforged_champion",
+			"ticks": 191,
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.11774358974359,
+			"atk_post_hp": 8602,
+			"atk_pre_hp": 9750,
+			"category": "ranged_heavy",
+			"def_casualty_frac": 1.0,
+			"def_post_hp": 0,
+			"def_pre_hp": 8000,
+			"name": "thunderswarm_highland_skirmisher_volley_vs_thunderwyrm",
+			"ticks": 169,
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 1.0,
+			"atk_post_hp": 0,
+			"atk_pre_hp": 14400,
+			"category": "terrain_home_bonus",
+			"def_casualty_frac": 0.299888888888889,
+			"def_post_hp": 12602,
+			"def_pre_hp": 18000,
+			"name": "gladehost_oakguard_forest_defense_vs_empire_legion",
+			"ticks": 450,
+			"winner": "defender"
+		},
+		{
+			"atk_casualty_frac": 1.0,
+			"atk_post_hp": 0,
+			"atk_pre_hp": 6400,
+			"category": "terrain_home_bonus",
+			"def_casualty_frac": 0.2865,
+			"def_post_hp": 9989,
+			"def_pre_hp": 14000,
+			"name": "ivoryscar_tomb_guard_desert_defense_vs_cinderguard_cavalry",
+			"ticks": 279,
+			"winner": "defender"
+		},
+		{
+			"atk_casualty_frac": 0.248333333333333,
+			"atk_post_hp": 16236,
+			"atk_pre_hp": 21600,
+			"category": "city_siege",
+			"def_casualty_frac": 1.0,
+			"def_post_hp": 0,
+			"def_pre_hp": 15000,
+			"name": "empire_siege_mastery_attack_vs_valkarn_garrison_city",
+			"ticks": 433,
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.858428571428571,
+			"atk_post_hp": 1982,
+			"atk_pre_hp": 14000,
+			"category": "city_siege",
+			"def_casualty_frac": 1.0,
+			"def_post_hp": 0,
+			"def_pre_hp": 14000,
+			"name": "ivoryscar_relic_defense_expedition_city_holds_vs_forsaken_raid",
+			"ticks": 320,
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.70453125,
+			"atk_post_hp": 1891,
+			"atk_pre_hp": 6400,
+			"category": "thunder_wall",
+			"def_casualty_frac": 0.962666666666667,
+			"def_post_hp": 336,
+			"def_pre_hp": 9000,
+			"name": "thunderswarm_thunder_wall_city_holds_vs_cinderguard_siege",
+			"ticks": 523,
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.0263333333333333,
+			"atk_post_hp": 11684,
+			"atk_pre_hp": 12000,
+			"category": "mixed",
+			"def_casualty_frac": 1.0,
+			"def_post_hp": 0,
+			"def_pre_hp": 11500,
+			"name": "crimson_legion_combined_arms_vs_valkarn_garrison_combined_arms",
+			"ticks": 416,
+			"winner": "attacker"
+		}
+	],
+	"schema": 1,
+	"seed_base": 2608161,
+	"winner_agreement_bar": 9
+}
