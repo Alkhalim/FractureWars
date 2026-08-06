@@ -7,6 +7,6 @@ script = ExtResource("1")
 id = &"salt_reaver_sellsword"
 display_name = "Salt Reaver Sellsword"
 description = "A mercenary from the crystal wastes. Deadly but expensive. (+3 battle attack, -3 gold upkeep/turn)"
-bonus_effect = { "army_attack_bonus": 3 }
+bonus_effect = {"army_attack_bonus": 4}
 malus_effect = { "city_gold_bonus": -3 }
 terrain_tags = Array[StringName]([&"shard_wastes"])

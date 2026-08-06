@@ -8,6 +8,6 @@ id = &"steppe_warlords_axe"
 display_name = "Steppe Warlord's Axe"
 description = "A heavy battle axe passed down through generations of Bataarbad warlords, its edge never dulls."
 rarity = &"rare"
-effects = {"army_attack_bonus": 4}
+effects = {"army_attack_bonus": 6}
 source_factions = Array[StringName]([&"skulloath"])
 gift_tags = Array[StringName]([&"martial", &"primitive"])

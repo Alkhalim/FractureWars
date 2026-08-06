@@ -8,6 +8,6 @@ id = &"sunfire_reliquary"
 display_name = "Sunfire Reliquary"
 description = "A golden casket holding a fragment of divine radiance, sacred to the Sunblessed pilgrims."
 rarity = &"rare"
-effects = {"army_attack_bonus": 2, "army_defense_bonus": 2}
+effects = {"army_attack_bonus": 3, "army_defense_bonus": 7}
 source_factions = Array[StringName]([&"sunblessed"])
 gift_tags = Array[StringName]([&"religious", &"luxury", &"elegant"])

@@ -8,6 +8,6 @@ id = &"moonsilver_pendant"
 display_name = "Moonsilver Pendant"
 description = "A pendant of refined moonsilver that glows faintly under starlight, channeling celestial energy."
 rarity = &"rare"
-effects = {"heal_per_turn": 10}
+effects = {"heal_per_turn": 1}
 source_factions = Array[StringName]([&"moonspear"])
 gift_tags = Array[StringName]([&"arcane", &"elegant", &"religious"])

@@ -2069,6 +2069,15 @@ func _apply_diplomacy_bonuses(faction_id: StringName) -> void:
 
 # ── Terrain Attrition ───────────────────────────────────────
 
+## scale-note (Task R2): every `maxi(1, int(ud.max_hp * dmg_pct))` /
+## `maxi(1, unit.current_hp - dmg)` pair in this function is a literal 1 HP
+## floor on a max_hp-relative (2-5%) per-turn tick -- ud.max_hp is already
+## rescaled (DIVIDE) and dmg_pct is an unrelated-scale rate (KEEP), so the
+## unfloored damage auto-scales; only the literal `1` becomes relatively
+## harsher post-rescale (still <=0.3% of a unit's HP pool in the worst case,
+## and this is a per-TURN not per-tick cost). Kept as-is across the whole
+## function per the R1/R2 DECIDE-list disposition -- not annotated at each
+## of the ~10 near-identical call sites below to avoid repetitive noise.
 func _apply_terrain_attrition(faction_id: StringName) -> void:
 	var fd: FactionData = DataManager.get_faction(faction_id)
 	var is_nature := fd and fd.realm_affinity == Enums.Realm.NATURE
@@ -2738,6 +2747,8 @@ func apply_random_event_choice(event: Dictionary, choice: String) -> String:
 					for unit in armies[0].units:
 						var ud := DataManager.get_unit(unit.unit_data_id)
 						if ud:
+							# scale-note (Task R2): literal 1 HP floor; auto-scales
+							# (both terms DIVIDE/rescaled) -- kept as-is (R1/R2 DECIDE-list).
 							unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * 0.2))
 					if randf() < 0.6 and armies[0].commander:
 						var item_name := CommanderSystem.apply_item_drop(armies[0].commander, &"")

@@ -9,5 +9,5 @@ display_name = "Logistics Master"
 description = "Keeps armies supplied and moving through the harshest terrain."
 category = &"logistics"
 is_minor = false
-effects = {"army_movement_bonus": 0.5, "heal_per_turn": 5}
+effects = {"army_movement_bonus": 0.5, "heal_per_turn": 1}
 context_tags = Array[StringName]([&"terrain_desert", &"terrain_tundra"])

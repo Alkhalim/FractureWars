@@ -9,5 +9,5 @@ display_name = "Cavalry General"
 description = "Cavalry units gain +3 attack and +3 speed."
 category = &"combat"
 is_minor = false
-effects = {"cavalry_attack_bonus": 3, "cavalry_speed_bonus": 3}
+effects = {"cavalry_attack_bonus": 4, "cavalry_speed_bonus": 3}
 context_tags = Array[StringName]([&"used_cavalry"])

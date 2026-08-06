@@ -8,6 +8,6 @@ id = &"livingwood_bow"
 display_name = "Livingwood Bow"
 description = "A bow grown from a living branch of a Sainkhu ancient tree, still sprouting green leaves."
 rarity = &"rare"
-effects = {"army_attack_bonus": 3}
+effects = {"army_attack_bonus": 4}
 source_factions = Array[StringName]([&"gladehost"])
 gift_tags = Array[StringName]([&"nature", &"practical"])

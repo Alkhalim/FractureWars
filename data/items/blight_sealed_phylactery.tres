@@ -8,6 +8,6 @@ id = &"blight_sealed_phylactery"
 display_name = "Blight-Sealed Phylactery"
 description = "A sealed vessel of concentrated blight essence from the Weeping Barrows, dangerous yet potent."
 rarity = &"legendary"
-effects = {"army_attack_bonus": 4, "enemy_army_morale_penalty": -3}
+effects = {"army_attack_bonus": 6, "enemy_army_morale_penalty": -3}
 source_factions = Array[StringName]([&"forsaken", &"blightcoven"])
 gift_tags = Array[StringName]([&"dark", &"arcane"])

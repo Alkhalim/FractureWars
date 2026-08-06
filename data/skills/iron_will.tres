@@ -9,5 +9,5 @@ display_name = "Iron Will"
 description = "Unyielding resolve that inspires unbreakable defense."
 category = &"combat"
 is_minor = false
-effects = {"army_defense_bonus": 5, "heal_per_turn": 10}
+effects = {"army_defense_bonus": 17, "heal_per_turn": 1}
 context_tags = Array[StringName]([&"was_defender", &"battle_lost"])

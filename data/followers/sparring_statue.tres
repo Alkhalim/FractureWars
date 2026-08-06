@@ -7,6 +7,6 @@ script = ExtResource("1")
 id = &"sparring_statue"
 display_name = "Sparring Statue"
 description = "An animated stone training dummy that hones combat skills. (+2 battle attack, +1 battle defense, -0.5 campaign movement)"
-bonus_effect = { "army_attack_bonus": 2, "army_defense_bonus": 1 }
+bonus_effect = {"army_attack_bonus": 3, "army_defense_bonus": 3}
 malus_effect = { "army_movement_bonus": -0.5 }
 terrain_tags = Array[StringName]([&"mountains"])

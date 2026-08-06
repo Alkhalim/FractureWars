@@ -8,5 +8,5 @@ id = &"ancient_scholar"
 display_name = "Ancient Scholar"
 description = "A sage who unlocks arcane secrets but scorns physical combat. (+2 tech/turn in city, -1 battle defense)"
 bonus_effect = { "city_tech_bonus": 2 }
-malus_effect = { "army_defense_bonus": -1 }
+malus_effect = {"army_defense_bonus": -3}
 terrain_tags = Array[StringName]([])

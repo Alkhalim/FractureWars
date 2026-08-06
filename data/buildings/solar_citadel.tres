@@ -20,5 +20,5 @@ requires_capital = true
 requires_research = &"cleansing_light"
 upgrades_from = &"solar_chapter_house"
 class_loyalty_bonus = {"nobles": 5}
-special_effects = {"faith_stabilization": 2, "army_attack_bonus": 2}
+special_effects = {"faith_stabilization": 2, "army_attack_bonus": 3}
 upkeep_cost = {0: 5, 1: 8}

@@ -8,6 +8,6 @@ id = &"pilgrims_prayer_beads"
 display_name = "Pilgrim's Prayer Beads"
 description = "Sun-bleached wooden beads carried by wandering Sunblessed pilgrims on their sacred journeys."
 rarity = &"common"
-effects = {"heal_per_turn": 5}
+effects = {"heal_per_turn": 1}
 source_factions = Array[StringName]([&"sunblessed"])
 gift_tags = Array[StringName]([&"religious", &"practical"])

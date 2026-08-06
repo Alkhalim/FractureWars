@@ -9,5 +9,5 @@ display_name = "Tactician"
 description = "A master of battlefield strategy."
 category = &"combat"
 is_minor = false
-effects = {"army_attack_bonus": 3, "army_defense_bonus": 2}
+effects = {"army_attack_bonus": 4, "army_defense_bonus": 7}
 context_tags = Array[StringName]([&"battle_won"])

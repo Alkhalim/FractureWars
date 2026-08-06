@@ -8,6 +8,6 @@ id = &"tomb_kings_scarab"
 display_name = "Tomb King's Scarab"
 description = "A golden scarab brooch recovered from the tombs of Qareth, pulsing with ancient enchantments."
 rarity = &"legendary"
-effects = {"army_attack_bonus": 3, "army_defense_bonus": 3, "city_defense_bonus": 3}
+effects = {"army_attack_bonus": 4, "army_defense_bonus": 10, "city_defense_bonus": 3}
 source_factions = Array[StringName]([&"ivoryscar"])
 gift_tags = Array[StringName]([&"arcane", &"elegant", &"scholarly"])

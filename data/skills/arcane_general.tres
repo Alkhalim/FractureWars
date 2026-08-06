@@ -9,5 +9,5 @@ display_name = "Arcane General"
 description = "Mage units gain +3 attack. +2 scouting range."
 category = &"magic"
 is_minor = false
-effects = {"mage_attack_bonus": 3, "scouting_bonus": 2}
+effects = {"mage_attack_bonus": 4, "scouting_bonus": 2}
 context_tags = Array[StringName]([&"used_mage", &"terrain_shard_wastes"])

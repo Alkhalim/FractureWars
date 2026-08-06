@@ -9,5 +9,5 @@ display_name = "Horde Breaker"
 description = "+5 defense and +3 attack against beasts and swarms."
 category = &"combat"
 is_minor = false
-effects = {"vs_beast_defense_bonus": 5, "vs_beast_attack_bonus": 3}
+effects = {"vs_beast_defense_bonus": 17, "vs_beast_attack_bonus": 4}
 context_tags = Array[StringName]([&"enemy_shardhorde", &"faced_beast"])

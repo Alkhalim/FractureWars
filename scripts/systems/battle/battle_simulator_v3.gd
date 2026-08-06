@@ -355,6 +355,27 @@ func setup_formations(army: ArmyState, side: int, cmd_bonuses: Dictionary = {}) 
 		else:
 			defender_formations.append(f)
 
+# rescale (Task R2): global-reference pct-conversion helpers for hardcoded
+# flat combat-bonus constants that apply broadly across many different units
+# (sub-faction identity modifiers, terrain home-turf bonuses baked into the
+# faction-mechanic blocks below, Empire/Cinderguard vs_attack_bonuses, Thunder
+# Wall, Relic Defense, Ivoryscar pyramid) -- there's no single "this unit's
+# own attack" to personalize against for a code constant applied to many
+# units, so these use the empirical roster reference (mean attack ~68,
+# median 60 -> 70; mean defense ~35, median 25 -> 30; see task-R2-report.md).
+# The call sites below intentionally keep the ORIGINAL pre-rescale literal
+# (e.g. `_atk_pct(f, 3)` for what used to be `f.attack += 3`) so the diff
+# stays traceable to the R1 inventory instead of hiding the old magnitude
+# behind a pre-computed percentage.
+const RESCALE_REF_ATTACK := 70.0
+const RESCALE_REF_DEFENSE := 30.0
+
+func _atk_pct(f: BattleFormationV3, old_flat: float) -> int:
+	return roundi(f.attack * old_flat / RESCALE_REF_ATTACK)
+
+func _def_pct(f: BattleFormationV3, old_flat: float) -> int:
+	return roundi(f.defense * old_flat / RESCALE_REF_DEFENSE)
+
 func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses: Dictionary) -> BattleFormationV3:
 	var f := BattleFormationV3.new()
 	f.instance_id = unit.instance_id
@@ -392,18 +413,27 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	var r_eff := GameManager.research_system.get_research_effects(ud.faction_id)
 	# Research bonuses are PERCENTAGES of each unit's own base (readable and
 	# fair across a 15-150 attack range; flat +N was invisible on big units)
-	f.attack = ud.attack + atk_bonus
-	f.attack += int(f.attack * float(r_eff.get("unit_attack_pct", 0)) / 100.0)
-	f.defense = ud.melee_defense + def_bonus
-	f.defense += int(f.defense * float(r_eff.get("unit_defense_pct", 0)) / 100.0)
+	# rescale (Task R2): atk_bonus/def_bonus now arrive pre-converted to
+	# percent-points from every skill/item/trait/follower/building source
+	# (see tools_rescale_data.gd) -- percent-points still sum linearly across
+	# stacked sources, so this remains the single resolution point.
+	f.attack = ud.attack + roundi(float(ud.attack) * float(atk_bonus) / 100.0)
+	f.attack += roundi(f.attack * float(r_eff.get("unit_attack_pct", 0)) / 100.0)
+	f.defense = ud.melee_defense + roundi(float(ud.melee_defense) * float(def_bonus) / 100.0)
+	f.defense += roundi(f.defense * float(r_eff.get("unit_defense_pct", 0)) / 100.0)
 	# Additional research effect keys
-	f.ranged_attack_bonus = r_eff.get("unit_ranged_bonus", 0)
+	# rescale (Task R2): unit_ranged_bonus/siege_bonus were flat, same-scale
+	# adds (values 2-30) -- now stored as global-reference percent (see
+	# task-R2-report.md) and resolved here against this unit's own already-
+	# computed f.attack, so the downstream combat-time read sites (lines
+	# ~2200-2620) that treat these as flat need no further changes.
+	f.ranged_attack_bonus = roundi(f.attack * float(r_eff.get("unit_ranged_bonus", 0)) / 100.0)
 	f.flanking_damage_bonus = r_eff.get("flanking_damage_bonus", 0) / 100.0
 	f.charge_damage_bonus = r_eff.get("charge_damage_pct", 0) / 100.0
 	f.fire_damage_bonus = r_eff.get("fire_damage_pct", 0) / 100.0
 	f.poison_damage_pct = r_eff.get("poison_damage_pct", 0) / 100.0
 	f.stun_chance_pct = r_eff.get("stun_chance_pct", 0) / 100.0
-	f.siege_bonus = r_eff.get("siege_bonus", 0)
+	f.siege_bonus = roundi(f.attack * float(r_eff.get("siege_bonus", 0)) / 100.0)
 	f.adjacent_unit_damage_pct = r_eff.get("adjacent_unit_damage_pct", 0) / 100.0
 
 	# Per-unit terrain & realm home-turf bonuses from UnitData (data-driven):
@@ -412,10 +442,13 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	if _battle_realm >= 0:
 		home_bonus += ud.realm_bonuses.get(_battle_realm, 0.0)
 	if home_bonus != 0.0:
-		f.attack += int(f.attack * home_bonus)
-		f.defense += int(f.defense * home_bonus)
+		f.attack += roundi(f.attack * home_bonus)
+		f.defense += roundi(f.defense * home_bonus)
 
 	# Building special_effects: flying_unit_attack_bonus
+	# rescale (Task R2): was a flat same-scale add (values 1-3), now stored
+	# as global-reference percent (tools_rescale_data.gd) and resolved here
+	# against this unit's own already-computed f.attack.
 	if f.tags.has("flying"):
 		for city_id in GameManager.state.cities:
 			var city: CityState = GameManager.state.cities[city_id]
@@ -423,7 +456,7 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				for bid in city.buildings:
 					var bld: BuildingData = DataManager.get_building(bid)
 					if bld and bld.special_effects.has("flying_unit_attack_bonus"):
-						f.attack += int(bld.special_effects["flying_unit_attack_bonus"])
+						f.attack += roundi(f.attack * float(bld.special_effects["flying_unit_attack_bonus"]) / 100.0)
 
 	# Faction mechanic combat bonuses — resolve parent faction for sub-factions
 	var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(ud.faction_id, ud.faction_id)
@@ -441,72 +474,75 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				f.base_morale -= 10
 			# Military Edict: +12% attack
 			if fs.imperial_edict == 1 and fs.imperial_edict_turns > 0:
-				f.attack += int(f.attack * 0.12)
+				f.attack += roundi(f.attack * 0.12)
 
 		# ── Skulloath: Corruption — stronger scaling ──
 		elif parent_fid == &"skulloath":
 			if fs.corruption >= 81:
-				f.attack += int(f.attack * 0.30)
+				f.attack += roundi(f.attack * 0.30)
 				f.base_morale -= 5 # Demonic units are feared but unstable
 			elif fs.corruption >= 61:
-				f.attack += int(f.attack * 0.18)
+				f.attack += roundi(f.attack * 0.18)
 			elif fs.corruption <= 20:
 				# Traditional Pure: less attack but more defense and morale
-				f.attack -= int(f.attack * 0.08)
+				f.attack -= roundi(f.attack * 0.08)
 			# Research: corruption_attack_scaling (+X% attack per 10 corruption)
 			var sk_scaling: int = r_eff.get("corruption_attack_scaling", 0)
 			if sk_scaling > 0 and fs.corruption > 0:
-				f.attack += int(f.attack * float(sk_scaling) * float(fs.corruption) / 1000.0)
-				f.defense += int(f.defense * 0.10)
+				f.attack += roundi(f.attack * float(sk_scaling) * float(fs.corruption) / 1000.0)
+				f.defense += roundi(f.defense * 0.10)
 				f.base_morale += 10
 
 		# ── Tainted Jade: Taint Power + Focus ──
 		elif parent_fid == &"tainted_jade":
 			# Base taint defense (always active, scales more)
 			if fs.taint_power >= 60:
-				f.defense += int(f.defense * 0.20)
+				f.defense += roundi(f.defense * 0.20)
 			elif fs.taint_power >= 40:
-				f.defense += int(f.defense * 0.15)
+				f.defense += roundi(f.defense * 0.15)
 			elif fs.taint_power >= 20:
-				f.defense += int(f.defense * 0.10)
+				f.defense += roundi(f.defense * 0.10)
 			# Jungle regen: stronger home terrain advantage
+			# rescale (Task R2): flat +3/+2 def -> global-reference percent (see
+			# _def_pct doc comment); original pre-rescale magnitude kept inline.
 			if _campaign_terrain == Enums.TerrainType.JUNGLE:
 				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.5)
-				f.defense += 3
+				f.defense += _def_pct(f, 3)
 			elif _campaign_terrain == Enums.TerrainType.SWAMP:
 				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.3)
-				f.defense += 2
+				f.defense += _def_pct(f, 2)
 			# Taint Focus: Venomous War = attack bonus in jungle/swamp
 			if fs.taint_focus == 2 and fs.taint_power >= 20:
 				if _campaign_terrain == Enums.TerrainType.JUNGLE or _campaign_terrain == Enums.TerrainType.SWAMP:
-					f.attack += int(f.attack * 0.15)
+					f.attack += roundi(f.attack * 0.15)
 				# Anti-magic: enemy mages deal less damage (applied as defense vs magic)
 				if fs.taint_power >= 40:
-					f.vs_defense_bonuses["mage"] = f.vs_defense_bonuses.get("mage", 0) + 5
+					f.vs_defense_bonuses["mage"] = f.vs_defense_bonuses.get("mage", 0) + _def_pct(f, 5)
 			# Research: taint_attack_scaling (+X% attack per 10 taint)
 			var tj_scaling: int = r_eff.get("taint_attack_scaling", 0)
 			if tj_scaling > 0 and fs.taint_power > 0:
-				f.attack += int(f.attack * float(tj_scaling) * float(fs.taint_power) / 1000.0)
+				f.attack += roundi(f.attack * float(tj_scaling) * float(fs.taint_power) / 1000.0)
 
 		# ── Gladehost: Harmony + Season ──
 		elif parent_fid == &"gladehost":
 			if fs.harmony >= 70:
 				f.base_morale += 12
-				f.defense += int(f.defense * 0.05)
+				f.defense += roundi(f.defense * 0.05)
 			elif fs.harmony >= 50:
 				f.base_morale += 6
 			elif fs.harmony <= 30:
 				f.base_morale -= 8
 			# Forest terrain: Gladehost always gets home advantage
+			# rescale (Task R2): flat +3 def/+2 atk -> global-reference percent.
 			if _campaign_terrain == Enums.TerrainType.FOREST:
-				f.defense += 3
-				f.attack += 2
+				f.defense += _def_pct(f, 3)
+				f.attack += _atk_pct(f, 2)
 			# Summer season: attack bonus
 			var season := TurnManager.get_current_season() if TurnManager else -1
 			if season == 1: # Summer
-				f.attack += int(f.attack * 0.08)
+				f.attack += roundi(f.attack * 0.08)
 			elif season == 3: # Winter: defense bonus (hardened)
-				f.defense += int(f.defense * 0.10)
+				f.defense += roundi(f.defense * 0.10)
 			# Research: harmony_income_scaling handled in turn_manager (not combat)
 
 		# ── Shardhorde: Resonance — much stronger per-realm ──
@@ -516,20 +552,20 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			for realm_key in fs.shard_resonance:
 				match realm_key:
 					Enums.Realm.VOID:
-						f.attack += int(f.attack * 0.15 * sh_res_amp)
+						f.attack += roundi(f.attack * 0.15 * sh_res_amp)
 					Enums.Realm.ELEMENTAL:
-						f.attack += int(f.attack * 0.10 * sh_res_amp)
+						f.attack += roundi(f.attack * 0.10 * sh_res_amp)
 					Enums.Realm.DIVINE:
-						f.defense += int(f.defense * 0.10 * sh_res_amp)
+						f.defense += roundi(f.defense * 0.10 * sh_res_amp)
 						f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2 * sh_res_amp)
 					Enums.Realm.NATURE:
-						f.base_morale += int(8 * sh_res_amp)
+						f.base_morale += int(8 * sh_res_amp) # morale scale, out of rescale scope
 					Enums.Realm.MORTAL:
-						f.attack += int(f.attack * 0.05 * sh_res_amp)
-						f.defense += int(f.defense * 0.05 * sh_res_amp)
+						f.attack += roundi(f.attack * 0.05 * sh_res_amp)
+						f.defense += roundi(f.defense * 0.05 * sh_res_amp)
 			# Multi-resonance bonus: 3+ realms = massive power spike
 			if fs.shard_resonance.size() >= 3:
-				f.attack += int(f.attack * 0.10)
+				f.attack += roundi(f.attack * 0.10)
 				f.base_morale += 10
 
 		# ── Moonspear: Lunar Phase — much stronger effects ──
@@ -538,64 +574,66 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			var lunar_amp: float = 1.0 + float(r_eff.get("lunar_phase_bonus_pct", 0)) / 100.0
 			match fs.lunar_phase:
 				0: # New Moon: aggression, stealth
-					f.attack += int(f.attack * 0.15 * lunar_amp)
-					f.defense -= int(f.defense * 0.05)
+					f.attack += roundi(f.attack * 0.15 * lunar_amp)
+					f.defense -= roundi(f.defense * 0.05)
 				1: # Waxing: speed bonus
 					f.speed += 1
 					f.move_speed = f.speed * BASE_MOVE_SPEED
 				2: # Full Moon: defense, morale
-					f.defense += int(f.defense * 0.15 * lunar_amp)
-					f.base_morale += int(10 * lunar_amp)
+					f.defense += roundi(f.defense * 0.15 * lunar_amp)
+					f.base_morale += int(10 * lunar_amp) # morale scale, out of rescale scope
 				3: # Waning: healing during battle
 					f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.4 * lunar_amp)
 			# Ethereal soldiers (always)
 			f.ethereal_dodge_chance = 0.15
 			f.base_morale += 15
-			f.max_hp = int(float(f.max_hp) * 0.85)
+			f.max_hp = roundi(float(f.max_hp) * 0.85)
 			f.current_hp = mini(f.current_hp, f.max_hp)
 
 		# ── Thunderswarm: Storm Fury — bigger bonuses ──
 		elif parent_fid == &"thunderswarm":
 			if fs.storm_fury >= 80:
-				f.attack += int(f.attack * 0.22)
-				f.defense -= int(f.defense * 0.08)
+				f.attack += roundi(f.attack * 0.22)
+				f.defense -= roundi(f.defense * 0.08)
 				f.base_morale += 5 # Fury-fueled courage
 			elif fs.storm_fury >= 60:
-				f.attack += int(f.attack * 0.15)
-				f.defense -= int(f.defense * 0.03)
+				f.attack += roundi(f.attack * 0.15)
+				f.defense -= roundi(f.defense * 0.03)
 			elif fs.storm_fury >= 40:
-				f.attack += int(f.attack * 0.08)
+				f.attack += roundi(f.attack * 0.08)
 			# Mountain terrain: storm warriors get bonus
+			# rescale (Task R2): flat +3 atk/+2 def -> global-reference percent.
 			if _campaign_terrain == Enums.TerrainType.MOUNTAINS:
-				f.attack += 3
-				f.defense += 2
+				f.attack += _atk_pct(f, 3)
+				f.defense += _def_pct(f, 2)
 			# Thunder Wall ability: +8 defense while defending the warded city
+			# rescale (Task R2): flat +8 def -> global-reference percent.
 			if side == 1 and fs.storm_wall_turns > 0 and _battle_city_id != &"" and _battle_city_id == fs.storm_wall_city:
-				f.defense += 8
+				f.defense += _def_pct(f, 8)
 			# Research: storm_fury_attack_scaling (+X% attack per 10 fury)
 			var ts_scaling: int = r_eff.get("storm_fury_attack_scaling", 0)
 			if ts_scaling > 0 and fs.storm_fury > 0:
-				f.attack += int(f.attack * float(ts_scaling) * float(fs.storm_fury) / 1000.0)
+				f.attack += roundi(f.attack * float(ts_scaling) * float(fs.storm_fury) / 1000.0)
 
 		# ── Cinderguard: Forge Mode — clear attack/defense trade-off ──
 		elif parent_fid == &"cinderguard":
 			if fs.border_vigilance <= 30:
 				# Fortress mode: significant defense
-				f.defense += int(f.defense * 0.20)
+				f.defense += roundi(f.defense * 0.20)
 				f.base_morale += 8
 			elif fs.border_vigilance >= 75:
 				# War forge: attack power
-				f.attack += int(f.attack * 0.15)
+				f.attack += roundi(f.attack * 0.15)
 			# Research: vigilance_defense_scaling (+X% defense per 10 vigilance)
 			var cg_scaling: int = r_eff.get("vigilance_defense_scaling", 0)
 			if cg_scaling > 0 and fs.border_vigilance > 0:
-				f.defense += int(f.defense * float(cg_scaling) * float(fs.border_vigilance) / 1000.0)
+				f.defense += roundi(f.defense * float(cg_scaling) * float(fs.border_vigilance) / 1000.0)
 			# Border fortress network bonus: +2% def per total fortress level across settlements
 			var cg_total_forts := 0
 			for cg_cid in fs.border_fortresses:
 				cg_total_forts += int(fs.border_fortresses[cg_cid])
 			if cg_total_forts > 0:
-				f.defense += int(f.defense * float(cg_total_forts) * 0.02)
+				f.defense += roundi(f.defense * float(cg_total_forts) * 0.02)
 			# Dragon raid veterans: +morale per raids survived
 			if fs.dragon_raids_survived >= 5:
 				f.base_morale += 5
@@ -605,62 +643,65 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 		# ── Ivoryscar: Relic Power — stronger defense scaling ──
 		elif parent_fid == &"ivoryscar":
 			if fs.relic_power >= 40:
-				f.defense += int(f.defense * 0.18)
+				f.defense += roundi(f.defense * 0.18)
 				f.base_morale += 5
 			elif fs.relic_power >= 30:
-				f.defense += int(f.defense * 0.13)
+				f.defense += roundi(f.defense * 0.13)
 			elif fs.relic_power >= 20:
-				f.defense += int(f.defense * 0.08)
+				f.defense += roundi(f.defense * 0.08)
 			elif fs.relic_power >= 10:
-				f.defense += int(f.defense * 0.05)
+				f.defense += roundi(f.defense * 0.05)
 			# Black Pyramid milestones: combat bonuses
 			if fs.pyramid_restored:
-				f.attack += int(f.attack * 0.15)
-				f.defense += int(f.defense * 0.15)
+				f.attack += roundi(f.attack * 0.15)
+				f.defense += roundi(f.defense * 0.15)
 				f.base_morale += 8
 			elif fs.pyramid_restoration >= 75:
-				f.attack += int(f.attack * 0.08)
+				f.attack += roundi(f.attack * 0.08)
 				f.base_morale += 3
 			elif fs.pyramid_restoration >= 50:
-				f.attack += int(f.attack * 0.04)
+				f.attack += roundi(f.attack * 0.04)
 			# Pyramid >= 25: +2 defense to all (applied in city system too)
+			# rescale (Task R2): flat +2 def -> global-reference percent.
 			if fs.pyramid_restoration >= 25:
-				f.defense += 2
+				f.defense += _def_pct(f, 2)
 			# Relic Defense expedition choice: +3 defense in city battles for 3 turns
+			# rescale (Task R2): flat +3 def -> global-reference percent.
 			if side == 1 and _is_city_battle and int(fs.leader_bonuses.get("relic_defense_turns", 0)) > 0:
-				f.defense += 3
+				f.defense += _def_pct(f, 3)
 			# Desert/Wastes terrain: home advantage
+			# rescale (Task R2): flat +2 def -> global-reference percent.
 			if _campaign_terrain == Enums.TerrainType.DESERT or _campaign_terrain == Enums.TerrainType.SHARD_WASTES:
-				f.defense += 2
+				f.defense += _def_pct(f, 2)
 				f.speed += 1
 				f.move_speed = f.speed * BASE_MOVE_SPEED
 
 		# ── Sunblessed: Solar Faith — strong faith scaling ──
 		elif parent_fid == &"sunblessed":
 			if fs.solar_faith >= 85:
-				f.attack += int(f.attack * 0.12)
-				f.defense += int(f.defense * 0.08)
+				f.attack += roundi(f.attack * 0.12)
+				f.defense += roundi(f.defense * 0.08)
 				f.base_morale += 12
 			elif fs.solar_faith >= 70:
-				f.attack += int(f.attack * 0.08)
-				f.defense += int(f.defense * 0.05)
+				f.attack += roundi(f.attack * 0.08)
+				f.defense += roundi(f.defense * 0.05)
 				f.base_morale += 6
 			elif fs.solar_faith <= 24:
-				f.attack -= int(f.attack * 0.10)
+				f.attack -= roundi(f.attack * 0.10)
 				f.base_morale -= 10
 			elif fs.solar_faith <= 39:
 				f.base_morale -= 5
 			# Research: solar_faith_attack_scaling (+X% attack per 10 faith)
 			var sb_scaling: int = r_eff.get("solar_faith_attack_scaling", 0)
 			if sb_scaling > 0 and fs.solar_faith > 0:
-				f.attack += int(f.attack * float(sb_scaling) * float(fs.solar_faith) / 1000.0)
+				f.attack += roundi(f.attack * float(sb_scaling) * float(fs.solar_faith) / 1000.0)
 
 		# ── Forsaken: Espionage ambush bonus ──
 		elif parent_fid == &"forsaken":
 			if fs.espionage_network >= 15:
 				# Intelligence advantage: bonus when attacking (side == 0 = attacker)
 				if side == 0:
-					f.attack += int(f.attack * 0.08)
+					f.attack += roundi(f.attack * 0.08)
 					f.speed += 1
 					f.move_speed = f.speed * BASE_MOVE_SPEED
 			if fs.espionage_network >= 30:
@@ -671,134 +712,142 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 		if deep_mod > 0.0:
 			var own_tile = GameManager.state.hex_map.get_tile(_battle_hex_pos) if GameManager.state.hex_map else null
 			if own_tile and own_tile.owner_faction == ud.faction_id:
-				f.defense += int(f.defense * deep_mod)
+				f.defense += roundi(f.defense * deep_mod)
 
 		# ── Everfrost Core (Landmark): winter defense in own territory ──
 		if TurnManager and TurnManager.get_current_season() == 3:
 			if LandmarkSystem.has_landmark(ud.faction_id, &"everfrost_core"):
 				var ef_tile = GameManager.state.hex_map.get_tile(_battle_hex_pos) if GameManager.state.hex_map else null
 				if ef_tile and ef_tile.owner_faction == ud.faction_id:
-					f.defense += int(f.defense * 0.10)
+					f.defense += roundi(f.defense * 0.10)
 
 	# Empire anti-mage war mages: Empire mage units deal extra damage to enemy mages
+	# rescale (Task R2): flat +5 vs_attack -> global-reference percent.
 	if parent_fid == &"empire" and ud.tags.has("mage"):
-		f.vs_attack_bonuses["mage"] = f.vs_attack_bonuses.get("mage", 0) + 5
+		f.vs_attack_bonuses["mage"] = f.vs_attack_bonuses.get("mage", 0) + _atk_pct(f, 5)
 
 	# Cinderguard frontier guards: former dragon hunters — bonus damage vs large units
+	# rescale (Task R2): flat +3/+3 vs_attack, +2 def -> global-reference percent.
 	if parent_fid == &"cinderguard":
-		f.vs_attack_bonuses["monster"] = f.vs_attack_bonuses.get("monster", 0) + 3
-		f.vs_attack_bonuses["beast"] = f.vs_attack_bonuses.get("beast", 0) + 3
+		f.vs_attack_bonuses["monster"] = f.vs_attack_bonuses.get("monster", 0) + _atk_pct(f, 3)
+		f.vs_attack_bonuses["beast"] = f.vs_attack_bonuses.get("beast", 0) + _atk_pct(f, 3)
 		if _campaign_terrain == Enums.TerrainType.SHARD_WASTES or _campaign_terrain == Enums.TerrainType.DESERT:
-			f.defense += 2
+			f.defense += _def_pct(f, 2)
 
 	# ── Sub-faction unique modifiers ──────────────────────────
+	# rescale (Task R2): every flat atk/def/vs_attack/vs_defense constant in
+	# this block was 1-5 same-scale points -> global-reference percent (see
+	# _atk_pct/_def_pct doc comment above _create_formation); the numeric
+	# literal passed to the helper is the ORIGINAL pre-rescale magnitude.
+	# f.speed/f.base_morale stay untouched (unrelated scale, out of rescale
+	# scope).
 	match ud.faction_id:
 		# Empire sub-factions
 		&"crimson_legion":  # Elite infantry, no mages — raw melee power
 			if ud.tags.has("infantry") or ud.tags.has("heavy"):
-				f.attack += 3
+				f.attack += _atk_pct(f, 3)
 				f.base_morale += 5
 		&"aurentis_guard":  # Defensive specialists, construction focus
-			f.defense += 2
+			f.defense += _def_pct(f, 2)
 		# Skulloath sub-factions
 		&"salt_reavers":  # Pirate raiders — fast and aggressive
 			f.speed += 1
 			f.move_speed = f.speed * BASE_MOVE_SPEED
 			if _campaign_terrain == Enums.TerrainType.WETLANDS or _campaign_terrain == Enums.TerrainType.SWAMP:
-				f.attack += 3
+				f.attack += _atk_pct(f, 3)
 		&"ashbound":  # Demon summoners and mages
 			if ud.tags.has("mage"):
-				f.attack += 3
+				f.attack += _atk_pct(f, 3)
 			else:
-				f.defense -= 1
+				f.defense -= _def_pct(f, 1)
 		# Gladehost sub-factions
 		&"thornwardens":  # Aggressive plant warriors
-			f.attack += 2
+			f.attack += _atk_pct(f, 2)
 			if _campaign_terrain == Enums.TerrainType.FOREST or _campaign_terrain == Enums.TerrainType.JUNGLE:
-				f.attack += 2
+				f.attack += _atk_pct(f, 2)
 		&"miststriders":  # Fog stealth + trade — faster, elusive
 			f.speed += 1
 			f.move_speed = f.speed * BASE_MOVE_SPEED
 			f.ethereal_dodge_chance = maxf(f.ethereal_dodge_chance, 0.08)
 		# Moonspear sub-factions
 		&"obsidian_order":  # Heavy infantry + siege — tanky but slow
-			f.defense += 3
+			f.defense += _def_pct(f, 3)
 			f.speed = maxi(f.speed - 1, 1)
 			f.move_speed = f.speed * BASE_MOVE_SPEED
 		&"luminarch":  # Prophecy/magic focus — mage specialists
 			if ud.tags.has("mage"):
-				f.attack += 3
+				f.attack += _atk_pct(f, 3)
 			f.base_morale += 5
 		# Thunderswarm sub-factions
 		&"stormbound":  # Ranged + speed + Valkyries
 			if ud.tags.has("ranged") or ud.tags.has("mage"):
-				f.attack += 2
+				f.attack += _atk_pct(f, 2)
 			f.speed += 1
 			f.move_speed = f.speed * BASE_MOVE_SPEED
 		&"skalvar_watch":  # Protectors — defensive stalwarts
-			f.defense += 2
+			f.defense += _def_pct(f, 2)
 			f.base_morale += 5
 		# Tainted Jade sub-factions
 		&"twilight_veil":  # Shadow assassins — glass cannon melee
 			if ud.tags.has("infantry") or ud.tags.has("light"):
-				f.attack += 4
-			f.defense -= 2
+				f.attack += _atk_pct(f, 4)
+			f.defense -= _def_pct(f, 2)
 		&"jade_conclave":  # Seal magic — anti-mage specialists
-			f.vs_defense_bonuses["mage"] = f.vs_defense_bonuses.get("mage", 0) + 4
-			f.defense += 1
+			f.vs_defense_bonuses["mage"] = f.vs_defense_bonuses.get("mage", 0) + _def_pct(f, 4)
+			f.defense += _def_pct(f, 1)
 		# Ivoryscar sub-factions
 		&"gorgonic_cult":  # Monster tamers — beast bonus
-			f.vs_attack_bonuses["monster"] = f.vs_attack_bonuses.get("monster", 0) + 2
-			f.vs_attack_bonuses["beast"] = f.vs_attack_bonuses.get("beast", 0) + 2
+			f.vs_attack_bonuses["monster"] = f.vs_attack_bonuses.get("monster", 0) + _atk_pct(f, 2)
+			f.vs_attack_bonuses["beast"] = f.vs_attack_bonuses.get("beast", 0) + _atk_pct(f, 2)
 			if ud.tags.has("monster") or ud.tags.has("beast"):
-				f.attack += 2
+				f.attack += _atk_pct(f, 2)
 		&"servants_of_reliquary":  # Relic guardians — defensive
-			f.defense += 2
+			f.defense += _def_pct(f, 2)
 			if _is_city_battle:
-				f.defense += 2
+				f.defense += _def_pct(f, 2)
 		# Cinderguard sub-factions
 		&"crownfire":  # Fire specialists (dragon heritage)
-			f.attack += 2
+			f.attack += _atk_pct(f, 2)
 			if ud.tags.has("mage"):
-				f.attack += 2
+				f.attack += _atk_pct(f, 2)
 		&"valkarn_garrison":  # Heavy garrison defense
-			f.defense += 3
+			f.defense += _def_pct(f, 3)
 			if _is_city_battle:
-				f.defense += 2
+				f.defense += _def_pct(f, 2)
 				f.base_morale += 5
 		# Forsaken sub-factions
 		&"bloodthrone":  # Vampire nobles — strong but arrogant
-			f.attack += 2
+			f.attack += _atk_pct(f, 2)
 			f.base_morale += 5
 		&"blightcoven":  # Witchcraft sorcery — glass cannon mages
 			if ud.tags.has("mage"):
-				f.attack += 4
-			f.defense -= 1
+				f.attack += _atk_pct(f, 4)
+			f.defense -= _def_pct(f, 1)
 		# Shardhorde sub-factions
 		&"icebound":  # Ice and frost — tundra specialists
 			if _campaign_terrain == Enums.TerrainType.TUNDRA:
-				f.defense += 3
-				f.attack += 2
+				f.defense += _def_pct(f, 3)
+				f.attack += _atk_pct(f, 2)
 			elif _campaign_terrain == Enums.TerrainType.DESERT:
 				f.speed = maxi(f.speed - 1, 1)
 				f.move_speed = f.speed * BASE_MOVE_SPEED
 		&"splinterbrood":  # Crystal swarm — regen and numbers
 			f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2)
-			f.attack += 1
+			f.attack += _atk_pct(f, 1)
 		# Sunblessed sub-factions
 		&"oaseans":  # Desert educators — knowledge seekers
 			if _campaign_terrain == Enums.TerrainType.DESERT:
-				f.defense += 2
+				f.defense += _def_pct(f, 2)
 				f.base_morale += 5
 		&"venerated":  # Dogmatic holy order — zealous
 			f.base_morale += 8
-			f.attack += 1
+			f.attack += _atk_pct(f, 1)
 
 	# Veterancy bonuses
 	var vet_bonus := unit.get_veterancy_bonus()
 	if vet_bonus > 0.0:
-		f.attack += int(float(f.attack) * vet_bonus)
-		f.defense += int(float(f.defense) * vet_bonus)
+		f.attack += roundi(float(f.attack) * vet_bonus)
+		f.defense += roundi(float(f.defense) * vet_bonus)
 
 	# Propagate accumulated defense modifiers to all three defense types
 	var net_def_delta: int = f.defense - ud.melee_defense
@@ -808,10 +857,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 
 	f.speed = ud.speed + spd_bonus + r_eff.get("unit_speed_bonus", 0)
 	if vet_bonus > 0.0:
-		f.speed += int(float(f.speed) * vet_bonus)
+		f.speed += roundi(float(f.speed) * vet_bonus)
 	f.attack_range = ud.attack_range
 	# HP bonus as % of the squad pool (flat +15 on a 6000 HP squad was nothing)
-	var hp_extra: int = int(unit.current_hp * float(r_eff.get("unit_hp_pct", 0)) / 100.0)
+	var hp_extra: int = roundi(unit.current_hp * float(r_eff.get("unit_hp_pct", 0)) / 100.0)
 	f.max_hp = unit.current_hp + hp_extra
 	f.current_hp = unit.current_hp + hp_extra
 	f.move_speed = f.speed * BASE_MOVE_SPEED
@@ -844,23 +893,36 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	f.fear_vs_tags = ud.fear_vs_tags.duplicate()
 	f.fear_vs_bonus = ud.fear_vs_bonus
 	f.healing_aura = ud.healing_aura
-	f.armor_aura = ud.armor_aura
+	# rescale (Task R2): armor_aura was a flat defense-scale int (1-3); data
+	# now stores a percent-of-this-unit's-own-defense (computed at sweep time
+	# from the SAME unit's old melee_defense, see task-R2-report.md category
+	# A), resolved back to a flat NEW-scale delta against f.defense here.
+	f.armor_aura = roundi(f.defense * float(ud.armor_aura) / 100.0)
 	f.captive_chance = ud.captive_chance
 
 	# Load base vs_bonuses from unit data
+	# rescale (Task R2): vs_attack_bonuses/vs_defense_bonuses were flat
+	# same-scale ints (2-5); data now stores a percent-of-this-unit's-own-
+	# attack/defense (personalized ratio computed at sweep time from the SAME
+	# unit's old attack/melee_defense), resolved back to a flat NEW-scale
+	# delta here against f.attack/f.defense (already fully computed above).
 	for tag_key in ud.vs_attack_bonuses:
-		f.vs_attack_bonuses[tag_key] = f.vs_attack_bonuses.get(tag_key, 0) + ud.vs_attack_bonuses[tag_key]
+		f.vs_attack_bonuses[tag_key] = f.vs_attack_bonuses.get(tag_key, 0) + roundi(f.attack * float(ud.vs_attack_bonuses[tag_key]) / 100.0)
 	for tag_key in ud.vs_defense_bonuses:
-		f.vs_defense_bonuses[tag_key] = f.vs_defense_bonuses.get(tag_key, 0) + ud.vs_defense_bonuses[tag_key]
+		f.vs_defense_bonuses[tag_key] = f.vs_defense_bonuses.get(tag_key, 0) + roundi(f.defense * float(ud.vs_defense_bonuses[tag_key]) / 100.0)
 
 	# Tag-conditional "vs_X" bonuses from commander (e.g. vs_cavalry_attack_bonus → +atk vs cavalry)
+	# rescale (Task R2): these were flat same-scale ints from skill/item/
+	# trait/follower data; now stored as global-reference percent (see
+	# tools_rescale_data.gd), resolved back to a flat NEW-scale delta here
+	# against f.attack/f.defense (already fully computed by this point).
 	for key in cmd_bonuses:
 		if key.begins_with("vs_") and key.ends_with("_attack_bonus"):
 			var tag: String = key.substr(3, key.length() - 17)  # strip "vs_" and "_attack_bonus"
-			f.vs_attack_bonuses[tag] = f.vs_attack_bonuses.get(tag, 0) + cmd_bonuses[key]
+			f.vs_attack_bonuses[tag] = f.vs_attack_bonuses.get(tag, 0) + roundi(f.attack * float(cmd_bonuses[key]) / 100.0)
 		elif key.begins_with("vs_") and key.ends_with("_defense_bonus"):
 			var tag: String = key.substr(3, key.length() - 18)  # strip "vs_" and "_defense_bonus"
-			f.vs_defense_bonuses[tag] = f.vs_defense_bonuses.get(tag, 0) + cmd_bonuses[key]
+			f.vs_defense_bonuses[tag] = f.vs_defense_bonuses.get(tag, 0) + roundi(f.defense * float(cmd_bonuses[key]) / 100.0)
 
 	# Ranged attack cooldown: mages fire slower than archers (high burst, lower frequency)
 	if ud.tags.has("mage"):
@@ -905,13 +967,13 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 	if ud.faction_id == &"shard_guardians":
 		var realm_mods := ShardGuardianSystem.get_realm_mods_for_shard_at(_battle_hex_pos)
 		if not realm_mods.is_empty():
-			f.attack = int(float(f.attack) * realm_mods.get("atk_mult", 1.0))
+			f.attack = roundi(float(f.attack) * realm_mods.get("atk_mult", 1.0))
 			var def_mult: float = realm_mods.get("def_mult", 1.0)
-			f.defense = int(float(f.defense) * def_mult)
-			f.melee_defense = int(float(f.melee_defense) * def_mult)
-			f.projectile_defense = int(float(f.projectile_defense) * def_mult)
-			f.magic_defense = int(float(f.magic_defense) * def_mult)
-			f.speed = int(float(f.speed) * realm_mods.get("spd_mult", 1.0))
+			f.defense = roundi(float(f.defense) * def_mult)
+			f.melee_defense = roundi(float(f.melee_defense) * def_mult)
+			f.projectile_defense = roundi(float(f.projectile_defense) * def_mult)
+			f.magic_defense = roundi(float(f.magic_defense) * def_mult)
+			f.speed = roundi(float(f.speed) * realm_mods.get("spd_mult", 1.0))
 			f.move_speed = f.speed * BASE_MOVE_SPEED
 			# Realm specials
 			if realm_mods.has("morale_bonus"):
@@ -1296,12 +1358,19 @@ func _apply_research_enemy_penalties() -> void:
 		var parent_fid: StringName = GameManager.MINOR_FACTION_PARENTS.get(faction_id, faction_id)
 		var r_eff := GameManager.research_system.get_research_effects(parent_fid)
 		var morale_pen: int = r_eff.get("enemy_morale_penalty", 0)
-		var defense_pen: int = r_eff.get("enemy_defense_penalty", 0)
-		if morale_pen != 0 or defense_pen != 0:
+		# rescale (Task R2): enemy_defense_penalty was a flat same-scale int
+		# (-2 to -5); now stored as global-reference percent (see
+		# tools_rescale_data.gd) and resolved PERSONALIZED per enemy formation
+		# below (against each ef's own current .defense) rather than through a
+		# second global-reference lookup -- strictly more correct since this
+		# already loops per-formation and enemies have varying defense stats.
+		var defense_pen_pct: int = r_eff.get("enemy_defense_penalty", 0)
+		if morale_pen != 0 or defense_pen_pct != 0:
 			for ef in enemy_formations:
 				ef.base_morale += morale_pen  # Expected to be negative
 				ef.current_morale = float(ef.base_morale)
-				if defense_pen != 0:
+				if defense_pen_pct != 0:
+					var defense_pen := roundi(ef.defense * float(defense_pen_pct) / 100.0)
 					ef.defense += defense_pen
 					ef.melee_defense += defense_pen
 					ef.projectile_defense += defense_pen
@@ -1582,7 +1651,13 @@ func simulate_tick() -> Array[Dictionary]:
 				if ally.current_hp >= ally.max_hp:
 					continue
 				if f.position.distance_to(ally.position) <= heal_range:
-					var heal := roundi(f.healing_aura)
+					# bugfix (Task R2): plain roundi() silently zeroed every
+					# rescaled healing_aura (old values 0.3-2.0 -> /10.0 ->
+					# 0.03-0.2 -> roundi() -> 0, EVERY time), disabling the
+					# whole heal-aura mechanic. Data stays a straight float
+					# divide (healing_aura is a rate, not a bonus ratio); the
+					# floor belongs here at the per-tick consumption site.
+					var heal := maxi(1, roundi(f.healing_aura))
 					if heal > 0:
 						ally.current_hp = mini(ally.max_hp, ally.current_hp + heal)
 						if ally.total_entities == 1:
@@ -1607,6 +1682,10 @@ func simulate_tick() -> Array[Dictionary]:
 			var db: Dictionary = f.debuffs[i_db]
 			db.ticks -= 1
 			if db.type == &"dot" or db.type == &"poison":
+				# scale-note (Task R2): literal 1 HP floor; db.value is
+				# already derived from already-rescaled hit damage x pct, so
+				# only this floor is disproportionate -- DoT is a minor
+				# damage source, kept as-is per R1/R2 DECIDE-list disposition.
 				var dot_tick_dmg := maxi(1, int(db.value))
 				f.damage_dealt -= 0  # DoT doesn't count as attacker DPS
 				var killed := f.take_damage(dot_tick_dmg)
@@ -2075,6 +2154,11 @@ func _resolve_combat_pair(a: BattleFormationV3, b: BattleFormationV3) -> Array[D
 				b.current_morale -= killed * 3.0 * TICK_SCALE
 			# Research: poison DoT from melee hits
 			if a.poison_damage_pct > 0.0:
+				# scale-note (Task R2): literal 1.0 floor; ab_dmg is already a
+				# rescaled hit-damage value and poison_damage_pct is an
+				# unrelated-scale rate (KEEP), so the unfloored product
+				# auto-scales -- same minor-damage-source disposition as the
+				# DoT tick floor below, kept as-is.
 				var poison_dmg := maxf(1.0, float(ab_dmg) * a.poison_damage_pct)
 				b.debuffs.append({"type": &"poison", "value": poison_dmg / 5.0, "ticks": 5})
 			# Research: stun chance from melee hits
@@ -2104,6 +2188,8 @@ func _resolve_combat_pair(a: BattleFormationV3, b: BattleFormationV3) -> Array[D
 				a.current_morale -= killed * 3.0 * TICK_SCALE
 			# Research: poison DoT from melee hits
 			if b.poison_damage_pct > 0.0:
+				# scale-note (Task R2): same disposition as the a->b poison
+				# floor above (auto-scales via ba_dmg, minor damage source).
 				var poison_dmg := maxf(1.0, float(ba_dmg) * b.poison_damage_pct)
 				a.debuffs.append({"type": &"poison", "value": poison_dmg / 5.0, "ticks": 5})
 			# Research: stun chance from melee hits
@@ -2208,7 +2294,10 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	# Defender gets bonus defense vs specific attacker tags
 	for tag in attacker.tags:
 		def_f += float(defender.vs_defense_bonuses.get(tag, 0)) * 0.5
-	var per_tile_dps := maxf(0.5, atk_f * atk_f / (atk_f + def_f))
+	# rescale (Task R2): floor scaled 0.5 -> 0.05 alongside attack/defense
+	# /10 (quadratic formula is scale-consistent -- see task-R2-report.md --
+	# so this re-engages at the same relative frequency as before the rescale).
+	var per_tile_dps := maxf(0.05, atk_f * atk_f / (atk_f + def_f))
 
 	# Endurance-based damage reduction: below 50% endurance, damage drops
 	var atk_endurance_ratio := attacker.current_endurance / attacker.max_endurance if attacker.max_endurance > 0.0 else 1.0
@@ -2254,6 +2343,8 @@ func _resolve_melee_combat(attacker: BattleFormationV3, defender: BattleFormatio
 	if attacker.tags.has("fast") or attacker.speed >= 6:
 		per_tile_dps *= 1.06
 
+	# scale-note (Task R2): literal 1 HP floor, aggregated across total_contact
+	# already-scaled hits -- kept as-is per R1/R2 DECIDE-list disposition.
 	var total_damage := maxi(1, int(per_tile_dps * total_contact * randf_range(0.85, 1.15) * TICK_SCALE))
 
 	# Stance modifiers
@@ -2344,7 +2435,8 @@ func _execute_chariot_trample(chariot: BattleFormationV3) -> Array[Dictionary]:
 		# Trample damage: attack-based, scaled by speed and momentum
 		var atk_f := float(chariot.attack)
 		var def_f := float(enemy.melee_defense) * 0.3  # Armor helps less against trampling
-		var trample_dps := maxf(1.0, atk_f * atk_f / (atk_f + def_f))
+		# rescale (Task R2): floor scaled 1.0 -> 0.1 alongside attack/defense /10.
+		var trample_dps := maxf(0.1, atk_f * atk_f / (atk_f + def_f))
 		trample_dps *= speed_factor * TICK_SCALE * 1.5  # 50% bonus over regular melee
 
 		# Contact estimate: how many chariot entities are near the enemy
@@ -2361,6 +2453,8 @@ func _execute_chariot_trample(chariot: BattleFormationV3) -> Array[Dictionary]:
 		if contact < 0.5:
 			continue
 
+		# scale-note (Task R2): literal 1 HP floor, aggregated across contact
+		# already-scaled hits -- kept as-is per R1/R2 DECIDE-list disposition.
 		var total_damage := maxi(1, int(trample_dps * contact))
 
 		if chariot.faction_in_debt:
@@ -2625,7 +2719,8 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 		ranged_atk += float(f.vs_attack_bonuses.get(tag, 0)) * 0.6
 	for tag in f.tags:
 		ranged_def += float(target.vs_defense_bonuses.get(tag, 0)) * 0.3
-	var dmg_per_entity := maxf(0.5, ranged_atk * ranged_atk / (ranged_atk + ranged_def))
+	# rescale (Task R2): floor scaled 0.5 -> 0.05 alongside attack/defense /10.
+	var dmg_per_entity := maxf(0.05, ranged_atk * ranged_atk / (ranged_atk + ranged_def))
 	# Endurance-based ranged damage reduction
 	var ranged_end_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
 	if ranged_end_ratio < 0.5:
@@ -2652,6 +2747,13 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 		var is_hit := randf() >= miss_chance
 		if is_hit:
 			hit_count += 1
+			# scale-note (Task R2): highest-leverage floor in the codebase --
+			# fires once per living entity per tick. HP itself also divides by
+			# 10, so "1 damage" stays the same proportional fraction of a
+			# target's max_hp as before; the real lever is dmg_per_entity's
+			# own floor (0.5 -> 0.05) just above. Kept literal per R1/R2
+			# DECIDE-list disposition; watch the ranged_heavy parity category
+			# specifically if casualty deltas ever blow the bar.
 			var dmg := maxi(1, int(dmg_per_entity * randf_range(0.8, 1.2)))
 			total_damage += dmg
 		else:
@@ -2688,6 +2790,8 @@ func _execute_ranged_attack(f: BattleFormationV3) -> Array[Dictionary]:
 
 		# Research: poison DoT — apply lingering damage as debuff
 		if f.poison_damage_pct > 0.0 and hit_count > 0:
+			# scale-note (Task R2): same disposition as the melee poison
+			# floors (auto-scales via total_damage, minor damage source).
 			var poison_dmg := maxf(1.0, float(total_damage) * f.poison_damage_pct)
 			target.debuffs.append({"type": &"poison", "value": poison_dmg / 5.0, "ticks": 5})
 		# Research: stun chance — chance to briefly pause target actions
@@ -2774,7 +2878,8 @@ func _execute_skirmish_fire(f: BattleFormationV3) -> Array[Dictionary]:
 		ranged_atk += float(f.vs_attack_bonuses.get(tag, 0)) * 0.6
 	for tag in f.tags:
 		ranged_def += float(target.vs_defense_bonuses.get(tag, 0)) * 0.3
-	var dmg_per_entity := maxf(0.5, ranged_atk * ranged_atk / (ranged_atk + ranged_def))
+	# rescale (Task R2): floor scaled 0.5 -> 0.05 alongside attack/defense /10.
+	var dmg_per_entity := maxf(0.05, ranged_atk * ranged_atk / (ranged_atk + ranged_def))
 	dmg_per_entity *= 0.86 # Skirmish fire DPS reduction vs volley mode
 	var ranged_end_ratio := f.current_endurance / f.max_endurance if f.max_endurance > 0.0 else 1.0
 	if ranged_end_ratio < 0.5:
@@ -2799,6 +2904,13 @@ func _execute_skirmish_fire(f: BattleFormationV3) -> Array[Dictionary]:
 		var is_hit := randf() >= miss_chance
 		if is_hit:
 			hit_count += 1
+			# scale-note (Task R2): highest-leverage floor in the codebase --
+			# fires once per living entity per tick. HP itself also divides by
+			# 10, so "1 damage" stays the same proportional fraction of a
+			# target's max_hp as before; the real lever is dmg_per_entity's
+			# own floor (0.5 -> 0.05) just above. Kept literal per R1/R2
+			# DECIDE-list disposition; watch the ranged_heavy parity category
+			# specifically if casualty deltas ever blow the bar.
 			var dmg := maxi(1, int(dmg_per_entity * randf_range(0.8, 1.2)))
 			total_damage += dmg
 		# Visual projectiles for each firing entity
@@ -2911,6 +3023,10 @@ func _update_morale(f: BattleFormationV3) -> void:
 		if f.current_morale < 0.0:
 			# Bleed scales with how far below zero morale is (1-3% max HP per tick)
 			var bleed_ratio := clampf(absf(f.current_morale) / 30.0, 0.0, 1.0)
+			# scale-note (Task R2): literal 1 HP floor on a max_hp-relative
+			# (0.3%-1%) tick -- same family as R1 §2.3's city_system.gd/
+			# turn_manager.gd attrition floors; stays <=1% of a unit's HP
+			# pool even at 10x relative harshness, kept as-is.
 			var bleed_dmg := maxi(1, int(float(f.max_hp) * lerpf(0.003, 0.01, bleed_ratio)))
 			f.current_hp = maxi(0, f.current_hp - bleed_dmg)
 			if f.total_entities == 1:
@@ -2936,7 +3052,15 @@ func _update_morale(f: BattleFormationV3) -> void:
 				# Track shed count via rally_cooldown (repurposed — cinderguard don't rally)
 				var shed_count := f.rout_panic_ticks # Repurpose as shed counter for cinderguard
 				if shed_count < 3:
-					var armor_loss := maxi(1, f.defense / 4) # Lose ~25% of current defense
+					# bugfix (Task R2): integer `/4` truncated to 0 for any
+					# defense < 4, which becomes the COMMON case post-rescale
+					# (typical defense ~3-6) -- the maxi(1,...) floor was then
+					# firing on nearly every shed instead of occasionally,
+					# collapsing graduated 25%/25%/25% shedding into "lose
+					# 100% of a 3-point defense stat in one shed". roundi()
+					# restores graduated shedding (defense=3 -> roundi(0.75)=1,
+					# i.e. ~25%, matching the original design intent).
+					var armor_loss := maxi(1, roundi(f.defense * 0.25)) # Lose ~25% of current defense
 					f.defense = maxi(0, f.defense - armor_loss)
 					f.melee_defense = maxi(0, f.melee_defense - armor_loss)
 					f.projectile_defense = maxi(0, f.projectile_defense - armor_loss)

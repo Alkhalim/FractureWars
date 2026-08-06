@@ -8,6 +8,6 @@ id = &"plague_doctors_tome"
 display_name = "Necromancer's Tome"
 description = "A leather-bound treatise on blood magic and dark healing, compiled by Forsaken scholars in the catacombs of Orenthal."
 rarity = &"common"
-effects = {"heal_per_turn": 8}
+effects = {"heal_per_turn": 1}
 source_factions = Array[StringName]([&"forsaken"])
 gift_tags = Array[StringName]([&"scholarly", &"dark"])

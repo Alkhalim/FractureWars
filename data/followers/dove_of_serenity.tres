@@ -7,6 +7,6 @@ script = ExtResource("1")
 id = &"dove_of_serenity"
 display_name = "Dove of Serenity"
 description = "A sacred bird that calms the wounded. (+2 heal/turn, +2 army morale, -1 battle speed)"
-bonus_effect = { "heal_per_turn": 2, "army_morale_bonus": 2 }
+bonus_effect = {"heal_per_turn": 0, "army_morale_bonus": 2}
 malus_effect = { "army_speed_bonus": -1 }
 terrain_tags = Array[StringName]([])

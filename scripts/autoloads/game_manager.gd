@@ -1521,6 +1521,34 @@ func load_game(slot: int) -> void:
 		var backfill_army: ArmyState = state.armies[aid]
 		if backfill_army.camp_city_id != &"" and state.cities.has(backfill_army.camp_city_id):
 			state.cities[backfill_army.camp_city_id].is_mobile_camp = true
+	# Old-save backfill (Task R2, unit stat rescale): saves from before this
+	# task divided every unit's max_hp/attack/defense by 10 still hold
+	# current_hp at the OLD scale (e.g. 1875/3750), but DataManager now serves
+	# the NEW rescaled UnitData (e.g. max_hp=375) -- loading such a save
+	# without a fixup would show absurd HP bars (500%+) and let old-save
+	# units tank ~10x more damage than intended. No save-version field exists
+	# on GameState to gate this cleanly (see task-R2-report.md), so this uses
+	# a magnitude heuristic: current_hp is clamped <= max_hp in every live
+	# code path (init_from_data, heal/attrition ticks, battle resolution all
+	# `mini(ud.max_hp, ...)` the result), so `current_hp > max_hp` at all is
+	# IMPOSSIBLE for a same-scale save -- it unambiguously means an old-scale
+	# value is being read against new-scale data. (An earlier draft of this
+	# heuristic used a 1.5x safety margin per the task brief's own suggested
+	# wording, but the save fixture test caught that this misses any old-save
+	# unit at <=15% HP -- a fully plausible battle-damaged state, not just an
+	# edge case -- so the margin was tightened to the true logical boundary.
+	# Residual limitation, inherent to ANY magnitude heuristic: an old-scale
+	# unit that was ALSO below ~10% HP produces current_hp <= new max_hp and
+	# is indistinguishable from a healthy new-scale unit; only a save-version
+	# field would close this gap completely.)
+	for backfill_aid in state.armies:
+		var backfill_hp_army: ArmyState = state.armies[backfill_aid]
+		for backfill_unit: UnitInstance in backfill_hp_army.units:
+			var backfill_ud: UnitData = DataManager.get_unit(backfill_unit.unit_data_id)
+			if backfill_ud == null:
+				continue
+			if backfill_unit.current_hp > backfill_ud.max_hp:
+				backfill_unit.current_hp = mini(backfill_ud.max_hp, maxi(1, roundi(float(backfill_unit.current_hp) / 10.0)))
 	state.deserialize_hex_map()
 	state.hex_map.build_region_cache()
 	TurnManager.deserialize_state(state.turn_manager_state)

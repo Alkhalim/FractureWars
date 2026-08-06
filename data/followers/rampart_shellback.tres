@@ -7,6 +7,6 @@ script = ExtResource("1")
 id = &"rampart_shellback"
 display_name = "Rampart Shellback"
 description = "A massive armored turtle that forms a living shield wall. (+3 battle defense, -2 battle speed)"
-bonus_effect = { "army_defense_bonus": 3 }
+bonus_effect = {"army_defense_bonus": 10}
 malus_effect = { "army_speed_bonus": -2 }
 terrain_tags = Array[StringName]([&"wetlands"])

@@ -9,5 +9,5 @@ display_name = "Veteran Raider"
 description = "Strike fast, strike first."
 category = &"logistics"
 is_minor = false
-effects = {"army_movement_bonus": 1.0, "army_attack_bonus": 2}
+effects = {"army_movement_bonus": 1.0, "army_attack_bonus": 3}
 context_tags = Array[StringName]([&"was_attacker", &"battle_won"])

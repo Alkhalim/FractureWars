@@ -4274,9 +4274,17 @@ func _calc_army_power_estimate(army: ArmyState) -> float:
 		if ud == null or ud.max_hp <= 0:
 			continue
 		var hp_ratio := clampf(float(u.current_hp) / float(ud.max_hp), 0.0, 1.0)
-		var stat_value := float(ud.attack) + float(ud.melee_defense) * 0.5 + float(ud.speed) * 0.3
+		# rescale (Task R2): attack/melee_defense are DIVIDE-classified (now
+		# ~1/10 of pre-rescale magnitude); speed/attack_range are KEEP-scale,
+		# untouched by the rescale. Their coefficients are scaled down 10x in
+		# lockstep (0.3->0.03, 0.4->0.04) so this additive mix keeps the SAME
+		# relative weighting it had pre-rescale -- without this, speed/range
+		# silently became ~10x more influential than attack/defense in the
+		# sum, which is exactly what broke test_strength_meter_probe.gd post-
+		# rescale (7/10, down from the pre-rescale 9/10 baseline).
+		var stat_value := float(ud.attack) + float(ud.melee_defense) * 0.5 + float(ud.speed) * 0.03
 		if ud.attack_range > 1:
-			stat_value += float(ud.attack_range) * 0.4
+			stat_value += float(ud.attack_range) * 0.04
 		# Toughness fallback mirrors battle_simulator_v3.gd:819-828 (hp_per_entity derivation):
 		# only use hp_per_soldier when BOTH conditions hold: hp_per_soldier > 0 AND squad_size > 1.
 		var hp_per_soldier := float(ud.hp_per_soldier) if ud.hp_per_soldier > 0 and ud.squad_size > 1 else float(ud.max_hp)

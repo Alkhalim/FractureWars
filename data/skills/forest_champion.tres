@@ -9,5 +9,5 @@ display_name = "Forest Champion"
 description = "+3 attack and +3 defense in forests. +2 scouting range."
 category = &"combat"
 is_minor = false
-effects = {"terrain_forest_attack_bonus": 3, "terrain_forest_defense_bonus": 3, "scouting_bonus": 2}
+effects = {"terrain_forest_attack_bonus": 4, "terrain_forest_defense_bonus": 10, "scouting_bonus": 2}
 context_tags = Array[StringName]([&"terrain_forest", &"terrain_jungle"])

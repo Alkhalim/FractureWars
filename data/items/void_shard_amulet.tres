@@ -8,6 +8,6 @@ id = &"void_shard_amulet"
 display_name = "Void Shard Amulet"
 description = "An amulet containing a sliver of raw void energy, pulsing with dark power from the eastern ruins."
 rarity = &"rare"
-effects = {"army_attack_bonus": 2, "army_defense_bonus": 2}
+effects = {"army_attack_bonus": 3, "army_defense_bonus": 7}
 source_factions = Array[StringName]([&"forsaken"])
 gift_tags = Array[StringName]([&"dark", &"arcane"])

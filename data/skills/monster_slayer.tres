@@ -9,5 +9,5 @@ display_name = "Monster Slayer"
 description = "+5 attack vs monsters, +3 attack vs beasts."
 category = &"combat"
 is_minor = false
-effects = {"vs_monster_attack_bonus": 5, "vs_beast_attack_bonus": 3}
+effects = {"vs_monster_attack_bonus": 7, "vs_beast_attack_bonus": 4}
 context_tags = Array[StringName]([&"faced_beast", &"faced_monster"])

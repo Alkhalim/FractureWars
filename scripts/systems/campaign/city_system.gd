@@ -877,6 +877,11 @@ func _apply_besieger_attrition(besiegers: Array) -> void:
 		for unit in army.units:
 			var ud := DataManager.get_unit(unit.unit_data_id)
 			if ud:
+				# scale-note (Task R2): current_hp and max_hp are both DIVIDE-
+				# rescaled (/10 together), so this stays proportionally
+				# consistent; only the literal `1` HP death-prevention floor
+				# is relatively larger post-rescale (still <=0.3% of pool in
+				# the worst case) -- kept as-is per R1/R2 DECIDE-list.
 				unit.current_hp = maxi(1, unit.current_hp - int(ud.max_hp * SIEGE_BESIEGER_ATTRITION))
 
 ## Attrition walls: sums the besieged city's buildings' besieger_attrition
@@ -936,6 +941,8 @@ func _apply_army_wall_damage(army: ArmyState, attrition_pct: float) -> int:
 		if ud == null:
 			survivors.append(unit)
 			continue
+		# scale-note (Task R2): literal 1 HP floor on a max_hp-relative tick;
+		# unfloored value auto-scales with max_hp -- kept as-is (R1/R2 DECIDE-list).
 		var per_unit := maxi(1, int(ud.max_hp * attrition_pct * 0.01))
 		var actual := mini(per_unit, unit.current_hp)
 		unit.current_hp -= actual
@@ -1435,6 +1442,9 @@ func _trigger_revolt(city: CityState, faction_id: StringName) -> void:
 		var instance := UnitInstance.new()
 		instance.init_from_data(ud, GameManager.state.generate_id())
 		# Rebels are less experienced — reduce HP by 15%
+		# scale-note (Task R2): literal 1 HP floor; current_hp is already
+		# rescaled and 0.85 is an unrelated-scale pct, so it auto-scales --
+		# kept as-is (R1/R2 DECIDE-list).
 		instance.current_hp = maxi(1, int(instance.current_hp * 0.85))
 		rebel_army.units.append(instance)
 
@@ -2199,6 +2209,9 @@ func create_garrison_army(city: CityState) -> ArmyState:
 		for unit in army.units:
 			unit.current_hp = 1
 	elif city.garrison_hp_ratio < 1.0:
+		# scale-note (Task R2): literal 1 HP floor; current_hp is already
+		# rescaled and garrison_hp_ratio is an unrelated-scale fraction, so
+		# it auto-scales -- kept as-is (R1/R2 DECIDE-list).
 		for unit in army.units:
 			unit.current_hp = maxi(1, int(unit.current_hp * city.garrison_hp_ratio))
 

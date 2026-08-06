@@ -8,6 +8,6 @@ id = &"stormforged_hammer"
 display_name = "Stormforged Hammer"
 description = "A warhammer imbued with lightning from Dragonspire storms, crackling with elemental fury."
 rarity = &"legendary"
-effects = {"army_attack_bonus": 5, "army_defense_bonus": 2}
+effects = {"army_attack_bonus": 7, "army_defense_bonus": 7}
 source_factions = Array[StringName]([&"thunderswarm"])
 gift_tags = Array[StringName]([&"martial", &"arcane", &"practical"])

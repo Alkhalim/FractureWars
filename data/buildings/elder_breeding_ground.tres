@@ -20,5 +20,5 @@ requires_capital = true
 requires_research = &"crystal_network"
 upgrades_from = &"hive_spire"
 class_loyalty_bonus = {}
-special_effects = {"army_attack_bonus": 2}
+special_effects = {"army_attack_bonus": 3}
 upkeep_cost = {1: 8, 5: 5}

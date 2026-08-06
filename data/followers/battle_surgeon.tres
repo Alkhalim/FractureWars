@@ -7,5 +7,5 @@ script = ExtResource("1")
 id = &"battle_surgeon"
 display_name = "Battle Surgeon"
 description = "A skilled healer who tends to wounds but slows the army's march. (-0.5 campaign movement)"
-bonus_effect = { "heal_per_turn": 2 }
+bonus_effect = {"heal_per_turn": 0}
 malus_effect = { "army_movement_bonus": -0.5 }

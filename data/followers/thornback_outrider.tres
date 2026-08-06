@@ -8,5 +8,5 @@ id = &"thornback_outrider"
 display_name = "Thornback Outrider"
 description = "A swift jungle runner who knows every hidden trail. (+1 campaign movement, -2 battle defense)"
 bonus_effect = { "army_movement_bonus": 1.0 }
-malus_effect = { "army_defense_bonus": -2 }
+malus_effect = {"army_defense_bonus": -7}
 terrain_tags = Array[StringName]([&"jungle"])

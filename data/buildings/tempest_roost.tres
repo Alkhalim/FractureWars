@@ -19,5 +19,5 @@ requires_capital = true
 requires_research = &"eye_of_the_storm"
 upgrades_from = &"stormrider_eyrie"
 class_loyalty_bonus = {"nobles": 4, "peasants": -3}
-special_effects = {"flying_unit_attack_bonus": 2}
+special_effects = {"flying_unit_attack_bonus": 3}
 upkeep_cost = {0: 5, 1: 8}

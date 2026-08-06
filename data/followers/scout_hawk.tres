@@ -8,4 +8,4 @@ id = &"scout_hawk"
 display_name = "Scout Hawk"
 description = "A trained hawk reveals the land ahead but distracts sentries. (-2 battle defense)"
 bonus_effect = { "scouting_bonus": 3 }
-malus_effect = { "army_defense_bonus": -2 }
+malus_effect = {"army_defense_bonus": -7}

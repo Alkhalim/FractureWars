@@ -937,18 +937,23 @@ func _calc_formation_power(f: BattleSimulatorV3.BattleFormationV3) -> float:
 	if f.is_dead or f.is_fled or f.max_hp <= 0:
 		return 0.0
 	var hp_ratio := clampf(float(f.current_hp) / float(f.max_hp), 0.0, 1.0)
-	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.3
+	# rescale (Task R2): f.attack/f.defense are DIVIDE-scale (now ~1/10 of
+	# pre-rescale magnitude); f.speed/f.attack_range are KEEP-scale,
+	# untouched -- coefficients scaled down 10x in lockstep (0.3->0.03,
+	# 0.4->0.04) to preserve the pre-rescale relative weighting. Mirrors the
+	# same fix in campaign.gd's _calc_army_power_estimate().
+	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.03
 	if f.attack_range > 1:
-		stat_value += float(f.attack_range) * 0.4  # Ranged units are more valuable
+		stat_value += float(f.attack_range) * 0.04  # Ranged units are more valuable
 	var toughness := maxf(1.0, float(f.hp_per_entity))
 	var entities_exp := 1.0 if f.attack_range > 1 else 0.8
 	var effective_count := pow(float(f.entities_alive), entities_exp)
 	return hp_ratio * stat_value * effective_count * toughness
 
 func _calc_formation_power_max(f: BattleSimulatorV3.BattleFormationV3) -> float:
-	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.3
+	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.03
 	if f.attack_range > 1:
-		stat_value += float(f.attack_range) * 0.4
+		stat_value += float(f.attack_range) * 0.04
 	var toughness := maxf(1.0, float(f.hp_per_entity))
 	var entities_exp := 1.0 if f.attack_range > 1 else 0.8
 	var effective_count := pow(float(f.total_entities), entities_exp)

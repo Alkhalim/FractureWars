@@ -8,6 +8,6 @@ id = &"jade_talisman"
 display_name = "Jade Talisman"
 description = "A healing talisman infused with serpent magic."
 rarity = &"common"
-effects = {"heal_per_turn": 8}
+effects = {"heal_per_turn": 1}
 source_factions = Array[StringName]([&"tainted_jade"])
 gift_tags = Array[StringName]([&"nature", &"arcane"])
