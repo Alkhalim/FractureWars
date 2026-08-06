@@ -1644,7 +1644,17 @@ func simulate_tick() -> Array[Dictionary]:
 			if f.regen_requires_combat:
 				should_regen = f.in_melee_contact  # Only regen while in melee combat
 			if should_regen:
-				f.current_hp = mini(f.max_hp, f.current_hp + roundi(f.hp_regen_per_tick))
+				# bugfix (Task R3 follow-up): same bug class as the
+				# healing_aura fix below -- the 5 rescaled hp_regen_per_tick
+				# floors (Tainted Jade jungle/swamp, Shardhorde Divine,
+				# Moonspear Waning, Splinterbrood; old values 0.2-0.5 ->
+				# /10.0 -> 0.02-0.05) are all < 0.5, so bare roundi() rounded
+				# to 0 EVERY tick, silently disabling passive terrain/mechanic
+				# regen. The enclosing `f.hp_regen_per_tick > 0.0` guard above
+				# already ensures this is only reached when regen is actually
+				# active, so maxi(1, ...) is safe (a true zero never gets here).
+				var regen := maxi(1, roundi(f.hp_regen_per_tick))
+				f.current_hp = mini(f.max_hp, f.current_hp + regen)
 				f.front_entity_hp = f.current_hp if f.total_entities == 1 else f.front_entity_hp
 		# Damage aura
 		if f.damage_aura_radius > 0.0 and f.damage_aura_damage > 0.0:

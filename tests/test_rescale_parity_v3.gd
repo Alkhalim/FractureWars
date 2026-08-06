@@ -28,6 +28,21 @@ extends SceneTree
 ## (i.e. at most one flip allowed out of 10), mean casualty-fraction delta
 ## <= 10% (same numeric bar as the V2 harness, task brief).
 ##
+## Task R3 follow-up (2026-08-06): +3 tainted_jade matchups (`tj_reference:
+## true`), added because R3's econ investigation found tainted_jade had NO
+## controlled A/B coverage in either harness while its econ-sim signal was
+## the one flagged UNRESOLVED (see task-R3-report.md §6). Unlike the
+## original 10, these have no pre-rescale baseline to diff against (the data
+## is already rescaled repo-wide) -- they're captured at CURRENT scale as a
+## pinned regression reference instead: `_run_compare` checks them for exact
+## winner/casualty reproduction (tight tolerance, NOT the 10% rescale-noise
+## bar) so a future change to the taint-scaling formulas gets caught, and
+## excludes them from the `winner_agreement_bar` parity aggregate (that bar
+## is specifically about old-vs-new-scale drift, which doesn't apply here).
+## `_run_capture` is now merge-aware: it never overwrites an existing named
+## entry (so re-running --capture can't accidentally clobber the original
+## 10's old-scale pins), it only appends matchups not yet in the baseline.
+##
 ## Run:
 ##   Capture (current scale, THIS task):
 ##     godot --headless --path . -s res://tests/test_rescale_parity_v3.gd -- --capture
@@ -105,6 +120,7 @@ func _run_matchup(m: Dictionary, idx: int) -> Dictionary:
 	return {
 		"name": m["name"],
 		"category": m["category"],
+		"tj_reference": m.get("tj_reference", false),
 		"winner": _classify_winner(sim),
 		"ticks": sim.tick_count,
 		"atk_pre_hp": atk_pre,
@@ -138,13 +154,40 @@ func _casualty_frac(pre: int, post: int) -> float:
 # ── Modes ───────────────────────────────────────────────────────
 
 func _run_capture(results: Array[Dictionary]) -> void:
+	## Merge-aware (Task R3 follow-up): an existing baseline entry (matched by
+	## `name`) is NEVER overwritten -- only matchups not yet present get
+	## appended. This is what makes it safe to add the tj_reference matchups
+	## via --capture without risk of re-running --capture someday and
+	## clobbering the original 10's old-scale pins with current-scale data
+	## (which would silently turn the rescale A/B parity check into a no-op).
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BASELINE_DIR))
+	var existing_by_name := {}
+	var f_read := FileAccess.open(BASELINE_PATH, FileAccess.READ)
+	if f_read:
+		var parsed: Variant = JSON.parse_string(f_read.get_as_text())
+		f_read.close()
+		if parsed is Dictionary and parsed.has("results"):
+			for r in parsed["results"]:
+				existing_by_name[r.get("name", "")] = r
+
+	var merged: Array = []
+	var newly_added: Array[String] = []
+	var parity_count := 0
+	for r in results:
+		if existing_by_name.has(r["name"]):
+			merged.append(existing_by_name[r["name"]])
+		else:
+			merged.append(r)
+			newly_added.append(r["name"])
+		if not bool(r.get("tj_reference", false)):
+			parity_count += 1
+
 	var payload := {
 		"schema": 1,
 		"seed_base": SEED_BASE,
-		"matchup_count": results.size(),
-		"winner_agreement_bar": results.size() - 1,
-		"results": results,
+		"matchup_count": merged.size(),
+		"winner_agreement_bar": maxi(0, parity_count - 1),
+		"results": merged,
 	}
 	var f := FileAccess.open(BASELINE_PATH, FileAccess.WRITE)
 	if f == null:
@@ -160,11 +203,15 @@ func _run_capture(results: Array[Dictionary]) -> void:
 		winner_counts[w] = winner_counts.get(w, 0) + 1
 	print("--- Rescale A/B Baseline V3 CAPTURE ---")
 	for r in results:
-		print("[%s/%s] winner=%s ticks=%d atk_cas=%.2f def_cas=%.2f" % [
-			r["category"], r["name"], r["winner"], r["ticks"], r["atk_casualty_frac"], r["def_casualty_frac"],
+		var is_new: bool = r["name"] in newly_added
+		print("[%s/%s]%s winner=%s ticks=%d atk_cas=%.2f def_cas=%.2f" % [
+			r["category"], r["name"], (" NEW" if is_new else ""), r["winner"], r["ticks"], r["atk_casualty_frac"], r["def_casualty_frac"],
 		])
 	print("Winner distribution: %s" % [winner_counts])
-	print("BASELINE WRITTEN: %s (%d matchups)" % [BASELINE_PATH, results.size()])
+	print("Newly added (appended, prior entries preserved untouched): %s" % [newly_added])
+	print("BASELINE WRITTEN: %s (%d matchups, %d parity + %d tj_reference)" % [
+		BASELINE_PATH, merged.size(), parity_count, merged.size() - parity_count,
+	])
 	quit(0)
 
 func _run_compare(results: Array[Dictionary]) -> void:
@@ -189,9 +236,20 @@ func _run_compare(results: Array[Dictionary]) -> void:
 		quit(1)
 		return
 
+	## tj_reference entries (Task R3 follow-up) are pinned-regression checks
+	## against a CURRENT-scale baseline (there's no old-scale data for them),
+	## not old-vs-new rescale-drift checks -- so they're tallied separately
+	## and held to a tight tolerance instead of folding into the 10%
+	## rescale-noise bar/aggregate below.
+	const TJ_REF_CASUALTY_TOLERANCE := 0.02
+
 	var winner_agree := 0
 	var delta_sum := 0.0
 	var delta_n := 0
+	var parity_total := 0
+	var tj_ref_ok := true
+	var tj_ref_total := 0
+	var tj_ref_match := 0
 	print("--- Rescale A/B Baseline V3 COMPARE ---")
 	for i in results.size():
 		var cur: Dictionary = results[i]
@@ -203,10 +261,26 @@ func _run_compare(results: Array[Dictionary]) -> void:
 			quit(1)
 			return
 		var same_winner: bool = base.get("winner", "") == cur["winner"]
-		if same_winner:
-			winner_agree += 1
 		var atk_delta := absf(float(base.get("atk_casualty_frac", 0.0)) - float(cur["atk_casualty_frac"]))
 		var def_delta := absf(float(base.get("def_casualty_frac", 0.0)) - float(cur["def_casualty_frac"]))
+		var is_tj_ref: bool = bool(base.get("tj_reference", false)) or bool(cur.get("tj_reference", false))
+
+		if is_tj_ref:
+			tj_ref_total += 1
+			var tj_ok := same_winner and atk_delta <= TJ_REF_CASUALTY_TOLERANCE and def_delta <= TJ_REF_CASUALTY_TOLERANCE
+			if tj_ok:
+				tj_ref_match += 1
+			else:
+				tj_ref_ok = false
+			print("[TJ_REF %s/%s] base_winner=%s cur_winner=%s %s | atk_cas Δ%.3f def_cas Δ%.3f" % [
+				cur["category"], cur["name"], base.get("winner", "?"), cur["winner"],
+				("MATCH" if tj_ok else "DRIFT"), atk_delta, def_delta,
+			])
+			continue
+
+		parity_total += 1
+		if same_winner:
+			winner_agree += 1
 		delta_sum += atk_delta + def_delta
 		delta_n += 2
 		print("[%s/%s] base_winner=%s cur_winner=%s %s | atk_cas Δ%.3f def_cas Δ%.3f" % [
@@ -215,10 +289,14 @@ func _run_compare(results: Array[Dictionary]) -> void:
 		])
 
 	var mean_delta := delta_sum / maxf(1.0, float(delta_n))
-	print("Winner agreement: %d/%d (bar: >= %d)" % [winner_agree, results.size(), winner_bar])
+	print("Winner agreement: %d/%d (bar: >= %d)" % [winner_agree, parity_total, winner_bar])
 	print("Mean casualty-fraction delta: %.4f (bar: <= %.2f)" % [mean_delta, CASUALTY_DELTA_BAR])
+	if tj_ref_total > 0:
+		print("TJ reference: %d/%d matched (tolerance %.2f, regression tripwire not rescale-parity)" % [
+			tj_ref_match, tj_ref_total, TJ_REF_CASUALTY_TOLERANCE,
+		])
 
-	var pass_bar := winner_agree >= winner_bar and mean_delta <= CASUALTY_DELTA_BAR
+	var pass_bar := winner_agree >= winner_bar and mean_delta <= CASUALTY_DELTA_BAR and tj_ref_ok
 	if pass_bar:
 		print("RESCALE A/B PARITY V3 PASSED")
 		quit(0)
@@ -354,6 +432,42 @@ func _build_matchups() -> Array[Dictionary]:
 			"a": [{"id": &"crimson_centurion", "n": 1}, {"id": &"crimson_ballistarius", "n": 1}],
 			"b": [{"id": &"valkarn_defender", "n": 1}, {"id": &"desert_outrider", "n": 1}],
 		},
+		# ── Task R3 follow-up: tainted_jade taint-scaling coverage ──────────
+		# `tj_reference: true` -- these have no pre-rescale baseline (see
+		# harness header comment); captured/compared at current scale only,
+		# as a pinned regression reference, not old-vs-new rescale parity.
+		# Each exercises a different taint_power tier (line ~499-532 of
+		# battle_simulator_v3.gd) plus a jungle/swamp terrain regen floor
+		# (Task R3 follow-up item 1's fix site) or the sibling Skulloath
+		# corruption scaling block, so together they cover all three named
+		# "taint/corruption scaling sites".
+		{
+			"name": "tainted_jade_venomous_taint_vs_empire_legion", "category": "tj_taint_scaling",
+			"tj_reference": true,
+			"a": [{"id": &"tainted_warrior", "n": 3}], # taint_power 45 (40-59 tier, +15% def) + Venomous War (+15% atk in jungle) + anti-mage vs_defense
+			"b": [{"id": &"legionary", "n": 3}],
+			"terrain": Enums.TerrainType.JUNGLE, # exercises the 0.05 hp_regen_per_tick floor fix (item 1)
+			"setup": Callable(self, "_setup_tj_taint_venomous"),
+			"teardown": Callable(self, "_teardown_tj_taint"),
+		},
+		{
+			"name": "tainted_jade_swamp_taint_vs_skulloath_dread_riders", "category": "tj_taint_scaling",
+			"tj_reference": true,
+			"a": [{"id": &"jade_fang", "n": 3}], # taint_power 65 (60+ tier, +20% def)
+			"b": [{"id": &"dread_riders", "n": 2}], # skulloath cavalry; default corruption=20 (<=20 tier, -8% atk) needs no setup
+			"terrain": Enums.TerrainType.SWAMP, # exercises the 0.03 hp_regen_per_tick floor fix (item 1)
+			"setup": Callable(self, "_setup_tj_taint_high"),
+			"teardown": Callable(self, "_teardown_tj_taint"),
+		},
+		{
+			"name": "tainted_jade_serpent_guardian_vs_gladehost_treant", "category": "tj_taint_scaling",
+			"tj_reference": true,
+			"a": [{"id": &"serpent_guardian", "n": 2}], # taint_power 25 (20-39 tier, +10% def) -- mirror-adjacent guardian archetype vs Gladehost's own heavy melee construct
+			"b": [{"id": &"treant", "n": 1}], # gladehost default harmony=75 (>=70 tier, +12 morale/+5% def) needs no setup
+			"terrain": Enums.TerrainType.FOREST, # Gladehost home bonus; no TJ terrain branch on FOREST (only jungle/swamp)
+			"setup": Callable(self, "_setup_tj_taint_low"),
+			"teardown": Callable(self, "_teardown_tj_taint"),
+		},
 	]
 
 # ── Named setup/teardown (GDScript multi-line lambdas inside a Dictionary
@@ -399,3 +513,31 @@ func _teardown_thunder_wall() -> void:
 	if fs:
 		fs.storm_wall_turns = 0
 		fs.storm_wall_city = &""
+
+## Task R3 follow-up: tainted_jade taint_power/taint_focus setup, one per
+## tier so the 3 tj_reference matchups collectively cover all three
+## taint_power thresholds (>=20/>=40/>=60) in battle_simulator_v3.gd's
+## `elif parent_fid == &"tainted_jade":` block. Default taint_power is 0
+## (see FactionState), so unlike Skulloath's default corruption=20 (already
+## live without setup) these need an explicit poke.
+func _setup_tj_taint_venomous() -> void:
+	var fs: FactionState = _gm.state.faction_states.get(&"tainted_jade")
+	if fs:
+		fs.taint_power = 45
+		fs.taint_focus = 2 # Venomous War: +atk in jungle/swamp once taint_power >= 20
+
+func _setup_tj_taint_high() -> void:
+	var fs: FactionState = _gm.state.faction_states.get(&"tainted_jade")
+	if fs:
+		fs.taint_power = 65
+
+func _setup_tj_taint_low() -> void:
+	var fs: FactionState = _gm.state.faction_states.get(&"tainted_jade")
+	if fs:
+		fs.taint_power = 25
+
+func _teardown_tj_taint() -> void:
+	var fs: FactionState = _gm.state.faction_states.get(&"tainted_jade")
+	if fs:
+		fs.taint_power = 0
+		fs.taint_focus = 0
