@@ -1,0 +1,227 @@
+{
+	"matchup_count": 20,
+	"results": [
+		{
+			"atk_casualty_frac": 0.00114285714285711,
+			"atk_post_strength": 6992,
+			"atk_pre_strength": 7000,
+			"category": "tanky_few_vs_many_cheap",
+			"def_casualty_frac": 0.234,
+			"def_post_strength": 3447,
+			"def_pre_strength": 4500,
+			"name": "iron_colossus_pair_vs_cinder_militia_horde",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.00214285714285711,
+			"atk_post_strength": 6985,
+			"atk_pre_strength": 7000,
+			"category": "tanky_few_vs_many_cheap",
+			"def_casualty_frac": 0.30725,
+			"def_post_strength": 2771,
+			"def_pre_strength": 4000,
+			"name": "root_sentinel_pair_vs_dawn_militia_horde",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.00246153846153852,
+			"atk_post_strength": 3242,
+			"atk_pre_strength": 3250,
+			"category": "tanky_few_vs_many_cheap",
+			"def_casualty_frac": 0.4195,
+			"def_post_strength": 1161,
+			"def_pre_strength": 2000,
+			"name": "bone_colossus_solo_vs_ghoul_pack_horde",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.0444166666666667,
+			"atk_post_strength": 11467,
+			"atk_pre_strength": 12000,
+			"category": "tanky_few_vs_many_cheap",
+			"def_casualty_frac": 0.366851851851852,
+			"def_post_strength": 6838,
+			"def_pre_strength": 10800,
+			"name": "shard_colossus_solo_vs_crystal_swarmling_horde",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.0429249762583096,
+			"atk_post_strength": 10078,
+			"atk_pre_strength": 10530,
+			"category": "ranged_heavy",
+			"def_casualty_frac": 1.0,
+			"def_post_strength": 0,
+			"def_pre_strength": 6500,
+			"name": "thornbow_scout_volley_vs_thornback_guardian",
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.366666666666667,
+			"atk_post_strength": 2280,
+			"atk_pre_strength": 3600,
+			"category": "ranged_heavy",
+			"def_casualty_frac": 0.184888888888889,
+			"def_post_strength": 3668,
+			"def_pre_strength": 4500,
+			"name": "stormbow_raider_flight_vs_thunderswarm_warrior",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.481428571428571,
+			"atk_post_strength": 1815,
+			"atk_pre_strength": 3500,
+			"category": "ranged_heavy",
+			"def_casualty_frac": 0.481846153846154,
+			"def_post_strength": 1684,
+			"def_pre_strength": 3250,
+			"name": "bone_archer_volley_vs_bone_colossus",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.650857142857143,
+			"atk_post_strength": 1222,
+			"atk_pre_strength": 3500,
+			"category": "ranged_heavy",
+			"def_casualty_frac": 0.2432,
+			"def_post_strength": 7568,
+			"def_pre_strength": 10000,
+			"name": "sun_archer_line_vs_solar_champion",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.8938,
+			"atk_post_strength": 2124,
+			"atk_pre_strength": 20000,
+			"category": "monster_stacks",
+			"def_casualty_frac": 1.0,
+			"def_post_strength": 0,
+			"def_pre_strength": 18000,
+			"name": "steppe_mammoth_duo_vs_frost_hydra_duo",
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 1.0,
+			"atk_post_strength": 0,
+			"atk_pre_strength": 8000,
+			"category": "monster_stacks",
+			"def_casualty_frac": 0.613083333333333,
+			"def_post_strength": 4643,
+			"def_pre_strength": 12000,
+			"name": "thunderwyrm_duo_vs_tainted_colossus_solo",
+			"winner": "defender"
+		},
+		{
+			"atk_casualty_frac": 0.768818181818182,
+			"atk_post_strength": 2543,
+			"atk_pre_strength": 11000,
+			"category": "monster_stacks",
+			"def_casualty_frac": 0.4211,
+			"def_post_strength": 11578,
+			"def_pre_strength": 20000,
+			"name": "treant_duo_vs_steppe_mammoth_herd",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.844416666666667,
+			"atk_post_strength": 1867,
+			"atk_pre_strength": 12000,
+			"category": "monster_stacks",
+			"def_casualty_frac": 1.0,
+			"def_post_strength": 0,
+			"def_pre_strength": 8000,
+			"name": "shard_colossus_solo_vs_thunderwyrm_duo",
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.657008547008547,
+			"atk_post_strength": 4013,
+			"atk_pre_strength": 11700,
+			"category": "mixed",
+			"def_casualty_frac": 0.796163069544364,
+			"def_post_strength": 2550,
+			"def_pre_strength": 12510,
+			"name": "empire_legion_line_vs_gladehost_woodland_host",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 1.0,
+			"atk_post_strength": 0,
+			"atk_pre_strength": 10500,
+			"category": "mixed",
+			"def_casualty_frac": 0.3267,
+			"def_post_strength": 6733,
+			"def_pre_strength": 10000,
+			"name": "skulloath_raiders_vs_forsaken_undead_host",
+			"winner": "defender"
+		},
+		{
+			"atk_casualty_frac": 0.666666666666667,
+			"atk_post_strength": 3500,
+			"atk_pre_strength": 10500,
+			"category": "mixed",
+			"def_casualty_frac": 0.415584415584416,
+			"def_post_strength": 4500,
+			"def_pre_strength": 7700,
+			"name": "ivoryscar_desert_host_vs_cinderguard_forge_host",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.890617283950617,
+			"atk_post_strength": 886,
+			"atk_pre_strength": 8100,
+			"category": "mixed",
+			"def_casualty_frac": 0.855733333333333,
+			"def_post_strength": 1082,
+			"def_pre_strength": 7500,
+			"name": "thunderswarm_storm_host_vs_sunblessed_dawn_host",
+			"winner": "stalemate"
+		},
+		{
+			"atk_casualty_frac": 0.00122727272727274,
+			"atk_post_strength": 21973,
+			"atk_pre_strength": 22000,
+			"category": "garrison_defense",
+			"def_casualty_frac": 0.278111111111111,
+			"def_post_strength": 6497,
+			"def_pre_strength": 9000,
+			"name": "garrison_cinder_militia_holds_vs_empire_legion",
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.484785714285714,
+			"atk_post_strength": 7213,
+			"atk_pre_strength": 14000,
+			"category": "garrison_defense",
+			"def_casualty_frac": 0.423571428571429,
+			"def_post_strength": 4035,
+			"def_pre_strength": 7000,
+			"name": "garrison_bone_archer_line_vs_skulloath_raiders",
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.471125,
+			"atk_post_strength": 4231,
+			"atk_pre_strength": 8000,
+			"category": "garrison_defense",
+			"def_casualty_frac": 1.0,
+			"def_post_strength": 0,
+			"def_pre_strength": 7000,
+			"name": "garrison_root_sentinel_vs_thunderwyrm_assault",
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.16925,
+			"atk_post_strength": 3323,
+			"atk_pre_strength": 4000,
+			"category": "garrison_defense",
+			"def_casualty_frac": 0.08775,
+			"def_post_strength": 7298,
+			"def_pre_strength": 8000,
+			"name": "garrison_dawn_militia_vs_forsaken_raid",
+			"winner": "attacker"
+		}
+	],
+	"schema": 1,
+	"seed_base": 2608061
+}
