@@ -363,7 +363,13 @@ func _build_matchups() -> Array[Dictionary]:
 func _setup_siege_mastery() -> void:
 	var fs: FactionState = _gm.state.faction_states.get(&"empire")
 	if fs and not fs.completed_research.has(&"siege_mastery"):
-		fs.completed_research.append(&"siege_mastery") # siege_bonus: 30
+		# rescale-note (Task R3, 2026-08-06): siege_bonus is DATA (a research
+		# effects-dict value, not a code-side literal), so unlike the
+		# hardcoded V3 sub-faction/terrain constants below (which keep their
+		# pre-rescale literal as the _atk_pct/_def_pct helper argument), the
+		# stored value itself changed: old flat 30 -> new global-reference
+		# pct 43 (round(30/70*100)) when R2's data sweep landed.
+		fs.completed_research.append(&"siege_mastery") # siege_bonus: 43 (was 30 pre-rescale)
 		_gm.research_system._invalidate_cache(&"empire")
 
 func _teardown_siege_mastery() -> void:

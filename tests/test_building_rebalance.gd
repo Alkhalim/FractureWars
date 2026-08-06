@@ -278,7 +278,14 @@ func _run_task3_growth_purge(dm) -> void:
 
 	# ── sunfire_forge: also strip the capstone-grade army_attack_bonus a
 	# tier-1 economy building had no business carrying. solar_citadel (its
-	# unrelated late-game counterpart) keeps its own +2 untouched. ──
+	# unrelated late-game counterpart) keeps its own +2 untouched.
+	# rescale-note (Task R3, 2026-08-06): the unit-stat-rescale ÷10 epoch
+	# (R2 commits e0d362c/dfe2ffb) converted this building's flat
+	# army_attack_bonus from a raw +2 to a global-reference PERCENT (2 of
+	# RESCALE_REF_ATTACK=70 -> round(2/70*100)=3), so the stored value is now
+	# 3, not 2 -- the flat magnitude never mattered for THIS check (only "did
+	# sunfire_forge lose the key, did solar_citadel keep some value"), so the
+	# pin is simply updated to the new correct number. ──
 	var sunfire_forge = dm.get_building(&"sunfire_forge")
 	if sunfire_forge == null:
 		_check(false, "sunfire_forge building data exists")
@@ -286,7 +293,7 @@ func _run_task3_growth_purge(dm) -> void:
 		_check(not sunfire_forge.special_effects.has("army_attack_bonus"), "sunfire_forge special_effects has no army_attack_bonus, got %s" % [sunfire_forge.special_effects])
 	var solar_citadel = dm.get_building(&"solar_citadel")
 	if solar_citadel != null:
-		_check(int(solar_citadel.special_effects.get("army_attack_bonus", -1)) == 2, "solar_citadel keeps its own army_attack_bonus == 2 (unrelated capstone), got %s" % [solar_citadel.special_effects.get("army_attack_bonus", -1)])
+		_check(int(solar_citadel.special_effects.get("army_attack_bonus", -1)) == 3, "solar_citadel keeps its own army_attack_bonus == 3 (post-rescale pct of old +2, unrelated capstone), got %s" % [solar_citadel.special_effects.get("army_attack_bonus", -1)])
 
 	# ── Cinderguard iron VALUES are locked -- Task 3 strips only growth
 	# fields, never touches income_bonus, on these five buildings. ──

@@ -1,5 +1,20 @@
 # FractureWars — Unit Roster Audit
 
+> **Rescale epoch note (Task R3, 2026-08-06):** every combat stat this audit
+> cites (attack, HP/damage numbers, DPS) predates the unit-stat-rescale ÷10
+> balance change (designer-ordered 2026-08-05; see
+> `docs/superpowers/plans/2026-08-06-unit-stat-rescale.md`). All raw
+> magnitudes below — "3822 damage", "7200 DPS", "HP left" totals, the VPC
+> "power" figures derived from them — are **10x the current in-game values**.
+> Costs (gold/pop, e.g. "71", "605") and the *ratios/rankings* this audit's
+> recommendations are built on (value spread, dominated-unit lists, per-role
+> averages) are unaffected — cost fields were not touched by the rescale, and
+> a uniform ÷10 on both the numerator (damage/HP) and a fixed reference
+> (survivor HP/8) preserves relative VPC ordering. Treat this document as
+> historical measurement data at the OLD scale; re-run
+> `tests/tmp_unit_audit.gd` for current-scale numbers before citing a raw
+> figure from here in new design work.
+
 *July 2026. Method: every one of the 275 units was fought against a fixed
 reference opponent (Empire Legionary) inside the **real battle simulator**
 (`tests/tmp_unit_audit.gd`, 900 ticks, normal deployment so archers get their

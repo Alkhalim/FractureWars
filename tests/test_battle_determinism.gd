@@ -6,6 +6,20 @@ extends SceneTree
 ##
 ## Capture baseline:  godot --headless --path . -s res://tests/test_battle_determinism.gd -- --baseline
 ## Compare:           godot --headless --path . -s res://tests/test_battle_determinism.gd
+##
+## RE-BASELINE EPOCH (Task R3, 2026-08-06): tests/baselines/battle_v2.txt and
+## battle_v3.txt were deliberately regenerated to accept the unit-stat-rescale
+## ÷10 balance change (designer-ordered 2026-08-05; R2 commits e0d362c "unit
+## combat numbers /10 - data sweep, truncation audit, save backfill" and
+## dfe2ffb "heal-clamp root cause, backfill invariant proven, meter retune").
+## MATCH was intentionally BROKEN from e0d362c through dfe2ffb (expected —
+## R2's battery explicitly deferred determinism to R3, see task-R2-brief.md /
+## task-R3-brief.md) and is re-armed as of this re-baseline. This is a
+## deliberate re-baseline accepting new (correct, ÷10) battle behavior as the
+## reference, NOT a fix to the simulator's RNG consumption order — same
+## pattern as the two prior re-baselines (commits 8e5eb90, b9e29d0). Verified
+## with two consecutive COMPARE runs -> FINGERPRINT MATCH both times before
+## committing. Ledger: .superpowers/sdd/2026-08-06-unit-stat-rescale/progress.md.
 
 const BASELINE_DIR := "res://tests/baselines"
 const SEED := 133742
