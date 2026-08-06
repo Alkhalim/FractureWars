@@ -15,15 +15,35 @@ extends SceneTree
 ## predates the rescale), and checks every backfilled unit's current_hp lands
 ## in [1, new_max_hp] and roughly matches old_hp/10 (the backfill formula).
 ##
+## VERIFY-HEAL-CLAMP mode (Task R2 review) tests the OPPOSITE direction: a
+## brand-new NEW-scale save must NOT be misdetected as old-scale. The
+## backfill heuristic (`current_hp > max_hp`) depends on EVERY current_hp
+## mutation site actually clamping to max_hp -- a review pass found 7
+## turn_manager.gd faction-mechanic passive-heal sites that clamped to
+## `ud.max_hp * ud.squad_size` instead (max_hp is already the whole-squad
+## pool), letting a full-HP squad_size>1 unit overheal past its real max on
+## the very next tick, which would false-positive the backfill on the next
+## load and silently divide a healthy NEW-scale save's HP by 10. This mode
+## builds a full-HP squad_size>1 army, fires the Tainted Jade jungle-heal
+## faction mechanic directly (`TurnManager._process_tainted_jade_taint`,
+## taint_focus=1 branch, taint_power>=30, army on a JUNGLE tile), asserts no
+## overheal happened, saves at the CURRENT (new) scale, reloads through the
+## real backfill code path, and asserts current_hp is bit-for-bit unchanged.
+##
 ## Run:
 ##   Make   (BEFORE rescale): godot --headless --path . -s res://tests/tools_rescale_save_fixture.gd -- --make
 ##   Verify (AFTER rescale):  godot --headless --path . -s res://tests/tools_rescale_save_fixture.gd -- --verify
+##   Heal-clamp false-positive check (any time after the fix lands):
+##     godot --headless --path . -s res://tests/tools_rescale_save_fixture.gd -- --verify-heal-clamp
 
 const SLOT := 90
+const HEAL_CLAMP_SLOT := 91
 const SAMPLE_COUNT := 6
+const HEAL_TEST_UNIT_ID := &"jade_cavalry" # squad_size=30, hp_per_soldier=11, max_hp=320
 
 var _gm: Node
 var _dm: Node
+var _tm: Node
 
 func _init() -> void:
 	call_deferred("_run")
@@ -31,14 +51,17 @@ func _init() -> void:
 func _run() -> void:
 	_gm = root.get_node("/root/GameManager")
 	_dm = root.get_node("/root/DataManager")
+	_tm = root.get_node("/root/TurnManager")
 
 	var args := OS.get_cmdline_user_args()
 	if "--make" in args:
 		_make()
 	elif "--verify" in args:
 		_verify()
+	elif "--verify-heal-clamp" in args:
+		_verify_heal_clamp()
 	else:
-		print("Pass -- --make (before rescale) or -- --verify (after rescale)")
+		print("Pass -- --make (before rescale), -- --verify (after rescale), or -- --verify-heal-clamp")
 		quit(1)
 
 func _make() -> void:
@@ -111,3 +134,94 @@ func _verify() -> void:
 	else:
 		print("SAVE FIXTURE BACKFILL VERIFY FAILED")
 		quit(1)
+
+func _verify_heal_clamp() -> void:
+	print("--- Rescale save fixture VERIFY-HEAL-CLAMP (false-positive direction) ---")
+	_gm.new_game(&"tainted_jade", false, 0)
+	var fs: FactionState = _gm.state.faction_states.get(&"tainted_jade")
+	if fs == null:
+		printerr("No tainted_jade FactionState in a fresh game")
+		quit(1)
+		return
+	fs.taint_focus = 1 # Verdant Growth -- jungle heal branch
+	# _process_tainted_jade_taint applies natural decay (maxi(1, 2 -
+	# jungle_cities), so >=1 with zero owned cities) BEFORE the taint_focus
+	# match block's `if fs.taint_power >= 30:` heal-branch check -- set well
+	# above the threshold so the decay can't drop it below 30 first.
+	fs.taint_power = 40
+
+	var ud: UnitData = _dm.get_unit(HEAL_TEST_UNIT_ID)
+	if ud == null:
+		printerr("Missing unit data %s" % HEAL_TEST_UNIT_ID)
+		quit(1)
+		return
+	if ud.squad_size <= 1:
+		printerr("%s has squad_size<=1 -- not a valid overheal-bug regression case" % HEAL_TEST_UNIT_ID)
+		quit(1)
+		return
+
+	var jungle_hex := _find_or_force_jungle_hex()
+
+	var army := ArmyState.new()
+	army.army_id = &"heal_clamp_test_army"
+	army.faction_id = &"tainted_jade"
+	army.hex_pos = jungle_hex
+	var inst := UnitInstance.new()
+	inst.init_from_data(ud, &"heal_clamp_test_u0") # current_hp = ud.max_hp (full HP)
+	army.units.append(inst)
+	_gm.state.armies[army.army_id] = army
+	_gm.invalidate_faction_army_cache()
+
+	var hp_before_heal := inst.current_hp
+	_tm._process_tainted_jade_taint(fs)
+
+	var overhealed := inst.current_hp > ud.max_hp
+	print("Fired jungle-heal mechanic on full-HP %s: current_hp %d -> %d (max_hp=%d) %s" % [
+		HEAL_TEST_UNIT_ID, hp_before_heal, inst.current_hp, ud.max_hp,
+		("OVERHEAL BUG" if overhealed else "correctly capped"),
+	])
+	if overhealed:
+		printerr("FAIL: heal exceeded max_hp -- the clamp-site fix did not land")
+		quit(1)
+		return
+
+	var hp_at_new_scale := inst.current_hp
+	_gm.save_game(HEAL_CLAMP_SLOT)
+	_gm.load_game(HEAL_CLAMP_SLOT)
+	if _gm.state == null:
+		printerr("Fixture failed to reload")
+		quit(1)
+		return
+
+	var reloaded_army: ArmyState = _gm.state.armies.get(&"heal_clamp_test_army")
+	if reloaded_army == null or reloaded_army.units.is_empty():
+		printerr("FAIL: test army missing after reload")
+		quit(1)
+		return
+	var reloaded_hp: int = reloaded_army.units[0].current_hp
+	print("After save+reload through the real backfill path: current_hp=%d (expected unchanged at %d)" % [reloaded_hp, hp_at_new_scale])
+
+	if reloaded_hp == hp_at_new_scale:
+		print("SAVE FIXTURE HEAL-CLAMP VERIFY PASSED (new-scale save NOT misdetected as old-scale)")
+		quit(0)
+	else:
+		printerr("FAIL: current_hp changed across reload -- backfill false-positived on a NEW-scale save")
+		quit(1)
+
+func _find_or_force_jungle_hex() -> Vector2i:
+	for coord in _gm.state.hex_map.tiles:
+		var tile = _gm.state.hex_map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.JUNGLE:
+			return coord
+	# No natural jungle on this generated map -- force one cityless land tile
+	# to JUNGLE for the test (mutating a throwaway test-run map, not saved
+	# back to any real map data).
+	for coord in _gm.state.hex_map.tiles:
+		var tile = _gm.state.hex_map.tiles[coord]
+		if tile.terrain == Enums.TerrainType.WATER:
+			continue
+		if _gm.city_system.get_city_at_hex(coord) != null:
+			continue
+		tile.terrain = Enums.TerrainType.JUNGLE
+		return coord
+	return Vector2i(10, 10)

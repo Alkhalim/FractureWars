@@ -3998,7 +3998,9 @@ func _process_tainted_jade_taint(fs: FactionState) -> void:
 						for unit in army.units:
 							var ud := DataManager.get_unit(unit.unit_data_id)
 							if ud:
-								unit.current_hp = mini(unit.current_hp + 4, ud.max_hp * ud.squad_size)
+								# bugfix (Task R2 review): see the :5528 comment (turn_manager.gd)
+								# -- squad_size overheal, same fix.
+								unit.current_hp = mini(unit.current_hp + 4, ud.max_hp)
 		2: # Venomous War: attack bonuses, poison, anti-magic (applied in battle_simulator)
 			# Iron bonus for war production
 			if fs.taint_power >= 20:
@@ -4231,7 +4233,9 @@ func _process_gladehost_seasons(fs: FactionState) -> void:
 				for unit in army.units:
 					var ud := DataManager.get_unit(unit.unit_data_id)
 					if ud:
-						unit.current_hp = mini(unit.current_hp + int(3.0 * harmony_mult), ud.max_hp * ud.squad_size)
+						# bugfix (Task R2 review): see the :5528 comment (turn_manager.gd)
+						# -- squad_size overheal, same fix.
+						unit.current_hp = mini(unit.current_hp + int(3.0 * harmony_mult), ud.max_hp)
 		1: # Summer: strength, iron, military readiness
 			var iron_bonus := int(6.0 * harmony_mult)
 			fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + iron_bonus
@@ -4342,7 +4346,9 @@ func _process_shardhorde_resonance(fs: FactionState) -> void:
 					for unit in army.units:
 						var ud := DataManager.get_unit(unit.unit_data_id)
 						if ud:
-							unit.current_hp = mini(unit.current_hp + 3, ud.max_hp * ud.squad_size)
+							# bugfix (Task R2 review): see the :5528 comment (turn_manager.gd)
+							# -- squad_size overheal, same fix.
+							unit.current_hp = mini(unit.current_hp + 3, ud.max_hp)
 			Enums.Realm.ELEMENTAL:
 				fs.resources[Enums.ResourceType.IRON] = fs.resources.get(Enums.ResourceType.IRON, 0) + 25
 			Enums.Realm.NATURE:
@@ -4521,7 +4527,9 @@ func _process_moonspear_lunar(fs: FactionState) -> void:
 				for unit in army.units:
 					var ud := DataManager.get_unit(unit.unit_data_id)
 					if ud:
-						unit.current_hp = mini(unit.current_hp + 10, ud.max_hp * ud.squad_size)
+						# bugfix (Task R2 review): see the :5528 comment (turn_manager.gd)
+						# -- squad_size overheal, same fix.
+						unit.current_hp = mini(unit.current_hp + 10, ud.max_hp)
 			# Shard essence bonus
 			fs.resources[Enums.ResourceType.SHARD_ESSENCE] = fs.resources.get(Enums.ResourceType.SHARD_ESSENCE, 0) + 3
 			# Tech bonus from contemplation
@@ -5366,7 +5374,9 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 				for unit in army.units:
 					var ud := DataManager.get_unit(unit.unit_data_id)
 					if ud:
-						unit.current_hp = mini(unit.current_hp + 5, ud.max_hp * ud.squad_size)
+						# bugfix (Task R2 review): see the :5528 comment -- squad_size
+						# overheal, same fix.
+						unit.current_hp = mini(unit.current_hp + 5, ud.max_hp)
 		# Loyalty boost to ALL cities
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
@@ -5406,7 +5416,9 @@ func _process_sunblessed_faith(fs: FactionState, fid: StringName = &"sunblessed"
 				for unit in army.units:
 					var ud := DataManager.get_unit(unit.unit_data_id)
 					if ud:
-						unit.current_hp = mini(unit.current_hp + 3, ud.max_hp * ud.squad_size)
+						# bugfix (Task R2 review): see the :5528 comment -- squad_size
+						# overheal, same fix.
+						unit.current_hp = mini(unit.current_hp + 3, ud.max_hp)
 		# Capital loyalty only
 		for city_id in fs.owned_cities:
 			var city: CityState = GameManager.state.cities.get(city_id)
@@ -5525,7 +5537,13 @@ func _apply_golden_age(fs: FactionState, fid: StringName, effect: String) -> voi
 					for unit in army.units:
 						var ud := DataManager.get_unit(unit.unit_data_id)
 						if ud:
-							unit.current_hp = mini(unit.current_hp + 15, ud.max_hp * ud.squad_size)
+							# bugfix (Task R2 review): clamp was ud.max_hp * ud.squad_size --
+							# max_hp is already the whole-squad HP pool (== hp_per_soldier *
+							# squad_size), so that let squad_size>1 units overheal up to
+							# squad_size-x past their real max (also broke the save-backfill
+							# detection invariant in game_manager.gd, which assumes
+							# current_hp can never exceed max_hp in a valid save).
+							unit.current_hp = mini(unit.current_hp + 15, ud.max_hp)
 		"golden_teach":
 			if fs.solar_faith >= 20:
 				fs.solar_faith -= 20

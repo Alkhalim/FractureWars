@@ -4282,7 +4282,18 @@ func _calc_army_power_estimate(army: ArmyState) -> float:
 		# silently became ~10x more influential than attack/defense in the
 		# sum, which is exactly what broke test_strength_meter_probe.gd post-
 		# rescale (7/10, down from the pre-rescale 9/10 baseline).
-		var stat_value := float(ud.attack) + float(ud.melee_defense) * 0.5 + float(ud.speed) * 0.03
+		# Re-grid-searched at the new scale (Task R2 review; see
+		# tests/tmp_meter_grid_search.gd): the defense-weight coefficient
+		# itself (ratio of two same-scale DIVIDE terms, so scale-invariant by
+		# construction) still needed retuning from 0.5 to 0.3 -- the ACTUAL
+		# battle-sim ground truth shifted slightly from the floor-rescale/
+		# truncation-audit changes elsewhere in this task (confirmed by the
+		# nonzero-but-passing casualty deltas in both A/B parity harnesses),
+		# so the meter's best-fit weighting against real auto-resolve outcomes
+		# moved with it. entities_exp (0.8/1.0) and the toughness form
+		# (linear) were also swept and are still optimal at their current
+		# values -- see the grid-search tool's output for the full frontier.
+		var stat_value := float(ud.attack) + float(ud.melee_defense) * 0.3 + float(ud.speed) * 0.03
 		if ud.attack_range > 1:
 			stat_value += float(ud.attack_range) * 0.04
 		# Toughness fallback mirrors battle_simulator_v3.gd:819-828 (hp_per_entity derivation):

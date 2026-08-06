@@ -941,8 +941,11 @@ func _calc_formation_power(f: BattleSimulatorV3.BattleFormationV3) -> float:
 	# pre-rescale magnitude); f.speed/f.attack_range are KEEP-scale,
 	# untouched -- coefficients scaled down 10x in lockstep (0.3->0.03,
 	# 0.4->0.04) to preserve the pre-rescale relative weighting. Mirrors the
-	# same fix in campaign.gd's _calc_army_power_estimate().
-	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.03
+	# same fix in campaign.gd's _calc_army_power_estimate(); defense weight
+	# re-grid-searched at the new scale (0.5->0.3, Task R2 review -- see
+	# tests/tmp_meter_grid_search.gd and campaign.gd's cross-reference
+	# comment for why a scale-invariant ratio still needed retuning).
+	var stat_value := float(f.attack) + float(f.defense) * 0.3 + float(f.speed) * 0.03
 	if f.attack_range > 1:
 		stat_value += float(f.attack_range) * 0.04  # Ranged units are more valuable
 	var toughness := maxf(1.0, float(f.hp_per_entity))
@@ -951,7 +954,7 @@ func _calc_formation_power(f: BattleSimulatorV3.BattleFormationV3) -> float:
 	return hp_ratio * stat_value * effective_count * toughness
 
 func _calc_formation_power_max(f: BattleSimulatorV3.BattleFormationV3) -> float:
-	var stat_value := float(f.attack) + float(f.defense) * 0.5 + float(f.speed) * 0.03
+	var stat_value := float(f.attack) + float(f.defense) * 0.3 + float(f.speed) * 0.03
 	if f.attack_range > 1:
 		stat_value += float(f.attack_range) * 0.04
 	var toughness := maxf(1.0, float(f.hp_per_entity))

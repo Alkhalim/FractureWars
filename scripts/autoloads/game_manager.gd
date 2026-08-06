@@ -1528,19 +1528,39 @@ func load_game(slot: int) -> void:
 	# without a fixup would show absurd HP bars (500%+) and let old-save
 	# units tank ~10x more damage than intended. No save-version field exists
 	# on GameState to gate this cleanly (see task-R2-report.md), so this uses
-	# a magnitude heuristic: current_hp is clamped <= max_hp in every live
-	# code path (init_from_data, heal/attrition ticks, battle resolution all
-	# `mini(ud.max_hp, ...)` the result), so `current_hp > max_hp` at all is
-	# IMPOSSIBLE for a same-scale save -- it unambiguously means an old-scale
-	# value is being read against new-scale data. (An earlier draft of this
-	# heuristic used a 1.5x safety margin per the task brief's own suggested
-	# wording, but the save fixture test caught that this misses any old-save
-	# unit at <=15% HP -- a fully plausible battle-damaged state, not just an
-	# edge case -- so the margin was tightened to the true logical boundary.
-	# Residual limitation, inherent to ANY magnitude heuristic: an old-scale
-	# unit that was ALSO below ~10% HP produces current_hp <= new max_hp and
-	# is indistinguishable from a healthy new-scale unit; only a save-version
-	# field would close this gap completely.)
+	# a magnitude heuristic: `current_hp > max_hp` at all is IMPOSSIBLE for a
+	# same-scale save -- it unambiguously means an old-scale value is being
+	# read against new-scale data.
+	#
+	# That invariant depends on EVERY current_hp-mutating site clamping to
+	# `ud.max_hp`, not something looser. This was AUDITED and is now true
+	# (review pass, Task R2): `init_from_data` sets current_hp = max_hp
+	# exactly; every attrition/damage site clamps via `maxi(0, ...)` or
+	# similar (can only lower current_hp, never raise it past max); every
+	# heal site (turn_manager.gd:1995-2148 out-of-battle heals,
+	# battle_simulator_v3.gd in-battle regen/healing_aura) clamps via
+	# `mini(x, ud.max_hp)`. One class of site was WRONG until this review
+	# fixed it: 7 faction-mechanic passive-heal sites (turn_manager.gd, Tainted
+	# Jade jungle/Gladehost spring/Shardhorde resonance/Moonspear waning/
+	# Sunblessed radiant+warm-glow+golden-age, see each site's own comment)
+	# clamped to `ud.max_hp * ud.squad_size` instead of `ud.max_hp` -- but
+	# max_hp is ALREADY the whole-squad pool (== hp_per_soldier * squad_size),
+	# so that let any full-HP squad_size>1 unit (178/279 units) overheal past
+	# its real max on the very next one of those ticks, which would have
+	# false-positived a brand-new NEW-scale save as "old-scale" on load and
+	# silently divided its current_hp by 10. Fixed at the root (the clamps
+	# themselves, not just this heuristic) since it was a real overheal bug
+	# independent of the rescale.
+	#
+	# (An earlier draft of this heuristic used a 1.5x safety margin per the
+	# task brief's own suggested wording, but the save fixture test caught
+	# that this misses any old-save unit at <=15% HP -- a fully plausible
+	# battle-damaged state, not just an edge case -- so the margin was
+	# tightened to the true logical boundary. Residual limitation, inherent
+	# to ANY magnitude heuristic: an old-scale unit that was ALSO below ~10%
+	# HP produces current_hp <= new max_hp and is indistinguishable from a
+	# healthy new-scale unit; only a save-version field would close this gap
+	# completely.)
 	for backfill_aid in state.armies:
 		var backfill_hp_army: ArmyState = state.armies[backfill_aid]
 		for backfill_unit: UnitInstance in backfill_hp_army.units:

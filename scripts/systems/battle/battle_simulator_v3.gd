@@ -506,10 +506,18 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 			# rescale (Task R2): flat +3/+2 def -> global-reference percent (see
 			# _def_pct doc comment); original pre-rescale magnitude kept inline.
 			if _campaign_terrain == Enums.TerrainType.JUNGLE:
-				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.5)
+				# scale-note (Task R2 review): flat HP/tick regen floor, same
+				# 10x-scale pattern as the melee/ranged DPS floors elsewhere
+				# in this file -- f.current_hp/f.max_hp are both DIVIDE-
+				# rescaled (/10), so an unscaled flat regen rate is now ~10x
+				# relatively STRONGER (bigger fraction of the smaller pool
+				# healed per tick) than pre-rescale. Scaled 0.5 -> 0.05.
+				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.05)
 				f.defense += _def_pct(f, 3)
 			elif _campaign_terrain == Enums.TerrainType.SWAMP:
-				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.3)
+				# scale-note (Task R2 review): same as the jungle regen floor
+				# above, 0.3 -> 0.03.
+				f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.03)
 				f.defense += _def_pct(f, 2)
 			# Taint Focus: Venomous War = attack bonus in jungle/swamp
 			if fs.taint_focus == 2 and fs.taint_power >= 20:
@@ -557,7 +565,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 						f.attack += roundi(f.attack * 0.10 * sh_res_amp)
 					Enums.Realm.DIVINE:
 						f.defense += roundi(f.defense * 0.10 * sh_res_amp)
-						f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2 * sh_res_amp)
+						# scale-note (Task R2 review): flat HP/tick regen
+						# floor, same pattern as the jungle/swamp regen
+						# floors above -- 0.2 -> 0.02.
+						f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.02 * sh_res_amp)
 					Enums.Realm.NATURE:
 						f.base_morale += int(8 * sh_res_amp) # morale scale, out of rescale scope
 					Enums.Realm.MORTAL:
@@ -583,7 +594,10 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 					f.defense += roundi(f.defense * 0.15 * lunar_amp)
 					f.base_morale += int(10 * lunar_amp) # morale scale, out of rescale scope
 				3: # Waning: healing during battle
-					f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.4 * lunar_amp)
+					# scale-note (Task R2 review): flat HP/tick regen floor,
+					# same pattern as the jungle/swamp regen floors above --
+					# 0.4 -> 0.04.
+					f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.04 * lunar_amp)
 			# Ethereal soldiers (always)
 			f.ethereal_dodge_chance = 0.15
 			f.base_morale += 15
@@ -832,7 +846,9 @@ func _create_formation(unit: UnitInstance, ud: UnitData, side: int, cmd_bonuses:
 				f.speed = maxi(f.speed - 1, 1)
 				f.move_speed = f.speed * BASE_MOVE_SPEED
 		&"splinterbrood":  # Crystal swarm — regen and numbers
-			f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.2)
+			# scale-note (Task R2 review): flat HP/tick regen floor, same
+			# pattern as the jungle/swamp regen floors above -- 0.2 -> 0.02.
+			f.hp_regen_per_tick = maxf(f.hp_regen_per_tick, 0.02)
 			f.attack += _atk_pct(f, 1)
 		# Sunblessed sub-factions
 		&"oaseans":  # Desert educators — knowledge seekers
@@ -1657,11 +1673,14 @@ func simulate_tick() -> Array[Dictionary]:
 					# whole heal-aura mechanic. Data stays a straight float
 					# divide (healing_aura is a rate, not a bonus ratio); the
 					# floor belongs here at the per-tick consumption site.
+					# maxi(1, ...) makes `heal` unconditionally >= 1 here
+					# (the enclosing `f.healing_aura > 0.0` guard at the top
+					# of this block is the only gate needed) -- removed the
+					# now-dead `if heal > 0:` check (Task R2 review).
 					var heal := maxi(1, roundi(f.healing_aura))
-					if heal > 0:
-						ally.current_hp = mini(ally.max_hp, ally.current_hp + heal)
-						if ally.total_entities == 1:
-							ally.front_entity_hp = ally.current_hp
+					ally.current_hp = mini(ally.max_hp, ally.current_hp + heal)
+					if ally.total_entities == 1:
+						ally.front_entity_hp = ally.current_hp
 		# Unit spawning
 		if f.spawn_interval > 0 and f.spawn_unit_data_id != &"":
 			f.spawn_counter -= 1
