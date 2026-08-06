@@ -169,6 +169,7 @@ class BattleFormationV3:
 	var morale_aura: int = 0
 	var fear_radius: int = 0
 	var healing_aura: float = 0.0
+	var heal_accum: float = 0.0    # rescale (final review): fractional carry for healing_aura's per-tick HP transfer (see :~1690 consumption site)
 	var armor_aura: int = 0
 	var armor_aura_bonus: int = 0  # Received from nearby armor aura allies
 	var captive_chance: float = 0.3
@@ -213,6 +214,7 @@ class BattleFormationV3:
 
 	# Beast special abilities (set by building bonuses)
 	var hp_regen_per_tick: float = 0.0    # HP restored per tick
+	var regen_accum: float = 0.0          # rescale (final review): fractional carry for hp_regen_per_tick's per-tick HP transfer (see :~1656 consumption site)
 	var regen_requires_combat: bool = false  # If true, only regen while actively fighting
 	var damage_aura_radius: float = 0.0   # Pixel radius for damage aura
 	var damage_aura_damage: float = 0.0   # Damage per tick to enemies in aura
@@ -1644,18 +1646,26 @@ func simulate_tick() -> Array[Dictionary]:
 			if f.regen_requires_combat:
 				should_regen = f.in_melee_contact  # Only regen while in melee combat
 			if should_regen:
-				# bugfix (Task R3 follow-up): same bug class as the
-				# healing_aura fix below -- the 5 rescaled hp_regen_per_tick
-				# floors (Tainted Jade jungle/swamp, Shardhorde Divine,
-				# Moonspear Waning, Splinterbrood; old values 0.2-0.5 ->
-				# /10.0 -> 0.02-0.05) are all < 0.5, so bare roundi() rounded
-				# to 0 EVERY tick, silently disabling passive terrain/mechanic
-				# regen. The enclosing `f.hp_regen_per_tick > 0.0` guard above
-				# already ensures this is only reached when regen is actually
-				# active, so maxi(1, ...) is safe (a true zero never gets here).
-				var regen := maxi(1, roundi(f.hp_regen_per_tick))
-				f.current_hp = mini(f.max_hp, f.current_hp + regen)
-				f.front_entity_hp = f.current_hp if f.total_entities == 1 else f.front_entity_hp
+				# rescale (final review): fractional accumulator, replacing
+				# the maxi(1, roundi(...)) floor (Task R3 follow-up). That
+				# floor fixed the silent-zero bug (rates < 0.5 always
+				# rounded to 0) but was itself ratio-INEXACT in the other
+				# direction: it force-applied a MINIMUM of 1 whole HP every
+				# single tick regardless of how far below 1.0 the rate
+				# actually is -- e.g. Splinterbrood's 0.02/tick got rounded
+				# UP to 1 HP/tick, a 50x overshoot (should be ~1 HP every 50
+				# ticks). An accumulator applies the exact rate over time
+				# with zero drift: the fractional remainder carries forward
+				# tick-to-tick and only whole HP is ever transferred, so the
+				# long-run average exactly matches hp_regen_per_tick. Frozen
+				# (does not accumulate) whenever should_regen is false, same
+				# as the old code's behavior of applying nothing that tick.
+				f.regen_accum += f.hp_regen_per_tick
+				var regen := int(f.regen_accum)
+				if regen > 0:
+					f.regen_accum -= float(regen)
+					f.current_hp = mini(f.max_hp, f.current_hp + regen)
+					f.front_entity_hp = f.current_hp if f.total_entities == 1 else f.front_entity_hp
 		# Damage aura
 		if f.damage_aura_radius > 0.0 and f.damage_aura_damage > 0.0:
 			var enemies := defender_formations if f.side == 0 else attacker_formations
@@ -1677,20 +1687,25 @@ func simulate_tick() -> Array[Dictionary]:
 				if ally.current_hp >= ally.max_hp:
 					continue
 				if f.position.distance_to(ally.position) <= heal_range:
-					# bugfix (Task R2): plain roundi() silently zeroed every
-					# rescaled healing_aura (old values 0.3-2.0 -> /10.0 ->
-					# 0.03-0.2 -> roundi() -> 0, EVERY time), disabling the
-					# whole heal-aura mechanic. Data stays a straight float
-					# divide (healing_aura is a rate, not a bonus ratio); the
-					# floor belongs here at the per-tick consumption site.
-					# maxi(1, ...) makes `heal` unconditionally >= 1 here
-					# (the enclosing `f.healing_aura > 0.0` guard at the top
-					# of this block is the only gate needed) -- removed the
-					# now-dead `if heal > 0:` check (Task R2 review).
-					var heal := maxi(1, roundi(f.healing_aura))
-					ally.current_hp = mini(ally.max_hp, ally.current_hp + heal)
-					if ally.total_entities == 1:
-						ally.front_entity_hp = ally.current_hp
+					# rescale (final review): fractional accumulator,
+					# replacing the maxi(1, roundi(...)) floor (Task R2).
+					# That floor fixed healing_aura's silent-zero bug (old
+					# values 0.3-2.0 -> /10.0 -> 0.03-0.2 -> roundi() -> 0
+					# EVERY time) but was itself ratio-INEXACT: it forced a
+					# minimum of 1 whole HP every tick regardless of the
+					# real (now-small) rate -- see the hp_regen_per_tick fix
+					# just above for the identical rationale. heal_accum
+					# lives on the ally (not the healer `f`), so multiple
+					# auras in range of the same ally correctly sum their
+					# rates into one pool before flooring, rather than each
+					# independently re-triggering the old min-1 floor.
+					ally.heal_accum += f.healing_aura
+					var heal := int(ally.heal_accum)
+					if heal > 0:
+						ally.heal_accum -= float(heal)
+						ally.current_hp = mini(ally.max_hp, ally.current_hp + heal)
+						if ally.total_entities == 1:
+							ally.front_entity_hp = ally.current_hp
 		# Unit spawning
 		if f.spawn_interval > 0 and f.spawn_unit_data_id != &"":
 			f.spawn_counter -= 1
@@ -3623,19 +3638,25 @@ func setup_city_defense_formations() -> void:
 		f.faction_id = &"defense"
 		f.side = 1
 		f.tags = ["construct", "ranged", "stationary"]
-		f.attack = 40
-		f.defense = 30
-		f.melee_defense = 30
-		f.projectile_defense = 30
-		f.magic_defense = 15
+		# rescale (final review): hardcoded formation built at battle-setup
+		# time, not a data file -- the R2 data sweep never touched it and no
+		# harness spawns city defense formations, so it stayed old-scale.
+		# Straight /10, same as every other UnitData base-stat DIVIDE field
+		# (this isn't a "bonus" needing the _atk_pct/_def_pct global-reference
+		# treatment -- it's a base stat block, like a unit's own .tres).
+		f.attack = 4       # was 40
+		f.defense = 3      # was 30
+		f.melee_defense = 3      # was 30
+		f.projectile_defense = 3      # was 30
+		f.magic_defense = 2      # was 15 (roundi(1.5))
 		f.speed = 0
 		f.attack_range = 4
 		f.total_entities = 1
 		f.entities_alive = 1
-		f.hp_per_entity = 800
-		f.front_entity_hp = 800
-		f.max_hp = 800
-		f.current_hp = 800
+		f.hp_per_entity = 80      # was 800
+		f.front_entity_hp = 80      # was 800
+		f.max_hp = 80      # was 800
+		f.current_hp = 80      # was 800
 		f.position = Vector2(tower_pos.x * terrain_cell_size, tower_pos.y * terrain_cell_size)
 		f.move_speed = 0.0
 		f.base_morale = 999
@@ -3663,19 +3684,21 @@ func setup_city_defense_formations() -> void:
 		f.faction_id = &"defense"
 		f.side = 1
 		f.tags = ["construct", "ranged", "stationary"]
-		f.attack = 80
-		f.defense = 10
-		f.melee_defense = 10
-		f.projectile_defense = 10
-		f.magic_defense = 5
+		# rescale (final review): same disposition as the Arrow Tower block
+		# above -- hardcoded formation, straight /10, no harness reached it.
+		f.attack = 8      # was 80
+		f.defense = 1      # was 10
+		f.melee_defense = 1      # was 10
+		f.projectile_defense = 1      # was 10
+		f.magic_defense = 1      # was 5 (roundi(0.5))
 		f.speed = 0
 		f.attack_range = 6
 		f.total_entities = 1
 		f.entities_alive = 1
-		f.hp_per_entity = 500
-		f.front_entity_hp = 500
-		f.max_hp = 500
-		f.current_hp = 500
+		f.hp_per_entity = 50      # was 500
+		f.front_entity_hp = 50      # was 500
+		f.max_hp = 50      # was 500
+		f.current_hp = 50      # was 500
 		f.position = Vector2(siege_pos.x * terrain_cell_size, siege_pos.y * terrain_cell_size)
 		f.move_speed = 0.0
 		f.base_morale = 999

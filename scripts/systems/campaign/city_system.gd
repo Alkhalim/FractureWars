@@ -2181,7 +2181,19 @@ func create_garrison_army(city: CityState) -> ArmyState:
 			var instance := UnitInstance.new()
 			instance.init_from_data(unit_data, GameManager.state.generate_id())
 			if garrison_pct > 0.0:
-				instance.current_hp += int(float(instance.current_hp) * garrison_pct)
+				# rescale (final review): clamp at unit_data.max_hp -- same
+				# overheal class as the 7 turn_manager.gd heal-clamp sites
+				# Task R2's review found and fixed (an uncapped HP add that
+				# could push current_hp past the unit's real max, which the
+				# save-backfill logic above now depends on being impossible
+				# for a same-scale save). init_from_data() just set
+				# current_hp = max_hp on the line above, so this specific
+				# call site currently can't produce a net gain once clamped
+				# -- pre-existing, not introduced here; garrison_strength_pct
+				# giving a real above-100% garrison buff would need a
+				# per-instance max_hp override, which doesn't exist yet
+				# (flagged for a future design pass, not this task's scope).
+				instance.current_hp = mini(unit_data.max_hp, instance.current_hp + int(float(instance.current_hp) * garrison_pct))
 			army.units.append(instance)
 
 	# Independent cities: order units with melee on flanks, ranged in middle

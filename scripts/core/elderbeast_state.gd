@@ -22,10 +22,23 @@ extends Resource
 @export var commander: CommanderState = null
 
 # Stats by level
+# rescale (final review): was 2500/4000/6000 -- unswept old-scale constant
+# (no harness executes apply_level_stats, so R2's sweep never touched it).
+# Straight /10, same DIVIDE treatment as every other HP-scale constant.
+# This is the campaign-layer "chassis HP" the escorting UnitInstance is
+# given (beast.hp -> instance.current_hp, see game_manager.gd/turn_manager.gd),
+# a DELIBERATELY smaller number than the elderbeast's own unit datasheet
+# max_hp (data/units/shardhorde/elderbeast_lv{1,2,3}.tres, now 1250/2000/3000
+# post-rescale) -- pre-rescale this ratio was 2500/12500 = 4000/20000 =
+# 6000/30000 = exactly 20% at every tier, so the beast has always fought at
+# a deliberate fraction of its "full" datasheet toughness. New values
+# (250/400/600) preserve that same 20% relation to the new datasheet
+# (250/1250 = 400/2000 = 600/3000 = 20%), confirming a plain /10 was the
+# correct conversion here, not a re-derivation.
 const LEVEL_STATS := {
-	1: {max_hp = 2500, building_slots = 1, movement = 1.0},
-	2: {max_hp = 4000, building_slots = 2, movement = 1.0},
-	3: {max_hp = 6000, building_slots = 3, movement = 1.5},
+	1: {max_hp = 250, building_slots = 1, movement = 1.0},
+	2: {max_hp = 400, building_slots = 2, movement = 1.0},
+	3: {max_hp = 600, building_slots = 3, movement = 1.5},
 }
 
 # Unit data ID per level

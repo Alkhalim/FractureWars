@@ -29,7 +29,12 @@ const REALM_MODIFIERS := {
 	},
 	Enums.Realm.NATURE: {
 		"hp_mult": 1.4, "atk_mult": 1.0, "def_mult": 1.1, "spd_mult": 0.9,
-		"hp_regen": 0.5,
+		# rescale (final review): flat HP/tick regen rate, same DIVIDE
+		# treatment as the 5 hp_regen_per_tick floors already fixed in
+		# battle_simulator_v3.gd (Tainted Jade jungle 0.5->0.05, etc.) --
+		# consumed directly as f.hp_regen_per_tick at :1010, this site was
+		# an unswept sibling (not caught by that pass).
+		"hp_regen": 0.05, # was 0.5
 	},
 	Enums.Realm.MORTAL: {
 		"hp_mult": 1.1, "atk_mult": 1.1, "def_mult": 1.1, "spd_mult": 1.1,

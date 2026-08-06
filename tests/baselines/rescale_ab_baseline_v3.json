@@ -1,5 +1,5 @@
 {
-	"matchup_count": 13,
+	"matchup_count": 15,
 	"results": [
 		{
 			"atk_casualty_frac": 0.492066666666667,
@@ -122,10 +122,11 @@
 			"winner": "attacker"
 		},
 		{
-			"atk_casualty_frac": 0.17125,
-			"atk_post_hp": 1989.0,
+			"atk_casualty_frac": 0.19,
+			"atk_post_hp": 1944.0,
 			"atk_pre_hp": 2400.0,
 			"category": "tj_taint_scaling",
+			"coverage_reference": false,
 			"def_casualty_frac": 1.0,
 			"def_post_hp": 0.0,
 			"def_pre_hp": 2160.0,
@@ -135,10 +136,11 @@
 			"winner": "attacker"
 		},
 		{
-			"atk_casualty_frac": 0.546913580246914,
-			"atk_post_hp": 734.0,
+			"atk_casualty_frac": 0.548765432098765,
+			"atk_post_hp": 731.0,
 			"atk_pre_hp": 1620.0,
 			"category": "tj_taint_scaling",
+			"coverage_reference": false,
 			"def_casualty_frac": 1.0,
 			"def_post_hp": 0.0,
 			"def_pre_hp": 1000.0,
@@ -152,12 +154,41 @@
 			"atk_post_hp": 0.0,
 			"atk_pre_hp": 1600.0,
 			"category": "tj_taint_scaling",
+			"coverage_reference": false,
 			"def_casualty_frac": 0.490909090909091,
 			"def_post_hp": 560.0,
 			"def_pre_hp": 1100.0,
 			"name": "tainted_jade_serpent_guardian_vs_gladehost_treant",
 			"ticks": 748.0,
 			"tj_reference": true,
+			"winner": "defender"
+		},
+		{
+			"atk_casualty_frac": 0.21,
+			"atk_post_hp": 3318,
+			"atk_pre_hp": 4200,
+			"category": "city_defense_formations",
+			"coverage_reference": true,
+			"def_casualty_frac": 0.995652173913044,
+			"def_post_hp": 8,
+			"def_pre_hp": 1840,
+			"name": "city_defense_towers_and_catapult_vs_forsaken_raid",
+			"ticks": 531,
+			"tj_reference": false,
+			"winner": "attacker"
+		},
+		{
+			"atk_casualty_frac": 0.3875,
+			"atk_post_hp": 1225.0,
+			"atk_pre_hp": 2000.0,
+			"category": "elderbeast",
+			"coverage_reference": true,
+			"def_casualty_frac": 0.981333333333333,
+			"def_post_hp": 28.0,
+			"def_pre_hp": 1500.0,
+			"name": "shardhorde_elderbeast_vs_skulloath_dread_riders",
+			"ticks": 581.0,
+			"tj_reference": false,
 			"winner": "defender"
 		}
 	],

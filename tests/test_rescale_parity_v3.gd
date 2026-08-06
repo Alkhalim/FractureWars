@@ -43,6 +43,12 @@ extends SceneTree
 ## entry (so re-running --capture can't accidentally clobber the original
 ## 10's old-scale pins), it only appends matchups not yet in the baseline.
 ##
+## Final review (2026-08-06): +2 coverage matchups (`coverage_reference:
+## true`, same mechanism as tj_reference above) per the reviewer's
+## recommendation to exercise the C1 hardcoded-constant fixes no other
+## matchup reached: one calls setup_city_defense_formations() (arrow
+## tower/catapult), one fields a real elderbeast.
+##
 ## Run:
 ##   Capture (current scale, THIS task):
 ##     godot --headless --path . -s res://tests/test_rescale_parity_v3.gd -- --capture
@@ -58,6 +64,7 @@ const CASUALTY_DELTA_BAR := 0.10 # same numeric bar as the V2 harness, task brie
 var _gm: Node
 var _dm: Node
 var _ts_city_id: StringName = &""
+var _cd_city_id: StringName = &"" # coverage: city_defense_formations matchup
 
 func _init() -> void:
 	call_deferred("_run")
@@ -100,6 +107,12 @@ func _run_matchup(m: Dictionary, idx: int) -> Dictionary:
 	sim.setup_terrain(terrain, hex)
 	sim.setup_attacker_formations(atk_army)
 	sim.setup_defender_formations(def_army)
+	if m.get("spawn_city_defense", false):
+		# Coverage matchup (final review): real production sequencing is
+		# setup_terrain -> setup_*_formations -> setup_city_defense_formations
+		# (see scenes/battle/battle_v3.gd's _start_battle) -- towers/siege
+		# spawn as additional side-1 formations here, same as a real city battle.
+		sim.setup_city_defense_formations()
 	sim.assign_ai_orders(0)
 	sim.assign_ai_orders(1)
 
@@ -121,6 +134,7 @@ func _run_matchup(m: Dictionary, idx: int) -> Dictionary:
 		"name": m["name"],
 		"category": m["category"],
 		"tj_reference": m.get("tj_reference", false),
+		"coverage_reference": m.get("coverage_reference", false),
 		"winner": _classify_winner(sim),
 		"ticks": sim.tick_count,
 		"atk_pre_hp": atk_pre,
@@ -173,13 +187,23 @@ func _run_capture(results: Array[Dictionary]) -> void:
 	var merged: Array = []
 	var newly_added: Array[String] = []
 	var parity_count := 0
+	var reference_count := 0
 	for r in results:
 		if existing_by_name.has(r["name"]):
 			merged.append(existing_by_name[r["name"]])
 		else:
 			merged.append(r)
 			newly_added.append(r["name"])
-		if not bool(r.get("tj_reference", false)):
+		# coverage_reference (final review) uses the SAME pinned-regression
+		# mechanism tj_reference established: no old-scale data to diff
+		# against (or, for coverage_reference specifically, no rescale-drift
+		# question at all -- these exist purely to exercise C1's fixed
+		# hardcoded constants), so both are excluded from the old-vs-new
+		# parity aggregate/bar and checked instead via _run_compare's tight
+		# tolerance.
+		if bool(r.get("tj_reference", false)) or bool(r.get("coverage_reference", false)):
+			reference_count += 1
+		else:
 			parity_count += 1
 
 	var payload := {
@@ -209,8 +233,8 @@ func _run_capture(results: Array[Dictionary]) -> void:
 		])
 	print("Winner distribution: %s" % [winner_counts])
 	print("Newly added (appended, prior entries preserved untouched): %s" % [newly_added])
-	print("BASELINE WRITTEN: %s (%d matchups, %d parity + %d tj_reference)" % [
-		BASELINE_PATH, merged.size(), parity_count, merged.size() - parity_count,
+	print("BASELINE WRITTEN: %s (%d matchups, %d parity + %d reference [tj_reference/coverage_reference])" % [
+		BASELINE_PATH, merged.size(), parity_count, reference_count,
 	])
 	quit(0)
 
@@ -227,7 +251,13 @@ func _run_compare(results: Array[Dictionary]) -> void:
 		quit(1)
 		return
 	var baseline_results: Array = parsed["results"]
-	var winner_bar: int = int(parsed.get("winner_agreement_bar", baseline_results.size() - 1))
+	# minor (final review): defensive floor -- winner_agreement_bar is
+	# recomputed from the baseline JSON's own parity_count every --capture,
+	# so it should never legitimately drop below 9 (the original 10-matchup
+	# parity set's bar) short of someone deliberately shrinking the parity
+	# suite; this just stops a malformed/hand-edited baseline file from
+	# silently weakening the pass bar.
+	var winner_bar: int = maxi(9, int(parsed.get("winner_agreement_bar", baseline_results.size() - 1)))
 
 	if baseline_results.size() != results.size():
 		print("MATCHUP COUNT MISMATCH: baseline=%d current=%d -- harness definitions changed, re-capture" % [
@@ -236,20 +266,23 @@ func _run_compare(results: Array[Dictionary]) -> void:
 		quit(1)
 		return
 
-	## tj_reference entries (Task R3 follow-up) are pinned-regression checks
-	## against a CURRENT-scale baseline (there's no old-scale data for them),
-	## not old-vs-new rescale-drift checks -- so they're tallied separately
-	## and held to a tight tolerance instead of folding into the 10%
+	## tj_reference (Task R3 follow-up) and coverage_reference (final review)
+	## entries are pinned-regression checks against a CURRENT-scale baseline
+	## (there's no old-scale data for either -- tj_reference because none
+	## existed pre-fix, coverage_reference because it exists purely to pin
+	## C1's fixed hardcoded constants), not old-vs-new rescale-drift checks
+	## -- so both are tallied together, separately from the original 10, and
+	## held to a tight tolerance instead of folding into the 10%
 	## rescale-noise bar/aggregate below.
-	const TJ_REF_CASUALTY_TOLERANCE := 0.02
+	const REFERENCE_CASUALTY_TOLERANCE := 0.02
 
 	var winner_agree := 0
 	var delta_sum := 0.0
 	var delta_n := 0
 	var parity_total := 0
-	var tj_ref_ok := true
-	var tj_ref_total := 0
-	var tj_ref_match := 0
+	var ref_ok := true
+	var ref_total := 0
+	var ref_match := 0
 	print("--- Rescale A/B Baseline V3 COMPARE ---")
 	for i in results.size():
 		var cur: Dictionary = results[i]
@@ -264,17 +297,20 @@ func _run_compare(results: Array[Dictionary]) -> void:
 		var atk_delta := absf(float(base.get("atk_casualty_frac", 0.0)) - float(cur["atk_casualty_frac"]))
 		var def_delta := absf(float(base.get("def_casualty_frac", 0.0)) - float(cur["def_casualty_frac"]))
 		var is_tj_ref: bool = bool(base.get("tj_reference", false)) or bool(cur.get("tj_reference", false))
+		var is_coverage_ref: bool = bool(base.get("coverage_reference", false)) or bool(cur.get("coverage_reference", false))
+		var is_ref: bool = is_tj_ref or is_coverage_ref
 
-		if is_tj_ref:
-			tj_ref_total += 1
-			var tj_ok := same_winner and atk_delta <= TJ_REF_CASUALTY_TOLERANCE and def_delta <= TJ_REF_CASUALTY_TOLERANCE
-			if tj_ok:
-				tj_ref_match += 1
+		if is_ref:
+			ref_total += 1
+			var this_ok := same_winner and atk_delta <= REFERENCE_CASUALTY_TOLERANCE and def_delta <= REFERENCE_CASUALTY_TOLERANCE
+			if this_ok:
+				ref_match += 1
 			else:
-				tj_ref_ok = false
-			print("[TJ_REF %s/%s] base_winner=%s cur_winner=%s %s | atk_cas Δ%.3f def_cas Δ%.3f" % [
-				cur["category"], cur["name"], base.get("winner", "?"), cur["winner"],
-				("MATCH" if tj_ok else "DRIFT"), atk_delta, def_delta,
+				ref_ok = false
+			var tag := "TJ_REF" if is_tj_ref else "COVERAGE_REF"
+			print("[%s %s/%s] base_winner=%s cur_winner=%s %s | atk_cas Δ%.3f def_cas Δ%.3f" % [
+				tag, cur["category"], cur["name"], base.get("winner", "?"), cur["winner"],
+				("MATCH" if this_ok else "DRIFT"), atk_delta, def_delta,
 			])
 			continue
 
@@ -291,12 +327,12 @@ func _run_compare(results: Array[Dictionary]) -> void:
 	var mean_delta := delta_sum / maxf(1.0, float(delta_n))
 	print("Winner agreement: %d/%d (bar: >= %d)" % [winner_agree, parity_total, winner_bar])
 	print("Mean casualty-fraction delta: %.4f (bar: <= %.2f)" % [mean_delta, CASUALTY_DELTA_BAR])
-	if tj_ref_total > 0:
-		print("TJ reference: %d/%d matched (tolerance %.2f, regression tripwire not rescale-parity)" % [
-			tj_ref_match, tj_ref_total, TJ_REF_CASUALTY_TOLERANCE,
+	if ref_total > 0:
+		print("Reference matchups (tj_reference + coverage_reference): %d/%d matched (tolerance %.2f, regression tripwire not rescale-parity)" % [
+			ref_match, ref_total, REFERENCE_CASUALTY_TOLERANCE,
 		])
 
-	var pass_bar := winner_agree >= winner_bar and mean_delta <= CASUALTY_DELTA_BAR and tj_ref_ok
+	var pass_bar := winner_agree >= winner_bar and mean_delta <= CASUALTY_DELTA_BAR and ref_ok
 	if pass_bar:
 		print("RESCALE A/B PARITY V3 PASSED")
 		quit(0)
@@ -363,6 +399,8 @@ func _build_matchups() -> Array[Dictionary]:
 	var vg_city := _find_city_hex(&"valkarn_garrison")
 	var ts_city := _find_city_hex(&"thunderswarm")
 	_ts_city_id = ts_city.get("city_id", &"")
+	var cd_city := _find_city_hex(&"gladehost")
+	_cd_city_id = cd_city.get("city_id", &"")
 
 	return [
 		# ── sub-faction identity modifiers (V3-only, ~30-entry block) ──
@@ -468,11 +506,77 @@ func _build_matchups() -> Array[Dictionary]:
 			"setup": Callable(self, "_setup_tj_taint_low"),
 			"teardown": Callable(self, "_teardown_tj_taint"),
 		},
+		# ── Final review coverage (reviewer recommendation 3): pin the two
+		# C1 hardcoded-constant fix sites that no OTHER matchup above
+		# exercises. `coverage_reference: true` uses the exact same
+		# pinned-regression mechanism as tj_reference (captured at current,
+		# post-fix scale; tight tolerance; excluded from the old-vs-new
+		# parity aggregate/bar above).
+		{
+			# Exercises setup_city_defense_formations() (battle_simulator_v3.gd
+			# :3609+) -- the arrow_tower/catapult hardcoded formations C1(a)
+			# fixed (was attack 40/defense 30/hp 800 and attack 80/hp 500,
+			# both old-scale; now /10). `spawn_city_defense: true` tells
+			# _run_matchup to call setup_city_defense_formations() after
+			# defender setup, same sequencing as the real battle_v3.gd flow.
+			# The `setup` callable force-adds treant_citadel (defense_bonus
+			# 16, clears BattleTerrainGen's tier-4 threshold so BOTH a tower
+			# and a siege/catapult position spawn) to a real city's building
+			# list directly, bypassing normal recruit/faction-ownership
+			# rules -- same direct-FactionState-poke pattern as
+			# _setup_siege_mastery/_setup_relic_defense above.
+			"name": "city_defense_towers_and_catapult_vs_forsaken_raid", "category": "city_defense_formations",
+			"coverage_reference": true,
+			"a": [{"id": &"void_berserker", "n": 6}],
+			"b": [{"id": &"valkarn_defender", "n": 2}],
+			"hex": cd_city.get("hex", Vector2i(10, 10)),
+			"spawn_city_defense": true,
+			"setup": Callable(self, "_setup_city_defense_buildings"),
+			"teardown": Callable(self, "_teardown_city_defense_buildings"),
+		},
+		{
+			# Fields a real elderbeast (Shardhorde) as a combatant, pinning
+			# its own post-fix datasheet stats (data/units/shardhorde/
+			# elderbeast_lv2.tres: max_hp 2000/attack 28/melee_defense 20,
+			# already correctly rescaled by R2's data sweep) plus its
+			# "beast"-tag interactions inside _create_formation (e.g.
+			# Cinderguard/Gorgonic Cult vs_beast bonuses, if either side used
+			# them). NOTE (scope, documented in the final-fix report): this
+			# does NOT exercise C1(b)'s _apply_elderbeast_building_bonuses()
+			# fix (scenes/battle/battle_v3.gd) or C1(c)'s ElderbeastState.
+			# LEVEL_STATS fix (scripts/core/elderbeast_state.gd) -- both live
+			# outside BattleSimulatorV3 (the former is a scene-script method
+			# needing a full battle_v3.gd Node2D scene tree, the latter is a
+			# campaign-layer chassis-HP constant, not a battle-sim input)
+			# and are structurally unreachable from this harness's
+			# established "drive BattleSimulatorV3 directly" pattern, same
+			# as every other matchup in this file.
+			"name": "shardhorde_elderbeast_vs_skulloath_dread_riders", "category": "elderbeast",
+			"coverage_reference": true,
+			"a": [{"id": &"elderbeast_lv2", "n": 1}],
+			"b": [{"id": &"dread_riders", "n": 3}],
+		},
 	]
 
 # ── Named setup/teardown (GDScript multi-line lambdas inside a Dictionary
 # literal don't indent-parse reliably, so these are plain methods referenced
 # via Callable(self, "...") from the matchup table above) ─────────────────
+
+## Coverage matchup (final review): force-adds a high-defense_bonus building
+## to a real city so setup_terrain() populates _defense_meta with BOTH a
+## tower and a siege position (BattleTerrainGen.apply_defensive_buildings
+## needs defense_bonus >= 6 for a tower, >= 10 for siege -- treant_citadel's
+## 16 clears both tiers comfortably on its own, whatever else the city
+## already has built).
+func _setup_city_defense_buildings() -> void:
+	var city: CityState = _gm.state.cities.get(_cd_city_id)
+	if city and not city.buildings.has(&"treant_citadel"):
+		city.buildings.append(&"treant_citadel")
+
+func _teardown_city_defense_buildings() -> void:
+	var city: CityState = _gm.state.cities.get(_cd_city_id)
+	if city:
+		city.buildings.erase(&"treant_citadel")
 
 func _setup_siege_mastery() -> void:
 	var fs: FactionState = _gm.state.faction_states.get(&"empire")

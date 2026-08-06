@@ -20,6 +20,26 @@ extends SceneTree
 ## pattern as the two prior re-baselines (commits 8e5eb90, b9e29d0). Verified
 ## with two consecutive COMPARE runs -> FINGERPRINT MATCH both times before
 ## committing. Ledger: .superpowers/sdd/2026-08-06-unit-stat-rescale/progress.md.
+##
+## RE-BASELINE EPOCH 2 (unit-stat-rescale final review, 2026-08-06): V3
+## baseline only (V2 unaffected -- confirmed by a bare COMPARE run showing
+## "v3 DIVERGES" with no matching v2 line) regenerated again after
+## battle_simulator_v3.gd's healing_aura per-tick consumption switched from
+## a `maxi(1, roundi(...))` floor to a ratio-exact fractional accumulator
+## (Task I1). The brief this task executed expected NO baseline battle to
+## reach either of I1's two consumption sites (hp_regen_per_tick, healing_aura)
+## -- true for hp_regen_per_tick (confirmed by the R3 follow-up already in
+## this file's history) but FALSE for healing_aura: the pinned V3 matchup
+## (empire vs gladehost) includes Empire's field_medic (healing_aura=0.12
+## post-rescale), which heals a nearby ally formation every tick under the
+## old floor (forced >=1 HP/tick regardless of the real 0.12 rate) but only
+## roughly 1 HP every 8 ticks under the new accumulator (ratio-exact) --
+## verified by isolation (reverting ONLY the healing_aura consumption change
+## restored FINGERPRINT MATCH against the pre-I1 baseline; git diff confirmed
+## the isolation edit left no trace after being reverted). This is the exact
+## same situation as Epoch 1 above: a deliberate, understood, ratio-CORRECTING
+## formula fix changing tick-by-tick state, not an RNG-order regression — same
+## re-baseline pattern, same 2x-COMPARE-before-commit verification.
 
 const BASELINE_DIR := "res://tests/baselines"
 const SEED := 133742

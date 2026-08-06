@@ -1471,6 +1471,12 @@ static func _resolve_save_path(slot: int) -> String:
 	return ""
 
 func save_game(slot: int) -> void:
+	# Stamp every write to the current schema version -- covers both a
+	# never-versioned state (shouldn't happen post new_game(), but cheap
+	# insurance) and re-saving a just-backfilled old save (load_game()
+	# already set this, this is belt-and-suspenders so save_game() alone
+	# is sufficient to bring any in-memory state current).
+	state.save_schema_version = GameState.SAVE_SCHEMA_VERSION
 	state.serialize_hex_map()
 	state.turn_manager_state = TurnManager.serialize_state()
 	DirAccess.make_dir_recursive_absolute("user://saves")
@@ -1521,54 +1527,43 @@ func load_game(slot: int) -> void:
 		var backfill_army: ArmyState = state.armies[aid]
 		if backfill_army.camp_city_id != &"" and state.cities.has(backfill_army.camp_city_id):
 			state.cities[backfill_army.camp_city_id].is_mobile_camp = true
-	# Old-save backfill (Task R2, unit stat rescale): saves from before this
+	# Old-save backfill (Task R2, unit stat rescale). Saves from before this
 	# task divided every unit's max_hp/attack/defense by 10 still hold
 	# current_hp at the OLD scale (e.g. 1875/3750), but DataManager now serves
 	# the NEW rescaled UnitData (e.g. max_hp=375) -- loading such a save
 	# without a fixup would show absurd HP bars (500%+) and let old-save
-	# units tank ~10x more damage than intended. No save-version field exists
-	# on GameState to gate this cleanly (see task-R2-report.md), so this uses
-	# a magnitude heuristic: `current_hp > max_hp` at all is IMPOSSIBLE for a
-	# same-scale save -- it unambiguously means an old-scale value is being
-	# read against new-scale data.
+	# units tank ~10x more damage than intended.
 	#
-	# That invariant depends on EVERY current_hp-mutating site clamping to
-	# `ud.max_hp`, not something looser. This was AUDITED and is now true
-	# (review pass, Task R2): `init_from_data` sets current_hp = max_hp
-	# exactly; every attrition/damage site clamps via `maxi(0, ...)` or
-	# similar (can only lower current_hp, never raise it past max); every
-	# heal site (turn_manager.gd:1995-2148 out-of-battle heals,
-	# battle_simulator_v3.gd in-battle regen/healing_aura) clamps via
-	# `mini(x, ud.max_hp)`. One class of site was WRONG until this review
-	# fixed it: 7 faction-mechanic passive-heal sites (turn_manager.gd, Tainted
-	# Jade jungle/Gladehost spring/Shardhorde resonance/Moonspear waning/
-	# Sunblessed radiant+warm-glow+golden-age, see each site's own comment)
-	# clamped to `ud.max_hp * ud.squad_size` instead of `ud.max_hp` -- but
-	# max_hp is ALREADY the whole-squad pool (== hp_per_soldier * squad_size),
-	# so that let any full-HP squad_size>1 unit (178/279 units) overheal past
-	# its real max on the very next one of those ticks, which would have
-	# false-positived a brand-new NEW-scale save as "old-scale" on load and
-	# silently divided its current_hp by 10. Fixed at the root (the clamps
-	# themselves, not just this heuristic) since it was a real overheal bug
-	# independent of the rescale.
-	#
-	# (An earlier draft of this heuristic used a 1.5x safety margin per the
-	# task brief's own suggested wording, but the save fixture test caught
-	# that this misses any old-save unit at <=15% HP -- a fully plausible
-	# battle-damaged state, not just an edge case -- so the margin was
-	# tightened to the true logical boundary. Residual limitation, inherent
-	# to ANY magnitude heuristic: an old-scale unit that was ALSO below ~10%
-	# HP produces current_hp <= new max_hp and is indistinguishable from a
-	# healthy new-scale unit; only a save-version field would close this gap
-	# completely.)
-	for backfill_aid in state.armies:
-		var backfill_hp_army: ArmyState = state.armies[backfill_aid]
-		for backfill_unit: UnitInstance in backfill_hp_army.units:
-			var backfill_ud: UnitData = DataManager.get_unit(backfill_unit.unit_data_id)
-			if backfill_ud == null:
-				continue
-			if backfill_unit.current_hp > backfill_ud.max_hp:
+	# MADE EXACT (final review): originally this gated on a magnitude
+	# heuristic (`current_hp > max_hp` at all is impossible for a same-scale
+	# save, given every current_hp-mutating site clamps to `ud.max_hp` --
+	# see the 7-site squad_size overheal bug Task R2's review found and
+	# fixed, and city_system.gd's garrison-HP-bonus overheal fixed alongside
+	# this one). That invariant held, but the heuristic still had a
+	# documented residual gap: an old-scale unit ALSO below ~10% HP produces
+	# `current_hp <= new max_hp` and is indistinguishable from a healthy
+	# new-scale unit -- no per-unit magnitude check can close that. Replaced
+	# with an explicit `save_schema_version` field (GameState.gd): any save
+	# written before this field existed deserializes with the class default
+	# 0 (Godot Resource loading fills absent properties from the script
+	# default), unambiguously marking it pre-rescale regardless of any
+	# individual unit's HP fraction. `new_game()` and every `save_game()`
+	# write stamp `GameState.SAVE_SCHEMA_VERSION` (currently 1), so a
+	# same-session load of a just-saved game always short-circuits here.
+	if state.save_schema_version < GameState.SAVE_SCHEMA_VERSION:
+		for backfill_aid in state.armies:
+			var backfill_hp_army: ArmyState = state.armies[backfill_aid]
+			for backfill_unit: UnitInstance in backfill_hp_army.units:
+				if backfill_unit.current_hp <= 0:
+					continue # dead/zero stays zero -- not resurrected by the maxi(1,...) floor below
+				var backfill_ud: UnitData = DataManager.get_unit(backfill_unit.unit_data_id)
+				if backfill_ud == null:
+					continue
 				backfill_unit.current_hp = mini(backfill_ud.max_hp, maxi(1, roundi(float(backfill_unit.current_hp) / 10.0)))
+		# Stamp forward so this backfill runs exactly once, even if the
+		# player never re-saves this session (save_game() also stamps this
+		# on every write, independently -- this is the load-time half).
+		state.save_schema_version = GameState.SAVE_SCHEMA_VERSION
 	state.deserialize_hex_map()
 	state.hex_map.build_region_cache()
 	TurnManager.deserialize_state(state.turn_manager_state)
@@ -1591,6 +1586,7 @@ func new_game(faction_id: StringName = &"empire", demo: bool = false, map_seed: 
 	is_demo_map = demo
 	explored_tiles.clear()
 	state = GameState.new()
+	state.save_schema_version = GameState.SAVE_SCHEMA_VERSION
 	state.player_faction_id = faction_id
 	apply_faction_theme(faction_id)
 

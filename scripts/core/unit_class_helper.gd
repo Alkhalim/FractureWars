@@ -6,10 +6,12 @@ extends RefCounted
 ## never writes it.
 ##
 ## TAG VOCABULARY (grepped from all 279 data/units/**/*.tres on 2026-08-05;
-## a stray concatenated-cache file `data/units/{}` was excluded — it isn't a
+## a stray concatenated-cache file `data/units/{}` was excluded — it wasn't a
 ## real Resource, DataManager._load_units() only recurses into
-## *subdirectories* so it's never loaded, but a naive recursive grep over
-## data/units/ double-counts through it):
+## *subdirectories* so it was never loaded, but a naive recursive grep over
+## data/units/ double-counted through it. Deleted outright in the unit-stat-
+## rescale final review (2026-08-06) once its unloaded status was confirmed
+## again — this comment's counts predate the deletion and are unaffected):
 ##   melee(167) infantry(~90) fast(82) ranged(~78) heavy(~44) beast(40)
 ##   support(~30) monster(~30) cavalry(~29) mage(~28) light(24) construct(~29)
 ##   desertstrider(21) swarm(20) flying(~18) undead(17) tundrawalker(15)

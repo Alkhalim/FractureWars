@@ -25,6 +25,18 @@ extends Resource
 @export var tutorial_step: int = 0
 @export var encountered_factions: Dictionary = {} # faction_id -> true (factions the player has seen)
 @export var faction_intro_shown: bool = false # Show-once onboarding panel (Polish Pass 1, Task 1)
+# Save-data schema version (unit-stat-rescale final review, structural fix
+# replacing the old-save HP-backfill magnitude heuristic). Default 0 means
+# "pre-rescale / predates this field" -- any save written before this field
+# existed deserializes with the class default (Godot Resource loading uses
+# the script default for any property absent from the serialized data), so
+# 0 unambiguously means "needs backfill", no guessing from HP magnitudes.
+# GameManager stamps every new/saved game to GameState.SAVE_SCHEMA_VERSION
+# (new_game() and every save_game() write); load_game()'s backfill gates on
+# `state.save_schema_version < SAVE_SCHEMA_VERSION` and sets it to current
+# once backfill runs, so it fires exactly once per old save.
+@export var save_schema_version: int = 0
+const SAVE_SCHEMA_VERSION := 1 # bump when a future save-breaking change needs its own backfill
 
 var hex_map: HexMapData # Runtime hex map state (not serialized)
 

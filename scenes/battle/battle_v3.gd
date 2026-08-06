@@ -2892,6 +2892,20 @@ func _apply_debt_flags() -> void:
 
 func _apply_elderbeast_building_bonuses() -> void:
 	# Apply building bonuses to elderbeast formations in battle
+	# rescale (final review): this whole block was an unswept scene-script
+	# sibling of battle_simulator_v3.gd's `_create_formation` building-bonus
+	# blocks -- no harness reaches it (it's only invoked from the real
+	# manual-Fight scene flow, see _start_battle above), so it still held
+	# old-scale (pre-/10) flat constants. Converted with the SAME
+	# conventions R2 established: attack/defense flats -> global-reference
+	# percent via BattleSimulatorV3's _atk_pct/_def_pct helpers (called
+	# directly on `simulator` -- GDScript's leading underscore is a naming
+	# convention only, not enforced privacy, and `simulator` is statically
+	# typed BattleSimulatorV3, so this is an ordinary method call, not an
+	# access violation); max_hp and the damage aura are base-HP-scale
+	# DIVIDE fields (like UnitData.max_hp itself), not "bonuses" relative
+	# to another stat, so those are a straight /10, matching how the R2
+	# sweep treated max_hp everywhere else.
 	var all_formations: Array = []
 	all_formations.append_array(simulator.attacker_formations)
 	all_formations.append_array(simulator.defender_formations)
@@ -2904,29 +2918,33 @@ func _apply_elderbeast_building_bonuses() -> void:
 			if beast.unit_instance_id != f.instance_id:
 				continue
 
-			# T1: Chitin Walls — +8 defense
+			# T1: Chitin Walls — +8 defense (was flat, now global-ref pct)
 			if beast.buildings.has(&"chitin_walls"):
-				f.defense += 8
-				f.melee_defense += 8
-				f.projectile_defense += 8
-				f.magic_defense += 8
+				var chitin_def_pct: int = simulator._def_pct(f, 8)
+				f.defense += chitin_def_pct
+				f.melee_defense += chitin_def_pct
+				f.projectile_defense += chitin_def_pct
+				f.magic_defense += chitin_def_pct
 
-			# T1: Feeding Tendrils — HP regen during melee combat (0.33 HP/tick)
+			# T1: Feeding Tendrils — HP regen during melee combat
+			# rescale: flat 0.33 HP/tick -> /10 (same treatment as the 5
+			# hp_regen_per_tick terrain/mechanic floors in
+			# battle_simulator_v3.gd, e.g. Tainted Jade jungle 0.5->0.05).
 			if beast.buildings.has(&"shard_conduit"):
-				f.hp_regen_per_tick = 0.33
+				f.hp_regen_per_tick = 0.033 # was 0.33
 				f.regen_requires_combat = true
 
-			# T1: Chitin Forge — +10 attack
+			# T1: Chitin Forge — +10 attack (was flat, now global-ref pct)
 			if beast.buildings.has(&"crystal_forge"):
-				f.attack += 10
+				f.attack += simulator._atk_pct(f, 10)
 
-			# T1: Brood Chamber — +60 max HP
+			# T1: Brood Chamber — +60 max HP (base-HP-scale DIVIDE, /10)
 			if beast.buildings.has(&"crystal_nursery"):
-				f.max_hp += 60
-				f.current_hp += 60
-				f.front_entity_hp += 60
+				f.max_hp += 6 # was 60
+				f.current_hp += 6 # was 60
+				f.front_entity_hp += 6 # was 60
 
-			# T1: Crystal Tap — +25 fear radius
+			# T1: Crystal Tap — +25 fear radius (KEEP-scale, not attack/HP)
 			if beast.buildings.has(&"shard_harvester"):
 				f.fear_radius += 25
 
@@ -2950,10 +2968,10 @@ func _apply_elderbeast_building_bonuses() -> void:
 			# T3: Shard Heart — damage aura + stronger ranged
 			if beast.buildings.has(&"resonance_amplifier"):
 				f.damage_aura_radius = 120.0
-				f.damage_aura_damage = 3.0
+				f.damage_aura_damage = 0.3 # was 3.0 (base-HP-scale DIVIDE, /10)
 				if f.attack_range >= 3:
 					f.attack_range = 5
-					f.attack += 8
+					f.attack += simulator._atk_pct(f, 8) # was flat +8
 
 			# T3: Apex Den — spawns crystal swarmlings every 120 ticks
 			if beast.buildings.has(&"elder_breeding_ground"):

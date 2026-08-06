@@ -1,31 +1,46 @@
 extends SceneTree
 ## Task R2 (Unit Stat Rescale): old-save fixture for the load-time HP backfill.
 ##
+## MADE EXACT (final review, 2026-08-06): the backfill no longer gates on a
+## magnitude heuristic at all. `GameState.save_schema_version` (default 0,
+## stamped to `GameState.SAVE_SCHEMA_VERSION` by new_game()/save_game()) now
+## tells load_game() unambiguously whether a save predates this task -- see
+## game_manager.gd's load_game() comment. Both modes below still work
+## unchanged: the OLD-scale slot-90 fixture was saved (MAKE mode) before this
+## field existed, so it deserializes with the class default 0 and the
+## backfill still fires; the NEW-scale heal-clamp fixture (VERIFY-HEAL-CLAMP)
+## calls new_game()+save_game() itself in-process, so it's stamped current
+## and the backfill correctly does NOT fire. What changed is WHY each
+## direction passes: not "current_hp happens to look old/new-scale" but "the
+## save says so explicitly."
+##
 ## MAKE mode must run BEFORE the data sweep lands (current HEAD, old scale):
 ## starts a real game, deliberately damages a handful of units to fractional
-## current_hp (so the fixture isn't just "everyone at full HP", which would
-## never exercise the backfill's `current_hp > new_max_hp * 1.5` heuristic
-## any differently than a trivial case), saves to a dedicated slot (90, kept
-## out of test_save_roundtrip.gd's slot 99), and prints the pre-save
-## (unit_data_id, old current_hp, old max_hp) tuples for a handful of sample
-## units so the report has ground truth to compare post-backfill values against.
+## current_hp (so the fixture isn't just "everyone at full HP", which
+## wouldn't meaningfully exercise the backfill's HP-conversion math), saves
+## to a dedicated slot (90, kept out of test_save_roundtrip.gd's slot 99),
+## and prints the pre-save (unit_data_id, old current_hp, old max_hp) tuples
+## for a handful of sample units so the report has ground truth to compare
+## post-backfill values against.
 ##
 ## VERIFY mode must run AFTER the data sweep + game_manager.gd backfill land:
-## loads slot 90 (still old-scale current_hp on disk, since the .res save
-## predates the rescale), and checks every backfilled unit's current_hp lands
-## in [1, new_max_hp] and roughly matches old_hp/10 (the backfill formula).
+## loads slot 90 (still old-scale current_hp on disk, and save_schema_version
+## 0 since the .res predates the field), and checks every backfilled unit's
+## current_hp lands in [1, new_max_hp] and roughly matches old_hp/10 (the
+## backfill formula).
 ##
 ## VERIFY-HEAL-CLAMP mode (Task R2 review) tests the OPPOSITE direction: a
-## brand-new NEW-scale save must NOT be misdetected as old-scale. The
-## backfill heuristic (`current_hp > max_hp`) depends on EVERY current_hp
-## mutation site actually clamping to max_hp -- a review pass found 7
-## turn_manager.gd faction-mechanic passive-heal sites that clamped to
-## `ud.max_hp * ud.squad_size` instead (max_hp is already the whole-squad
-## pool), letting a full-HP squad_size>1 unit overheal past its real max on
-## the very next tick, which would false-positive the backfill on the next
-## load and silently divide a healthy NEW-scale save's HP by 10. This mode
-## builds a full-HP squad_size>1 army, fires the Tainted Jade jungle-heal
-## faction mechanic directly (`TurnManager._process_tainted_jade_taint`,
+## brand-new NEW-scale save must NOT be misdetected as old-scale. Originally
+## this depended on EVERY current_hp mutation site clamping to max_hp (a
+## review pass found 7 turn_manager.gd faction-mechanic passive-heal sites
+## that clamped to `ud.max_hp * ud.squad_size` instead -- max_hp is already
+## the whole-squad pool -- letting a full-HP squad_size>1 unit overheal past
+## its real max); now the save-schema-version gate makes this direction
+## correct unconditionally, but the fixture still exercises the same overheal
+## bug as a belt-and-suspenders regression check (a real overheal is still a
+## bug worth catching even though it can no longer fool the backfill). This
+## mode builds a full-HP squad_size>1 army, fires the Tainted Jade
+## jungle-heal faction mechanic directly (`TurnManager._process_tainted_jade_taint`,
 ## taint_focus=1 branch, taint_power>=30, army on a JUNGLE tile), asserts no
 ## overheal happened, saves at the CURRENT (new) scale, reloads through the
 ## real backfill code path, and asserts current_hp is bit-for-bit unchanged.
