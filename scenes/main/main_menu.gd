@@ -222,6 +222,28 @@ const PLAYABLE_FACTIONS: Array[StringName] = [&"empire", &"skulloath", &"gladeho
 ## visible gaps or drawing oversized blobs).
 const MAP_SKETCH_TERRAIN_STEP := 5
 
+## Fixed grid dimensions the map sketch's data space is pinned to — shared
+## between _sample_terrain_patches() (which forces HexMapData.MAP_WIDTH/HEIGHT
+## to exactly these values for the duration of its one seed-0 generate_hex_map()
+## call, see the comment there) and _MapSketch._draw() (the renderer, which
+## normalizes LANDMASS_BLOBS/REGION_SEEDS/terrain_patches — all sampled in
+## that same pinned 117x78 space — against these consts instead of the LIVE
+## HexMapData.MAP_WIDTH/MAP_HEIGHT statics).
+##
+## Final review fix (CRITICAL-adjacent): _draw() used to read the live statics
+## directly. Those get overwritten for the duration of a real campaign
+## (new_game()/load_game() set them to that map's actual size) and are NEVER
+## restored afterward — by design, the menu's own 117x78 override IS restored
+## (see _sample_terrain_patches()), but a real game's dimensions are meant to
+## stick. A "Demo Map" visit (50x35) followed by "Main Menu" therefore left
+## MAP_WIDTH/HEIGHT at 50x35 while the sketch's actual sampled data stayed in
+## 117x78 space — normalizing against the live (wrong) statics scaled the
+## sketch ~2.3x and spilled past its frame. These consts are always correct
+## because they're the same fixed values the sampler pins, never touched by
+## any campaign.
+const MAP_SKETCH_GRID_WIDTH := 117
+const MAP_SKETCH_GRID_HEIGHT := 78
+
 ## Fix-round (review defect): floor height for the faction-overview "chip"
 ## (desc_scroll) so a very short blurb never collapses to a sliver — and the
 ## chip's own content-margin (all sides), reused both for the stylebox and
@@ -556,17 +578,17 @@ func _sample_terrain_patches() -> Array:
 	# an `await` between the overwrite and the restore without re-auditing.
 	var saved_w := HexMapData.MAP_WIDTH
 	var saved_h := HexMapData.MAP_HEIGHT
-	HexMapData.MAP_WIDTH = 117
-	HexMapData.MAP_HEIGHT = 78
+	HexMapData.MAP_WIDTH = MAP_SKETCH_GRID_WIDTH
+	HexMapData.MAP_HEIGHT = MAP_SKETCH_GRID_HEIGHT
 	var map := MapGenerator.generate_hex_map(DataManager.regions, 0, GameManager.REGION_CITIES)
 	HexMapData.MAP_WIDTH = saved_w
 	HexMapData.MAP_HEIGHT = saved_h
 
 	var patches: Array = []
 	var col := 0
-	while col < 117:
+	while col < MAP_SKETCH_GRID_WIDTH:
 		var row := 0
-		while row < 78:
+		while row < MAP_SKETCH_GRID_HEIGHT:
 			var tile: HexMapData.TileState = map.tiles.get(Vector2i(col, row))
 			# Water tiles contribute no patch — the terrain wash naturally
 			# stays confined to land, reinforcing the coastline instead of
@@ -1422,11 +1444,14 @@ class _FactionEmblem extends Control:
 ## faction's starting region with a small dot and the SELECTED faction with
 ## its seal + a highlight ring. Reads MapGenerator.LANDMASS_BLOBS (continent
 ## silhouette ellipses) and MapGenerator.REGION_SEEDS (region anchor
-## positions) directly, normalized against HexMapData.MAP_WIDTH/HEIGHT — the
-## same grid space every real campaign map is generated into — rather than
-## a hardcoded copy or a live per-campaign generation (see the call site's
-## comment for why: campaign maps reroll a random seed, so there's no single
-## canonical map to bake a thumbnail from before a game exists).
+## positions) directly, normalized against MAP_SKETCH_GRID_WIDTH/HEIGHT — the
+## fixed 117x78 grid space LANDMASS_BLOBS/REGION_SEEDS/terrain_patches are all
+## sampled in (NOT the live HexMapData.MAP_WIDTH/HEIGHT statics, which a prior
+## campaign's map size permanently overwrites — see that const's doc comment)
+## — rather than a hardcoded copy or a live per-campaign generation (see the
+## call site's comment for why: campaign maps reroll a random seed, so
+## there's no single canonical map to bake a thumbnail from before a game
+## exists).
 ## `playable_factions`/`seal_textures` are populated by the OUTER script
 ## before this is added to the tree (same "pre-load outside _draw()"
 ## discipline as _FactionEmblem's portrait_texture).
@@ -1485,8 +1510,16 @@ class _MapSketch extends Control:
 		draw_rect(rect, backdrop)
 		draw_rect(rect, ink, false, 2.0)
 
-		var mw := float(HexMapData.MAP_WIDTH)
-		var mh := float(HexMapData.MAP_HEIGHT)
+		# Final review fix: normalize against the sketch's own fixed data-space
+		# consts, NOT the live HexMapData.MAP_WIDTH/HEIGHT statics — those get
+		# permanently overwritten by whatever campaign map size was last
+		# generated (e.g. a "Demo Map" visit sets 50x35 and never restores it),
+		# while LANDMASS_BLOBS/REGION_SEEDS/terrain_patches are always sampled
+		# in the sampler's pinned 117x78 space (see MAP_SKETCH_GRID_WIDTH/
+		# HEIGHT's doc comment). Normalizing against the wrong live size scaled
+		# the whole sketch and spilled it past this Control's frame.
+		var mw := float(MAP_SKETCH_GRID_WIDTH)
+		var mh := float(MAP_SKETCH_GRID_HEIGHT)
 		var pad := 8.0
 		var draw_w := size.x - pad * 2.0
 		var draw_h := size.y - pad * 2.0

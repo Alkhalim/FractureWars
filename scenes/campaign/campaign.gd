@@ -5139,7 +5139,7 @@ func _show_battle_report(report: Dictionary) -> void:
 			unit_label.add_theme_color_override("font_color", Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85))
 		else:
 			unit_label.text = "  %s: %d -> KILLED" % [snap.name, snap.hp_before]
-			unit_label.add_theme_color_override("font_color", UIPalette.DANGER)
+			unit_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		atk_col.add_child(unit_label)
 	roster_columns.add_child(atk_col)
 
@@ -5173,7 +5173,7 @@ func _show_battle_report(report: Dictionary) -> void:
 			unit_label.add_theme_color_override("font_color", Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85))
 		else:
 			unit_label.text = "  %s: %d -> KILLED" % [snap.name, snap.hp_before]
-			unit_label.add_theme_color_override("font_color", UIPalette.DANGER)
+			unit_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		def_col.add_child(unit_label)
 	roster_columns.add_child(def_col)
 
@@ -5943,7 +5943,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 			var rlabel := Label.new()
 			rlabel.text = "  +" + str(income[res_type]) + " " + rname
 			rlabel.add_theme_font_size_override("font_size", 11)
-			rlabel.add_theme_color_override("font_color", UIPalette.SUCCESS)
+			rlabel.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 			vbox.add_child(rlabel)
 			total_value += income[res_type]
 
@@ -5952,7 +5952,7 @@ func _show_settlement_preview(hex_coord: Vector2i) -> void:
 		var b_header := Label.new()
 		b_header.text = "Claims resources:"
 		b_header.add_theme_font_size_override("font_size", 11)
-		b_header.add_theme_color_override("font_color", UIPalette.SUCCESS)
+		b_header.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 		vbox.add_child(b_header)
 		for entry in claimable:
 			var b_lbl := Label.new()

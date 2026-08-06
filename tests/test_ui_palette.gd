@@ -22,6 +22,16 @@ func _run() -> void:
 	_check(UIPalette.SECONDARY != UIPalette.PARCHMENT_ACCENT, "SECONDARY differs from heraldry")
 	_check(UIPalette.ACCENT != UIPalette.PARCHMENT_ACCENT, "ACCENT differs from heraldry")
 	_check(UIPalette.SECONDARY != UIPalette.ACCENT, "SECONDARY differs from ACCENT")
+	# Final review fix: INK_DIM_ON_DARK is a new faction-dependent static (dim
+	# body text on a dark CHIP_BG chip) — assert it's genuinely distinct from
+	# INK_BODY (dark ink meant for LIGHT parchment — the two must never be
+	# interchangeable) for the faction still active here (skulloath), and that
+	# it rebuilds per faction like the other statics above.
+	_check(UIPalette.INK_DIM_ON_DARK != UIPalette.INK_BODY, "INK_DIM_ON_DARK differs from INK_BODY")
+	var skulloath_dim: Color = UIPalette.INK_DIM_ON_DARK
+	UIPalette.rebuild(&"neutral")
+	_check(UIPalette.INK_DIM_ON_DARK != skulloath_dim, "INK_DIM_ON_DARK is faction-dependent (rebuild changes it)")
+	UIPalette.rebuild(&"skulloath")
 	# 2. heraldry() works cross-faction without rebuild
 	_check(UIPalette.heraldry(&"empire") != UIPalette.heraldry(&"skulloath"), "heraldry per faction")
 	# 3. Theme builder produces textured styleboxes when PNGs exist, flat fallback otherwise

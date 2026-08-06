@@ -31,7 +31,21 @@ extends SceneTree
 ## for legibility judging.
 
 const OUT_DIR := "res://assets/sprites/ui/generated"
-const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-Gamedesign-Beyond-FractureWars-FractureWars/60f5a753-2e0c-4d4a-bf21-4fb3197d9a6c/scratchpad"
+
+## Final review fix: was a hardcoded, session-specific AppData temp path (only
+## meaningful inside one particular Claude Code session) — de-hardcoded to an
+## optional CLI arg. `res://` OUT_DIR is always the real, permanent output;
+## this is purely an extra copy for a chat session's review, so it defaults to
+## "" (skip copy) instead of assuming any particular machine/user.
+## Pass `--scratch-dir=<path>` after `--` to opt in, e.g.:
+##   -s res://tests/tools_generate_class_icons.gd -- --scratch-dir=C:/path/to/scratch
+var SCRATCH_DIR := ""
+
+static func _parse_scratch_dir() -> String:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--scratch-dir="):
+			return arg.substr("--scratch-dir=".length())
+	return ""
 
 const ICON_SIZE := Vector2i(64, 64)     # baked ~2.5x the "~24px" brief target for a crisp downscale
 const CONTACT_VP_SIZE := Vector2i(760, 210)
@@ -319,8 +333,10 @@ func _init() -> void:
 	call_deferred("_start")
 
 func _start() -> void:
+	SCRATCH_DIR = _parse_scratch_dir()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
-	DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
+	if SCRATCH_DIR != "":
+		DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
 
 	_vp = SubViewport.new()
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -347,7 +363,8 @@ func _process(_delta: float) -> bool:
 			print("Saved %s" % fname)
 		else:
 			img.save_png("%s/_contact_class_icons.png" % OUT_DIR)
-			img.save_png("%s/_contact_class_icons.png" % SCRATCH_DIR)
+			if SCRATCH_DIR != "":
+				img.save_png("%s/_contact_class_icons.png" % SCRATCH_DIR)
 			print("Saved contact sheet: _contact_class_icons.png")
 		_capture_pending = false
 	if _job_idx + 1 < _jobs.size():

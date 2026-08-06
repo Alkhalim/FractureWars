@@ -678,7 +678,10 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	fs_label.text = "Fullscreen"
 	fs_label.custom_minimum_size = Vector2(120, 0)
 	fs_label.add_theme_font_size_override("font_size", 13)
-	fs_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	# Final review fix: match the migrated title/gfx_title labels above (both
+	# UIPalette.PARCHMENT) — this whole panel sits on the dark CHIP_BG backdrop
+	# a few lines up, same case.
+	fs_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	fs_row.add_child(fs_label)
 	var fs_check := CheckButton.new()
 	fs_check.modulate = UIPalette.ACCENT
@@ -706,7 +709,9 @@ func create_options_panel(parent: Control) -> PanelContainer:
 	shake_label.text = "Screen Shake"
 	shake_label.custom_minimum_size = Vector2(120, 0)
 	shake_label.add_theme_font_size_override("font_size", 13)
-	shake_label.add_theme_color_override("font_color", Color(0.85, 0.8, 0.65))
+	# Final review fix: match the migrated title/gfx_title labels above (both
+	# UIPalette.PARCHMENT) — this whole panel sits on the dark CHIP_BG backdrop.
+	shake_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	shake_row.add_child(shake_label)
 	var shake_check := CheckButton.new()
 	shake_check.modulate = UIPalette.ACCENT

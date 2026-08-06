@@ -30,7 +30,22 @@ extends SceneTree
 ## size, for the ART GATE.
 
 const OUT_DIR := "res://assets/sprites/ui/generated"
-const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-Gamedesign-Beyond-FractureWars-FractureWars/60f5a753-2e0c-4d4a-bf21-4fb3197d9a6c/scratchpad"
+
+## Final review fix: was a hardcoded, session-specific AppData temp path (only
+## meaningful inside one particular Claude Code session) — de-hardcoded to an
+## optional CLI arg, coexisting with the existing positional set-id arg above.
+## `res://` OUT_DIR is always the real, permanent output; this is purely an
+## extra copy for a chat session's ART GATE review, so it defaults to ""
+## (skip copy) instead of assuming any particular machine/user. Pass
+## `--scratch-dir=<path>` anywhere after `--`, e.g.:
+##   -s res://tests/tools_generate_ui_chrome.gd -- neutral --scratch-dir=C:/path/to/scratch
+var SCRATCH_DIR := ""
+
+static func _parse_scratch_dir() -> String:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--scratch-dir="):
+			return arg.substr("--scratch-dir=".length())
+	return ""
 
 ## ─────────────────────────────────────────────────────────────────────────
 ## Geometry CONTRACT — Task 3 of the UI-overhaul plan copies these verbatim
@@ -1621,10 +1636,17 @@ func _init() -> void:
 	call_deferred("_start")
 
 func _start() -> void:
+	SCRATCH_DIR = _parse_scratch_dir()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
-	DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
+	if SCRATCH_DIR != "":
+		DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
 
-	var args := OS.get_cmdline_user_args()
+	# Set-id selector is the first arg that isn't the scratch-dir flag (keeps
+	# `-- neutral --scratch-dir=X` and `-- --scratch-dir=X neutral` both working).
+	var args: Array = []
+	for arg in OS.get_cmdline_user_args():
+		if not arg.begins_with("--scratch-dir="):
+			args.append(arg)
 	var set_arg := args[0] if args.size() > 0 else ""
 	var set_ids: Array = SETS.keys() if set_arg == "" else [StringName(set_arg)]
 
@@ -1671,12 +1693,14 @@ func _process(_delta: float) -> bool:
 				var sid2: StringName = job[1]
 				var fname2 := "_contact_%s.png" % String(sid2)
 				img.save_png("%s/%s" % [OUT_DIR, fname2])
-				img.save_png("%s/%s" % [SCRATCH_DIR, fname2])
+				if SCRATCH_DIR != "":
+					img.save_png("%s/%s" % [SCRATCH_DIR, fname2])
 				print("Saved contact sheet: %s" % fname2)
 			_:  # "factions_contact"
 				var fname3 := "_contact_factions.png"
 				img.save_png("%s/%s" % [OUT_DIR, fname3])
-				img.save_png("%s/%s" % [SCRATCH_DIR, fname3])
+				if SCRATCH_DIR != "":
+					img.save_png("%s/%s" % [SCRATCH_DIR, fname3])
 				print("Saved factions contact sheet: %s" % fname3)
 		_capture_pending = false
 	if _job_idx + 1 < _jobs.size():

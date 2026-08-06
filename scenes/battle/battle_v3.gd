@@ -804,7 +804,7 @@ func _rebuild_roster_side(container: VBoxContainer, formations: Array[BattleSimu
 			var hp_lbl := Label.new()
 			hp_lbl.text = "%d/%d  %d/%d ent" % [maxi(0, f.current_hp), f.max_hp, f.entities_alive, f.total_entities]
 			hp_lbl.add_theme_font_size_override("font_size", 10)
-			hp_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35) if is_dead else Color(0.6, 0.58, 0.5))
+			hp_lbl.add_theme_color_override("font_color", Color(0.45, 0.4, 0.35) if is_dead else UIPalette.INK_DIM_ON_DARK)
 			hp_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 			hp_lbl.add_theme_constant_override("outline_size", 2)
 			hp_lbl.custom_minimum_size = Vector2(100, 0)
@@ -2295,8 +2295,11 @@ func _build_roster_column(header_text: String, formations: Array, header_color: 
 		line.add_theme_font_size_override("font_size", 12)
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		# Dim-parchment idiom for "alive" text on a dark chip, matching
-		# GameManager.make_cost_row's own default-text color derivation.
-		line.add_theme_color_override("font_color", UIPalette.DANGER if f.is_dead else Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85))
+		# GameManager.make_cost_row's own default-text color derivation. DANGER
+		# (not _BRIGHT) read dull here pre-fix -- this whole roster column sits
+		# on result_panel's CHIP_BG backdrop (see _show_result below), same
+		# dark-chip case as this widget's own headers at :2378/:2384.
+		line.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT if f.is_dead else Color(UIPalette.PARCHMENT.r, UIPalette.PARCHMENT.g, UIPalette.PARCHMENT.b, 0.85))
 		col.add_child(line)
 
 	return col
@@ -2353,7 +2356,7 @@ func _show_result() -> void:
 			var siege_note := Label.new()
 			siege_note.text = "⚔ You have stormed the walls — your army now lays siege to %s.\nKeep it here; the city falls after a few turns under siege." % besieged_city.get_display_name()
 			siege_note.add_theme_font_size_override("font_size", 13)
-			siege_note.add_theme_color_override("font_color", UIPalette.WARN)
+			siege_note.add_theme_color_override("font_color", UIPalette.WARN_BRIGHT)
 			siege_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			siege_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			vbox.add_child(siege_note)

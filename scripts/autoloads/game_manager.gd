@@ -105,7 +105,7 @@ const _NOTIF_MARGIN := 32
 ## tests/tools_generate_ui_chrome.gd's ORNATE_SIZE/ORNATE_MARGIN.
 const _ORNATE_SIZE := Vector2i(144, 64)
 const _ORNATE_MARGIN := 18
-const _ORNATE_CONTENT := Vector4(22, 15, 22, 15)  # L T R B — clear of _ORNATE_MARGIN (18), same "a few px more than the texture margin" rule as _BTN_CONTENT
+const _ORNATE_CONTENT := Vector4(22, 19, 22, 19)  # L T R B — clear of _ORNATE_MARGIN (18), same "a few px more than the texture margin" rule as _BTN_CONTENT. Final review fix: T/B were 15 (< the 18 margin, contradicting this comment and the GOTCHA below); now 19, matching _BTN_CONTENT's own +1-over-margin clearance on T/B.
 
 ## Task W1 — dedicated compact-scale button bake (see the generator's
 ## COMPACT_BTN_SIZE doc comment for why: campaign_hud.gd's whole HUD subtree
@@ -758,7 +758,7 @@ func make_cost_button(title: String, cost: Dictionary, turns := 0, compare: Dict
 var _compact_theme: Theme
 
 ## Compact HUD theme: same generated parchment chrome as the global theme but
-## pre-scaled to 25%, so the nine-patch border is ~6px instead of ~24px and
+## pre-scaled to 25%, so the nine-patch border is ~8px instead of ~32px and
 ## content margins suit dense fixed-size panels (battle HUD, overlays). Reads
 ## _frame_texture/_btn_texture* set by the last _build_theme_for_set() call
 ## (boot -> neutral; Task 4's apply_faction_theme -> the active faction), so
@@ -984,10 +984,22 @@ func get_compact_theme() -> Theme:
 
 ## `legacy_scaled` (Task W1): true only for the no-dedicated-compact-bake
 ## fallback path above (a partial/old asset checkout) — in that case `tex` is
-## already a runtime `_scaled_image_texture(..., 4)` result, so the margin
-## still needs the old /4 divide. The normal path (dedicated `btn_compact_*`
-## bake) passes a texture already baked at target scale, so the margin
-## constant is used directly.
+## already a runtime `_scaled_image_texture(..., 4)` result, so the TEXTURE
+## margin still needs the old /4 divide (that texture really is the root bake
+## downscaled 4x). The normal path (dedicated `btn_compact_*` bake) passes a
+## texture already baked at target scale, so the texture margin constant is
+## used directly (see `m` above).
+##
+## Final review fix: the CONTENT margin below used to divide by 4 unconditionally,
+## even on the normal (dedicated-bake) path — a leftover from when this whole
+## style was built by runtime-downscaling the 96x48 root bake 4x (hence /4).
+## The dedicated bake is 64x32 (_COMPACT_BTN_SIZE), not a 4x downscale of
+## _BTN_SIZE (96x48) — the real ratio is 64/96 ≈ 0.667, not 0.25. At /4 the
+## ink border reached only ~3.7px inward from a themed Button's edge (18*0.25,
+## 13*0.25), leaving text close enough to the frame's wobble to occasionally
+## clip on the "pressed" 1px content-margin variant. `legacy_scaled` still
+## divides by 4 (its texture really is a 4x downscale), but the dedicated-bake
+## path now scales by the real geometry ratio instead.
 func _make_compact_btn_style(tex: Texture2D, pressed := false, legacy_scaled := false) -> StyleBoxTexture:
 	var s := StyleBoxTexture.new()
 	var m: float = (_BTN_MARGIN / 4.0) if legacy_scaled else float(_COMPACT_BTN_MARGIN)
@@ -996,10 +1008,11 @@ func _make_compact_btn_style(tex: Texture2D, pressed := false, legacy_scaled := 
 	s.texture_margin_right = m
 	s.texture_margin_bottom = m
 	s.texture = tex
-	s.content_margin_left = _BTN_CONTENT.x / 4.0
-	s.content_margin_right = _BTN_CONTENT.z / 4.0
-	s.content_margin_top = _BTN_CONTENT.y / 4.0 + (1.0 if pressed else 0.0)
-	s.content_margin_bottom = _BTN_CONTENT.w / 4.0 - (1.0 if pressed else 0.0)
+	var content_scale: float = 0.25 if legacy_scaled else (64.0 / 96.0)
+	s.content_margin_left = _BTN_CONTENT.x * content_scale
+	s.content_margin_right = _BTN_CONTENT.z * content_scale
+	s.content_margin_top = _BTN_CONTENT.y * content_scale + (1.0 if pressed else 0.0)
+	s.content_margin_bottom = _BTN_CONTENT.w * content_scale - (1.0 if pressed else 0.0)
 	return s
 
 func _scaled_image_texture(tex: Texture2D, div: int) -> ImageTexture:

@@ -18,7 +18,14 @@ mockup `tests/tools_ui_style_candidates.gd`) — replacing the old stock
 `button1.png`/`frame1.png`/`notification1.png` (retired, deleted). 12 sets
 (11 majors + `neutral`) live in `assets/sprites/ui/generated/` as
 `<set_id>_{frame,btn_normal,btn_hover,btn_pressed,btn_disabled,notification,
-seal}.png`, plus a per-set contact sheet.
+seal}.png`, plus a per-set contact sheet. UI Polish Wave Task W1 added two
+more baked piece families, both per-set/per-state like `btn_*` above:
+`btn_ornate_{normal,hover,pressed,disabled}.png` (the "Upgrade to Level N" /
+"Found Settlement" buttons — squiggle double-border + corner flourishes, full
+resolution, never downscaled) and `btn_compact_{normal,hover,pressed,
+disabled}.png` (a dedicated native-scale bake for the compact HUD theme,
+replacing the old runtime 4x-downscale of `btn_*` — see the 25%-scale note
+below).
 
 **Regenerate** (windowed — SubViewport capture needs a live window; a brief
 flash is expected):
@@ -28,18 +35,29 @@ flash is expected):
 ```
 Optional trailing `-- <set_id>` rebakes one set only. Nine-patch geometry is
 declared once in the tool (`FRAME_SIZE`/`FRAME_MARGIN`/`BTN_SIZE`/
-`BTN_MARGIN`/`NOTIF_SIZE`/`NOTIF_MARGIN`) and copied verbatim into
-`game_manager.gd`'s `_FRAME_SIZE`/`_FRAME_MARGIN`/etc. — the two files must
-stay in sync (each carries a comment cross-referencing the other). Palette
-rows (parchment/ink/heraldry/secondary/accent per faction) are similarly
-duplicated between the tool's `SETS` table and `scripts/ui/ui_palette.gd`'s
-`_PALETTE` table — same rule.
+`BTN_MARGIN`/`NOTIF_SIZE`/`NOTIF_MARGIN`, plus Task W1's
+`ORNATE_SIZE`/`ORNATE_MARGIN` and `COMPACT_BTN_SIZE`/`COMPACT_BTN_MARGIN`)
+and copied verbatim into `game_manager.gd`'s `_FRAME_SIZE`/`_FRAME_MARGIN`/
+`_ORNATE_SIZE`/`_ORNATE_MARGIN`/`_COMPACT_BTN_SIZE`/`_COMPACT_BTN_MARGIN`/etc.
+— the two files must stay in sync (each carries a comment cross-referencing
+the other). Palette rows (parchment/ink/heraldry/secondary/accent per
+faction) are similarly duplicated between the tool's `SETS` table and
+`scripts/ui/ui_palette.gd`'s `_PALETTE` table — same rule.
 
 `GameManager._build_theme_for_set(set_id)` consumes the baked PNGs into
 `StyleBoxTexture`s for the root theme; `GameManager.get_compact_theme()`
-re-derives a 25%-scaled copy for dense HUD panels (battle HUD, campaign HUD).
-Missing PNGs fall back to the `neutral` set, then to a flat `StyleBoxFlat` —
-a checkout with no generated assets still runs.
+re-derives a 25%-scaled copy for the compact **frame/panel** style only
+(runtime-downscales the root `frame`/`notification` bake 4x — this is where
+the "~8 px borders (32px margin ÷ 4x scale)" figure below comes from).
+**Compact buttons are NOT part of that 25%-scale derivation** (Task W1
+fix — the old runtime 4x-downscale of the root `btn_*` bake crushed the
+~1px hand-wobble to sub-pixel noise): `get_compact_theme()` loads the
+dedicated `btn_compact_*`/`btn_ornate_*` bakes above directly, at their own
+native geometry (`_COMPACT_BTN_SIZE`/`_COMPACT_BTN_MARGIN` — 64×32/8px,
+unrelated to `_BTN_MARGIN` ÷ 4), falling back to a runtime downscale only for
+a partial/old asset checkout missing the dedicated PNGs. Missing PNGs
+otherwise fall back to the `neutral` set, then to a flat `StyleBoxFlat` — a
+checkout with no generated assets still runs.
 
 **Godot theme-cascade gotcha (read before adding a new themed control type):**
 once a Control's own `.theme` is set (this is true of the HUD root — see
@@ -140,8 +158,8 @@ invented value because the chart's 3 colors were already claimed).
 
 | Context | Theme | Why |
 |---|---|---|
-| Main menu, dialogs, large screens | Global root theme (generated parchment & ink skin, per active faction) | Buttons ≥ 48 px tall render the 32 px nine-patch borders correctly |
-| Campaign HUD (whole `UILayer/HUD`), battle HUD, minimap block, any dense panel | `GameManager.get_compact_theme()` | ~8 px borders (32px margin ÷ 4x scale) work at 22–40 px control heights |
+| Main menu, dialogs, large screens | Global root theme (generated parchment & ink skin, per active faction) | Full-size dialog/panel **frames** use a 32 px nine-patch margin (`_FRAME_MARGIN`); full-size **buttons** are a separate, smaller-margin bake (12 px, `_BTN_MARGIN`, 96×48 texture) — both need ≥ 48 px control height to render their own border correctly, neither one "is" the other's margin |
+| Campaign HUD (whole `UILayer/HUD`), battle HUD, minimap block, any dense panel | `GameManager.get_compact_theme()` | Frames/panels: ~8 px border from a runtime 4x downscale of the 32 px full-size frame margin. Buttons: a *dedicated* 64×32 bake with its own 8 px margin (`_COMPACT_BTN_MARGIN`) — same number as the frame's downscaled margin by coincidence, not derived from it (see the chrome-pipeline section above). Both work at 22–40 px control heights |
 
 **Rule: the full-size button skin needs ≥ 48 px control height. Anything
 smaller MUST live under the compact theme** — a full-size button below 48 px

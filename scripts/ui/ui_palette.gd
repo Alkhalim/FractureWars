@@ -172,6 +172,19 @@ static var SECONDARY: Color = Color(0.40, 0.32, 0.16)
 static var ACCENT: Color = Color(0.85, 0.77, 0.47)
 static var BAR_FILL: Color = Color(0.62, 0.52, 0.30).darkened(0.1)
 static var BAR_TROUGH: Color = Color(0.24, 0.21, 0.17)
+## Final review sweep: dim body text on a dark CHIP_BG chip (secondary/
+## tertiary label rows — tags, descriptions, "neutral" standing, etc.) had no
+## palette constant; call sites hand-rolled one of three near-identical
+## literals (Color(0.6,0.58,0.5) / (0.78,0.75,0.68) / (0.75,0.72,0.65)) that
+## never repainted with the active faction chrome. Derived the same way as
+## the other faction-dependent statics below (PARCHMENT.darkened(~0.25) —
+## verified to land almost exactly on the old neutral-palette literal:
+## (0.85,0.79,0.66).darkened(0.25) ≈ (0.64,0.59,0.50)), so migrating a call
+## site to this constant is visually a no-op for the currently active set and
+## a real fix for every other faction. Only for text confirmed to sit on a
+## dark background (CHIP_BG chip / _create_centered_dialog backdrop) — text
+## on parchment keeps using INK_BODY or a literal, never this.
+static var INK_DIM_ON_DARK: Color = Color(0.85, 0.79, 0.66).darkened(0.25)
 
 ## Rebuilds every faction-dependent constant above from the palette table
 ## row for `set_id` (falls back to neutral if unknown). Faction-independent
@@ -189,6 +202,7 @@ static func rebuild(set_id: StringName) -> void:
 	ACCENT = pal.accent
 	BAR_FILL = Color(pal.heraldry).darkened(0.1)
 	BAR_TROUGH = pal.parchment_dark
+	INK_DIM_ON_DARK = Color(pal.parchment).darkened(0.25)
 	CHIP_BG = _CHIP_BG
 	DANGER = _DANGER
 	SUCCESS = _SUCCESS

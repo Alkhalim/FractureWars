@@ -17,7 +17,21 @@ extends SceneTree
 ## record) + a copy of each in the scratchpad dir for the coordinator to view.
 
 const OUT_DIR := "res://assets/ui_style_candidates"
-const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-Gamedesign-Beyond-FractureWars-FractureWars/60f5a753-2e0c-4d4a-bf21-4fb3197d9a6c/scratchpad"
+
+## Final review fix: was a hardcoded, session-specific AppData temp path (only
+## meaningful inside one particular Claude Code session) — de-hardcoded to an
+## optional CLI arg, same pattern as tools_generate_ui_chrome.gd/
+## tools_generate_class_icons.gd/tools_font_candidate_sheet.gd. `res://`
+## OUT_DIR is always the real, committed output; this is purely an extra copy
+## for a chat session's review, so it defaults to "" (skip copy). Pass
+## `--scratch-dir=<path>` after `--` to opt in.
+var SCRATCH_DIR := ""
+
+static func _parse_scratch_dir() -> String:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--scratch-dir="):
+			return arg.substr("--scratch-dir=".length())
+	return ""
 
 const MOCKUP_VP_SIZE := Vector2i(560, 720)
 const SHEET_VP_SIZE := Vector2i(1120, 720)
@@ -712,8 +726,10 @@ func _init() -> void:
 	call_deferred("_start")
 
 func _start() -> void:
+	SCRATCH_DIR = _parse_scratch_dir()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
-	DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
+	if SCRATCH_DIR != "":
+		DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
 
 	_vp = SubViewport.new()
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -739,7 +755,8 @@ func _process(_delta: float) -> bool:
 		else:
 			var out_name := "style_%s.png" % job[1]
 			img.save_png("%s/%s" % [OUT_DIR, out_name])
-			img.save_png("%s/%s" % [SCRATCH_DIR, out_name])
+			if SCRATCH_DIR != "":
+				img.save_png("%s/%s" % [SCRATCH_DIR, out_name])
 			print("Saved contact sheet: %s" % out_name)
 		_capture_pending = false
 	if _job_idx + 1 < _jobs.size():

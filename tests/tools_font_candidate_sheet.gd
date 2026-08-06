@@ -24,8 +24,22 @@ extends SceneTree
 ## session scratchpad for the ART GATE.
 
 const OUT_DIR := "res://assets/fonts"
-const SCRATCH_DIR := "C:/Users/LUTZGR~1/AppData/Local/Temp/claude/D--Dokumente-Gamedesign-Beyond-FractureWars-FractureWars/60f5a753-2e0c-4d4a-bf21-4fb3197d9a6c/scratchpad"
 const OUT_NAME := "_contact_font_candidates.png"
+
+## Final review fix: was a hardcoded, session-specific AppData temp path (only
+## meaningful inside one particular Claude Code session) — de-hardcoded to an
+## optional CLI arg. `res://` OUT_DIR is always the real, permanent output;
+## this is purely an extra copy for a chat session's ART GATE review, so it
+## defaults to "" (skip copy) instead of assuming any particular machine/user.
+## Pass `--scratch-dir=<path>` after `--` to opt in, e.g.:
+##   -s res://tests/tools_font_candidate_sheet.gd -- --scratch-dir=C:/path/to/scratch
+var SCRATCH_DIR := ""
+
+static func _parse_scratch_dir() -> String:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--scratch-dir="):
+			return arg.substr("--scratch-dir=".length())
+	return ""
 
 const FRAME_TEX_PATH := "res://assets/sprites/ui/generated/neutral_frame.png"
 const FRAME_MARGIN := 32  # matches tools_generate_ui_chrome.gd's FRAME_MARGIN contract (Task 5b round 2: was 24, moved to 32 with the rebaked neutral_frame.png)
@@ -100,7 +114,9 @@ func _load_face(path: String, pin_wght: bool) -> Font:
 	return fv
 
 func _start() -> void:
-	DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
+	SCRATCH_DIR = _parse_scratch_dir()
+	if SCRATCH_DIR != "":
+		DirAccess.make_dir_recursive_absolute(SCRATCH_DIR)
 
 	var body_a := _load_face("res://assets/fonts/Alegreya-wght.ttf", true)
 	var body_b := _load_face("res://assets/fonts/Vollkorn-wght.ttf", true)
@@ -210,7 +226,8 @@ func _process(_delta: float) -> bool:
 	if _capture_pending:
 		var img := _vp.get_texture().get_image()
 		img.save_png("%s/%s" % [OUT_DIR, OUT_NAME])
-		img.save_png("%s/%s" % [SCRATCH_DIR, OUT_NAME])
+		if SCRATCH_DIR != "":
+			img.save_png("%s/%s" % [SCRATCH_DIR, OUT_NAME])
 		print("Saved font candidate sheet: %s" % OUT_NAME)
 		quit()
 		return false

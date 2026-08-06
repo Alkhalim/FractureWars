@@ -1040,7 +1040,7 @@ func _create_unit_card(unit: UnitInstance, unit_data: UnitData, projected_hp: in
 	if hp_delta != 0:
 		hp_text.text += " (%+d)" % hp_delta
 	hp_text.add_theme_font_size_override("font_size", 10)
-	hp_text.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	hp_text.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	hp_container.add_child(hp_text)
 	stats_vbox.add_child(hp_container)
 
@@ -1217,7 +1217,7 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 		var desc := Label.new()
 		desc.text = unit_data.description
 		desc.add_theme_font_size_override("font_size", 13)
-		desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+		desc.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		vbox.add_child(desc)
 
@@ -1238,7 +1238,7 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 	var hp_label := Label.new()
 	hp_label.text = hp_text
 	hp_label.add_theme_font_size_override("font_size", 14)
-	hp_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	hp_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	vbox.add_child(hp_label)
 
 	var detail_dps := estimate_unit_dps(unit_data)
@@ -1255,7 +1255,7 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 		var l := Label.new()
 		l.text = line
 		l.add_theme_font_size_override("font_size", 14)
-		l.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		l.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		vbox.add_child(l)
 
 	# Tags — hover-info cleanup (designer, verbatim): drop faction-name tags,
@@ -1288,7 +1288,7 @@ func _show_unit_detail(unit: UnitInstance, unit_data: UnitData) -> void:
 			var pop_lbl := Label.new()
 			pop_lbl.text = "Pop: %d" % detail_pop_cost
 			pop_lbl.add_theme_font_size_override("font_size", 14)
-			pop_lbl.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+			pop_lbl.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 			recruit_row.add_child(pop_lbl)
 		vbox.add_child(recruit_row)
 
@@ -2036,10 +2036,14 @@ func _update_resource_display() -> void:
 		var income_label: Label = item.income_label
 		if net > 0:
 			income_label.text = "+" + str(net)
-			income_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+			# Task 8 coherence pass, final review: resource_bar sits in TopBar
+			# (theme_override_styles/panel = dark_panel in campaign.tscn), so
+			# this needs the dark-chip _BRIGHT variant (was reading ~3.3:1,
+			# down from ~9.4:1 pre-overhaul with the dark ink tone here).
+			income_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 		elif net < 0:
 			income_label.text = str(net)
-			income_label.add_theme_color_override("font_color", UIPalette.DANGER)
+			income_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 		else:
 			income_label.text = "+0"
 			income_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
@@ -2582,7 +2586,7 @@ func _refresh_economy_panel() -> void:
 		var suffix := " (Capital)" if city.is_capital else ""
 		city_label.text = "  %s%s (Lv%d)" % [city.get_display_name(), suffix, city.level]
 		city_label.add_theme_font_size_override("font_size", 12)
-		city_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		city_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		vbox.add_child(city_label)
 
 		if not income_pos.is_empty():
@@ -2594,13 +2598,13 @@ func _refresh_economy_panel() -> void:
 			var sr := int(ceil(maxf(0.0, float(st) - city.siege_turns)))
 			siege_note.text = "    (BESIEGED - no income, %d turns remaining)" % sr
 			siege_note.add_theme_font_size_override("font_size", 11)
-			siege_note.add_theme_color_override("font_color", UIPalette.DANGER)
+			siege_note.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 			vbox.add_child(siege_note)
 		elif city.production_disabled_turns > 0:
 			var evac_note := Label.new()
 			evac_note.text = "    (Evacuated - no income, %d turns remaining)" % city.production_disabled_turns
 			evac_note.add_theme_font_size_override("font_size", 11)
-			evac_note.add_theme_color_override("font_color", UIPalette.DANGER)
+			evac_note.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 			vbox.add_child(evac_note)
 
 	_add_separator(vbox)
@@ -3484,7 +3488,7 @@ func _build_diplo_faction_row(vbox: VBoxContainer, faction_id: StringName, fd: F
 	elif standing < 0:
 		standing_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	else:
-		standing_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		standing_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	standing_label.custom_minimum_size = Vector2(45, 0)
 	standing_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	# Build standing breakdown tooltip
@@ -4481,7 +4485,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	elif standing < 0:
 		standing_lbl.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	else:
-		standing_lbl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		standing_lbl.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	rel_row.add_child(standing_lbl)
 	info_col.add_child(rel_row)
 
@@ -4546,7 +4550,7 @@ func _build_faction_detail(vbox: VBoxContainer, faction_id: StringName) -> void:
 	var dialogue_lbl := Label.new()
 	dialogue_lbl.text = '"' + greeting_text + '"'
 	dialogue_lbl.add_theme_font_size_override("font_size", 13)
-	dialogue_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	dialogue_lbl.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	dialogue_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dialogue_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info_col.add_child(dialogue_lbl)
@@ -5975,7 +5979,7 @@ func _show_diplomacy_result(target: StringName, message: String, show_threaten: 
 			var resp_lbl := Label.new()
 			resp_lbl.text = '"' + response_text + '"'
 			resp_lbl.add_theme_font_size_override("font_size", 13)
-			resp_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+			resp_lbl.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 			resp_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			result_col.add_child(resp_lbl)
 		result_top.add_child(result_col)
@@ -6243,7 +6247,7 @@ func _show_counter_offer_dialog(target: StringName, reason: String, counter_offe
 			var resp_lbl := Label.new()
 			resp_lbl.text = '"' + response_text + '"'
 			resp_lbl.add_theme_font_size_override("font_size", 13)
-			resp_lbl.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+			resp_lbl.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 			resp_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			result_col.add_child(resp_lbl)
 		result_top.add_child(result_col)
@@ -7418,7 +7422,7 @@ class _RadialTechTree extends Control:
 			# bounty tiles that often.
 			var displayed_cost: int = data.tech_cost * 2 if _bounty_gate_state.get(_hovered_id, 0) == 2 else data.tech_cost
 			status_text = "%d turns | %d Tech" % [data.research_time, displayed_cost]
-			status_color = Color(0.6, 0.58, 0.5)
+			status_color = UIPalette.INK_DIM_ON_DARK
 		draw_string(font, Vector2(box_pos.x + 8, y), status_text, HORIZONTAL_ALIGNMENT_LEFT, box_w - 16, 12, status_color)
 		y += 16
 		if bounty_line != "":
@@ -7637,7 +7641,7 @@ func _show_research_detail(data: ResearchData) -> void:
 	var cat_label := Label.new()
 	cat_label.text = "%s  |  Tier %d" % [str(data.research_category).capitalize(), data.tier]
 	cat_label.add_theme_font_size_override("font_size", 12)
-	cat_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+	cat_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	vbox.add_child(cat_label)
 
 	_add_separator(vbox)
@@ -7646,7 +7650,7 @@ func _show_research_detail(data: ResearchData) -> void:
 	var desc := Label.new()
 	desc.text = data.description
 	desc.add_theme_font_size_override("font_size", 12)
-	desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	desc.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(desc)
 
@@ -7708,7 +7712,7 @@ func _show_research_detail(data: ResearchData) -> void:
 			var pl := Label.new()
 			pl.text = "  " + (pdata.display_name if pdata else str(prereq))
 			pl.add_theme_font_size_override("font_size", 12)
-			pl.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+			pl.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 			vbox.add_child(pl)
 
 	# Required Resources (bounty gate)
@@ -7819,7 +7823,7 @@ func _refresh_policies_panel() -> void:
 		var msg := Label.new()
 		msg.text = "Only the Empire has senate policies."
 		msg.add_theme_font_size_override("font_size", 12)
-		msg.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		msg.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		vbox.add_child(msg)
 		return
@@ -7931,19 +7935,19 @@ func _refresh_policies_panel() -> void:
 			cls_val.text = str(val)
 			cls_val.add_theme_font_size_override("font_size", 11)
 			if val >= 30:
-				cls_val.add_theme_color_override("font_color", UIPalette.SUCCESS)
+				cls_val.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 			elif val <= -10:
-				cls_val.add_theme_color_override("font_color", UIPalette.DANGER)
+				cls_val.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 			elif val < 10:
-				cls_val.add_theme_color_override("font_color", UIPalette.WARN)
+				cls_val.add_theme_color_override("font_color", UIPalette.WARN_BRIGHT)
 			else:
-				cls_val.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+				cls_val.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 			cls_row.add_child(cls_val)
 			if change != 0:
 				var change_label := Label.new()
 				change_label.text = "  %+d/turn" % change
 				change_label.add_theme_font_size_override("font_size", 10)
-				change_label.add_theme_color_override("font_color", UIPalette.SUCCESS if change > 0 else UIPalette.DANGER)
+				change_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT if change > 0 else UIPalette.DANGER_BRIGHT)
 				cls_row.add_child(change_label)
 			vbox.add_child(cls_row)
 		_add_separator(vbox)
@@ -7983,12 +7987,12 @@ func _refresh_policies_panel() -> void:
 				var p_name := Label.new()
 				p_name.text = data.display_name + " [ACTIVE]"
 				p_name.add_theme_font_size_override("font_size", 12)
-				p_name.add_theme_color_override("font_color", UIPalette.SUCCESS)
+				p_name.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 				info.add_child(p_name)
 				var p_desc := Label.new()
 				p_desc.text = _format_policy_effects(data)
 				p_desc.add_theme_font_size_override("font_size", 10)
-				p_desc.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+				p_desc.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 				info.add_child(p_desc)
 				row.add_child(info)
 				var revoke_btn := Button.new()
@@ -8026,7 +8030,7 @@ func _refresh_policies_panel() -> void:
 			var p_desc := Label.new()
 			p_desc.text = _format_policy_effects(data)
 			p_desc.add_theme_font_size_override("font_size", 10)
-			p_desc.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+			p_desc.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 			info.add_child(p_desc)
 
 			var can_enact := GameManager.policy_system.can_enact_policy(player_id, policy_id)
@@ -8036,13 +8040,13 @@ func _refresh_policies_panel() -> void:
 					var reason := Label.new()
 					reason.text = "Category on cooldown"
 					reason.add_theme_font_size_override("font_size", 10)
-					reason.add_theme_color_override("font_color", UIPalette.WARN)
+					reason.add_theme_color_override("font_color", UIPalette.WARN_BRIGHT)
 					info.add_child(reason)
 				elif fs.active_policies.size() >= PolicySystem.MAX_ACTIVE_POLICIES and active_in_cat == &"":
 					var reason := Label.new()
 					reason.text = "Max policies reached (%d/%d)" % [fs.active_policies.size(), PolicySystem.MAX_ACTIVE_POLICIES]
 					reason.add_theme_font_size_override("font_size", 10)
-					reason.add_theme_color_override("font_color", UIPalette.WARN)
+					reason.add_theme_color_override("font_color", UIPalette.WARN_BRIGHT)
 					info.add_child(reason)
 				elif capital:
 					for cls in data.required_class_loyalty:
@@ -8052,7 +8056,7 @@ func _refresh_policies_panel() -> void:
 							var reason := Label.new()
 							reason.text = "Requires %s loyalty >= %d (current: %d)" % [cls.capitalize(), required, current]
 							reason.add_theme_font_size_override("font_size", 10)
-							reason.add_theme_color_override("font_color", UIPalette.DANGER)
+							reason.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 							info.add_child(reason)
 
 			row.add_child(info)
@@ -8677,7 +8681,7 @@ func _show_city_panel(city_id: StringName) -> void:
 	var pop_label := Label.new()
 	pop_label.text = pop_text + "  "
 	pop_label.add_theme_font_size_override("font_size", 13)
-	pop_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	pop_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	info_hbox.add_child(pop_label)
 
 	# Loyalty button (clickable, color-coded border, "Loyalty:" white, numbers colored)
@@ -8866,7 +8870,7 @@ func _show_city_panel(city_id: StringName) -> void:
 			var blabel := Label.new()
 			blabel.text = "  " + building.display_name
 			blabel.add_theme_font_size_override("font_size", 14)
-			blabel.add_theme_color_override("font_color", UIPalette.SUCCESS)
+			blabel.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 			blabel.mouse_filter = Control.MOUSE_FILTER_STOP
 			blabel.mouse_entered.connect(_on_building_hover.bind(building_id))
 			blabel.mouse_exited.connect(_on_building_hover_exit)
@@ -9591,6 +9595,14 @@ const _CARD_FONT_TIERS := [
 	{name = 11, cost = 10, upkeep = 9, terrain = 9, effects = 9, cat_tag = 9, chars_per_line = 32, lines_budget = 999},
 ]
 
+## Final review fix (efficiency): both patterns are fixed strings, not
+## per-call-derived — compiling them fresh on every _bbcode_visual_length()
+## call (which runs up to 3x per _pick_building_card_font_tier() call, once
+## per populated building card) was pure waste. Hoisted to lazily-compiled
+## statics, shared across every call for the life of the process.
+static var _re_bbcode_img: RegEx
+static var _re_bbcode_tag: RegEx
+
 ## Strips BBCode for a rough "visual character width" estimate — used only by
 ## _pick_building_card_font_tier below, never for real text layout.
 ## `[img=N]path[/img]` icon tags collapse to a fixed 2-char placeholder (an
@@ -9598,12 +9610,13 @@ const _CARD_FONT_TIERS := [
 ## every other tag (`[color=...]`/`[/color]`) is dropped entirely since it
 ## adds zero visual width.
 static func _bbcode_visual_length(s: String) -> int:
-	var re_img := RegEx.new()
-	re_img.compile("\\[img=\\d+\\].*?\\[/img\\]")
-	var stripped := re_img.sub(s, "XX", true)
-	var re_tag := RegEx.new()
-	re_tag.compile("\\[.*?\\]")
-	stripped = re_tag.sub(stripped, "", true)
+	if _re_bbcode_img == null:
+		_re_bbcode_img = RegEx.new()
+		_re_bbcode_img.compile("\\[img=\\d+\\].*?\\[/img\\]")
+		_re_bbcode_tag = RegEx.new()
+		_re_bbcode_tag.compile("\\[.*?\\]")
+	var stripped := _re_bbcode_img.sub(s, "XX", true)
+	stripped = _re_bbcode_tag.sub(stripped, "", true)
 	return stripped.length()
 
 ## Picks the biggest _CARD_FONT_TIERS entry whose estimated line count still
@@ -10196,7 +10209,11 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 	name_label.text = unit_data.display_name
 	name_label.add_theme_font_size_override("font_size", 18)
 	name_label.theme_type_variation = &"HeaderLarge"
-	name_label.add_theme_color_override("font_color", UIPalette.INK_TITLE)
+	# CRITICAL fix (final review): this label ends up inside the CHIP_BG-backed
+	# `card_chip` below (dark ~0.05 bg) — INK_TITLE is a dark-on-light tone and
+	# read ~1.3:1 contrast here. PARCHMENT matches the sibling light literals
+	# at :10215-10244 in this same card.
+	name_label.add_theme_color_override("font_color", UIPalette.PARCHMENT)
 	name_row.add_child(name_label)
 	vbox.add_child(name_row)
 
@@ -10221,7 +10238,7 @@ func _show_unit_card(unit_data_id: StringName) -> void:
 	var card_def_s := render_stars(get_defense_stars(unit_data))
 	stats.text = "%s ATK  %s DEF\nHP: %d  DPS: %d  SPD: %d\nDEF: %d/%d/%d (Melee/Ranged/Magic)" % [card_atk_s, card_def_s, unit_data.max_hp, int(card_dps), unit_data.speed, unit_data.melee_defense, unit_data.projectile_defense, unit_data.magic_defense]
 	stats.add_theme_font_size_override("font_size", 14)
-	stats.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	stats.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	vbox.add_child(stats)
 
 	if unit_data.attack_range > 1:
@@ -10951,9 +10968,9 @@ func _update_commander_panel(army: ArmyState) -> void:
 				if trait_data:
 					trait_label.text = "  " + trait_data.display_name
 					if trait_data.is_positive:
-						trait_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+						trait_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 					else:
-						trait_label.add_theme_color_override("font_color", UIPalette.DANGER)
+						trait_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 				else:
 					trait_label.text = "  " + str(trait_id)
 					trait_label.add_theme_color_override("font_color", Color(0.6, 0.58, 0.52))
@@ -11011,10 +11028,10 @@ func _update_commander_panel(army: ArmyState) -> void:
 							&"rare":
 								item_label.add_theme_color_override("font_color", Color(0.4, 0.6, 0.9))
 							_:
-								item_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+								item_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 					else:
 						item_label.text = "  " + str(item_id)
-						item_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+						item_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 					item_label.add_theme_font_size_override("font_size", 11)
 					item_label.mouse_filter = Control.MOUSE_FILTER_STOP
 					item_label.mouse_entered.connect(_on_item_hover_entered.bind(item_id))
@@ -11057,7 +11074,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 					var f_name_label := Label.new()
 					f_name_label.text = "  " + follower.display_name
 					f_name_label.add_theme_font_size_override("font_size", 11)
-					f_name_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+					f_name_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 					f_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 					f_row.add_child(f_name_label)
 					if is_player_cmd:
@@ -11097,13 +11114,13 @@ func _update_commander_panel(army: ArmyState) -> void:
 						var bonus_label := Label.new()
 						bonus_label.text = "    +%s %s" % [str(follower.bonus_effect[eff_key]), eff_key.replace("_", " ").capitalize()]
 						bonus_label.add_theme_font_size_override("font_size", 10)
-						bonus_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+						bonus_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 						vbox.add_child(bonus_label)
 					for eff_key in follower.malus_effect:
 						var malus_label := Label.new()
 						malus_label.text = "    %s %s" % [str(follower.malus_effect[eff_key]), eff_key.replace("_", " ").capitalize()]
 						malus_label.add_theme_font_size_override("font_size", 10)
-						malus_label.add_theme_color_override("font_color", UIPalette.DANGER)
+						malus_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 						vbox.add_child(malus_label)
 			else:
 				var no_followers := Label.new()
@@ -11161,7 +11178,7 @@ func _update_commander_panel(army: ArmyState) -> void:
 	var stats_label := Label.new()
 	stats_label.text = "DPS: %d  |  DEF: %d  |  SPD: %d" % [int(total_dps), total_def, avg_spd]
 	stats_label.add_theme_font_size_override("font_size", 12)
-	stats_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+	stats_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	vbox.add_child(stats_label)
 
 	var mp_label := Label.new()
@@ -11342,7 +11359,7 @@ func _show_item_swap_panel(commander: CommanderState, item_idx: int) -> void:
 		var storage_header := Label.new()
 		storage_header.text = "Storage (%d)" % fs.item_storage.size()
 		storage_header.add_theme_font_size_override("font_size", 11)
-		storage_header.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+		storage_header.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		vbox.add_child(storage_header)
 
 		for si in fs.item_storage.size():
@@ -11798,7 +11815,7 @@ func _show_item_drop_dialog(commander: CommanderState, new_item) -> void:
 	var desc := Label.new()
 	desc.text = new_item.description
 	desc.add_theme_font_size_override("font_size", 12)
-	desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	desc.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(desc)
 
@@ -12319,7 +12336,7 @@ func _show_region_overview(region_id: StringName) -> void:
 	if owner_faction_id != &"":
 		var faction := DataManager.get_faction(owner_faction_id)
 		owner_label.text = "Owner: " + (faction.display_name if faction else str(owner_faction_id))
-		owner_label.add_theme_color_override("font_color", faction.color.lightened(0.3) if faction else Color(0.78, 0.75, 0.68))
+		owner_label.add_theme_color_override("font_color", faction.color.lightened(0.3) if faction else UIPalette.INK_DIM_ON_DARK)
 	else:
 		owner_label.text = "Owner: Neutral"
 		owner_label.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45))
@@ -12346,7 +12363,7 @@ func _show_region_overview(region_id: StringName) -> void:
 		var suffix := " (Capital)" if city.is_capital else ""
 		city_label.text = "  %s%s - Level %d, Pop: %d" % [city.get_display_name(), suffix, city.level, city.population]
 		city_label.add_theme_font_size_override("font_size", 12)
-		city_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		city_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		vbox.add_child(city_label)
 		# Sum income
 		var city_income := GameManager.city_system.calculate_city_income(city)
@@ -12383,7 +12400,7 @@ func _show_region_overview(region_id: StringName) -> void:
 		var army_label := Label.new()
 		army_label.text = "  %s - %d units" % [fname, army.units.size()]
 		army_label.add_theme_font_size_override("font_size", 12)
-		army_label.add_theme_color_override("font_color", Color(0.78, 0.75, 0.68))
+		army_label.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		vbox.add_child(army_label)
 
 	if not army_found:
@@ -12666,7 +12683,7 @@ func _on_game_over(faction_id: StringName, victory_type: int, is_player: bool) -
 		title.add_theme_color_override("font_color", UIPalette.ACCENT)
 	elif is_player:
 		title.text = "DEFEAT"
-		title.add_theme_color_override("font_color", UIPalette.DANGER)
+		title.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	else:
 		title.text = faction_name + " Wins!"
 		title.add_theme_color_override("font_color", Color(0.7, 0.6, 0.4))
@@ -13176,7 +13193,7 @@ func _show_turn_summary() -> void:
 		lbl.text = "  " + entry.get("text", "")
 		lbl.add_theme_font_size_override("font_size", 12)
 		var etype: String = entry.get("type", "")
-		lbl.add_theme_color_override("font_color", type_colors.get(etype, Color(0.75, 0.72, 0.65)))
+		lbl.add_theme_color_override("font_color", type_colors.get(etype, UIPalette.INK_DIM_ON_DARK))
 		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		entries.add_child(lbl)
 
@@ -13332,7 +13349,7 @@ func _show_disband_dialog(army_id: StringName) -> void:
 	title.text = "Disband Units"
 	title.add_theme_font_size_override("font_size", 14)
 	title.theme_type_variation = &"HeaderLarge"
-	title.add_theme_color_override("font_color", UIPalette.DANGER)
+	title.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
@@ -14031,7 +14048,7 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 		var cap_label := Label.new()
 		cap_label.text = "Capital only"
 		cap_label.add_theme_font_size_override("font_size", 12)
-		cap_label.add_theme_color_override("font_color", UIPalette.WARN)
+		cap_label.add_theme_color_override("font_color", UIPalette.WARN_BRIGHT)
 		vbox.add_child(cap_label)
 
 	# Description
@@ -14039,7 +14056,7 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 	desc.text = bd.description
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.add_theme_font_size_override("font_size", 13)
-	desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	desc.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	vbox.add_child(desc)
 
 	_add_detail_separator(vbox)
@@ -14062,7 +14079,7 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 		var growth_label := Label.new()
 		growth_label.text = "Population Growth: +%d" % bd.population_growth_bonus
 		growth_label.add_theme_font_size_override("font_size", 13)
-		growth_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+		growth_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 		vbox.add_child(growth_label)
 
 	# Defense
@@ -14113,9 +14130,9 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 			loy_label.text = "  %s: %s%d" % [str(class_name_key).capitalize(), "+" if amount >= 0 else "", amount]
 			loy_label.add_theme_font_size_override("font_size", 12)
 			if amount >= 0:
-				loy_label.add_theme_color_override("font_color", UIPalette.SUCCESS)
+				loy_label.add_theme_color_override("font_color", UIPalette.SUCCESS_BRIGHT)
 			else:
-				loy_label.add_theme_color_override("font_color", UIPalette.DANGER)
+				loy_label.add_theme_color_override("font_color", UIPalette.DANGER_BRIGHT)
 			vbox.add_child(loy_label)
 
 	# Unlocked units
@@ -14153,7 +14170,7 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 		var from_prefix := Label.new()
 		from_prefix.text = "Upgrades from: "
 		from_prefix.add_theme_font_size_override("font_size", 12)
-		from_prefix.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+		from_prefix.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 		from_hbox.add_child(from_prefix)
 		var from_link := Label.new()
 		from_link.text = from_bd.display_name if from_bd else str(bd.upgrades_from)
@@ -14178,7 +14195,7 @@ func _show_building_detail_overview(bd: BuildingData) -> void:
 			var to_prefix := Label.new()
 			to_prefix.text = "Upgrades to: "
 			to_prefix.add_theme_font_size_override("font_size", 12)
-			to_prefix.add_theme_color_override("font_color", Color(0.6, 0.58, 0.5))
+			to_prefix.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 			to_hbox.add_child(to_prefix)
 			var to_link := Label.new()
 			to_link.text = other.display_name
@@ -14228,7 +14245,7 @@ func _show_unit_detail_overview(ud: UnitData) -> void:
 	desc.text = ud.description
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.add_theme_font_size_override("font_size", 13)
-	desc.add_theme_color_override("font_color", Color(0.75, 0.72, 0.65))
+	desc.add_theme_color_override("font_color", UIPalette.INK_DIM_ON_DARK)
 	vbox.add_child(desc)
 
 	_add_detail_separator(vbox)
